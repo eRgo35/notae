@@ -32,11 +32,32 @@
 //! unique keys a record has — content hash and path — and reports which of the
 //! four resulting situations it wrote, as a [`ReindexOutcome`], so a caller
 //! never has to compare rows to tell a moved file from a changed one.
+//!
+//! # Reconciliation
+//!
+//! [`Reconciler`] compares the stored records against the PDFs a
+//! [`PdfCatalog`] enumerates. [`Reconciler::plan`] is read-only and returns a
+//! [`RescanPlan`] the caller can preview and abandon; [`Reconciler::apply`]
+//! performs it and returns a [`RescanReport`]. File identity is the SHA-256 of
+//! the contents, so a rename moves one record instead of creating a second, and
+//! manually edited metadata in [`crate::provenance`] is never overwritten by a
+//! filename-derived value. A single unreadable file becomes a
+//! [`FileFailure`], never an aborted rescan.
 
+mod provenance;
+mod reconcile;
 mod schema;
 mod search;
 mod store;
 
+pub use crate::provenance::{
+    MetadataRefreshError, RefreshOutcome, metadata_from_filename, refresh_from_filename,
+};
+pub use crate::reconcile::{
+    CatalogError, DuplicateIdConflict, FileFailure, FileFailureReason, PdfCatalog, PdfFile,
+    PlannedAddition, PlannedDeletion, PlannedMove, PlannedUpdate, ReconcileError, Reconciler,
+    RescanPlan, RescanReport, UnchangedFile,
+};
 pub use crate::schema::{MIGRATIONS, Migration, SCHEMA_VERSION};
 pub use crate::search::SearchHit;
 pub use crate::store::{IndexError, IndexStore, OcrText, ReindexOutcome};
