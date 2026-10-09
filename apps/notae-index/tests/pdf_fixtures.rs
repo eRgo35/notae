@@ -315,8 +315,7 @@ fn a_page_whose_contents_cannot_be_decoded_is_refused() {
     // succeeds. Only decoding the stream fails. Reporting that page as blank
     // would send a damaged file down the OCR path as though it were a scan.
     let error = LinuxPdfDocument::open(&fixture("damaged-contents.pdf"))
-        .err()
-        .expect("a stream that cannot be decoded is not a usable PDF");
+        .expect_err("a stream that cannot be decoded is not a usable PDF");
     assert!(matches!(error, PdfError::InvalidPdf { .. }), "{error}");
 }
 
@@ -327,7 +326,7 @@ fn a_damaged_page_does_not_extract_as_no_text_layer() {
     // that the file is broken.
     let outcome = LinuxPdfDocument::open(&fixture("damaged-contents.pdf"))
         .and_then(|document| document.extract_text());
-    let error = outcome.err().expect("a damaged page is not an empty page");
+    let error = outcome.expect_err("a damaged page is not an empty page");
     assert!(matches!(error, PdfError::InvalidPdf { .. }), "{error}");
 }
 
@@ -338,7 +337,7 @@ fn a_damaged_page_does_not_render_as_a_blank_image() {
     // never really read.
     let outcome = LinuxPdfDocument::open(&fixture("damaged-contents.pdf"))
         .and_then(|document| document.render_page(0, 144));
-    let error = outcome.err().expect("a damaged page is not a blank page");
+    let error = outcome.expect_err("a damaged page is not a blank page");
     assert!(matches!(error, PdfError::InvalidPdf { .. }), "{error}");
 }
 
@@ -367,8 +366,7 @@ fn a_pdf_without_a_header_is_refused() {
     // `%PDF-` anywhere. Reconstructing structure by scanning finds all of
     // that, so the file is accepted unless the header is actually checked.
     let error = LinuxPdfDocument::open(&fixture("no-header.pdf"))
-        .err()
-        .expect("a file with no %PDF- header is not a PDF");
+        .expect_err("a file with no %PDF- header is not a PDF");
     assert!(matches!(error, PdfError::InvalidPdf { .. }), "{error}");
 }
 
