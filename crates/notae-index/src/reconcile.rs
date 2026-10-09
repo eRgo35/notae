@@ -20,7 +20,16 @@
 //! the catalog could not read, whose bytes are not a PDF, or whose metadata
 //! cannot be derived becomes a [`FileFailure`] in the plan and is otherwise
 //! ignored; every other file is still classified and applied. A failed file
-//! that already has a record keeps it, because the file is still on disk.
+//! that already has a record keeps it, because the file is still on disk — but
+//! a record whose file the catalog reported as unreadable, or as not a
+//! readable PDF, takes on [`IndexStatus::Inaccessible`] or
+//! [`IndexStatus::InvalidPdf`] in the same rescan, because a stored row must
+//! not contradict what the catalog just saw.
+//!
+//! A file that fails produces no record, and therefore reserves nothing: its
+//! content hash is only claimed once a record exists for it, so a later file
+//! holding the same bytes is indexed on its own merit instead of being
+//! reported as a copy of something that was never indexed.
 //!
 //! # Conflicts
 //!
@@ -32,13 +41,18 @@
 //! PDF disappears from the library. The marker is dropped again on the first
 //! rescan in which no collision remains.
 //!
+//! Ownership is decided from the index as it was before the rescan, never from
+//! the order paths happen to sort in, so an unresolved conflict reaches the
+//! same state on every rescan. `RescanPlan::resolve_conflicts` states the rule
+//! in full.
+//!
 //! See [`crate::provenance`] for how manual edits are preserved.
 
 use std::collections::{HashMap, HashSet};
 
 use notae_domain::{
-    FilenameError, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId, PdfFingerprint,
-    RelativePdfPath, Sha256Digest, parse_note_filename, validate_unique_ids,
+    FilenameError, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId, ParsedFilename,
+    PdfFingerprint, RelativePdfPath, Sha256Digest, parse_note_filename, validate_unique_ids,
 };
 use thiserror::Error;
 
@@ -71,10 +85,15 @@ pub enum FileCondition {
     /// The file was read end to end and hashed; it can be reconciled.
     Readable(PdfFingerprint),
     /// The file exists but could not be opened or read — denied permission, a
-    /// vanished document, or an I/O error. No fingerprint exists, so the record
-    /// is left exactly as stored and only a [`FileFailure`] is reported.
+    /// vanished document, or an I/O error. No fingerprint exists, so nothing
+    /// about the record's identity changes: it keeps its note ID, its content,
+    /// and its OCR text, and takes on [`IndexStatus::Inaccessible`] so the
+    /// stored row does not claim a file the catalog could not read. A
+    /// [`FileFailure`] is reported either way.
     Unreadable,
-    /// The bytes were read but do not form a readable PDF.
+    /// The bytes were read but do not form a readable PDF. As with
+    /// [`Unreadable`](Self::Unreadable), the record keeps its identity and takes
+    /// on [`IndexStatus::InvalidPdf`], and the file is reported.
     InvalidPdf,
 }
 
@@ -109,7 +128,8 @@ impl FileCondition {
 /// the file. A file that could not be read, or whose bytes are not a PDF, is
 /// still yielded here — as [`FileCondition::Unreadable`] or
 /// [`FileCondition::InvalidPdf`] — so that reconciliation reports it per file
-/// instead of treating it as absent and deleting its record.
+/// instead of treating it as absent and deleting its record, and so that an
+/// existing record's status can be corrected to match what was observed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PdfFile {
     path: RelativePdfPath,
@@ -664,9 +684,23 @@ impl Reconciler {
     pub fn plan(existing: &IndexStore, files: &[PdfFile]) -> Result<RescanPlan, ReconcileError> {
         let mut by_path: HashMap<RelativePdfPath, IndexedNote> = HashMap::new();
         let mut by_hash: HashMap<Sha256Digest, IndexedNote> = HashMap::new();
+        // Which record each note ID belongs to *today*. Read before anything is
+        // planned, because it is the state conflict resolution must preserve:
+        // a rescan may not hand an ID to a different record than the one the
+        // index already filed it under.
+        let mut held: HashMap<NoteId, StoredClaim> = HashMap::new();
         for note in existing.list_all()? {
             by_path.insert(note.path().clone(), note.clone());
             by_hash.insert(note.fingerprint().sha256(), note.clone());
+            if let Some(id) = note.id() {
+                held.insert(
+                    id,
+                    StoredClaim {
+                        path: note.path().clone(),
+                        fingerprint: note.fingerprint().sha256(),
+                    },
+                );
+            }
         }
 
         let mut plan = RescanPlan::default();
@@ -678,18 +712,24 @@ impl Reconciler {
 
         let mut claimed: HashMap<Sha256Digest, RelativePdfPath> = HashMap::new();
         for file in ordered {
-            match classify(file, &by_path, &by_hash, &mut claimed) {
-                Ok(Classification::Addition(note)) => plan.additions.push(PlannedAddition { note }),
-                Ok(Classification::Update(note, previous)) => {
+            let Verdict { write, failure } = classify(file, &by_path, &by_hash, &mut claimed);
+            match write {
+                Some(Classification::Addition(note)) => {
+                    plan.additions.push(PlannedAddition { note });
+                }
+                Some(Classification::Update(note, previous)) => {
                     plan.updates.push(PlannedUpdate { note, previous });
                 }
-                Ok(Classification::Move(note, from)) => {
+                Some(Classification::Move(note, from)) => {
                     plan.moves.push(PlannedMove { note, from });
                 }
-                Ok(Classification::Unchanged(note)) => {
+                Some(Classification::Unchanged(note)) => {
                     plan.unchanged.push(UnchangedFile { note });
                 }
-                Err(failure) => plan.failures.push(failure),
+                None => {}
+            }
+            if let Some(failure) = failure {
+                plan.failures.push(failure);
             }
         }
 
@@ -715,7 +755,7 @@ impl Reconciler {
             .map(|path| PlannedDeletion { path })
             .collect();
 
-        plan.resolve_conflicts();
+        plan.resolve_conflicts(&held);
         Ok(plan)
     }
 
@@ -795,39 +835,98 @@ impl Reconciler {
     }
 }
 
+/// The record the index filed under one note ID before this rescan.
+///
+/// Both the path and the content hash are kept, because either one identifies
+/// the same record across a rescan: a rename changes the path and keeps the
+/// hash, and a content change keeps the path and changes the hash. Matching a
+/// candidate on either therefore recognises "this is the record that already
+/// had the ID" in both cases.
+#[derive(Debug, Clone)]
+struct StoredClaim {
+    path: RelativePdfPath,
+    fingerprint: Sha256Digest,
+}
+
+/// Ranks one candidate for a contested ID: 0 if the index already filed this
+/// very record under it, 1 otherwise.
+///
+/// The rank is total on any set of candidates — at most one record can be the
+/// stored owner of an ID, and the rest tie-break on path — which is what makes
+/// the ownership decision the same on every rescan.
+fn rank(note: &IndexedNote, held: &HashMap<NoteId, StoredClaim>) -> u8 {
+    let Some(claim) = note.id().and_then(|id| held.get(&id)) else {
+        return 1;
+    };
+    let same_record =
+        &claim.path == note.path() || claim.fingerprint == note.fingerprint().sha256();
+    u8::from(!same_record)
+}
+
 impl RescanPlan {
     /// Reports every note ID that more than one file claims, and withholds the
     /// ID from all but one of them.
     ///
     /// [`validate_unique_ids`] is the authority on what counts as a duplicate;
-    /// this only decides who keeps the contested ID. The record that was
-    /// already indexed wins, which is what the ID invariant says happens when a
-    /// renamed or imported file collides. The loser is *not* dropped: it keeps
-    /// its record and is written with no ID at all, so the user's PDF stays
-    /// visible and editable in the library while the collision is unresolved.
-    /// Both sides are marked [`IndexStatus::DuplicateIdConflict`], so neither
-    /// looks like a healthy record. Each round takes one ID out of contention,
-    /// so the loop terminates.
-    fn resolve_conflicts(&mut self) {
+    /// this only decides who keeps the contested ID, and `held` — the ID
+    /// ownership the index had *before* this rescan — is what decides it.
+    ///
+    /// # The ownership rule
+    ///
+    /// For a contested ID, exactly one record keeps it, chosen in this order:
+    ///
+    /// 1. **The record that already held the ID in the index.** If some
+    ///    candidate is the very record the store filed under this ID — matched
+    ///    by path or by content hash, so it is still recognised after a rename
+    ///    or a content change — that record keeps it, whatever its path sorts
+    ///    to. A newcomer, a duplicate copy, or a file whose bytes changed never
+    ///    takes the ID away from the record that was indexed first.
+    /// 2. **Otherwise the smallest library-relative path.** When no candidate
+    ///    was indexed under this ID the ID is genuinely up for grabs, and the
+    ///    two files that happen to parse to it are indistinguishable to the
+    ///    index. Choosing by path makes the choice the same on every rescan
+    ///    instead of following the catalog's traversal order, and it names the
+    ///    same file in [`DuplicateIdConflict::existing`] every time.
+    ///
+    /// The rule reads only the index as it was and the candidates' paths, so
+    /// it cannot change between two rescans of the same library. That is what
+    /// makes an unresolved conflict *stable*: rescanning a file whose name
+    /// still yields a taken number reaches the same state, instead of handing
+    /// the ID to whichever file happened to sort first on that pass. It also
+    /// makes both user-facing ways out of a collision work: rename or delete
+    /// the newcomer and its ID leaves the contested number with nobody else
+    /// claiming it, or give it a number by hand and its ID becomes
+    /// [`MetadataOrigin::Manual`], which a filename refresh may not overwrite —
+    /// and a record whose ID is manual is never withheld, so the write cannot
+    /// be refused.
+    ///
+    /// The loser is *not* dropped: it keeps its record and is written with no
+    /// ID at all, so the user's PDF stays visible and editable in the library
+    /// while the collision is unresolved. Both sides are marked
+    /// [`IndexStatus::DuplicateIdConflict`], so neither looks like a healthy
+    /// record. Each round takes one ID out of contention, so the loop
+    /// terminates.
+    fn resolve_conflicts(&mut self, held: &HashMap<NoteId, StoredClaim>) {
         loop {
-            // Every record the index will hold once the plan is applied: the
-            // ones already stored, then the newcomers. A stored record is
-            // always listed first, so it is the one the validator names as
-            // keeping the ID.
-            let mut stored: Vec<&IndexedNote> = self
+            // Every record the index will hold once the plan is applied. They
+            // are ordered by the ownership rule, so the validator — which names
+            // the first record it sees for an ID as the keeper and the next as
+            // the loser — agrees with it.
+            let mut candidates: Vec<&IndexedNote> = self
                 .unchanged
                 .iter()
                 .map(UnchangedFile::note)
                 .chain(self.updates.iter().map(PlannedUpdate::note))
                 .chain(self.moves.iter().map(PlannedMove::note))
+                .chain(self.additions.iter().map(PlannedAddition::note))
                 .collect();
-            let mut newcomers: Vec<&IndexedNote> =
-                self.additions.iter().map(PlannedAddition::note).collect();
-            stored.sort_by(|left, right| left.path().cmp(right.path()));
-            newcomers.sort_by(|left, right| left.path().cmp(right.path()));
-            stored.append(&mut newcomers);
+            candidates.sort_by(|left, right| {
+                rank(left, held)
+                    .cmp(&rank(right, held))
+                    .then_with(|| left.path().cmp(right.path()))
+            });
 
-            let Err(duplicate) = validate_unique_ids(stored.into_iter()) else {
+            let Err(duplicate) = validate_unique_ids(candidates.into_iter()) else {
                 return;
             };
             let loser = duplicate.conflicting_path().clone();
@@ -868,31 +967,108 @@ enum Classification {
     Unchanged(IndexedNote),
 }
 
+/// What one file means relative to the index, and what is reported about it.
+///
+/// These are independent: a record whose condition the catalog contradicts is
+/// corrected *and* reported, because the file still needs the user's attention
+/// and the row must not claim otherwise. A file with nothing to say about it
+/// reports nothing, and a file with nothing to write is not written.
+struct Verdict {
+    /// The record this file contributes to the plan, if any.
+    write: Option<Classification>,
+    /// What is reported about this file, if anything.
+    failure: Option<FileFailure>,
+}
+
+impl Verdict {
+    /// A file that becomes a record and is not reported.
+    fn written(classification: Classification) -> Self {
+        Self {
+            write: Some(classification),
+            failure: None,
+        }
+    }
+
+    /// A file that is reported and produces no record.
+    fn failed(failure: FileFailure) -> Self {
+        Self {
+            write: None,
+            failure: Some(failure),
+        }
+    }
+
+    /// A record that is corrected and reported at the same time.
+    fn corrected(classification: Classification, failure: FileFailure) -> Self {
+        Self {
+            write: Some(classification),
+            failure: Some(failure),
+        }
+    }
+}
+
+/// The status a record must carry when the catalog could not use its file.
+///
+/// The record is still on disk, so it is not deleted; but a row that says
+/// [`IndexStatus::Ready`] about a file the catalog could not read is a lie the
+/// user would act on, so the observed condition becomes the status. Observing
+/// the same condition twice writes nothing, because the row already says it.
+fn observed_status(condition: &FileCondition) -> IndexStatus {
+    match condition {
+        FileCondition::Unreadable => IndexStatus::Inaccessible,
+        FileCondition::InvalidPdf => IndexStatus::InvalidPdf,
+        FileCondition::Readable(_) => IndexStatus::Discovered,
+    }
+}
+
 /// Decides what one file means relative to the index.
 ///
 /// The hash is consulted first because it, not the path, is the file's
 /// identity; the path is read only to tell a move from a content change.
 ///
-/// `claimed` holds the fingerprints already assigned to a path *in this
-/// rescan*, so two unseen files with identical bytes cannot both be planned as
-/// separate records. It is filled in as classification proceeds, which is why
-/// the caller hands the files over in a stable order.
+/// `claimed` holds the fingerprints already reserved *in this rescan*, so two
+/// unseen files with identical bytes cannot both be planned as separate
+/// records. A fingerprint is reserved only once this file has actually
+/// produced a record: a file that fails before that reserves nothing, so a
+/// later file holding the same bytes can still be indexed on its own merit.
+/// Because the reservation follows the outcome, `claimed` does not depend on
+/// the order files are handed over in for the *outcome*, only for which copy is
+/// reported.
 fn classify(
     file: &PdfFile,
     by_path: &HashMap<RelativePdfPath, IndexedNote>,
     by_hash: &HashMap<Sha256Digest, IndexedNote>,
     claimed: &mut HashMap<Sha256Digest, RelativePdfPath>,
-) -> Result<Classification, FileFailure> {
+) -> Verdict {
     let fail = |reason| FileFailure {
         path: file.path.clone(),
         reason,
     };
 
-    // The catalog could not use this file. Nothing about the index changes: a
-    // record it already has is left exactly as stored, and the file is not
-    // planned for deletion because it is still on disk.
+    // The catalog could not use this file. The record it already has keeps its
+    // identity, its ID, and its OCR text — but its status must stop claiming a
+    // file the catalog could not read — and the file is still reported, because
+    // it is on disk and something is wrong with it.
     if let Some(reason) = FileFailureReason::for_condition(&file.condition) {
-        return Err(fail(reason));
+        return match by_path.get(&file.path) {
+            Some(record) => {
+                let status = observed_status(&file.condition);
+                let failure = fail(reason);
+                if record.status() == status {
+                    Verdict::failed(failure)
+                } else {
+                    Verdict::corrected(
+                        Classification::Update(
+                            record.with_status(status),
+                            record.fingerprint().clone(),
+                        ),
+                        failure,
+                    )
+                }
+            }
+            // Nothing is indexed for a file that could not be read, so there
+            // is no row to correct and only the report says so.
+            None => Verdict::failed(fail(reason)),
+        };
     }
     let fingerprint = match &file.condition {
         FileCondition::Readable(fingerprint) => fingerprint.clone(),
@@ -901,23 +1077,53 @@ fn classify(
         }
     };
 
-    let parsed =
-        parse_note_filename(&file.filename).map_err(|error| fail(FileFailureReason::NotAPdf(error)))?;
+    let parsed = match parse_note_filename(&file.filename) {
+        Ok(parsed) => parsed,
+        Err(error) => return Verdict::failed(fail(FileFailureReason::NotAPdf(error))),
+    };
 
-    // These exact bytes are already spoken for in this rescan, by another path.
-    // There is one record per content hash, so however many copies exist they
-    // cannot be indexed separately.
+    // These exact bytes are already spoken for in this rescan, by another path
+    // that did produce a record. There is one record per content hash, so
+    // however many copies exist they cannot be indexed separately.
     if let Some(owner) = claimed.get(&fingerprint.sha256())
         && owner != &file.path
     {
-        return Err(fail(FileFailureReason::DuplicateContent(owner.clone())));
+        return Verdict::failed(fail(FileFailureReason::DuplicateContent(owner.clone())));
     }
-    claimed.insert(fingerprint.sha256(), file.path.clone());
+
+    let sha256 = fingerprint.sha256();
+    match classify_bytes(file, fingerprint, &parsed, by_path, by_hash) {
+        Ok(classification) => {
+            // The record exists now, so — and only now — these bytes are
+            // claimed: a file that produced nothing cannot deny another file
+            // its own content.
+            claimed.insert(sha256, file.path.clone());
+            Verdict::written(classification)
+        }
+        Err(failure) => Verdict::failed(failure),
+    }
+}
+
+/// Classifies one file that was read, hashed, and named.
+///
+/// Split from [`classify`] so that the content reservation happens once, on
+/// the one path where a record was actually produced.
+fn classify_bytes(
+    file: &PdfFile,
+    fingerprint: PdfFingerprint,
+    parsed: &ParsedFilename,
+    by_path: &HashMap<RelativePdfPath, IndexedNote>,
+    by_hash: &HashMap<Sha256Digest, IndexedNote>,
+) -> Result<Classification, FileFailure> {
+    let fail = |reason| FileFailure {
+        path: file.path.clone(),
+        reason,
+    };
 
     // The same bytes are already indexed: this is the same file, wherever it
     // now lives.
     if let Some(record) = by_hash.get(&fingerprint.sha256()) {
-        let (metadata, _) = refresh_from_parsed(record.metadata(), &parsed)
+        let (metadata, _) = refresh_from_parsed(record.metadata(), parsed)
             .map_err(FileFailureReason::Metadata)
             .map_err(fail)?;
         if record.path() == &file.path {
@@ -949,7 +1155,7 @@ fn classify(
     // bytes is dropped by the store, so the record goes back to
     // `Discovered` until the pipeline reads the new content.
     if let Some(record) = by_path.get(&file.path) {
-        let (metadata, _) = refresh_from_parsed(record.metadata(), &parsed)
+        let (metadata, _) = refresh_from_parsed(record.metadata(), parsed)
             .map_err(FileFailureReason::Metadata)
             .map_err(fail)?;
         let mut note = IndexedNote::new(file.path.clone(), fingerprint, metadata);
@@ -960,7 +1166,7 @@ fn classify(
         ));
     }
 
-    let metadata = metadata_from_filename(parsed)
+    let metadata = metadata_from_filename(parsed.clone())
         .map_err(FileFailureReason::Metadata)
         .map_err(fail)?;
     Ok(Classification::Addition(IndexedNote::new(
@@ -978,11 +1184,26 @@ fn classify(
 /// marker is dropped in favour of [`IndexStatus::Discovered`] — the record is
 /// valid again and simply goes back through the pipeline. Its OCR text is
 /// keyed by content hash and is untouched by this decision.
+///
+/// [`IndexStatus::Inaccessible`] and [`IndexStatus::InvalidPdf`] describe a
+/// condition the catalog *observed*. A file that was read this time no longer
+/// has that condition, so the record goes back to
+/// [`IndexStatus::Discovered`] for the same reason — the stored row must not
+/// contradict what the catalog just saw. The statuses that describe work in
+/// progress or a completed run are left alone, because a rescan does not
+/// observe them either way.
 fn unconflicted(status: IndexStatus) -> IndexStatus {
-    if status == IndexStatus::DuplicateIdConflict {
+    match status {
+        IndexStatus::DuplicateIdConflict | IndexStatus::Inaccessible | IndexStatus::InvalidPdf => {
+            IndexStatus::Discovered
+        }
         IndexStatus::Discovered
-    } else {
-        status
+        | IndexStatus::Indexing
+        | IndexStatus::Ready
+        | IndexStatus::OcrPending
+        | IndexStatus::OcrIncomplete
+        | IndexStatus::Stale
+        | IndexStatus::ImportMismatch => status,
     }
 }
 
