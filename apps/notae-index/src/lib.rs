@@ -34,6 +34,12 @@ pub struct RunReport {
 
 impl RunReport {
     /// The library root that was enumerated.
+    ///
+    /// This is the name the run actually used: the name the user gave, without
+    /// the trailing separators and `.` components Linux resolves away before
+    /// it stats anything (see [`crate::catalog::ValidatedRoot::open`]). It is
+    /// the directory that was opened, so `library`, `library/` and
+    /// `library/.` all report the same root.
     #[must_use]
     pub fn library_root(&self) -> &Path {
         &self.library_root
@@ -84,22 +90,28 @@ impl RunReport {
 /// which is the only case that ends in a non-zero exit status. The boundary is
 /// the library root: a root that cannot be read, that is a symbolic link, or
 /// that is replaced between being validated and being walked, ends the run; the
-/// same problem anywhere below it is one entry in the report. The catalog holds
-/// the validated root open and checks the name still resolves to it before
-/// enumerating, so the boundary is enforced across the check and the use, not
-/// only at the moment of validation. Later stages — text extraction, OCR,
-/// reconciliation, sidecar output — hang off [`RunReport::files`] and report
-/// their own per-file problems the same way, so `Ok` keeps meaning "a report was
-/// produced", not "everything succeeded".
+/// same problem anywhere below it is one entry in the report.
+///
+/// The root is checked exactly once. [`Cli::validate`] opens the directory and
+/// hands back the [`ValidatedRoot`] that is then walked, so there is no second
+/// lookup between the check and the use that could accept a replacement; and
+/// because that object holds the directory open, the catalog can check the name
+/// still resolves to it before enumerating, so the boundary holds across the
+/// whole run rather than only at the instant of validation. Later stages — text
+/// extraction, OCR, reconciliation, sidecar output — hang off
+/// [`RunReport::files`] and report their own per-file problems the same way, so
+/// `Ok` keeps meaning "a report was produced", not "everything succeeded".
 ///
 /// # Errors
 /// Returns [`CliError`] when the library root is unusable — absent, not a
-/// directory, unreadable, a symbolic link, or no longer the directory that was
-/// validated — or when the tree cannot be enumerated at all. A single unreadable
-/// PDF is reported through the returned [`RunReport`], never as an error.
+/// directory, unreadable, or a symbolic link however it is spelled — or when
+/// the tree cannot be enumerated at all. A single unreadable PDF is reported
+/// through the returned [`RunReport`], never as an error.
 pub fn run(cli: Cli) -> Result<RunReport, CliError> {
-    cli.validate()?;
-    let catalog = FilesystemCatalog::new(cli.library_root().to_path_buf())?;
+    // The one root check, and the object that answers it: what is walked is
+    // what was opened, not a name looked at twice.
+    let root = cli.validate()?;
+    let catalog = FilesystemCatalog::new(root);
     let verbose = cli.is_verbose();
 
     let files = catalog
@@ -127,7 +139,7 @@ pub fn run(cli: Cli) -> Result<RunReport, CliError> {
     }
 
     Ok(RunReport {
-        library_root: cli.library_root().to_path_buf(),
+        library_root: catalog.root().to_path_buf(),
         failures: catalog.failures(),
         files,
     })

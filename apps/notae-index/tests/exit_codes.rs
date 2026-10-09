@@ -289,3 +289,73 @@ fn a_symlinked_root_never_indexes_the_directory_it_points_at() {
         stderr(&output)
     );
 }
+
+/// A link is a link however the command line spells it.
+///
+/// Linux resolves a trailing separator — and a trailing `.`, and a doubled
+/// separator — before it stats anything, so the binary is the thing that has to
+/// refuse these: a run that accepted `link/` would index the link's target and
+/// exit zero, which is exactly the outcome the root boundary forbids.
+#[test]
+fn no_spelling_of_a_symlinked_root_is_followed_by_the_binary() {
+    let library = Library::new();
+    let outside = library._dir.path().join("outside-library");
+    fs::create_dir_all(&outside).expect("create the directory outside the root");
+    fs::write(outside.join("secret.pdf"), "outside content").expect("write the target");
+    std::os::unix::fs::symlink(&outside, library._dir.path().join("library-link"))
+        .expect("link the directory as the root");
+    std::os::unix::fs::symlink(library._dir.path().join("nothing-here"), library._dir.path().join("dead-link"))
+        .expect("link a directory that does not exist");
+
+    for spelling in [
+        "library-link",
+        "library-link/",
+        "library-link/.",
+        "library-link//",
+        "library-link/./",
+        "dead-link",
+        "dead-link/",
+        "dead-link/.",
+        "dead-link//",
+    ] {
+        let root = library._dir.path().join(spelling);
+        let output = index(&[root.to_str().expect("utf-8 path")]);
+        let reported = format!("{}{}", stdout(&output), stderr(&output));
+
+        assert!(
+            !output.status.success(),
+            "`{spelling}` is refused, so the run exits non-zero; stdout: {}",
+            stdout(&output)
+        );
+        assert!(
+            !reported.contains("secret.pdf") && !stdout(&output).contains("indexed"),
+            "nothing behind the link is indexed for `{spelling}`: {reported}"
+        );
+        assert!(
+            stderr(&output).contains("symbolic link"),
+            "`{spelling}` is refused as the link it is: {reported}"
+        );
+    }
+}
+
+/// Normalising the root's spelling must not cost a user a working command.
+#[test]
+fn a_real_root_exits_zero_however_the_binary_is_spelled() {
+    let library = Library::new();
+    library.write("inside.pdf", "readable");
+
+    for spelling in ["library", "library/", "library//", "library/.", "library/./"] {
+        let root = library._dir.path().join(spelling);
+        let output = index(&[root.to_str().expect("utf-8 path")]);
+        assert!(
+            output.status.success(),
+            "`{spelling}` is the same directory and is indexed; stderr: {}",
+            stderr(&output)
+        );
+        assert!(
+            stdout(&output).contains("indexed 1 of 1"),
+            "`{spelling}` indexes the library: {}",
+            stdout(&output)
+        );
+    }
+}
