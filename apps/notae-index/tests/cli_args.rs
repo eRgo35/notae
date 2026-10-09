@@ -613,6 +613,67 @@ fn a_symlinked_root_is_refused_rather_than_followed() {
 
 #[cfg(unix)]
 #[test]
+fn a_root_retargeted_by_a_symbolic_link_after_validation_is_refused() {
+    let library = Library::new();
+    library.write("inside.pdf", KNOWN_CONTENT);
+    // The catalog is opened over a real directory, which is the moment the
+    // root is validated and held.
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+
+    // The name the run was given is moved aside and replaced by a link to a
+    // tree the user never selected. Enumeration must not follow it.
+    let moved = library._dir.path().join("moved-library");
+    fs::rename(&library.root, &moved).expect("move the validated root aside");
+    let outside = library._dir.path().join("outside-library");
+    fs::create_dir_all(&outside).expect("create the directory outside the root");
+    fs::write(outside.join("secret.pdf"), "outside content").expect("write the target");
+    std::os::unix::fs::symlink(&outside, &library.root).expect("retarget the root at a link");
+
+    let error = catalog
+        .enumerate()
+        .expect_err("a retargeted root must not be enumerated");
+    let message = error.to_string();
+    assert!(
+        message.contains(&library.root.display().to_string()),
+        "the failure names the root as given: {message}"
+    );
+    assert!(
+        !message.contains("secret.pdf"),
+        "nothing behind the link is reported: {message}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_root_replaced_by_another_directory_after_validation_is_refused() {
+    let library = Library::new();
+    library.write("inside.pdf", KNOWN_CONTENT);
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+
+    // The same name is taken over by a different real directory: no symbolic
+    // link is involved, so only the identity the catalog retained can catch it.
+    let moved = library._dir.path().join("moved-library");
+    fs::rename(&library.root, &moved).expect("move the validated root aside");
+    fs::create_dir_all(&library.root).expect("create a different directory at the root name");
+    fs::write(library.root.join("other.pdf"), "other content").expect("write into it");
+
+    let error = catalog
+        .enumerate()
+        .expect_err("a root that changed identity must not be enumerated");
+    let message = error.to_string();
+    assert!(
+        message.contains(&library.root.display().to_string()),
+        "the failure names the root as given: {message}"
+    );
+    assert!(
+        catalog.failures().is_empty(),
+        "nothing from either tree is reported as a per-file failure: {:?}",
+        catalog.failures()
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn a_link_inside_the_root_still_degrades_to_a_reported_skip() {
     let library = Library::new();
     let outside = library._dir.path().join("outside-library");
