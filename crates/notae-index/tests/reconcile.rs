@@ -5,6 +5,7 @@
 //! read-only preview the Android UI shows — and then what the applied report
 //! says.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use notae_domain::{
@@ -822,5 +823,346 @@ fn an_unreadable_file_survives_the_deletion_pass() {
         ],
         "the unreadable file keeps its record; only the deleted file is removed"
     );
+    let _ = std::fs::remove_file(&database);
+}
+/// Defect 7: the record that already holds an ID must keep it, whatever order
+/// the paths sort in. A newcomer whose path is lexicographically smaller must
+/// not take the ID away from the record that was indexed first, and repeated
+/// identical rescans must reach the same state every time.
+#[test]
+fn an_indexed_record_keeps_its_id_against_a_smaller_path_newcomer_on_every_rescan() {
+    let (mut store, database) = open("ownership");
+    store
+        .upsert_note(&note("12 - Zeta.pdf", 1, Some(NoteId::new(12)), "Zeta"))
+        .expect("seed");
+
+    let files = vec![file("12 - Zeta.pdf", 1), file("12 - Alpha.pdf", 2)];
+
+    for round in 1..=3 {
+        let plan = Reconciler::plan(&store, &files).expect("plan");
+        assert_eq!(plan.conflicts().len(), 1, "round {round}");
+        assert_eq!(
+            plan.conflicts()[0].existing(),
+            &path("12 - Zeta.pdf"),
+            "round {round}: the indexed record keeps the ID"
+        );
+        assert_eq!(
+            plan.conflicts()[0].conflicting(),
+            &path("12 - Alpha.pdf"),
+            "round {round}: the newcomer is the one written without an ID"
+        );
+
+        let report = Reconciler::apply(plan, &mut store).expect("apply");
+        assert!(
+            report.failures().is_empty(),
+            "round {round}: an unresolved conflict is not a write failure"
+        );
+
+        let holder = store
+            .get_by_id(NoteId::new(12))
+            .expect("query")
+            .expect("round {round}: exactly one record holds the ID");
+        assert_eq!(
+            holder.path(),
+            &path("12 - Zeta.pdf"),
+            "round {round}: ownership does not follow path order"
+        );
+        let newcomer = store
+            .list_all()
+            .expect("list")
+            .into_iter()
+            .find(|note| note.path() == &path("12 - Alpha.pdf"))
+            .expect("round {round}: the newcomer stays visible");
+        assert!(
+            newcomer.id().is_none(),
+            "round {round}: the newcomer still holds no ID"
+        );
+    }
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 7, continued: ownership is a rule, not a first-pass accident, so it
+/// survives a path that sorts before the incumbent's. Once the collision is
+/// gone both records go back to a status that is true.
+#[test]
+fn duplicate_ownership_is_stable_when_the_newcomer_sorts_first() {
+    let (mut store, database) = open("ownership-stable");
+    let mut incumbent = note("z/12 - Zeta.pdf", 1, Some(NoteId::new(12)), "Zeta");
+    incumbent.set_status(IndexStatus::DuplicateIdConflict);
+    store.upsert_note(&incumbent).expect("seed");
+    let mut newcomer = note("a/12 - Alpha.pdf", 2, None, "Alpha");
+    newcomer.set_status(IndexStatus::DuplicateIdConflict);
+    store.upsert_note(&newcomer).expect("seed");
+
+    // `a/12 - Alpha.pdf` sorts before `z/12 - Zeta.pdf`, so path order alone
+    // would hand the ID to the wrong record.
+    let files = vec![file("z/12 - Zeta.pdf", 1), file("a/12 - Alpha.pdf", 2)];
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.conflicts().len(), 1);
+    assert_eq!(plan.conflicts()[0].existing(), &path("z/12 - Zeta.pdf"));
+    assert_eq!(plan.conflicts()[0].conflicting(), &path("a/12 - Alpha.pdf"));
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert!(report.failures().is_empty(), "the holder keeps its ID");
+    assert_eq!(
+        store
+            .get_by_id(NoteId::new(12))
+            .expect("query")
+            .expect("held")
+            .path(),
+        &path("z/12 - Zeta.pdf")
+    );
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 7, continued: a conflict the user resolves by renaming or deleting
+/// the newcomer clears completely — the ID is no longer contested and both
+/// statuses stop claiming a conflict that no longer exists.
+#[test]
+fn a_renamed_or_deleted_newcomer_clears_the_conflict() {
+    // Renaming the newcomer to a number of its own moves the collision onto it
+    // and away from the indexed record.
+    let (mut store, database) = open("resolve-rename");
+    store
+        .upsert_note(&note("12 - Zeta.pdf", 1, Some(NoteId::new(12)), "Zeta"))
+        .expect("seed incumbent");
+    let files = vec![file("12 - Zeta.pdf", 1), file("12 - Alpha.pdf", 2)];
+    Reconciler::apply(Reconciler::plan(&store, &files).expect("plan"), &mut store).expect("apply");
+
+    let renamed = vec![file("12 - Zeta.pdf", 1), file("13 - Alpha-renamed.pdf", 2)];
+    let plan = Reconciler::plan(&store, &renamed).expect("plan");
+    assert!(plan.conflicts().is_empty(), "the rename ends the collision");
+    assert_eq!(plan.moves().len(), 1, "the record follows its file");
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert!(report.failures().is_empty());
+    let holder = store
+        .get_by_id(NoteId::new(12))
+        .expect("query")
+        .expect("the incumbent keeps 12");
+    assert_eq!(holder.path(), &path("12 - Zeta.pdf"));
+    let renamed_note = store
+        .get_by_id(NoteId::new(13))
+        .expect("query")
+        .expect("the newcomer keeps its record under the new number");
+    assert_eq!(renamed_note.path(), &path("13 - Alpha-renamed.pdf"));
+    for stored in [holder, renamed_note] {
+        assert_ne!(
+            stored.status(),
+            IndexStatus::DuplicateIdConflict,
+            "a resolved conflict stops marking the record"
+        );
+    }
+    let _ = std::fs::remove_file(&database);
+
+    // Deleting the newcomer clears the same conflict.
+    let (mut store, database) = open("resolve-delete");
+    store
+        .upsert_note(&note("12 - Zeta.pdf", 1, Some(NoteId::new(12)), "Zeta"))
+        .expect("seed incumbent");
+    Reconciler::apply(
+        Reconciler::plan(&store, &files).expect("plan"),
+        &mut store,
+    )
+    .expect("apply");
+
+    let plan = Reconciler::plan(&store, &[file("12 - Zeta.pdf", 1)]).expect("plan");
+    assert!(plan.conflicts().is_empty());
+    assert_eq!(plan.deletions().len(), 1, "the newcomer is deleted");
+
+    Reconciler::apply(plan, &mut store).expect("apply");
+    let stored = only_note(&store);
+    assert_eq!(stored.id(), Some(NoteId::new(12)));
+    assert_ne!(
+        stored.status(),
+        IndexStatus::DuplicateIdConflict,
+        "the survivor is no longer in conflict"
+    );
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 7, continued: the other way to resolve a conflict is to give the
+/// newcomer a number of its own by hand. A manual ID is authoritative, so the
+/// rescan keeps it and the collision does not come back.
+#[test]
+fn a_manual_id_edit_clears_the_conflict_and_survives_the_next_rescan() {
+    let (mut store, database) = open("resolve-manual");
+    store
+        .upsert_note(&note("12 - Zeta.pdf", 1, Some(NoteId::new(12)), "Zeta"))
+        .expect("seed incumbent");
+    let files = vec![file("12 - Zeta.pdf", 1), file("12 - Alpha.pdf", 2)];
+    Reconciler::apply(Reconciler::plan(&store, &files).expect("plan"), &mut store).expect("apply");
+
+    // The user types a number for the newcomer by hand.
+    let mut edited = store
+        .list_all()
+        .expect("list")
+        .into_iter()
+        .find(|note| note.path() == &path("12 - Alpha.pdf"))
+        .expect("the newcomer is indexed");
+    let mut metadata = edited.metadata().clone();
+    metadata.assign_id(Some(NoteId::new(31)), MetadataOrigin::Manual);
+    edited = IndexedNote::new(
+        path("12 - Alpha.pdf"),
+        edited.fingerprint().clone(),
+        metadata,
+    )
+    .with_status(IndexStatus::Discovered);
+    store.upsert_note(&edited).expect("the user edit is stored");
+
+    for _ in 0..2 {
+        let plan = Reconciler::plan(&store, &files).expect("plan");
+        assert!(plan.conflicts().is_empty(), "the hand-set number ends it");
+        assert!(plan.failures().is_empty());
+        let report = Reconciler::apply(plan, &mut store).expect("apply");
+        assert!(report.failures().is_empty());
+        assert_eq!(
+            store
+                .get_by_id(NoteId::new(31))
+                .expect("query")
+                .expect("the hand-set number is kept")
+                .path(),
+            &path("12 - Alpha.pdf")
+        );
+        assert_eq!(
+            store
+                .get_by_id(NoteId::new(12))
+                .expect("query")
+                .expect("the incumbent is untouched")
+                .path(),
+            &path("12 - Zeta.pdf")
+        );
+    }
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 8: a file that cannot produce an indexable record must not reserve
+/// its content hash. Otherwise a valid copy of the same bytes is reported as a
+/// duplicate of a file that was never indexed, and nothing is indexed at all.
+#[test]
+fn a_file_that_fails_metadata_does_not_reserve_its_content_hash() {
+    let (mut store, database) = open("hash-not-claimed");
+    // `.pdf` sorts first, has no title, and is not a record anything can own.
+    let files = vec![file(".pdf", 1), file("12 - Good.pdf", 1)];
+
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.failures().len(), 1);
+    assert_eq!(plan.failures()[0].path(), &path(".pdf"));
+    assert!(
+        matches!(plan.failures()[0].reason(), FileFailureReason::Metadata(_)),
+        "the unnamed file is the failure"
+    );
+    assert_eq!(
+        plan.additions().len(),
+        1,
+        "the valid copy of those bytes is still indexed"
+    );
+    assert_eq!(plan.additions()[0].note().path(), &path("12 - Good.pdf"));
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(report.additions().len(), 1);
+    assert_eq!(report.failures().len(), 1);
+    assert_eq!(only_note(&store).path(), &path("12 - Good.pdf"));
+
+    // The next rescan sees the same thing and reaches the same state.
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.failures().len(), 1);
+    assert!(plan.additions().is_empty());
+    assert!(plan.updates().is_empty());
+    assert!(plan.moves().is_empty());
+    Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(only_note(&store).path(), &path("12 - Good.pdf"));
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 9: a stored record whose file the catalog could not read, or read but
+/// found not to be a PDF, is claiming to be fine when it is not. The condition
+/// the catalog observed must become the record's status.
+#[test]
+fn an_unreadable_or_invalid_file_updates_its_record_status() {
+    let (mut store, database) = open("condition-status");
+    let mut locked = note("12 - Locked.pdf", 1, Some(NoteId::new(12)), "Locked");
+    locked.set_status(IndexStatus::Ready);
+    store.upsert_note(&locked).expect("seed");
+    let mut corrupt = note("13 - Corrupt.pdf", 2, Some(NoteId::new(13)), "Corrupt");
+    corrupt.set_status(IndexStatus::Ready);
+    store.upsert_note(&corrupt).expect("seed");
+
+    let files = vec![
+        PdfFile::from_path_with_condition(path("12 - Locked.pdf"), FileCondition::Unreadable),
+        PdfFile::from_path_with_condition(path("13 - Corrupt.pdf"), FileCondition::InvalidPdf),
+    ];
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.failures().len(), 2, "both files are still reported");
+    assert_eq!(
+        plan.updates().len(),
+        2,
+        "both records are corrected in the same rescan"
+    );
+    let statuses: HashMap<&RelativePdfPath, IndexStatus> = plan
+        .updates()
+        .iter()
+        .map(|update| (update.note().path(), update.note().status()))
+        .collect();
+    assert_eq!(
+        statuses[&path("12 - Locked.pdf")],
+        IndexStatus::Inaccessible,
+        "a file that could not be read is inaccessible"
+    );
+    assert_eq!(
+        statuses[&path("13 - Corrupt.pdf")],
+        IndexStatus::InvalidPdf,
+        "a file that is not a readable PDF says so"
+    );
+    assert!(plan.deletions().is_empty(), "the files are still on disk");
+
+    Reconciler::apply(plan, &mut store).expect("apply");
+    let mut notes = store.list_all().expect("list");
+    notes.sort_by_key(|note| note.path().as_str().to_owned());
+    assert_eq!(
+        notes[0].status(),
+        IndexStatus::Inaccessible,
+        "the stored row must not contradict what the catalog saw"
+    );
+    assert_eq!(
+        notes[1].status(),
+        IndexStatus::InvalidPdf,
+        "the stored row must not contradict what the catalog saw"
+    );
+    for note in &notes {
+        assert!(
+            note.id().is_some(),
+            "correcting a status never takes the ID away"
+        );
+    }
+
+    // A second identical rescan writes nothing: the status is already true.
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.failures().len(), 2);
+    assert!(
+        plan.updates().is_empty(),
+        "a repeated observation of the same condition costs no write"
+    );
+    assert!(plan.unchanged().is_empty(), "and nothing is claimed untouched");
+    Reconciler::apply(plan, &mut store).expect("apply");
+    let _ = std::fs::remove_file(&database);
+}
+
+/// A record whose file becomes readable again leaves the condition behind and
+/// goes back through the pipeline.
+#[test]
+fn a_record_that_becomes_readable_again_returns_to_discovered() {
+    let (mut store, database) = open("condition-recovered");
+    let mut blocked = note("12 - Locked.pdf", 1, Some(NoteId::new(12)), "Locked");
+    blocked.set_status(IndexStatus::Inaccessible);
+    store.upsert_note(&blocked).expect("seed");
+
+    let files = vec![file("12 - Locked.pdf", 1)];
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.updates().len(), 1);
+    assert_eq!(plan.updates()[0].note().status(), IndexStatus::Discovered);
+
+    Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(only_note(&store).status(), IndexStatus::Discovered);
     let _ = std::fs::remove_file(&database);
 }
