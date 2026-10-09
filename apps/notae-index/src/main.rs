@@ -11,8 +11,10 @@
 //!   symbolic link, or a name the portable path type rejects.
 //! * non-zero — the command could not produce a report at all: the arguments
 //!   are invalid, or the library root is unusable. A root is unusable when it
-//!   is absent, is not a directory, cannot be read, is a symbolic link, or was
-//!   replaced between being validated and being walked.
+//!   is absent, is not a directory, cannot be read, is a symbolic link however
+//!   it is spelled, or no longer names the directory the run opened — the root
+//!   is validated once, and the directory that validation opened is the one
+//!   that gets walked.
 //!
 //! The dividing line is the library root itself. A root that exists but cannot
 //! be read yields a run whose numbers describe nothing, so it is a command

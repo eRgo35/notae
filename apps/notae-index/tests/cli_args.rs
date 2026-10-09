@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use notae_index::PdfCatalog;
 use notae_index_cli::args::{Cli, CliError};
-use notae_index_cli::catalog::FilesystemCatalog;
+use notae_index_cli::catalog::{FilesystemCatalog, RootRejection, ValidatedRoot};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
@@ -55,6 +55,15 @@ fn parse(args: &[&str]) -> Result<Cli, CliError> {
     let mut full = vec!["notae-index"];
     full.extend_from_slice(args);
     Cli::try_parse_from(full)
+}
+
+/// Opens a library root and builds the catalog over it, the way a run does.
+///
+/// The root is validated exactly once — here — and the directory that check
+/// opened is the one the catalog walks, so a test never gets a second opinion
+/// on a name the run has already settled.
+fn catalog_over(root: &Path) -> FilesystemCatalog {
+    FilesystemCatalog::new(ValidatedRoot::open(root).expect("open the library root"))
 }
 
 #[test]
@@ -107,10 +116,14 @@ fn accepts_an_empty_existing_root() {
 }
 
 #[test]
-fn new_rejects_a_root_it_cannot_read() {
-    let error = FilesystemCatalog::new(PathBuf::from("/definitely/not/a/real/library"))
-        .expect_err("a nonexistent root is not a catalog");
-    assert!(error.to_string().contains("not readable"), "{error}");
+fn a_root_it_cannot_read_is_refused() {
+    let missing = Path::new("/definitely/not/a/real/library");
+    let error = ValidatedRoot::open(missing).expect_err("a nonexistent root is not openable");
+    assert!(
+        matches!(error, RootRejection::Unusable { .. }),
+        "an absent root is refused as unusable: {error}"
+    );
+    assert!(error.to_string().contains(&missing.display().to_string()), "{error}");
 }
 
 #[test]
@@ -121,7 +134,7 @@ fn discovers_pdfs_recursively_in_both_cases() {
     library.write("nested/inner.pdf", "c");
     library.write("nested/deeper/leaf.PDF", "d");
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
     assert_eq!(
         paths(&catalog),
         vec![
@@ -142,7 +155,7 @@ fn ignores_non_pdf_files() {
     library.write("sidecar.json", "d");
     library.write("noextension", "e");
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
     assert_eq!(paths(&catalog), vec!["notes.pdf"]);
 }
 
@@ -151,8 +164,7 @@ fn produces_root_relative_forward_slash_paths() {
     let library = Library::new();
     library.write("a/b/c/deep.pdf", "x");
 
-    let files = FilesystemCatalog::new(library.root.clone())
-        .expect("catalog")
+    let files = catalog_over(&library.root)
         .enumerate()
         .expect("enumerate");
 
@@ -169,7 +181,7 @@ fn never_produces_a_file_outside_the_root() {
     let outside = library._dir.path().join("outside.pdf");
     fs::write(&outside, "b").expect("write the file beside the root");
 
-    let found = paths(&FilesystemCatalog::new(library.root.clone()).expect("catalog"));
+    let found = paths(&catalog_over(&library.root));
     assert_eq!(found, vec!["inside.pdf"]);
     assert!(
         found
@@ -195,8 +207,7 @@ fn records_an_unreadable_file_without_aborting_enumeration() {
         return;
     }
 
-    let files = FilesystemCatalog::new(library.root.clone())
-        .expect("catalog")
+    let files = catalog_over(&library.root)
         .enumerate()
         .expect("an unreadable file does not fail the enumeration");
 
@@ -234,8 +245,7 @@ fn records_an_unreadable_directory_without_aborting_enumeration() {
     fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o000))
         .expect("lock the directory");
 
-    let result = FilesystemCatalog::new(library.root.clone())
-        .expect("catalog")
+    let result = catalog_over(&library.root)
         .enumerate();
 
     fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o755)).expect("unlock it");
@@ -251,7 +261,7 @@ fn ordering_is_stable_across_runs() {
     for name in ["m.pdf", "a.pdf", "z.pdf", "b/nested.pdf", "b/a.pdf"] {
         library.write(name, name);
     }
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
 
     let first = paths(&catalog);
     let second = paths(&catalog);
@@ -269,8 +279,7 @@ fn computes_a_real_sha256_fingerprint() {
     let path = library.write("known.pdf", KNOWN_CONTENT);
     let byte_len = fs::metadata(&path).expect("metadata").len();
 
-    let files = FilesystemCatalog::new(library.root.clone())
-        .expect("catalog")
+    let files = catalog_over(&library.root)
         .enumerate()
         .expect("enumerate");
     let fingerprint = files[0].fingerprint().expect("the fixture is readable");
@@ -348,8 +357,7 @@ fn fingerprints_a_file_larger_than_one_read_buffer() {
     let expected = hasher.finalize();
     let expected = notae_domain::Sha256Digest::from_bytes(expected.into());
 
-    let files = FilesystemCatalog::new(library.root.clone())
-        .expect("catalog")
+    let files = catalog_over(&library.root)
         .enumerate()
         .expect("enumerate");
     let fingerprint = files[0].fingerprint().expect("readable");
@@ -363,8 +371,7 @@ fn rereads_rewritten_content_rather_than_caching() {
     library.write("a.pdf", "one");
     library.write("a.pdf", "three");
 
-    let files = FilesystemCatalog::new(library.root.clone())
-        .expect("catalog")
+    let files = catalog_over(&library.root)
         .enumerate()
         .expect("enumerate");
     assert_eq!(files[0].fingerprint().expect("readable").byte_len(), 5);
@@ -378,7 +385,7 @@ fn records_a_drive_prefix_filename_without_aborting_the_batch() {
     library.write("C:.pdf", "drive");
     library.write("good.pdf", KNOWN_CONTENT);
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
     let files = catalog
         .enumerate()
         .expect("a rejected name is a per-file failure, not a panic");
@@ -412,7 +419,7 @@ fn a_rejected_name_in_a_subdirectory_is_reported_with_its_relative_path() {
     library.write("nested/C:.pdf", "fine");
     library.write("nested/back\\slash.pdf", "rejected");
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
     let files = catalog.enumerate().expect("enumerate");
 
     assert_eq!(
@@ -435,7 +442,7 @@ fn never_reads_or_reports_a_symlink_pointing_outside_the_root() {
     std::os::unix::fs::symlink(&outside, library.root.join("outside-link.pdf"))
         .expect("link outside the root");
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
     let files = catalog.enumerate().expect("enumerate");
 
     let found = files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>();
@@ -465,7 +472,7 @@ fn never_reads_a_symlink_that_points_outside_through_a_subdirectory() {
     std::os::unix::fs::symlink(&outside_dir, library.root.join("linkdir"))
         .expect("link the directory");
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
     let files = catalog.enumerate().expect("enumerate");
 
     assert!(files.is_empty(), "a linked directory is not walked: {files:?}");
@@ -481,7 +488,7 @@ fn a_symlink_loop_terminates_without_reading_the_target() {
     std::os::unix::fs::symlink(&library.root, library.root.join("selfdir"))
         .expect("create a self-referencing directory link");
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
     let files = catalog.enumerate().expect("a loop does not hang or fail the run");
 
     let found = files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>();
@@ -496,7 +503,7 @@ fn a_symlink_inside_the_root_is_skipped_rather_than_followed() {
     std::os::unix::fs::symlink("target.pdf", library.root.join("alias.pdf"))
         .expect("link inside the root");
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
     let files = catalog.enumerate().expect("enumerate");
 
     let found = files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>();
@@ -521,8 +528,8 @@ fn an_unreadable_root_fails_the_run_and_names_the_root() {
     // The root is the boundary of the run: a tree whose top directory cannot
     // be read yields no trustworthy report at all, so it is a command failure
     // rather than an isolated per-file skip.
-    let error = FilesystemCatalog::new(library.root.clone())
-        .expect_err("a root that cannot be read is not a catalog");
+    let error = ValidatedRoot::open(&library.root)
+        .expect_err("a root that cannot be read cannot be opened");
     fs::set_permissions(&library.root, fs::Permissions::from_mode(0o755)).expect("unlock");
     assert!(
         error.to_string().contains(&library.root.display().to_string()),
@@ -558,7 +565,7 @@ fn an_unreadable_root_is_not_mistaken_for_an_isolated_file_failure() {
         return;
     }
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("the root itself is readable");
+    let catalog = catalog_over(&library.root);
     let files = catalog.enumerate().expect("a locked subdirectory is an isolated failure");
     fs::set_permissions(&nested, fs::Permissions::from_mode(0o755)).expect("unlock");
 
@@ -590,8 +597,7 @@ fn a_symlinked_root_is_refused_rather_than_followed() {
     // The root is the one name a user may legitimately hand the tool, so a
     // link there would silently retarget the whole run outside the tree the
     // user believes they selected. The link is refused by name instead.
-    let error = FilesystemCatalog::new(link.clone())
-        .expect_err("a symlinked root is not a catalog");
+    let error = ValidatedRoot::open(&link).expect_err("a symlinked root is never opened");
     assert!(
         error.to_string().contains("symbolic link"),
         "the refusal says the root is a link: {error}"
@@ -618,7 +624,7 @@ fn a_root_retargeted_by_a_symbolic_link_after_validation_is_refused() {
     library.write("inside.pdf", KNOWN_CONTENT);
     // The catalog is opened over a real directory, which is the moment the
     // root is validated and held.
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
 
     // The name the run was given is moved aside and replaced by a link to a
     // tree the user never selected. Enumeration must not follow it.
@@ -648,7 +654,7 @@ fn a_root_retargeted_by_a_symbolic_link_after_validation_is_refused() {
 fn a_root_replaced_by_another_directory_after_validation_is_refused() {
     let library = Library::new();
     library.write("inside.pdf", KNOWN_CONTENT);
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let catalog = catalog_over(&library.root);
 
     // The same name is taken over by a different real directory: no symbolic
     // link is involved, so only the identity the catalog retained can catch it.
@@ -674,6 +680,140 @@ fn a_root_replaced_by_another_directory_after_validation_is_refused() {
 
 #[cfg(unix)]
 #[test]
+fn a_root_spelled_with_a_trailing_separator_that_names_a_link_is_refused() {
+    let library = Library::new();
+    let outside = library._dir.path().join("outside-library");
+    fs::create_dir_all(&outside).expect("create the directory outside the root");
+    fs::write(outside.join("secret.pdf"), "outside content").expect("write the target");
+    let link = library._dir.path().join("library-link");
+    std::os::unix::fs::symlink(&outside, &link).expect("link the directory as the root");
+
+    // A trailing separator is not a different directory: Linux resolves it
+    // before it stats the name, so a check on `link/` describes the link's
+    // *target* and the link itself goes unseen. Every spelling that names the
+    // link is the same root and is refused the same way.
+    for spelling in [
+        "library-link",
+        "library-link/",
+        "library-link/.",
+        "library-link//",
+        "library-link/./",
+    ] {
+        let root = library._dir.path().join(spelling);
+        let cli = parse(&[root.to_str().expect("utf-8 path")]).expect("arguments parse");
+        let error = notae_index_cli::run(cli)
+            .expect_err("a root that resolves to a link is refused however it is spelled");
+        let message = error.to_string();
+        assert!(
+            matches!(error, CliError::RootSymlinked(_)),
+            "the refusal for `{spelling}` says the root is a link: {message}"
+        );
+        assert!(
+            !message.contains("secret.pdf"),
+            "nothing behind the link is reported for `{spelling}`: {message}"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_dangling_root_symlink_is_refused_rather_than_followed() {
+    let library = Library::new();
+    let link = library._dir.path().join("dead-link");
+    let missing = library._dir.path().join("nothing-here");
+    std::os::unix::fs::symlink(&missing, &link).expect("link a directory that does not exist");
+
+    // A link whose target is missing is still a link, and the name — not what
+    // it happens to resolve to — is what the boundary is about.
+    for spelling in ["dead-link", "dead-link/", "dead-link/.", "dead-link//"] {
+        let root = library._dir.path().join(spelling);
+        let cli = parse(&[root.to_str().expect("utf-8 path")]).expect("arguments parse");
+        let error =
+            notae_index_cli::run(cli).expect_err("a link that leads nowhere is still a link");
+        let message = error.to_string();
+        assert!(
+            matches!(error, CliError::RootSymlinked(_)),
+            "`{spelling}` is refused as the link it is, not as a missing directory: {message}"
+        );
+        assert!(
+            message.contains(&link.display().to_string()),
+            "the refusal for `{spelling}` names the link: {message}"
+        );
+    }
+}
+
+#[test]
+fn a_real_root_is_accepted_however_it_is_spelled() {
+    let library = Library::new();
+    library.write("inside.pdf", KNOWN_CONTENT);
+
+    // Normalising the name must not cost a user a root: a trailing separator,
+    // a trailing `.` and a doubled separator are the same directory, and the
+    // report names the directory that was actually opened.
+    for spelling in ["library", "library/", "library//", "library/.", "library/./"] {
+        let root = library._dir.path().join(spelling);
+        let cli = parse(&[root.to_str().expect("utf-8 path")]).expect("arguments parse");
+        let report =
+            notae_index_cli::run(cli).expect("a real directory is a root however it is spelled");
+        assert_eq!(
+            report.paths(),
+            vec!["inside.pdf"],
+            "the tree spelled `{spelling}` is indexed"
+        );
+        assert_eq!(
+            report.library_root(),
+            library.root,
+            "the report for `{spelling}` names the directory that was opened"
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_root_replaced_after_it_was_validated_ends_the_run() {
+    let library = Library::new();
+    library.write("inside.pdf", KNOWN_CONTENT);
+    let cli = parse(&[library.root.to_str().expect("utf-8 path")]).expect("arguments parse");
+
+    // Validation is the run's only root check, and what it hands back is the
+    // directory it opened — not just the name it looked at. A root that is
+    // replaced after that instant is therefore still the wrong tree by the time
+    // the walk starts, and the run must end rather than index the replacement.
+    let validated = cli.validate().expect("a readable directory validates");
+    let moved = library._dir.path().join("moved-library");
+    fs::rename(&library.root, &moved).expect("move the validated root aside");
+    fs::create_dir_all(&library.root).expect("create a different directory at the root name");
+    fs::write(library.root.join("replacement.pdf"), "replacement").expect("write into it");
+
+    let catalog = FilesystemCatalog::new(validated);
+    let error = catalog
+        .enumerate()
+        .expect_err("a root replaced after validation ends the run");
+    let message = error.to_string();
+    assert!(
+        message.contains(&library.root.display().to_string()),
+        "the refusal names the root as given: {message}"
+    );
+    assert!(
+        !message.contains("replacement.pdf"),
+        "nothing from the replacement tree is reported: {message}"
+    );
+    assert!(
+        catalog.failures().is_empty(),
+        "the replacement is not a per-file failure: {:?}",
+        catalog.failures()
+    );
+
+    // The refusal is about the identity that was pinned, not about the name:
+    // a run that validates the replacement as its own root indexes it.
+    let replaced = FilesystemCatalog::new(
+        ValidatedRoot::open(&library.root).expect("the replacement is a readable directory"),
+    );
+    assert_eq!(paths(&replaced), vec!["replacement.pdf"]);
+}
+
+#[cfg(unix)]
+#[test]
 fn a_link_inside_the_root_still_degrades_to_a_reported_skip() {
     let library = Library::new();
     let outside = library._dir.path().join("outside-library");
@@ -683,7 +823,7 @@ fn a_link_inside_the_root_still_degrades_to_a_reported_skip() {
     std::os::unix::fs::symlink(&outside, library.root.join("linkdir"))
         .expect("link a directory inside the root");
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("the root is a real directory");
+    let catalog = catalog_over(&library.root);
     let files = catalog.enumerate().expect("a linked entry is an isolated failure");
 
     assert_eq!(

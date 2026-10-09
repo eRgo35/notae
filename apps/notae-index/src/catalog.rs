@@ -21,22 +21,39 @@
 //!   has to reach the root itself or it means nothing: the root is the one name
 //!   a user hands the tool, so following a link there would let the run be
 //!   silently retargeted at a tree the user never selected, and would defeat
-//!   the guarantee for every entry below it. [`FilesystemCatalog::new`]
+//!   the guarantee for every entry below it. [`ValidatedRoot::open`]
 //!   therefore rejects a symlinked root by name, with a message that says so
 //!   and tells the user to pass the directory it points at. The root is
 //!   canonicalised exactly zero times.
+//!
+//!   What counts as "the name" is fixed by [`named_root`], because a name can
+//!   name a link while spelling something else: Linux resolves a trailing
+//!   separator — and a trailing `.`, and a doubled separator — before it
+//!   stats anything, so a check on `link/` describes the link's *target* and
+//!   the link itself goes unseen. [`named_root`] rebuilds the name from its
+//!   [`Path::components`], which drops exactly those spellings and nothing
+//!   else. The rebuild is lexical: no component is resolved and nothing is
+//!   canonicalised, so the name the user typed is still the name inspected,
+//!   only its final component is inspected *as itself* rather than as whatever
+//!   a trailing separator points at. `link`, `link/`, `link/.`, `link//` and
+//!   `link/./` are one root and one check; a real directory spelled any of those
+//!   ways is accepted unchanged.
 //! * **The validated root is held, not just remembered.** Refusing a link at
 //!   the root only settles the instant of validation; between that check and
-//!   the walk the name could still be retargeted. [`FilesystemCatalog::new`]
-//!   therefore keeps an open handle on the directory it validated, and
-//!   [`FilesystemCatalog::enumerate`] will only use the name while it still
-//!   resolves to that same device and inode — so a root replaced by a link, or
-//!   by a different directory, ends the run instead of quietly indexing
-//!   something else. Holding the handle also keeps the inode alive, so its
-//!   identity cannot be handed to another directory while the run lasts. The
-//!   same identity check runs on each subdirectory before the walk descends and
-//!   on each file before its bytes are read, so the guarantee covers the whole
-//!   traversal rather than only its first step.
+//!   the walk the name could still be retargeted. The check therefore does not
+//!   merely *judge* the name and hand it back — it *is* the object the run
+//!   uses. [`ValidatedRoot::open`] is called once per run and returns the
+//!   directory it opened: the name, an open handle, and the device and inode
+//!   that handle has. [`FilesystemCatalog::new`] takes that object rather than
+//!   a path, so there is no second lookup that could accept a different
+//!   directory, and [`FilesystemCatalog::enumerate`] will only use the name
+//!   while it still resolves to that same device and inode — so a root
+//!   replaced by a link, or by a different directory, ends the run instead of
+//!   quietly indexing something else. Holding the handle also keeps the inode
+//!   alive, so its identity cannot be handed to another directory while the
+//!   run lasts. The same identity check runs on each subdirectory before the
+//!   walk descends and on each file before its bytes are read, so the guarantee
+//!   covers the whole traversal rather than only its first step.
 //!
 //!   What that does *not* claim: the checks are `stat` calls and the operations
 //!   they guard are separate path resolutions, so a run is not atomic against a
@@ -63,6 +80,7 @@
 //! rest of the tree is still enumerated and still reported.
 
 use std::cell::RefCell;
+use std::fmt;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
@@ -151,52 +169,150 @@ fn identity_of(metadata: &std::fs::Metadata) -> Identity {
     let _ = metadata;
 }
 
-/// Opens the library root and returns a handle to the directory itself.
+/// Why a library root name was refused before a run started.
 ///
-/// Three things are checked, in the order a user would fix them:
-///
-/// * [`std::fs::symlink_metadata`] inspects the name itself, so a root that is
-///   a symbolic link is refused by name rather than followed.
-/// * [`std::fs::read_dir`] proves the directory's entries can be listed at
-///   all, which is what a run actually needs from its root and what
-///   `metadata` cannot tell us: a directory with no read permission still
-///   answers `stat`.
-/// * [`File::open`] keeps the directory itself open for the rest of the run,
-///   and its identity — taken from the handle, not from the name — is the
-///   authority [`FilesystemCatalog::enumerate`] checks against. Holding the
-///   handle also keeps the inode alive, so the device/inode pair cannot be
-///   handed to some other directory while the run lasts.
-///
-/// # Errors
-/// Returns [`CatalogError::Unreadable`] naming `root` when any of the checks
-/// fails, so the message identifies the directory the user must fix.
-fn open_root(root: &Path) -> Result<(File, Identity), CatalogError> {
-    let metadata = std::fs::symlink_metadata(root)
-        .map_err(|error| CatalogError::Unreadable(format!("{}: {error}", root.display())))?;
-    if metadata.file_type().is_symlink() {
-        return Err(CatalogError::Unreadable(format!(
-            "{} is a symbolic link, which is never followed; \
-             pass the directory it points at",
-            root.display()
-        )));
+/// The distinction is the one a user can act on: a name that *is* a link is
+/// refused as a link, with the directory it points at named as the thing to
+/// pass instead, while a name that is simply absent, is not a directory, or
+/// cannot be read is refused as unusable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RootRejection {
+    /// The final component of the name is a symbolic link, which is never
+    /// followed.
+    Symlink(PathBuf),
+    /// The name is absent, is not a directory, or cannot be listed or opened.
+    Unusable {
+        /// The name that was refused, as it will be spelled in the message.
+        path: PathBuf,
+        /// What the operating system said.
+        reason: String,
+    },
+}
+
+impl fmt::Display for RootRejection {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Symlink(path) => write!(
+                formatter,
+                "{} is a symbolic link, which is never followed; pass the directory it points at",
+                path.display()
+            ),
+            Self::Unusable { path, reason } => {
+                write!(formatter, "{}: {reason}", path.display())
+            }
+        }
     }
-    if !metadata.is_dir() {
-        return Err(CatalogError::Unreadable(format!(
-            "{} is not a directory",
-            root.display()
-        )));
+}
+
+/// The library root of a run: the name, the directory it was opened as, and
+/// that directory's identity.
+///
+/// This is the single object that answers "which tree is this run about". It
+/// exists so that the answer cannot drift: the run checks the name once, here,
+/// and everything downstream walks the directory this object holds rather than
+/// resolving a path again. A caller that wants to know whether a root is usable
+/// therefore does not get a verdict and a string — it gets the opened
+/// directory, which is the only thing worth walking.
+#[derive(Debug)]
+pub struct ValidatedRoot {
+    /// The name as [`named_root`] spells it, which is the spelling every later
+    /// use of the root goes through.
+    name: PathBuf,
+    /// The opened directory, kept alive so its identity cannot be reused by
+    /// another directory while the run lasts. Nothing reads from it — that is
+    /// the whole of what it is for.
+    _handle: File,
+    /// The device and inode the open handle refers to; see [`verify_root`].
+    identity: Identity,
+}
+
+impl ValidatedRoot {
+    /// Checks a library root name and opens the directory it names.
+    ///
+    /// This is the run's one and only root check, and it happens here, on the
+    /// object the run then uses. Three things are settled, in the order a user
+    /// would fix them:
+    ///
+    /// * [`named_root`] first strips the spellings Linux resolves away before
+    ///   it stats anything — a trailing separator, a trailing `.`, a doubled
+    ///   separator — so the name inspected below is the name the user typed
+    ///   with only those removed.
+    /// * [`std::fs::symlink_metadata`] inspects that name itself, so a root
+    ///   that is a symbolic link is refused by name rather than followed.
+    /// * [`std::fs::read_dir`] proves the directory's entries can be listed at
+    ///   all, which is what a run actually needs from its root and what
+    ///   `metadata` cannot tell us: a directory with no read permission still
+    ///   answers `stat`. [`File::open`] then keeps the directory itself open
+    ///   for the rest of the run, and its identity — taken from the handle,
+    ///   not from the name — is the authority [`FilesystemCatalog::enumerate`]
+    ///   checks against.
+    ///
+    /// # Errors
+    /// Returns [`RootRejection::Symlink`] when the name is a symbolic link and
+    /// [`RootRejection::Unusable`] when it is absent, is not a directory, or
+    /// cannot be listed or opened; both name the root, so the message
+    /// identifies the thing the user has to fix.
+    pub fn open(root: &Path) -> Result<Self, RootRejection> {
+        let name = named_root(root);
+        let unusable = |reason: String| RootRejection::Unusable {
+            path: name.clone(),
+            reason,
+        };
+        let metadata =
+            std::fs::symlink_metadata(&name).map_err(|error| unusable(error.to_string()))?;
+        if metadata.file_type().is_symlink() {
+            return Err(RootRejection::Symlink(name));
+        }
+        if !metadata.is_dir() {
+            return Err(unusable("not a directory".to_owned()));
+        }
+        // Listing the root is the point of the check, not a side effect: an
+        // unreadable root means nothing below it was ever seen, so there is no
+        // report to degrade into per-file skips.
+        std::fs::read_dir(&name).map_err(|error| unusable(error.to_string()))?;
+        let handle = File::open(&name).map_err(|error| unusable(error.to_string()))?;
+        let opened = handle
+            .metadata()
+            .map_err(|error| unusable(error.to_string()))?;
+        Ok(Self {
+            name,
+            _handle: handle,
+            identity: identity_of(&opened),
+        })
     }
-    // Listing the root is the point of the check, not a side effect: an
-    // unreadable root means nothing below it was ever seen, so there is no
-    // report to degrade into per-file skips.
-    std::fs::read_dir(root)
-        .map_err(|error| CatalogError::Unreadable(format!("{}: {error}", root.display())))?;
-    let handle = File::open(root)
-        .map_err(|error| CatalogError::Unreadable(format!("{}: {error}", root.display())))?;
-    let opened = handle
-        .metadata()
-        .map_err(|error| CatalogError::Unreadable(format!("{}: {error}", root.display())))?;
-    Ok((handle, identity_of(&opened)))
+
+    /// The root name, spelled the way every later use of it will be.
+    #[must_use]
+    pub fn name(&self) -> &Path {
+        &self.name
+    }
+
+    /// The identity of the directory this root was opened as.
+    ///
+    /// Taken from the open handle rather than from the name, so it describes
+    /// the directory the run holds even after the name has been moved aside.
+    fn identity(&self) -> Identity {
+        self.identity
+    }
+}
+
+/// The library root with the spellings Linux resolves away removed.
+///
+/// A trailing separator, a trailing `.`, and a doubled separator are not
+/// different directories: the kernel resolves all three before it stats
+/// anything, so [`std::fs::symlink_metadata`] on `link/` describes the target
+/// of the link and the link itself is never inspected — which is exactly the
+/// hole the root boundary cannot have. Rebuilding the name from its
+/// [`Path::components`] drops those and nothing else.
+///
+/// The rebuild is purely lexical: no component is resolved, no path is
+/// canonicalised, and the filesystem is not consulted, so the spelling the user
+/// typed is still the spelling that gets inspected — with the final component
+/// inspected as itself rather than as whatever a trailing separator pointed at.
+/// Only the final component is inspected by name anywhere; intermediate
+/// components are resolved by the kernel exactly as they always were.
+fn named_root(root: &Path) -> PathBuf {
+    root.components().collect()
 }
 
 /// Confirms the root name still resolves to the directory the run opened.
@@ -206,7 +322,9 @@ fn open_root(root: &Path) -> Result<(File, Identity), CatalogError> {
 /// answer to "which directory is this run about", and the name is only
 /// accepted while it still denotes that same object. A root that has been
 /// replaced, renamed away, or turned into a symbolic link fails the run rather
-/// than redirecting it at a tree the user never selected.
+/// than redirecting it at a tree the user never selected. `root` is expected
+/// to have been through [`named_root`], so this cannot be fooled by a trailing
+/// separator either.
 ///
 /// # Errors
 /// Returns [`CatalogError::Unreadable`] naming `root` when the name is gone,
@@ -247,42 +365,37 @@ type Collected = (String, Identity);
 /// are skipped outright — a symlink, an entry replaced under the name the walk
 /// recorded, or a name the portable path type rejects — appear in
 /// [`failures`](Self::failures) only; see the module documentation for the
-/// root-boundary rules that decide this. A root that cannot be read, or that no
-/// longer names the directory this catalog opened, is neither: it is an error,
-/// because no part of the tree was seen.
+/// root-boundary rules that decide this. A root that no longer names the
+/// directory this catalog was handed is neither: it is an error, because no
+/// part of the tree was seen.
 #[derive(Debug)]
 pub struct FilesystemCatalog {
-    root: PathBuf,
-    /// The validated root directory, kept open for the life of the catalog so
-    /// its identity cannot be reused by another directory mid-run.
-    _root_handle: File,
-    /// The device and inode the root handle refers to; see [`verify_root`].
-    root_identity: Identity,
+    /// The validated root: its name, and the directory that name was opened
+    /// as. Holding both is what lets the walk use the name without trusting it.
+    root: ValidatedRoot,
     failures: RefCell<Vec<CatalogFailure>>,
 }
 
 impl FilesystemCatalog {
-    /// Opens a library root for enumeration.
+    /// Builds a catalog over an already-opened library root.
     ///
-    /// # Errors
-    /// Returns [`CatalogError::Unreadable`] when the root does not exist, is
-    /// not a directory, is a symbolic link, or cannot be read. A root that
-    /// cannot be read is a command failure rather than a reported skip: it is
-    /// the boundary of the run, so without it there is nothing to report on.
-    pub fn new(root: PathBuf) -> Result<Self, CatalogError> {
-        let (root_handle, root_identity) = open_root(&root)?;
-        Ok(Self {
+    /// This cannot fail, and that is the point: the root was checked once,
+    /// when [`ValidatedRoot::open`] opened it, and there is no second lookup
+    /// here that could accept a different directory. What the root can still
+    /// do is change underneath the run, which
+    /// [`enumerate`](PdfCatalog::enumerate) catches before it uses the name.
+    #[must_use]
+    pub fn new(root: ValidatedRoot) -> Self {
+        Self {
             root,
-            _root_handle: root_handle,
-            root_identity,
             failures: RefCell::new(Vec::new()),
-        })
+        }
     }
 
     /// The library root this catalog walks.
     #[must_use]
     pub fn root(&self) -> &Path {
-        &self.root
+        self.root.name()
     }
 
     /// Every traversal problem recorded since the catalog was opened.
@@ -292,11 +405,11 @@ impl FilesystemCatalog {
     }
 
     fn record(&self, path: &Path, error: &io::Error) {
-        push_failure(&self.failures, &self.root, path, error.to_string());
+        push_failure(&self.failures, self.root(), path, error.to_string());
     }
 
     fn record_message(&self, path: &Path, error: impl Into<String>) {
-        push_failure(&self.failures, &self.root, path, error);
+        push_failure(&self.failures, self.root(), path, error);
     }
 }
 
@@ -305,18 +418,18 @@ impl PdfCatalog for FilesystemCatalog {
         // The root name is checked against the directory this catalog was
         // opened on before it is used for anything. Without this the walk
         // would resolve the name again and follow whatever it points at now.
-        verify_root(&self.root, self.root_identity)?;
+        let root = self.root.name();
+        verify_root(root, self.root.identity())?;
 
         // The root is opened here rather than inside the walk so that failing
         // to list it ends the run. A failure deeper in the tree is recorded
         // and the walk continues; a failure at the root means the tree the
         // caller asked for was never seen, so there is no report to trust.
-        let entries = std::fs::read_dir(&self.root).map_err(|error| {
-            CatalogError::Unreadable(format!("{}: {error}", self.root.display()))
-        })?;
+        let entries = std::fs::read_dir(root)
+            .map_err(|error| CatalogError::Unreadable(format!("{}: {error}", root.display())))?;
 
         let mut collected = Vec::new();
-        collect_pdf_paths(&self.root, &self.root, entries, "", &mut collected, &self.failures);
+        collect_pdf_paths(root, root, entries, "", &mut collected, &self.failures);
         collected.sort();
 
         let files = collected
@@ -336,7 +449,7 @@ impl PdfCatalog for FilesystemCatalog {
                         return None;
                     }
                 };
-                let absolute = self.root.join(path.as_str());
+                let absolute = root.join(path.as_str());
                 Some(match fingerprint(&absolute, identity) {
                     Ok(fingerprint) => PdfFile::with_condition(
                         path,
@@ -514,12 +627,51 @@ fn fingerprint(path: &Path, identity: Identity) -> Result<PdfFingerprint, io::Er
 
 #[cfg(test)]
 mod tests {
-    use super::{fingerprint, identity_of, open_subdirectory, verify_root};
+    use super::{fingerprint, identity_of, named_root, open_subdirectory, verify_root};
     use std::fs;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
     fn identity(path: &std::path::Path) -> super::Identity {
         identity_of(&fs::symlink_metadata(path).expect("stat the entry"))
+    }
+
+    /// The spellings Linux resolves away before it stats anything.
+    ///
+    /// These are the spellings that make a link invisible to a check: `link/`
+    /// is not "the link's target" as a rule of this tool, it is the link, and
+    /// [`named_root`] is what says so. The rebuild is lexical, so what it must
+    /// not do is alter any other part of the name.
+    #[test]
+    fn named_root_drops_only_the_spellings_the_kernel_resolves_away() {
+        for (given, expected) in [
+            ("link", "link"),
+            ("link/", "link"),
+            ("link/.", "link"),
+            ("link//", "link"),
+            ("link/./", "link"),
+            ("/a//b/", "/a/b"),
+            ("/a/b/./", "/a/b"),
+            ("/a/b/c", "/a/b/c"),
+            ("relative/link/", "relative/link"),
+        ] {
+            assert_eq!(
+                named_root(Path::new(given)),
+                PathBuf::from(expected),
+                "`{given}` names `{expected}`"
+            );
+        }
+    }
+
+    #[test]
+    fn named_root_leaves_names_it_has_nothing_to_say_about() {
+        for given in ["/", ".", "..", "/a/../b"] {
+            assert_eq!(
+                named_root(Path::new(given)),
+                PathBuf::from(given),
+                "`{given}` is passed through untouched"
+            );
+        }
     }
 
     /// The checks that run *between* collecting an entry and acting on it.

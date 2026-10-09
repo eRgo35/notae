@@ -3,12 +3,17 @@
 //! The command shape is fixed: `notae-index <library-root>`. Parsing is a pure
 //! function of the process arguments and [`Cli::validate`] only inspects the
 //! filesystem, so the argument layer stays unchanged as later pipeline stages
-//! are added behind [`crate::run`].
+//! are added behind [`crate::run`]. Validation is also the run's only root
+//! check: it returns the directory it opened rather than a verdict about it,
+//! so the boundary is decided once and the object that was checked is the
+//! object that is walked.
 
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use thiserror::Error;
+
+use crate::catalog::{RootRejection, ValidatedRoot};
 
 /// The parsed command line.
 #[derive(Debug, Clone, PartialEq, Eq, Parser)]
@@ -65,27 +70,32 @@ impl Cli {
     }
 
     /// Checks that the library root exists and is a directory this run can
-    /// read.
+    /// read, and opens the directory it names.
+    ///
+    /// This is the run's one and only root check. It is not a verdict that is
+    /// thrown away afterwards: what it returns is the [`ValidatedRoot`] — the
+    /// name, the open handle, and the identity of the directory behind them —
+    /// which is the object [`crate::run`] walks. Handing the run a validated
+    /// root rather than a path is what keeps a directory replaced between the
+    /// check and the walk from being indexed in its place: there is no second
+    /// lookup that could accept the replacement.
     ///
     /// The same boundary policy the catalog applies is applied here, so a root
     /// that the walk could not trust is refused before it is walked: an
-    /// unreadable root, and a root that is a symbolic link.
+    /// unreadable root, and a root that is a symbolic link however it is
+    /// spelled.
     ///
     /// # Errors
-    /// Returns [`CliError::RootUnreadable`] when the root is absent, is not a
-    /// directory, is a symbolic link, or cannot be opened for reading.
-    pub fn validate(&self) -> Result<(), CliError> {
-        let metadata = std::fs::symlink_metadata(&self.library_root)
-            .map_err(|_| CliError::RootUnreadable(self.library_root.clone()))?;
-        if metadata.file_type().is_symlink() {
-            return Err(CliError::RootSymlinked(self.library_root.clone()));
-        }
-        if !metadata.is_dir() {
-            return Err(CliError::RootUnreadable(self.library_root.clone()));
-        }
-        std::fs::read_dir(&self.library_root)
-            .map_err(|_| CliError::RootUnreadable(self.library_root.clone()))?;
-        Ok(())
+    /// Returns [`CliError::RootSymlinked`] when the root is a symbolic link,
+    /// and [`CliError::RootUnreadable`] when it is absent, is not a directory,
+    /// or cannot be opened for reading.
+    pub fn validate(&self) -> Result<ValidatedRoot, CliError> {
+        ValidatedRoot::open(&self.library_root).map_err(|rejection| match rejection {
+            RootRejection::Symlink(_) => CliError::RootSymlinked(self.library_root.clone()),
+            RootRejection::Unusable { .. } => {
+                CliError::RootUnreadable(self.library_root.clone())
+            }
+        })
     }
 }
 
