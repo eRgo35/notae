@@ -5,6 +5,8 @@ Run with FIXTURE_DIR set to this directory:
     FIXTURE_DIR=apps/notae-index/tests/fixtures \
         python3 apps/notae-index/tests/fixtures/generate.py
 
+"""
+
 import os
 import struct
 import zlib
@@ -12,9 +14,17 @@ import zlib
 OUT = os.environ["FIXTURE_DIR"]
 
 
-def build(objects, root_ref, extra_trailer=b""):
-    """Assemble a PDF from a list of object bodies (1-based index)."""
-    out = bytearray(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
+HEADER = b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n"
+
+
+def build(objects, root_ref, extra_trailer=b"", header=HEADER):
+    """Assemble a PDF from a list of object bodies (1-based index).
+
+    `header` defaults to a normal `%PDF-` header; passing something else
+    builds a structurally complete file that is missing, or displaced
+    behind, the mandatory header.
+    """
+    out = bytearray(header)
     offsets = []
     for index, body in enumerate(objects, start=1):
         offsets.append(len(out))
@@ -106,6 +116,95 @@ open(os.path.join(OUT, "corrupt.pdf"), "wb").write(bytes(corrupt))
 open(os.path.join(OUT, "not-a-pdf.pdf"), "w").write(
     "This file is plain text, not a PDF, but its name ends in .pdf.\n"
 )
+
+# --- damaged-contents.pdf: a valid page tree whose /Contents is corrupt --
+# The page itself is well formed and its /Contents entry is present, but the
+# stream claims an ASCIIHexDecode filter over bytes that are not hex at all,
+# so decoding it fails. This is the shape of a file truncated or rewritten in
+# transit: the structure survives, the page payload does not.
+damaged = stream(b"/Filter /ASCIIHexDecode", b"this is not hexadecimal ZZZ")
+objects = [
+    b"<< /Type /Catalog /Pages 2 0 R >>",
+    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    damaged,
+    b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+]
+open(os.path.join(OUT, "damaged-contents.pdf"), "wb").write(build(objects, 1))
+
+# --- hex-contents.pdf: the same unusual-but-valid filter, intact --------
+# ASCIIHexDecode is a perfectly ordinary PDF filter. This page proves that
+# rejecting damaged streams must not mean rejecting uncommon filters.
+hexed = content = b"BT /F1 12 Tf 24 40 Td (Notae hex filter) Tj ET"
+hexed = stream(b"/Filter /ASCIIHexDecode", content.hex().encode())
+objects = [
+    b"<< /Type /Catalog /Pages 2 0 R >>",
+    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    hexed,
+    b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+]
+open(os.path.join(OUT, "hex-contents.pdf"), "wb").write(build(objects, 1))
+
+# --- no-header.pdf: PDF-shaped objects with no %PDF- header at all ------
+# The cross-reference table, the objects and the trailer are all valid; only
+# the mandatory header is absent. A parser that reconstructs structure by
+# scanning will happily accept this, which is the point.
+objects = [
+    b"<< /Type /Catalog /Pages 2 0 R >>",
+    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    stream(b"", b"BT /F1 12 Tf 24 40 Td (Notae no header) Tj ET"),
+    b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+]
+open(
+    os.path.join(OUT, "no-header.pdf"),
+    "wb",
+).write(
+    build(
+        objects,
+        1,
+        header=b"NOT-A-PDF-HEADER, just some bytes that happen to parse.\n",
+    )
+)
+
+# --- leading-junk.pdf: the same document behind 32 bytes of junk -------
+# Real files arrive this way: an HTTP error page, a mail preamble, or an
+# archive stub prepended to the document. The header is not at byte zero,
+# but it is inside the first 1024 bytes, which is where the specification
+# says a reader must look for it.
+objects = [
+    b"<< /Type /Catalog /Pages 2 0 R >>",
+    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    stream(b"", b"BT /F1 12 Tf 24 40 Td (Notae leading junk) Tj ET"),
+    b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+]
+open(
+    os.path.join(OUT, "leading-junk.pdf"),
+    "wb",
+).write(build(objects, 1, header=b"junk from an archive stub!!!!\n" + HEADER))
+
+# --- word-spacing.pdf: word boundaries carried by TJ, not by spaces -----
+# `[(Notae) -250 (searchable)] TJ` is how a typesetter says "these two
+# strings are two words": the number shifts the second string along the
+# baseline by a quarter of an em, and no space character is ever drawn.
+objects = [
+    b"<< /Type /Catalog /Pages 2 0 R >>",
+    b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    stream(
+        b"",
+        b"BT /F1 12 Tf 24 40 Td [(Notae) -250 (searchable)] TJ ET",
+    ),
+    b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+]
+open(os.path.join(OUT, "word-spacing.pdf"), "wb").write(build(objects, 1))
 
 for name in sorted(os.listdir(OUT)):
     print(name, os.path.getsize(os.path.join(OUT, name)))
