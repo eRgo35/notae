@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use thiserror::Error;
 
-use crate::{IndexedNote, NoteId, RelativePdfPath};
+use crate::{IndexedNote, MetadataField, NoteId, PdfFingerprint, RelativePdfPath};
 
 /// Two records claim the same numeric ID.
 ///
@@ -44,16 +44,41 @@ impl DuplicateId {
 
 /// Orders records the way the library displays them.
 ///
-/// Records with IDs come first, in ascending numeric order, so `2` precedes
-/// `10`. Records without IDs follow, ordered by case-folded title so `Apple`
-/// and `apricot` interleave as the user reads them. The library-relative path
-/// breaks any remaining tie, which keeps the order total and therefore stable
-/// across runs.
+/// # Contract
 ///
-/// The tie-break chain applies to every pair, including two records that share
-/// an ID. Duplicate IDs are surfaced by [`validate_unique_ids`] rather than
-/// renumbered, so such records coexist in the library and must still sort
-/// deterministically.
+/// This is a **total order over every distinct [`IndexedNote`] value**: for any
+/// two records `a` and `b`, exactly one of `a < b`, `a == b`, or `a > b` holds,
+/// and `a == b` only when `a` and `b` are the same value. There is no
+/// precondition on the input, no panic, and no record is dropped, so
+/// `sort_by(compare_library_order)` is deterministic for any library — including
+/// one holding records that share a path, an ID, a title, or any combination of
+/// them.
+///
+/// The comparison is a lexicographic chain over every field of the record, in
+/// this order:
+///
+/// 1. the note ID, with numbered records before unnumbered ones and ascending
+///    numeric order among numbered ones, so `2` precedes `10`;
+/// 2. the case-folded title, so `Apple` and `apricot` interleave as the user
+///    reads them;
+/// 3. the exact title;
+/// 4. the library-relative path;
+/// 5. the composer or artist;
+/// 6. the tag set;
+/// 7. the per-field provenance, in [`MetadataField::ALL`] order;
+/// 8. the fingerprint, by SHA-256, then byte length, then modification time;
+/// 9. the [`crate::IndexStatus`].
+///
+/// The first three keys are what the user perceives as the browsing order. The
+/// remaining keys exist purely to make the order total: they can never be
+/// reached by two records that differ in a field the user sees first, but they
+/// do decide between records that are otherwise identical, such as two records
+/// at the same path whose content was re-fingerprinted or whose pipeline status
+/// advanced.
+///
+/// Duplicate IDs are surfaced by [`validate_unique_ids`] rather than
+/// renumbered, so records sharing an ID coexist in the library and must still
+/// sort deterministically; the chain above guarantees they do.
 #[must_use]
 pub fn compare_library_order(left: &IndexedNote, right: &IndexedNote) -> Ordering {
     match (left.id(), right.id()) {
@@ -65,6 +90,39 @@ pub fn compare_library_order(left: &IndexedNote, right: &IndexedNote) -> Orderin
     .then_with(|| case_folded(left.title()).cmp(&case_folded(right.title())))
     .then_with(|| left.title().cmp(right.title()))
     .then_with(|| left.path().cmp(right.path()))
+    .then_with(|| {
+        left.metadata()
+            .composer_or_artist()
+            .cmp(&right.metadata().composer_or_artist())
+    })
+    .then_with(|| left.metadata().tags().cmp(right.metadata().tags()))
+    .then_with(|| compare_provenance(left, right))
+    .then_with(|| compare_fingerprints(left.fingerprint(), right.fingerprint()))
+    .then_with(|| left.status().cmp(&right.status()))
+}
+
+/// Compares the per-field provenance of two records in [`MetadataField::ALL`]
+/// order.
+fn compare_provenance(left: &IndexedNote, right: &IndexedNote) -> Ordering {
+    MetadataField::ALL
+        .into_iter()
+        .map(|field| {
+            (
+                left.metadata().origin_of(field),
+                right.metadata().origin_of(field),
+            )
+        })
+        .find(|(left, right)| left != right)
+        .map_or(Ordering::Equal, |(left, right)| left.cmp(&right))
+}
+
+/// Compares two fingerprints field by field, so records at the same path are
+/// still ordered once their contents or timestamps differ.
+fn compare_fingerprints(left: &PdfFingerprint, right: &PdfFingerprint) -> Ordering {
+    left.sha256()
+        .cmp(&right.sha256())
+        .then_with(|| left.byte_len().cmp(&right.byte_len()))
+        .then_with(|| left.modified().cmp(&right.modified()))
 }
 
 /// Checks that no two records claim the same numeric ID.
