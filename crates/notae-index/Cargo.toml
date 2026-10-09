@@ -1,0 +1,16 @@
+[package]
+name = "notae-index"
+description = "SQLite schema, FTS5 search, and reconciliation for the Notae index."
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+notae-domain = { path = "../notae-domain" }
+rusqlite = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+rusqlite = { workspace = true }
+
+[lints]
+workspace = true
