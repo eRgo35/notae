@@ -7,6 +7,8 @@ mod identity;
 mod metadata;
 mod status;
 
-pub use identity::{NoteId, PdfFingerprint, RelativePdfPath, Sha256Digest};
-pub use metadata::{DomainError, MetadataOrigin, NoteMetadata};
+pub use identity::{EpochTimestamp, NoteId, PdfFingerprint, RelativePdfPath, Sha256Digest};
+pub use metadata::{
+    DomainError, FieldProvenance, MetadataField, MetadataOrigin, NoteMetadata,
+};
 pub use status::IndexStatus;
