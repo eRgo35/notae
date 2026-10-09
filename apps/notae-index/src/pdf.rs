@@ -328,7 +328,7 @@ fn advance_in_page_space(glyph: &hayro::hayro_interpret::font::PositionedGlyph<'
     if x_scale <= 0.0 {
         return None;
     }
-    Some(f64::from(width) * f64::from(x_scale))
+    Some(f64::from(width) * x_scale)
 }
 
 /// Refuses a render request whose result would not fit in the budget.
