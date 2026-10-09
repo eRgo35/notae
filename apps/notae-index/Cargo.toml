@@ -1,0 +1,26 @@
+[package]
+name = "notae-index-cli"
+description = "Linux-only CLI that indexes a folder of PDFs into a portable Notae sidecar."
+edition.workspace = true
+version.workspace = true
+
+[lib]
+name = "notae_index_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "notae-index"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+notae-domain = { path = "../../crates/notae-domain" }
+notae-index = { path = "../../crates/notae-index" }
+sha2 = "0.10"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
