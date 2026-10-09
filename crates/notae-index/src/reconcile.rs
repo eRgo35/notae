@@ -41,6 +41,26 @@
 //! PDF disappears from the library. The marker is dropped again on the first
 //! rescan in which no collision remains.
 //!
+//! A record whose file the catalog *could not use* keeps the status that
+//! describes the condition the catalog observed —
+//! [`IndexStatus::Inaccessible`] or [`IndexStatus::InvalidPdf`] — instead of
+//! having it replaced by the conflict marker. The stored row has one status
+//! field, and the condition is the fact the catalog just established; a
+//! collision is a fact about the library, not about the file, and it is
+//! reported per rescan in [`RescanPlan::conflicts`] (and per file in
+//! [`RescanPlan::failures`], which names the condition). Task 5 therefore
+//! joins the two by path: a contested path that also appears as
+//! [`FileFailureReason::Unreadable`] or [`FileFailureReason::InvalidPdf`] is a
+//! record that is both contested and unusable, and must be shown as both.
+//!
+//! Ownership still decides the ID: a record that already holds an ID keeps it
+//! whether or not its file could be read, so "at most one indexed record per
+//! numeric ID" holds even while both facts are true at once. Because the
+//! conflict is re-derived from the index and the catalog on every rescan
+//! rather than read back out of a status, and because a rescan that would
+//! write a record identical to the stored one writes nothing at all, an
+//! unresolved conflict *and* an observed condition both stay stable.
+//!
 //! Ownership is decided from the index as it was before the rescan, never from
 //! the order paths happen to sort in, so an unresolved conflict reaches the
 //! same state on every rescan. `RescanPlan::resolve_conflicts` states the rule
@@ -461,6 +481,24 @@ pub struct RescanPlan {
     conflicts: Vec<DuplicateIdConflict>,
     unchanged: Vec<UnchangedFile>,
     failures: Vec<FileFailure>,
+    /// Records the catalog could not use, which need no write of their own.
+    ///
+    /// A file that could not be read, or whose bytes are not a PDF, is still a
+    /// *record* holding a note ID, so it takes part in duplicate-ID resolution
+    /// even when its stored status already says what the catalog observed.
+    /// Leaving it out would let a second file claim its number: the newcomer
+    /// would be planned as a plain addition and the collision would surface
+    /// only as a refused write, hiding the conflict and leaving the second PDF
+    /// unindexed.
+    observed: Vec<IndexedNote>,
+    /// The paths whose file the catalog could not use.
+    ///
+    /// Their records carry the status that describes the condition the catalog
+    /// observed, so [`RescanPlan::mark_contested`] leaves them alone. The
+    /// condition stays in the status and the collision is reported through
+    /// [`conflicts`](Self::conflicts) — see the module documentation on how the
+    /// two facts are represented together.
+    conditioned: HashSet<RelativePdfPath>,
     /// Every path the catalog saw on disk, including the ones that failed.
     ///
     /// This is what the deletion pass runs against, not the set of records
@@ -529,7 +567,15 @@ impl RescanPlan {
     /// otherwise have been reused untouched is promoted to a write here:
     /// showing the conflict costs one write, and the alternative — a library
     /// that silently hides a contested ID — is worse.
+    ///
+    /// A record whose file the catalog could not use is *not* marked: its
+    /// status says what the catalog observed, and the collision is reported
+    /// through [`conflicts`](Self::conflicts) and named there by path. Both
+    /// facts are then true at once and neither is discarded.
     fn mark_contested(&mut self, path: &RelativePdfPath) {
+        if self.conditioned.contains(path) {
+            return;
+        }
         self.edit_note_at(path, |note| note.with_status(IndexStatus::DuplicateIdConflict));
     }
 
@@ -562,8 +608,9 @@ impl RescanPlan {
 
     /// Replaces the planned record filed at `path` with `edit`'s result.
     ///
-    /// A record that was going to be reused untouched is promoted to a write
-    /// first, so an edit is never silently discarded.
+    /// A record that was going to be reused untouched — or, for a file the
+    /// catalog could not use, a record that needed no write at all — is
+    /// promoted to a write first, so an edit is never silently discarded.
     fn edit_note_at(&mut self, path: &RelativePdfPath, edit: impl Fn(IndexedNote) -> IndexedNote) {
         if let Some(item) = self.additions.iter_mut().find(|item| item.note.path() == path) {
             item.note = edit(item.note.clone());
@@ -575,6 +622,12 @@ impl RescanPlan {
         }
         if let Some(item) = self.moves.iter_mut().find(|item| item.note.path() == path) {
             item.note = edit(item.note.clone());
+            return;
+        }
+        if let Some(index) = self.observed.iter().position(|item| item.path() == path) {
+            let note = edit(self.observed.remove(index));
+            let previous = note.fingerprint().clone();
+            self.updates.push(PlannedUpdate { note, previous });
             return;
         }
         if let Some(index) = self.unchanged.iter().position(|item| item.path() == path) {
@@ -712,21 +765,41 @@ impl Reconciler {
 
         let mut claimed: HashMap<Sha256Digest, RelativePdfPath> = HashMap::new();
         for file in ordered {
-            let Verdict { write, failure } = classify(file, &by_path, &by_hash, &mut claimed);
-            match write {
+            if FileFailureReason::for_condition(&file.condition).is_some() {
+                // What the catalog saw for this path, so nothing downstream may
+                // replace the condition it produced with a conflict marker.
+                plan.conditioned.insert(file.path.clone());
+            }
+            let Verdict {
+                write,
+                record,
+                failure,
+            } = classify(file, &by_path, &by_hash, &mut claimed);
+            let written = match write {
                 Some(Classification::Addition(note)) => {
                     plan.additions.push(PlannedAddition { note });
+                    true
                 }
                 Some(Classification::Update(note, previous)) => {
                     plan.updates.push(PlannedUpdate { note, previous });
+                    true
                 }
                 Some(Classification::Move(note, from)) => {
                     plan.moves.push(PlannedMove { note, from });
+                    true
                 }
                 Some(Classification::Unchanged(note)) => {
                     plan.unchanged.push(UnchangedFile { note });
+                    true
                 }
-                None => {}
+                None => false,
+            };
+            if !written
+                && let Some(record) = record
+            {
+                // No write was planned for this record, but it still holds a
+                // note ID and must take part in duplicate-ID resolution.
+                plan.observed.push(record);
             }
             if let Some(failure) = failure {
                 plan.failures.push(failure);
@@ -756,6 +829,7 @@ impl Reconciler {
             .collect();
 
         plan.resolve_conflicts(&held);
+        plan.discard_writes_that_change_nothing(&by_path);
         Ok(plan)
     }
 
@@ -780,6 +854,8 @@ impl Reconciler {
             conflicts,
             unchanged,
             failures,
+            observed: _,
+            conditioned: _,
             present,
         } = plan;
 
@@ -911,7 +987,10 @@ impl RescanPlan {
             // Every record the index will hold once the plan is applied. They
             // are ordered by the ownership rule, so the validator — which names
             // the first record it sees for an ID as the keeper and the next as
-            // the loser — agrees with it.
+            // the loser — agrees with it. A record whose file the catalog could
+            // not use is included even when it needs no write of its own: it
+            // still holds an ID, so excluding it would let a newcomer claim
+            // that ID and hide the collision.
             let mut candidates: Vec<&IndexedNote> = self
                 .unchanged
                 .iter()
@@ -919,6 +998,7 @@ impl RescanPlan {
                 .chain(self.updates.iter().map(PlannedUpdate::note))
                 .chain(self.moves.iter().map(PlannedMove::note))
                 .chain(self.additions.iter().map(PlannedAddition::note))
+                .chain(self.observed.iter())
                 .collect();
             candidates.sort_by(|left, right| {
                 rank(left, held)
@@ -939,6 +1019,35 @@ impl RescanPlan {
             self.mark_contested(&loser);
             self.withhold_id(&loser);
         }
+    }
+
+    /// Turns a planned write that would store what is already stored back into
+    /// an untouched record.
+    ///
+    /// Conflict resolution runs after classification, so a record that was
+    /// planned as a write can end up identical to what the index already holds
+    /// — a contested record whose ID is withheld again, for instance, which is
+    /// exactly what the previous rescan stored. Writing it changes nothing but
+    /// the row's timestamp, so every rescan of an unresolved conflict would
+    /// touch every contested record. Discarding those writes is what makes an
+    /// unchanged library cost no writes at all, and so what makes a stored
+    /// condition — which a rescan must not contradict — reachable again only
+    /// when the catalog observes something new.
+    fn discard_writes_that_change_nothing(
+        &mut self,
+        stored: &HashMap<RelativePdfPath, IndexedNote>,
+    ) {
+        let mut reused = Vec::new();
+        self.updates.retain(|update| {
+            if stored.get(update.note().path()) == Some(update.note()) {
+                reused.push(UnchangedFile {
+                    note: update.note.clone(),
+                });
+                return false;
+            }
+            true
+        });
+        self.unchanged.extend(reused);
     }
 }
 
@@ -967,6 +1076,18 @@ enum Classification {
     Unchanged(IndexedNote),
 }
 
+impl Classification {
+    /// The record this classification leaves in the index.
+    const fn note(&self) -> &IndexedNote {
+        match self {
+            Self::Addition(note)
+            | Self::Update(note, _)
+            | Self::Move(note, _)
+            | Self::Unchanged(note) => note,
+        }
+    }
+}
+
 /// What one file means relative to the index, and what is reported about it.
 ///
 /// These are independent: a record whose condition the catalog contradicts is
@@ -976,6 +1097,14 @@ enum Classification {
 struct Verdict {
     /// The record this file contributes to the plan, if any.
     write: Option<Classification>,
+    /// The record this file leaves in the index, when it leaves one at all.
+    ///
+    /// This is what duplicate-ID resolution ranges over, so it is set even when
+    /// no write is planned: a record whose stored status already matches the
+    /// condition the catalog observed still holds a note ID, and a file that
+    /// claims that ID is in conflict with it whether or not the record needs
+    /// correcting.
+    record: Option<IndexedNote>,
     /// What is reported about this file, if anything.
     failure: Option<FileFailure>,
 }
@@ -984,6 +1113,7 @@ impl Verdict {
     /// A file that becomes a record and is not reported.
     fn written(classification: Classification) -> Self {
         Self {
+            record: Some(classification.note().clone()),
             write: Some(classification),
             failure: None,
         }
@@ -993,6 +1123,7 @@ impl Verdict {
     fn failed(failure: FileFailure) -> Self {
         Self {
             write: None,
+            record: None,
             failure: Some(failure),
         }
     }
@@ -1000,7 +1131,21 @@ impl Verdict {
     /// A record that is corrected and reported at the same time.
     fn corrected(classification: Classification, failure: FileFailure) -> Self {
         Self {
+            record: Some(classification.note().clone()),
             write: Some(classification),
+            failure: Some(failure),
+        }
+    }
+
+    /// A record the catalog contradicts, which needs no write and is reported.
+    ///
+    /// The stored row already carries the observed condition, so there is
+    /// nothing to correct — but the record is still returned, because it still
+    /// holds the note ID another file may be claiming.
+    fn observed(record: IndexedNote, failure: FileFailure) -> Self {
+        Self {
+            write: None,
+            record: Some(record),
             failure: Some(failure),
         }
     }
@@ -1054,7 +1199,7 @@ fn classify(
                 let status = observed_status(&file.condition);
                 let failure = fail(reason);
                 if record.status() == status {
-                    Verdict::failed(failure)
+                    Verdict::observed(record.clone(), failure)
                 } else {
                     Verdict::corrected(
                         Classification::Update(

@@ -1166,3 +1166,234 @@ fn a_record_that_becomes_readable_again_returns_to_discovered() {
     assert_eq!(only_note(&store).status(), IndexStatus::Discovered);
     let _ = std::fs::remove_file(&database);
 }
+
+/// Defect: a record whose file the catalog could not use is still a record
+/// that *holds* its note ID, so excluding it from duplicate-ID resolution
+/// hides the collision entirely. The newcomer is then planned as a plain
+/// addition carrying an ID the store will refuse, and the collision only
+/// surfaces as a write failure — leaving the second PDF unindexed and the
+/// conflict unreported.
+///
+/// The record must stay a candidate for ID resolution even when its status
+/// needs no correction, so the conflict is reported and both PDFs stay in the
+/// library.
+#[test]
+fn a_condition_failed_record_still_surfaces_a_duplicate_id_conflict() {
+    let (mut store, database) = open("condition-conflict");
+    let mut holder = note("12 - Zeta.pdf", 1, Some(NoteId::new(12)), "Zeta");
+    holder.set_status(IndexStatus::Inaccessible);
+    store.upsert_note(&holder).expect("seed");
+
+    let files = vec![
+        PdfFile::from_path_with_condition(path("12 - Zeta.pdf"), FileCondition::Unreadable),
+        file("12 - Alpha.pdf", 2),
+    ];
+
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(
+        plan.conflicts().len(),
+        1,
+        "an unreadable incumbent still claims its ID, so the collision is surfaced"
+    );
+    assert_eq!(plan.conflicts()[0].id(), NoteId::new(12));
+    assert_eq!(
+        plan.conflicts()[0].existing(),
+        &path("12 - Zeta.pdf"),
+        "the record the index already filed under 12 keeps it"
+    );
+    assert_eq!(
+        plan.conflicts()[0].conflicting(),
+        &path("12 - Alpha.pdf"),
+        "the newcomer is the one written without the contested ID"
+    );
+    assert_eq!(
+        plan.failures().len(),
+        1,
+        "the unreadable file is still reported per file"
+    );
+    assert_eq!(
+        plan.additions().len(),
+        1,
+        "the newcomer is indexed rather than dropped"
+    );
+    assert!(
+        plan.additions()[0].note().id().is_none(),
+        "at most one record holds a contested ID"
+    );
+    assert_eq!(
+        plan.additions()[0].note().status(),
+        IndexStatus::DuplicateIdConflict,
+        "a record with no condition of its own shows the conflict"
+    );
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(
+        report.failures().len(),
+        1,
+        "the only failure is the unreadable file, not a refused write"
+    );
+
+    let mut notes = store.list_all().expect("list");
+    notes.sort_by_key(|note| note.path().as_str().to_owned());
+    assert_eq!(notes.len(), 2, "both PDFs stay visible in the library");
+    assert_eq!(notes[0].path(), &path("12 - Alpha.pdf"));
+    assert_eq!(notes[1].path(), &path("12 - Zeta.pdf"));
+    assert_eq!(
+        store
+            .get_by_id(NoteId::new(12))
+            .expect("query")
+            .map(|note| note.path().clone()),
+        Some(path("12 - Zeta.pdf")),
+        "exactly one record holds the contested ID"
+    );
+    assert!(
+        notes[0].id().is_none(),
+        "the newcomer holds no ID until the user resolves the conflict"
+    );
+    assert_eq!(
+        notes[1].status(),
+        IndexStatus::Inaccessible,
+        "the observed condition is kept, not overwritten by a conflict marker"
+    );
+
+    // Rescanning the same library reaches the same state: the incumbent still
+    // holds the ID, the newcomer is still indexed without it, and neither
+    // record is rewritten.
+    let holder_written = indexed_at(&database, &path("12 - Zeta.pdf"));
+    let newcomer_written = indexed_at(&database, &path("12 - Alpha.pdf"));
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.conflicts().len(), 1, "the collision is still reported");
+    assert_eq!(plan.conflicts()[0].conflicting(), &path("12 - Alpha.pdf"));
+    assert!(plan.additions().is_empty());
+    assert!(
+        plan.updates().is_empty(),
+        "a rescan of an unchanged library writes nothing"
+    );
+    Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(
+        indexed_at(&database, &path("12 - Zeta.pdf")),
+        holder_written,
+        "the incumbent is not rewritten"
+    );
+    assert_eq!(
+        indexed_at(&database, &path("12 - Alpha.pdf")),
+        newcomer_written,
+        "the newcomer is not rewritten"
+    );
+
+    // The collision is still resolvable the ordinary ways: deleting the
+    // newcomer leaves the incumbent alone, holding the ID and the condition.
+    let resolved = vec![PdfFile::from_path_with_condition(
+        path("12 - Zeta.pdf"),
+        FileCondition::Unreadable,
+    )];
+    let plan = Reconciler::plan(&store, &resolved).expect("plan");
+    assert!(plan.conflicts().is_empty(), "the collision is over");
+    assert_eq!(
+        plan.deletions().len(),
+        1,
+        "the newcomer's file is gone, so its record is"
+    );
+    assert!(
+        plan.updates().is_empty(),
+        "the incumbent is untouched: it already says what the catalog saw"
+    );
+    Reconciler::apply(plan, &mut store).expect("apply");
+    let survivor = only_note(&store);
+    assert_eq!(survivor.id(), Some(NoteId::new(12)));
+    assert_eq!(survivor.status(), IndexStatus::Inaccessible);
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect: marking a contested record replaces whatever status it had. A
+/// record whose file became unreadable *while* another file claimed its number
+/// therefore stored [`IndexStatus::DuplicateIdConflict`] and lost the fact the
+/// catalog observed — and because the stored row then contradicts the catalog,
+/// every later rescan planned the same correction again.
+///
+/// Both facts are kept: the row carries the observed condition, and the
+/// conflict is reported alongside it every rescan.
+#[test]
+fn an_unreadable_record_that_is_contested_keeps_its_condition() {
+    let (mut store, database) = open("condition-contested");
+    let mut holder = note("12 - Zeta.pdf", 1, Some(NoteId::new(12)), "Zeta");
+    holder.set_status(IndexStatus::Ready);
+    store.upsert_note(&holder).expect("seed");
+
+    let files = vec![
+        PdfFile::from_path_with_condition(path("12 - Zeta.pdf"), FileCondition::Unreadable),
+        file("12 - Alpha.pdf", 2),
+    ];
+
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.conflicts().len(), 1, "both facts are reported");
+    assert_eq!(plan.conflicts()[0].existing(), &path("12 - Zeta.pdf"));
+    assert_eq!(plan.conflicts()[0].conflicting(), &path("12 - Alpha.pdf"));
+    assert_eq!(plan.failures().len(), 1, "the condition is still reported");
+    let incumbent = plan
+        .updates()
+        .iter()
+        .find(|update| update.note().path() == &path("12 - Zeta.pdf"))
+        .expect("the observed condition is corrected");
+    assert_eq!(
+        incumbent.note().status(),
+        IndexStatus::Inaccessible,
+        "the condition the catalog observed is not discarded for a conflict marker"
+    );
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(report.failures().len(), 1);
+
+    let holder = store
+        .get_by_id(NoteId::new(12))
+        .expect("query")
+        .expect("the incumbent keeps the contested ID");
+    assert_eq!(
+        holder.status(),
+        IndexStatus::Inaccessible,
+        "the stored row must not contradict what the catalog saw"
+    );
+    let newcomer = store
+        .list_all()
+        .expect("list")
+        .into_iter()
+        .find(|note| note.path() == &path("12 - Alpha.pdf"))
+        .expect("the newcomer stays visible");
+    assert!(newcomer.id().is_none());
+    assert_eq!(
+        newcomer.status(),
+        IndexStatus::DuplicateIdConflict,
+        "the readable side of the collision shows the conflict"
+    );
+
+    // The same library scanned again changes nothing: the stored rows already
+    // say both facts, so no correction is re-planned.
+    let holder_written = indexed_at(&database, &path("12 - Zeta.pdf"));
+    for round in 1..=2 {
+        let plan = Reconciler::plan(&store, &files).expect("plan");
+        assert_eq!(plan.conflicts().len(), 1, "round {round}");
+        assert_eq!(plan.conflicts()[0].existing(), &path("12 - Zeta.pdf"), "round {round}");
+        assert_eq!(plan.failures().len(), 1, "round {round}");
+        assert!(
+            plan.additions().is_empty() && plan.updates().is_empty(),
+            "round {round}: an unchanged library is not rewritten"
+        );
+        Reconciler::apply(plan, &mut store).expect("apply");
+        assert_eq!(
+            indexed_at(&database, &path("12 - Zeta.pdf")),
+            holder_written,
+            "round {round}: the incumbent is left alone"
+        );
+        assert_eq!(
+            store
+                .get_by_id(NoteId::new(12))
+                .expect("query")
+                .expect("held")
+                .status(),
+            IndexStatus::Inaccessible,
+            "round {round}: the condition survives every rescan"
+        );
+    }
+    let _ = std::fs::remove_file(&database);
+}
+
