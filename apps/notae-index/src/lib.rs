@@ -16,6 +16,8 @@
 
 pub mod args;
 pub mod catalog;
+pub mod image;
+pub mod pdf;
 
 use std::path::{Path, PathBuf};
 
