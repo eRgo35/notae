@@ -41,8 +41,15 @@
 //! performs it and returns a [`RescanReport`]. File identity is the SHA-256 of
 //! the contents, so a rename moves one record instead of creating a second, and
 //! manually edited metadata in [`crate::provenance`] is never overwritten by a
-//! filename-derived value. A single unreadable file becomes a
-//! [`FileFailure`], never an aborted rescan.
+//! filename-derived value.
+//!
+//! A catalog reports what it could not use through a [`FileCondition`], so a
+//! file that is unreadable or is not a PDF becomes a [`FileFailure`] with an
+//! actionable reason and keeps any record it already had — one bad PDF never
+//! aborts a rescan and never deletes a good record. A note ID claimed by two
+//! files is reported as a [`DuplicateIdConflict`]: both files stay in the
+//! library, both are marked [`notae_domain::IndexStatus::DuplicateIdConflict`],
+//! and only one of them holds the ID until the user resolves it.
 
 mod provenance;
 mod reconcile;
@@ -54,9 +61,9 @@ pub use crate::provenance::{
     MetadataRefreshError, RefreshOutcome, metadata_from_filename, refresh_from_filename,
 };
 pub use crate::reconcile::{
-    CatalogError, DuplicateIdConflict, FileFailure, FileFailureReason, PdfCatalog, PdfFile,
-    PlannedAddition, PlannedDeletion, PlannedMove, PlannedUpdate, ReconcileError, Reconciler,
-    RescanPlan, RescanReport, UnchangedFile,
+    CatalogError, DuplicateIdConflict, FileCondition, FileFailure, FileFailureReason, PdfCatalog,
+    PdfFile, PlannedAddition, PlannedDeletion, PlannedMove, PlannedUpdate, ReconcileError,
+    Reconciler, RescanPlan, RescanReport, UnchangedFile,
 };
 pub use crate::schema::{MIGRATIONS, Migration, SCHEMA_VERSION};
 pub use crate::search::SearchHit;
