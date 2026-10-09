@@ -333,6 +333,137 @@ fn duplicate_id_records_sort_deterministically() {
     assert_eq!(paths, ["b/12 - Other.pdf", "a/12 - Same.pdf", "c/12 - Same.pdf"]);
 }
 
+fn note_with_fingerprint(filename: &str, seed: u8) -> IndexedNote {
+    let parsed = parse_filename(filename);
+    IndexedNote::new(
+        RelativePdfPath::new(filename).expect("valid relative path"),
+        PdfFingerprint::new(Sha256Digest::from_bytes([seed; 32]), 1024, None),
+        parsed.into_note_metadata().expect("non-empty title"),
+    )
+}
+
+/// Two records that agree on ID, title, and path but were fingerprinted
+/// differently are still distinct records, so the browsing order must place
+/// them deterministically instead of calling them equal.
+#[test]
+fn same_id_title_and_path_with_different_fingerprints_is_not_equal() {
+    let left = note_with_fingerprint("12 - Autumn Leaves.pdf", 7);
+    let right = note_with_fingerprint("12 - Autumn Leaves.pdf", 9);
+    assert_ne!(left, right, "the records really do differ");
+    let ordering = compare_library_order(&left, &right);
+    assert_ne!(
+        ordering,
+        Ordering::Equal,
+        "differing fingerprints must not compare equal"
+    );
+    assert_eq!(
+        ordering,
+        compare_library_order(&right, &left).reverse(),
+        "the comparison stays antisymmetric"
+    );
+    assert_eq!(
+        compare_library_order(&left, &left),
+        Ordering::Equal,
+        "a record equals itself"
+    );
+}
+
+/// A status transition alone must not make two otherwise identical records
+/// compare equal.
+#[test]
+fn same_id_title_and_path_with_different_status_is_not_equal() {
+    let left = status_note("12 - Autumn Leaves.pdf", IndexStatus::Discovered);
+    let right = status_note("12 - Autumn Leaves.pdf", IndexStatus::OcrPending);
+    assert_ne!(left, right, "the records really do differ");
+    let ordering = compare_library_order(&left, &right);
+    assert_ne!(
+        ordering,
+        Ordering::Equal,
+        "a status transition must not compare equal"
+    );
+    assert_eq!(
+        ordering,
+        compare_library_order(&right, &left).reverse(),
+        "the comparison stays antisymmetric"
+    );
+}
+
+/// Sorting a library that contains same-path records differing only in
+/// fingerprint or status must keep every record and land on one order no
+/// matter how the input was arranged.
+#[test]
+fn a_library_with_colliding_records_sorts_deterministically() {
+    let mut library = [
+        note_with_fingerprint("12 - Same.pdf", 9),
+        status_note("12 - Same.pdf", IndexStatus::Stale),
+        note_with_fingerprint("12 - Same.pdf", 7),
+        status_note("12 - Same.pdf", IndexStatus::Ready),
+        note_with_fingerprint("12 - Same.pdf", 3),
+        note("2 - Other.pdf"),
+    ];
+
+    let mut expected: Vec<SortKey> = library.iter().map(sort_key).collect();
+    library.sort_by(compare_library_order);
+    expected.sort();
+
+    let actual: Vec<SortKey> = library.iter().map(sort_key).collect();
+    assert_eq!(actual, expected, "sorted order must be canonical");
+
+    // Every record survives the sort.
+    let mut count = library
+        .iter()
+        .map(|n| (n.path().clone(), n.fingerprint().sha256(), n.status()))
+        .collect::<Vec<_>>();
+    count.sort();
+    count.dedup();
+    assert_eq!(count.len(), library.len(), "no record is dropped or duplicated");
+
+    // A different input permutation reaches the same order.
+    let mut shuffled = [
+        status_note("12 - Same.pdf", IndexStatus::Ready),
+        note("2 - Other.pdf"),
+        note_with_fingerprint("12 - Same.pdf", 3),
+        status_note("12 - Same.pdf", IndexStatus::Stale),
+        note_with_fingerprint("12 - Same.pdf", 7),
+        note_with_fingerprint("12 - Same.pdf", 9),
+    ];
+    shuffled.sort_by(compare_library_order);
+    let shuffled: Vec<SortKey> = shuffled.iter().map(sort_key).collect();
+    assert_eq!(actual, shuffled, "input order must not affect the result");
+}
+
+/// The documented tie-break chain, spelled out independently of the
+/// implementation: ID, case-folded title, exact title, path, fingerprint,
+/// then status.
+type SortKey = (
+    u8,
+    Option<NoteId>,
+    String,
+    String,
+    String,
+    Sha256Digest,
+    u64,
+    IndexStatus,
+);
+
+fn sort_key(note: &IndexedNote) -> SortKey {
+    assert!(
+        note.fingerprint().modified().is_none(),
+        "the tie-break key models fingerprints without a modification time"
+    );
+    let id = note.id();
+    (
+        u8::from(id.is_none()),
+        id,
+        note.title().to_lowercase(),
+        note.title().to_owned(),
+        note.path().as_str().to_owned(),
+        note.fingerprint().sha256(),
+        note.fingerprint().byte_len(),
+        note.status(),
+    )
+}
+
 fn status_note(filename: &str, status: IndexStatus) -> IndexedNote {
     let mut note = note(filename);
     note.set_status(status);
