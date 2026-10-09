@@ -49,17 +49,22 @@ impl DuplicateId {
 /// and `apricot` interleave as the user reads them. The library-relative path
 /// breaks any remaining tie, which keeps the order total and therefore stable
 /// across runs.
+///
+/// The tie-break chain applies to every pair, including two records that share
+/// an ID. Duplicate IDs are surfaced by [`validate_unique_ids`] rather than
+/// renumbered, so such records coexist in the library and must still sort
+/// deterministically.
 #[must_use]
 pub fn compare_library_order(left: &IndexedNote, right: &IndexedNote) -> Ordering {
     match (left.id(), right.id()) {
         (Some(left_id), Some(right_id)) => left_id.cmp(&right_id),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
-        (None, None) => case_folded(left.title())
-            .cmp(&case_folded(right.title()))
-            .then_with(|| left.title().cmp(right.title()))
-            .then_with(|| left.path().cmp(right.path())),
+        (None, None) => Ordering::Equal,
     }
+    .then_with(|| case_folded(left.title()).cmp(&case_folded(right.title())))
+    .then_with(|| left.title().cmp(right.title()))
+    .then_with(|| left.path().cmp(right.path()))
 }
 
 /// Checks that no two records claim the same numeric ID.

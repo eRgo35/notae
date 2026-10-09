@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::{NoteId, PdfFingerprint, RelativePdfPath};
+use crate::{IndexStatus, NoteId, PdfFingerprint, RelativePdfPath};
 use thiserror::Error;
 
 /// Typed failures produced by domain validation.
@@ -397,7 +397,15 @@ impl<'de> Deserialize<'de> for NoteMetadata {
 /// One indexed PDF: where it lives, what it looks like, and its metadata.
 ///
 /// This is the record the index stores and the browsing order sorts, so it
-/// owns the file identity alongside the user-visible metadata.
+/// owns the file identity alongside the user-visible metadata and the
+/// [`IndexStatus`] the indexing pipeline reached.
+///
+/// # Wire form
+///
+/// Serializes as `{"path", "fingerprint", "metadata", "status"}`, with
+/// `status` a snake_case [`IndexStatus`] name. A record without `status`
+/// deserializes to [`IndexStatus::Discovered`], so an older sidecar row still
+/// loads.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexedNote {
     /// Path relative to the library root.
@@ -406,10 +414,14 @@ pub struct IndexedNote {
     fingerprint: PdfFingerprint,
     /// User-visible metadata.
     metadata: NoteMetadata,
+    /// Where the record sits in the indexing pipeline.
+    #[serde(default)]
+    status: IndexStatus,
 }
 
 impl IndexedNote {
-    /// Builds an indexed record.
+    /// Builds an indexed record in the [`IndexStatus::Discovered`] state: the
+    /// file exists but nothing has been read from it yet.
     #[must_use]
     pub const fn new(
         path: RelativePdfPath,
@@ -420,6 +432,7 @@ impl IndexedNote {
             path,
             fingerprint,
             metadata,
+            status: IndexStatus::Discovered,
         }
     }
 
@@ -451,6 +464,30 @@ impl IndexedNote {
     #[must_use]
     pub fn title(&self) -> &str {
         self.metadata.title()
+    }
+
+    /// Returns where the record sits in the indexing pipeline.
+    #[must_use]
+    pub const fn status(&self) -> IndexStatus {
+        self.status
+    }
+
+    /// Sets the pipeline status, leaving path, fingerprint, and metadata — and
+    /// therefore every provenance marker — untouched.
+    pub const fn set_status(&mut self, status: IndexStatus) {
+        self.status = status;
+    }
+
+    /// Returns a copy of this record in the given [`IndexStatus`], for callers
+    /// that update status without holding a mutable reference.
+    #[must_use]
+    pub fn with_status(&self, status: IndexStatus) -> Self {
+        Self {
+            status,
+            path: self.path.clone(),
+            fingerprint: self.fingerprint.clone(),
+            metadata: self.metadata.clone(),
+        }
     }
 }
 

@@ -1,14 +1,29 @@
 //! The filename convention `<ID> - <Title>.pdf` and how it seeds metadata.
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::{DomainError, MetadataOrigin, NoteId, NoteMetadata};
+
+/// Why a name cannot become an indexed note.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum FilenameError {
+    /// The name does not end in `.pdf`.
+    ///
+    /// Covers both a different extension (`notes.txt`) and no extension at all
+    /// (`notes`). Either way the name is not a note filename, whatever its
+    /// stem looks like.
+    #[error("filename does not end in .pdf")]
+    NotPdf,
+}
 
 /// The result of parsing one note filename.
 ///
 /// A filename either follows the convention, carrying a numeric ID and a
 /// title, or it does not, in which case the whole stem becomes the title and
-/// the ID stays unknown.
+/// the ID stays unknown. The type says nothing about validity: use
+/// [`parse_note_filename`] to reject a name that is not a PDF before it can
+/// become a note.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParsedFilename {
     /// The leading numeric ID, when the filename follows the convention.
@@ -62,15 +77,11 @@ impl ParsedFilename {
 /// - The extension must be `.pdf`, matched case-insensitively (`.PDF` works).
 ///   A name with any other extension is not a note filename: it has no ID and
 ///   its stem, or the whole name when there is no extension, becomes the
-///   title.
+///   title. This parse never rejects; use [`is_note_filename`] or
+///   [`parse_note_filename`] when the caller needs to refuse a non-PDF name.
 #[must_use]
 pub fn parse_filename(filename: &str) -> ParsedFilename {
-    let base = final_component(filename);
-    let (stem, is_pdf) = match base.rsplit_once('.') {
-        Some((stem, extension)) => (stem, extension.eq_ignore_ascii_case("pdf")),
-        None => (base, false),
-    };
-    let stem = stem.trim();
+    let (stem, is_pdf) = split_extension(filename);
     if is_pdf
         && let Some((id, title)) = split_id_and_title(stem)
     {
@@ -82,6 +93,53 @@ pub fn parse_filename(filename: &str) -> ParsedFilename {
     ParsedFilename {
         id: None,
         title: stem.to_string(),
+    }
+}
+
+/// Returns whether a name can become an indexed note.
+///
+/// True exactly when the final path component ends in `.pdf`, matched
+/// case-insensitively, so `.PDF` is accepted. A name with another extension or
+/// with no extension at all is not a note filename, whatever its stem looks
+/// like: `12 - Notes.txt` and `12 - Notes` are both rejected.
+#[must_use]
+pub fn is_note_filename(filename: &str) -> bool {
+    split_extension(filename).1
+}
+
+/// Parses a name that is known to be a note filename, refusing anything else.
+///
+/// Unlike [`parse_filename`], this cannot turn a non-PDF or extensionless name
+/// into a note, so a caller that indexes files cannot accidentally index
+/// `notes.txt` as an unnumbered note.
+///
+/// # Errors
+/// Returns [`FilenameError::NotPdf`] when the final path component does not
+/// end in `.pdf`.
+pub fn parse_note_filename(filename: &str) -> Result<ParsedFilename, FilenameError> {
+    let (stem, is_pdf) = split_extension(filename);
+    if !is_pdf {
+        return Err(FilenameError::NotPdf);
+    }
+    Ok(match split_id_and_title(stem) {
+        Some((id, title)) => ParsedFilename {
+            id: Some(id),
+            title: title.to_string(),
+        },
+        None => ParsedFilename {
+            id: None,
+            title: stem.to_string(),
+        },
+    })
+}
+
+/// Splits the final path component into its trimmed stem and whether the
+/// extension is `.pdf`.
+fn split_extension(filename: &str) -> (&str, bool) {
+    let base = final_component(filename);
+    match base.rsplit_once('.') {
+        Some((stem, extension)) => (stem.trim(), extension.eq_ignore_ascii_case("pdf")),
+        None => (base.trim(), false),
     }
 }
 

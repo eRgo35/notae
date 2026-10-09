@@ -3,8 +3,9 @@
 use std::cmp::Ordering;
 
 use notae_domain::{
-    IndexedNote, MetadataField, MetadataOrigin, NoteId, PdfFingerprint, RelativePdfPath,
-    Sha256Digest, compare_library_order, parse_filename, validate_unique_ids,
+    FilenameError, IndexedNote, IndexStatus, MetadataField, MetadataOrigin, NoteId,
+    PdfFingerprint, RelativePdfPath, Sha256Digest, compare_library_order, is_note_filename,
+    parse_filename, parse_note_filename, validate_unique_ids,
 };
 
 fn fingerprint() -> PdfFingerprint {
@@ -240,4 +241,179 @@ fn unique_ids_validate() {
 fn empty_library_validates() {
     let notes: [IndexedNote; 0] = [];
     assert_eq!(validate_unique_ids(notes.iter()), Ok(()));
+}
+
+/// A hyphen directly after the digits is the documented separator, so
+/// `3-Beat Groove.pdf` is note 3 titled `Beat Groove`. Pinned so the outcome is
+/// deliberate rather than a side effect of separator handling.
+#[test]
+fn hyphen_separator_without_spaces_is_an_id() {
+    let parsed = parse_filename("3-Beat Groove.pdf");
+    assert_eq!(parsed.id(), Some(NoteId::new(3)));
+    assert_eq!(parsed.title(), "Beat Groove");
+}
+
+#[test]
+fn note_filename_requires_a_pdf_extension() {
+    assert!(!is_note_filename("12 - Autumn Leaves.txt"));
+    assert!(!is_note_filename("12 - Autumn Leaves"));
+    assert!(!is_note_filename("noextension"));
+    assert!(is_note_filename("12 - Autumn Leaves.pdf"));
+    assert!(is_note_filename("sub/dir/12 - Autumn Leaves.PDF"));
+}
+
+#[test]
+fn parse_note_filename_rejects_non_pdf_names() {
+    assert_eq!(
+        parse_note_filename("12 - Autumn Leaves.txt"),
+        Err(FilenameError::NotPdf)
+    );
+    assert_eq!(
+        parse_note_filename("12 - Autumn Leaves"),
+        Err(FilenameError::NotPdf)
+    );
+    assert_eq!(parse_note_filename("noextension"), Err(FilenameError::NotPdf));
+}
+
+#[test]
+fn parse_note_filename_accepts_pdf_names() {
+    let parsed = parse_note_filename("12 - Autumn Leaves.pdf").expect("pdf");
+    assert_eq!(parsed.id(), Some(NoteId::new(12)));
+    assert_eq!(parsed.title(), "Autumn Leaves");
+}
+
+#[test]
+fn invalid_pdf_name_cannot_become_note_metadata() {
+    let parsed = parse_note_filename("12 - Autumn Leaves.txt").expect_err("not a pdf");
+    assert_eq!(parsed, FilenameError::NotPdf);
+}
+
+/// Equal IDs are only a conflict until they are resolved, so the browsing
+/// order still has to place them deterministically.
+#[test]
+fn duplicate_id_records_are_still_totally_ordered() {
+    let left = note("12 - Autumn Leaves.pdf");
+    let right = note("12 - Winter Wind.pdf");
+    let ordering = compare_library_order(&left, &right);
+    assert_ne!(
+        ordering,
+        Ordering::Equal,
+        "two records sharing ID 12 must not compare equal"
+    );
+    assert_eq!(
+        ordering,
+        compare_library_order(&right, &left).reverse(),
+        "the comparison is antisymmetric"
+    );
+    assert_eq!(ordering, Ordering::Less, "tie broken by title");
+}
+
+#[test]
+fn duplicate_id_and_title_records_sort_by_path() {
+    let left = note("a/12 - Autumn Leaves.pdf");
+    let right = note("b/12 - Autumn Leaves.pdf");
+    assert_eq!(compare_library_order(&left, &right), Ordering::Less);
+    assert_eq!(compare_library_order(&right, &left), Ordering::Greater);
+    assert_eq!(
+        compare_library_order(&left, &left),
+        Ordering::Equal,
+        "a record equals itself"
+    );
+}
+
+#[test]
+fn duplicate_id_records_sort_deterministically() {
+    let mut notes = [
+        note("c/12 - Same.pdf"),
+        note("a/12 - Same.pdf"),
+        note("b/12 - Other.pdf"),
+    ];
+    notes.sort_by(compare_library_order);
+    let paths: Vec<&str> = notes.iter().map(|n| n.path().as_str()).collect();
+    assert_eq!(paths, ["b/12 - Other.pdf", "a/12 - Same.pdf", "c/12 - Same.pdf"]);
+}
+
+fn status_note(filename: &str, status: IndexStatus) -> IndexedNote {
+    let mut note = note(filename);
+    note.set_status(status);
+    note
+}
+
+#[test]
+fn indexed_note_carries_its_index_status() {
+    for status in [
+        IndexStatus::Discovered,
+        IndexStatus::Ready,
+        IndexStatus::OcrPending,
+        IndexStatus::OcrIncomplete,
+        IndexStatus::Stale,
+        IndexStatus::DuplicateIdConflict,
+        IndexStatus::Inaccessible,
+        IndexStatus::InvalidPdf,
+        IndexStatus::ImportMismatch,
+    ] {
+        let note = status_note("12 - Autumn Leaves.pdf", status);
+        assert_eq!(note.status(), status);
+        assert_eq!(note.with_status(status).status(), status);
+    }
+}
+
+#[test]
+fn a_new_indexed_note_is_discovered() {
+    assert_eq!(note("12 - Autumn Leaves.pdf").status(), IndexStatus::Discovered);
+    assert_eq!(
+        IndexedNote::new(
+            RelativePdfPath::new("12 - Autumn Leaves.pdf").expect("valid"),
+            fingerprint(),
+            parse_note_filename("12 - Autumn Leaves.pdf")
+                .expect("pdf")
+                .into_note_metadata()
+                .expect("non-empty title"),
+        )
+        .status(),
+        IndexStatus::Discovered
+    );
+}
+
+#[test]
+fn setting_status_leaves_metadata_untouched() {
+    let original = note("12 - Autumn Leaves.pdf");
+    let updated = original.with_status(IndexStatus::OcrPending);
+    assert_eq!(updated.status(), IndexStatus::OcrPending);
+    assert_eq!(updated.metadata(), original.metadata());
+    assert_eq!(updated.path(), original.path());
+    assert_eq!(updated.fingerprint(), original.fingerprint());
+    assert_eq!(updated.id(), Some(NoteId::new(12)));
+    assert_eq!(
+        updated.metadata().origin_of(MetadataField::Id),
+        MetadataOrigin::FilenameDerived,
+        "status changes must not disturb provenance"
+    );
+    assert_eq!(original.status(), IndexStatus::Discovered);
+}
+
+#[test]
+fn index_status_round_trips_through_json() {
+    let note = status_note("12 - Autumn Leaves.pdf", IndexStatus::DuplicateIdConflict);
+    let json = serde_json::to_value(&note).expect("serializes");
+    assert_eq!(json["status"], "duplicate_id_conflict");
+    assert_eq!(
+        serde_json::from_value::<IndexedNote>(json).expect("deserializes"),
+        note
+    );
+}
+
+#[test]
+fn a_record_without_status_loads_as_discovered() {
+    let note = note("12 - Autumn Leaves.pdf");
+    let mut json = serde_json::to_value(&note).expect("serializes");
+    json.as_object_mut()
+        .expect("object")
+        .remove("status");
+    assert_eq!(
+        serde_json::from_value::<IndexedNote>(json)
+            .expect("deserializes")
+            .status(),
+        IndexStatus::Discovered
+    );
 }

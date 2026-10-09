@@ -27,3 +27,11 @@ pub enum IndexStatus {
     /// An imported sidecar record does not match the local file.
     ImportMismatch,
 }
+
+impl Default for IndexStatus {
+    /// A file that has been seen on disk and not yet read, which is the only
+    /// state a record can be in before the pipeline has observed it.
+    fn default() -> Self {
+        Self::Discovered
+    }
+}
