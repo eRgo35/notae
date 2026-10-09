@@ -2,7 +2,7 @@
 
 **As of:** 2026-10-09
 **Branch:** `main`
-**Last committed commit:** `5d3de0b feat: extract and render Linux PDFs`
+**Last committed commit:** `cd1d3e0 chore: satisfy clippy in the PDF adapter and its fixtures`
 **Remote:** `git@github.com:eRgo35/notae.git`
 
 This document records where the project actually stands so work can resume without re-deriving context. It is a status record, not a design document.
@@ -112,30 +112,18 @@ Committed as `5d3de0b`. Implementation chose `hayro` 0.8 (pure Rust parser and r
 
 Established: `extract_text` returns `Ok(None)` for no usable text layer and `Ok(Some(text))` otherwise, with normalization matching `OcrText::new`; unmappable glyphs are dropped rather than guessed. `RenderedPage` is `pub type RenderedPage = image::GrayImage`, so Task 3's `type OcrImage = image::GrayImage` accepts a rendered page with zero conversion. Default DPI 300, chosen from measurements (150 DPI 11 ms/page, 300 DPI 28 ms/page, 400 DPI 45 ms/page with no measurable accuracy gain).
 
-### Open findings not yet fixed
+### Review findings, now fixed (`b8a4cc4`)
 
-A review raised four issues. **None are fixed. Work on them was interrupted twice and the working tree is mid-edit.**
+A review raised four issues. All four are fixed and covered by committed fixtures and tests (`cd1d3e0` satisfies clippy).
 
-1. **Unbounded DPI reaches the rasterizer.** Any nonzero `u32` is passed to hayro as an `f32` scale. Scaled dimensions convert to `u16`, so an absurd DPI saturates near 65,535 and attempts a multi-gigabyte allocation instead of returning `PdfError`, risking an OOM abort. Needs a maximum dimension and pixel budget validated before `hayro::render`.
-2. **Damaged page streams are silently accepted.** hayro turns a failed content-stream decode into `None` and supplies an empty operation iterator, so a PDF with a valid page tree but a truncated `/Contents` filter is accepted, `extract_text` returns `Ok(None)`, and `render_page` returns a blank image. That routes a damaged file into OCR. Needs stream validation surfaced as `InvalidPdf`, without rejecting valid unusual filters, and keeping encrypted PDFs distinguishable from corrupt ones.
-3. **No PDF header check.** hayro accepts a missing version and its xref fallback scans without requiring a header, so a non-PDF blob containing PDF-like objects can be accepted. Needs an explicit header check; the spec allows the header within the first 1024 bytes and real files carry leading junk.
-4. **Word boundaries encoded by `TJ` positioning are lost.** Same-baseline glyphs are concatenated directly. `[(Notae) 250 (searchable)] TJ` becomes `Notaesearchable`, which directly breaks search for titles and composers. Needs a position or advance based separator with a justified threshold, while retaining explicit spaces.
+1. **Unbounded DPI reached the rasterizer.** Fixed with `MAX_RENDER_DIMENSION = 16_384` (larger than A0 at about 495 DPI) and `MAX_RENDER_PIXELS = 40_000_000` (about A1 at 300 DPI, keeping the RGBA pixmap under roughly 160 MB). Both are validated before `hayro::render`; an over-budget request returns `PdfError::UnusableDpi`, the same condition a zero DPI reports.
+2. **Damaged page streams were silently accepted.** Page content streams are now decoded and validated, surfaced as `PdfError::InvalidPdf` rather than an empty page. A fixture using the ordinary `ASCIIHexDecode` filter confirms valid unusual filters are still accepted, so detection is based on decoding rather than pattern-matching filters.
+3. **No PDF header check.** An explicit `%PDF-` header check now runs before parsing. The header is accepted anywhere in the first 1024 bytes, so real files carrying leading junk are still read, and a fixture covers both the missing-header and leading-junk cases.
+4. **Word boundaries encoded by `TJ` positioning were lost.** Glyph advances in page space now drive word separation using `WORD_GAP_AS_ADVANCE_FRACTION = 0.2`, above intra-word kerning and below a typesetter's word space, with `MAX_BASELINE_JITTER = 1.0` point keeping superscript and subscript on one line. A fixture using `[(Notae) 250 (searchable)] TJ` pins that `Notaesearchable` is now `Notae searchable`, which matters directly because titles and composers must land in the search index as separate words.
 
-### Uncommitted working tree
+### Verification status
 
-```
- M apps/notae-index/tests/fixtures/generate.py
- M apps/notae-index/tests/pdf_fixtures.rs
-?? apps/notae-index/tests/fixtures/damaged-contents.pdf
-?? apps/notae-index/tests/fixtures/hex-contents.pdf
-?? apps/notae-index/tests/fixtures/leading-junk.pdf
-?? apps/notae-index/tests/fixtures/no-header.pdf
-?? apps/notae-index/tests/fixtures/word-spacing.pdf
-```
-
-Tests and fixtures for all four findings exist in the working tree. `pdf.rs` is unmodified, so **the implementation side of the fix is absent while the tests are present**, meaning `cargo test -p notae-index-cli --test pdf_fixtures` is expected to fail on those four. Verify before continuing.
-
-The next step is to finish the `pdf.rs` implementation for these four findings, confirm each test fails without its fix, then commit and pass review.
+`cargo test --workspace` passes 241 tests across 15 suites with zero failures. `cargo clippy --workspace --all-targets -- -D warnings` is clean. Linux Task 2 has **not** yet passed its closeout review; that is the next step along with Linux Task 3.
 
 ## Not started
 
