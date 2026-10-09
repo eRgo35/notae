@@ -315,7 +315,7 @@ fn note_metadata_deserialization_rejects_blank_title() {
 
 #[test]
 fn note_metadata_deserialization_normalizes_tags() {
-    let raw = r#"{"id":null,"title":"Study","composer_or_artist":null,"tags":["  jazz ","big\tband","jazz","","   "]}"#;
+    let raw = r#"{"id":null,"title":"Study","composer_or_artist":null,"tags":["  jazz ","big\tband","jazz","","   "],"provenance":{"id":"unset","title":"unset","composer_or_artist":"unset","tags":"unset"}}"#;
     let meta: NoteMetadata = serde_json::from_str(raw).unwrap();
     assert_eq!(
         meta.tags(),
@@ -347,9 +347,15 @@ fn note_metadata_tracks_provenance_per_field() {
     let mut meta =
         NoteMetadata::new("Autumn Leaves", Some("Duke Ellington".to_string()), vec!["jazz".into()])
             .unwrap();
-    meta.set_id(Some(NoteId::new(12)));
+    // Filename-derived IDs must not look like manual edits, so the import
+    // facing path is the one that takes an explicit origin.
+    meta.assign_id(Some(NoteId::new(12)), MetadataOrigin::FilenameDerived);
 
-    for field in MetadataField::ALL {
+    assert_eq!(
+        meta.origin_of(MetadataField::Id),
+        MetadataOrigin::FilenameDerived
+    );
+    for field in MetadataField::ALL.into_iter().filter(|f| *f != MetadataField::Id) {
         assert_eq!(meta.origin_of(field), MetadataOrigin::Unset);
     }
 
@@ -362,7 +368,10 @@ fn note_metadata_tracks_provenance_per_field() {
         meta.origin_of(MetadataField::ComposerOrArtist),
         MetadataOrigin::Unset
     );
-    assert_eq!(meta.origin_of(MetadataField::Id), MetadataOrigin::Unset);
+    assert_eq!(
+        meta.origin_of(MetadataField::Id),
+        MetadataOrigin::FilenameDerived
+    );
 
     // A tag edit marks only the tags field.
     meta.add_tag("swing");
@@ -487,4 +496,170 @@ fn epoch_timestamp_round_trips_across_the_epoch() {
 fn epoch_timestamp_rejects_out_of_range_nanos() {
     assert!(EpochTimestamp::new(-1, 1_000_000_000).is_none());
     assert!(EpochTimestamp::from_system_time(UNIX_EPOCH - Duration::from_nanos(1)).is_some());
+}
+
+// --- Follow-up 1: a user ID edit is manual, an import assignment is not ---
+
+#[test]
+fn user_id_edit_marks_manual_and_import_assignment_does_not() {
+    let mut meta = NoteMetadata::new("Autumn Leaves", None::<String>, Vec::new()).unwrap();
+
+    // The user-facing setter always records a manual edit, including a clear.
+    meta.set_id(Some(NoteId::new(12)));
+    assert_eq!(meta.id(), Some(NoteId::new(12)));
+    assert_eq!(meta.origin_of(MetadataField::Id), MetadataOrigin::Manual);
+
+    meta.set_id(None);
+    assert_eq!(meta.id(), None);
+    assert_eq!(
+        meta.origin_of(MetadataField::Id),
+        MetadataOrigin::Manual,
+        "clearing the ID is a manual edit and must stay authoritative"
+    );
+
+    // The filename/import-facing setter records the origin it is given.
+    meta.assign_id(Some(NoteId::new(12)), MetadataOrigin::FilenameDerived);
+    assert_eq!(
+        meta.origin_of(MetadataField::Id),
+        MetadataOrigin::FilenameDerived
+    );
+    meta.assign_id(None, MetadataOrigin::PcImported);
+    assert_eq!(meta.origin_of(MetadataField::Id), MetadataOrigin::PcImported);
+    meta.assign_id(Some(NoteId::new(3)), MetadataOrigin::Manual);
+    assert_eq!(meta.origin_of(MetadataField::Id), MetadataOrigin::Manual);
+}
+
+// --- Follow-up 3: clearing an optional field is still a manual edit -------
+
+#[test]
+fn clearing_optional_fields_keeps_the_manual_marker() {
+    let mut meta =
+        NoteMetadata::new("Autumn Leaves", Some("Duke Ellington".to_string()), vec![]).unwrap();
+
+    meta.set_composer_or_artist(Some("Duke Ellington".to_string()));
+    assert_eq!(
+        meta.origin_of(MetadataField::ComposerOrArtist),
+        MetadataOrigin::Manual
+    );
+    meta.set_composer_or_artist(None);
+    assert_eq!(meta.composer_or_artist(), None);
+    assert_eq!(
+        meta.origin_of(MetadataField::ComposerOrArtist),
+        MetadataOrigin::Manual,
+        "a composer removed by the user must not be refilled by an import"
+    );
+
+    // Non-manual clearing exists for import and initialization paths only.
+    meta.assign_composer_or_artist(None, MetadataOrigin::PcImported);
+    assert_eq!(
+        meta.origin_of(MetadataField::ComposerOrArtist),
+        MetadataOrigin::PcImported
+    );
+
+    // Emptying the tag set is a manual edit too.
+    let mut tagged = NoteMetadata::new("Etude", None::<String>, vec!["jazz".into()]).unwrap();
+    tagged.set_tags(Vec::new());
+    assert!(tagged.tags().is_empty());
+    assert_eq!(meta_origin_of_tags(&tagged), MetadataOrigin::Manual);
+
+    // The import path applies the given origin, even when the value is empty.
+    let mut imported = NoteMetadata::new("Etude", None::<String>, vec!["jazz".into()]).unwrap();
+    imported.assign_tags(Vec::new(), MetadataOrigin::PcImported);
+    assert!(imported.tags().is_empty());
+    assert_eq!(
+        imported.origin_of(MetadataField::Tags),
+        MetadataOrigin::PcImported
+    );
+}
+
+fn meta_origin_of_tags(meta: &NoteMetadata) -> MetadataOrigin {
+    meta.origin_of(MetadataField::Tags)
+}
+
+// --- Follow-up 2: provenance is required, or migrated from `origin` -------
+
+#[test]
+fn deserialization_requires_provenance_or_a_legacy_origin() {
+    // No provenance object and no legacy scalar: the record cannot be shown to
+    // hold no manual edits, so it must not be accepted.
+    for raw in [
+        r#"{"title":"Study"}"#,
+        r#"{"id":7,"title":"Study","composer_or_artist":null,"tags":[]}"#,
+    ] {
+        assert!(
+            serde_json::from_str::<NoteMetadata>(raw).is_err(),
+            "{raw} must be rejected: absent provenance looks like no manual edits"
+        );
+    }
+}
+
+#[test]
+fn legacy_scalar_origin_is_migrated_to_every_field() {
+    // Legacy `origin: "manual"` means the whole record was hand-edited, so
+    // every field must stay authoritative over an import.
+    let raw = r#"{"id":7,"title":"Study","composer_or_artist":null,"tags":[],"origin":"manual"}"#;
+    let meta: NoteMetadata = serde_json::from_str(raw).unwrap();
+    for field in MetadataField::ALL {
+        assert_eq!(
+            meta.origin_of(field),
+            MetadataOrigin::Manual,
+            "legacy origin must migrate {field:?}"
+        );
+    }
+    assert_eq!(meta.id(), Some(NoteId::new(7)));
+
+    // The other legacy scalars migrate uniformly as well.
+    for (wire, expected) in [
+        ("pc_imported", MetadataOrigin::PcImported),
+        ("filename_derived", MetadataOrigin::FilenameDerived),
+        ("unset", MetadataOrigin::Unset),
+    ] {
+        let raw = format!(r#"{{"title":"Study","origin":"{wire}"}}"#);
+        let meta: NoteMetadata = serde_json::from_str(&raw).unwrap();
+        for field in MetadataField::ALL {
+            assert_eq!(meta.origin_of(field), expected, "legacy {wire} must migrate {field:?}");
+        }
+    }
+
+    // The explicit per-field object wins over the legacy scalar, so a modern
+    // record mixed with a stale scalar keeps its real provenance.
+    let raw = r#"{"title":"Study","origin":"manual","provenance":{"id":"manual","title":"pc_imported","composer_or_artist":"unset","tags":"unset"}}"#;
+    let meta: NoteMetadata = serde_json::from_str(raw).unwrap();
+    assert_eq!(meta.origin_of(MetadataField::Id), MetadataOrigin::Manual);
+    assert_eq!(
+        meta.origin_of(MetadataField::Title),
+        MetadataOrigin::PcImported
+    );
+    assert_eq!(
+        meta.origin_of(MetadataField::ComposerOrArtist),
+        MetadataOrigin::Unset
+    );
+}
+
+// --- Follow-up 4: extreme pre-epoch instants return `None` ----------------
+
+#[test]
+fn epoch_timestamp_returns_none_for_unrepresentable_pre_epoch_instants() {
+    // `UNIX_EPOCH - (i64::MAX secs, 1 ns)` is the last instant the platform
+    // can express before the epoch, and it is one second further back than
+    // `EpochTimestamp` can represent in `i64` seconds.
+    let extreme = UNIX_EPOCH.checked_sub(Duration::new(i64::MAX as u64, 1)).unwrap();
+    assert!(
+        EpochTimestamp::from_system_time(extreme).is_none(),
+        "an unrepresentable instant must return None, not panic"
+    );
+    assert!(
+        PdfFingerprint::from_system_time(digest(3), 4096, Some(extreme)).is_none(),
+        "a fingerprint must not panic on any filesystem timestamp"
+    );
+
+    // The representable boundary one nanosecond later still converts.
+    let representable = extreme + Duration::from_nanos(1);
+    let stamp = EpochTimestamp::from_system_time(representable).unwrap();
+    assert_eq!(stamp.seconds(), -i64::MAX);
+    assert_eq!(stamp.subsec_nanos(), 0);
+    assert_eq!(stamp.to_system_time(), Some(representable));
+    assert!(
+        PdfFingerprint::from_system_time(digest(4), 4096, Some(representable)).is_some()
+    );
 }
