@@ -2,7 +2,7 @@
 
 **As of:** 2026-10-09
 **Branch:** `main`
-**Last committed commit:** `cd1d3e0 chore: satisfy clippy in the PDF adapter and its fixtures`
+**Last committed commit:** `63ef8a7 docs: update implementation state after Task 2 fix`
 **Remote:** `git@github.com:eRgo35/notae.git`
 
 This document records where the project actually stands so work can resume without re-deriving context. It is a status record, not a design document.
@@ -106,7 +106,7 @@ Contracts established across four review rounds:
 - Exit codes: `0` for `--help`, `--version`, and any completed run including one with isolated per-file failures; non-zero only when the command cannot produce a report.
 - Documented residual window: the stat checks are not atomic with the operations they guard. This is a defence against silent redirection, not a privilege boundary, appropriate for a user indexing their own library.
 
-## In progress: Linux Task 2 - PDF adapter
+## Complete: Linux Task 2 - PDF adapter
 
 Committed as `5d3de0b`. Implementation chose `hayro` 0.8 (pure Rust parser and rasterizer) plus `image` 0.25, after establishing that the plan's `pdfium-render` route cannot work here (no `libpdfium`, loaded at runtime) and that `pdf-extract` panicked on 48 of 7,385 damaged PDFs in a fuzz sweep versus 0 for hayro.
 
@@ -123,7 +123,15 @@ A review raised four issues. All four are fixed and covered by committed fixture
 
 ### Verification status
 
-`cargo test --workspace` passes 241 tests across 15 suites with zero failures. `cargo clippy --workspace --all-targets -- -D warnings` is clean. Linux Task 2 has **not** yet passed its closeout review; that is the next step along with Linux Task 3.
+`cargo test --workspace` passes 241 tests across 15 suites with zero failures. `cargo clippy --workspace --all-targets -- -D warnings` is clean. Task 2 passed its fixture review round and the four findings are fixed and covered by committed tests; it has not had a separate closeout review pass.
+
+## Stop point
+
+Work was stopped deliberately by the user after Task 2 was committed and pushed. **The tree is clean and `main` matches `origin/main` at the state below.** Nothing is half-written, and no partial work needs salvaging.
+
+Task 3 (`notae-ocr`) was dispatched and then cancelled before it produced any files. `crates/` contains only `notae-domain` and `notae-index`.
+
+To resume, start with Linux Task 2's closeout review, then Task 3.
 
 ## Not started
 
@@ -135,7 +143,9 @@ A review raised four issues. All four are fixed and covered by committed fixture
 ## Environment notes
 
 - Tesseract 5.5.3 is installed at `/data/data/com.termux/files/usr/bin/tesseract`.
-- Tessdata lives at `/data/data/com.termux/files/usr/share/tessdata` and contains **only `eng`**. Polish and Latin packs are not installed. Task 3 needs them; install before claiming multilingual OCR works.
+- Tessdata lives at `/data/data/com.termux/files/usr/share/tessdata` and now contains `eng`, `pol`, and `lat`. Termux ships no separate language packages, so `pol.traineddata` and `lat.traineddata` were fetched from the `tessdata_fast` repository into that system directory. They are deliberately **not** committed to this repository. A different machine will need them installed before multilingual OCR works.
+- The Polish pack is genuinely required, not decorative: a probe confirmed `pol` reads `Zażółć gęślą jaźń` and `Święty Jerzy` correctly, while `eng` alone degrades them to `Zaz6t¢ gesdla jazn` and `Swiety Jerzy`.
+- DejaVu fonts are at `/data/data/com.termux/files/usr/share/fonts/TTF/` and work for generating deterministic OCR test fixtures.
 - No `pdfium` binary and no `libpdfium` in the linker cache. `pdfium-render` cannot be used.
 - Workspace forbids `unsafe`. No crate in this repository uses it, and introducing it needs explicit agreement.
 - `rustc` and `cargo` are 1.99.0. The environment is aarch64 Android/Termux.
@@ -154,4 +164,4 @@ For Linux Task 1 behavior, the binary must be exercised directly against real fi
 
 Work proceeds by subagent-driven development: a fresh implementer per task, then a fresh reviewer, then a fix round, then a closeout review. Each task in this project has needed two to four fix rounds. Findings have consistently been real rather than stylistic, so the review gate is doing work; do not bypass it.
 
-Two implementation rounds were interrupted by process exits mid-task. After any interruption, check `git status` and `git diff` before re-dispatching, because an interrupted agent may have left partial edits or reverted work in place.
+Two implementation rounds were interrupted by process exits mid-task. One left its work in a stash and appeared to have reverted `pdf.rs`; the other left tests and fixtures committed while the implementation was absent. After any interruption, check `git status`, `git diff`, **and `git stash list`** before re-dispatching, because an interrupted agent may have stashed, partially edited, or reverted work in place.
