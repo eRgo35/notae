@@ -7,7 +7,7 @@ use notae_domain::{
     EpochTimestamp, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId,
     NoteMetadata, PdfFingerprint, RelativePdfPath, Sha256Digest,
 };
-use notae_index::{IndexError, IndexStore, OcrText, SCHEMA_VERSION};
+use notae_index::{IndexError, IndexStore, OcrText, ReindexOutcome, SCHEMA_VERSION};
 
 fn digest(seed: u8) -> Sha256Digest {
     Sha256Digest::from_bytes([seed; 32])
@@ -529,6 +529,289 @@ fn list_all_uses_the_library_order() {
     let titles: Vec<&str> = listed.iter().map(IndexedNote::title).collect();
     assert_eq!(titles[2], "Alpha", "unnumbered records sort by title");
     assert_eq!(titles[3], "beta");
+}
+
+#[test]
+fn reindexing_changed_content_at_a_known_path_keeps_one_record() {
+    let store = IndexStore::open(":memory:").expect("open in memory");
+    let mut first = note("a.pdf", 1, Some(NoteId::new(4)), "Prelude", None, &[]);
+    first.set_status(IndexStatus::Ready);
+    store
+        .upsert_note(&first)
+        .expect("insert the original content");
+    store
+        .set_ocr(&digest(1), &OcrText::new("printed text of the first revision"))
+        .expect("ocr the original");
+
+    let mut second = note("a.pdf", 2, Some(NoteId::new(4)), "Prelude", None, &[]);
+    second.set_status(IndexStatus::OcrPending);
+    let outcome = store
+        .reindex_note(&second)
+        .expect("reindexing changed content at a known path");
+
+    assert_eq!(
+        outcome,
+        ReindexOutcome::Replaced {
+            previous: digest(1),
+            duplicate_at: None,
+        },
+        "a same-path content change is a replacement, not a move"
+    );
+    let notes = store.list_all().expect("list");
+    assert_eq!(notes.len(), 1, "the changed file keeps exactly one record");
+    assert_eq!(
+        notes[0].fingerprint().sha256(),
+        digest(2),
+        "the record must carry the new fingerprint"
+    );
+    assert_eq!(notes[0].id(), Some(NoteId::new(4)), "metadata is retained");
+    assert_eq!(notes[0].title(), "Prelude");
+    assert_eq!(notes[0].status(), IndexStatus::OcrPending);
+    assert!(
+        store
+            .get_by_hash(&digest(1))
+            .expect("lookup")
+            .is_none(),
+        "the stale fingerprint must not survive"
+    );
+    assert_eq!(
+        store.ocr_text(&digest(2)).expect("read ocr"),
+        Some(OcrText::new("")),
+        "recognized text of the replaced content does not describe the new bytes"
+    );
+    assert!(
+        store
+            .search("printed", 10)
+            .expect("search")
+            .is_empty(),
+        "the derived index must not keep the replaced content"
+    );
+    assert_eq!(
+        store
+            .search("Prelude", 10)
+            .expect("search")
+            .first()
+            .map(|hit| hit.note.fingerprint().sha256()),
+        Some(digest(2)),
+        "the derived index must point at the new content"
+    );
+}
+
+#[test]
+fn reindexing_distinguishes_a_move_from_a_content_change() {
+    let store = IndexStore::open(":memory:").expect("open in memory");
+    store
+        .upsert_note(&note(
+            "old/12 - Autumn Leaves.pdf",
+            5,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+            None,
+            &[],
+        ))
+        .expect("insert");
+    store
+        .upsert_note(&note("b.pdf", 6, Some(NoteId::new(13)), "B", None, &[]))
+        .expect("insert");
+
+    assert_eq!(
+        store
+            .reindex_note(&note(
+                "new/12 - Autumn Leaves.pdf",
+                5,
+                Some(NoteId::new(12)),
+                "Autumn Leaves",
+                None,
+                &[],
+            ))
+            .expect("same hash at a new path"),
+        ReindexOutcome::Moved {
+            from: path("old/12 - Autumn Leaves.pdf"),
+        },
+        "the same content at a new path is a move"
+    );
+    assert_eq!(
+        store
+            .reindex_note(&note(
+                "b.pdf",
+                7,
+                Some(NoteId::new(13)),
+                "B",
+                None,
+                &[],
+            ))
+            .expect("changed content at a known path"),
+        ReindexOutcome::Replaced { previous: digest(6), duplicate_at: None },
+        "changed content at a known path is a replacement"
+    );
+    assert_eq!(
+        store
+            .reindex_note(&note(
+                "new/12 - Autumn Leaves.pdf",
+                5,
+                Some(NoteId::new(12)),
+                "Autumn Leaves",
+                None,
+                &[],
+            ))
+            .expect("rescanning an unchanged file"),
+        ReindexOutcome::Unchanged,
+        "an unchanged file is not a move and not a replacement"
+    );
+    assert_eq!(
+        store
+            .reindex_note(&note("c.pdf", 8, Some(NoteId::new(14)), "C", None, &[]))
+            .expect("a new file"),
+        ReindexOutcome::Inserted
+    );
+
+    let notes = store.list_all().expect("list");
+    assert_eq!(notes.len(), 3);
+    assert_eq!(notes[0].path(), &path("new/12 - Autumn Leaves.pdf"));
+    assert_eq!(notes[0].fingerprint().sha256(), digest(5));
+    assert_eq!(notes[1].fingerprint().sha256(), digest(7));
+    assert_eq!(notes[2].fingerprint().sha256(), digest(8));
+}
+
+#[test]
+fn reindexing_content_that_lives_at_another_path_collapses_the_duplicate() {
+    let store = IndexStore::open(":memory:").expect("open in memory");
+    store
+        .upsert_note_with_ocr(
+            &note("first.pdf", 9, Some(NoteId::new(21)), "Copy", None, &[]),
+            Some(&OcrText::new("shared content")),
+        )
+        .expect("insert");
+    store
+        .upsert_note(&note("second.pdf", 10, Some(NoteId::new(22)), "Other", None, &[]))
+        .expect("insert");
+
+    let outcome = store
+        .reindex_note(&note(
+            "second.pdf",
+            9,
+            Some(NoteId::new(22)),
+            "Copy",
+            None,
+            &[],
+        ))
+        .expect("the new content is already indexed elsewhere");
+
+    assert_eq!(
+        outcome,
+        ReindexOutcome::Replaced {
+            previous: digest(10),
+            duplicate_at: Some(path("first.pdf")),
+        },
+        "the record of the path being written stays and takes the new fingerprint"
+    );
+    let notes = store.list_all().expect("list");
+    assert_eq!(notes.len(), 1, "one record per content hash");
+    assert_eq!(notes[0].path(), &path("second.pdf"));
+    assert_eq!(notes[0].fingerprint().sha256(), digest(9));
+    assert_eq!(notes[0].id(), Some(NoteId::new(22)));
+    assert_eq!(
+        store.ocr_text(&digest(9)).expect("read ocr"),
+        Some(OcrText::new("shared content")),
+        "text recognized for the content is inherited by whichever path holds it"
+    );
+}
+
+#[test]
+fn a_duplicate_id_is_still_refused_after_a_same_path_replacement() {
+    let store = IndexStore::open(":memory:").expect("open in memory");
+    store
+        .upsert_note(&note("a.pdf", 1, Some(NoteId::new(9)), "First", None, &[]))
+        .expect("first record claims id 9");
+    store
+        .reindex_note(&note(
+            "a.pdf",
+            2,
+            Some(NoteId::new(9)),
+            "First, revised",
+            None,
+            &[],
+        ))
+        .expect("reindex the changed file");
+
+    let error = store
+        .reindex_note(&note(
+            "b.pdf",
+            3,
+            Some(NoteId::new(9)),
+            "Second",
+            None,
+            &[],
+        ))
+        .expect_err("a contested id must be refused");
+
+    match error {
+        IndexError::DuplicateNoteId(id) => assert_eq!(id, NoteId::new(9)),
+        other => panic!("unexpected error: {other}"),
+    }
+    let notes = store.list_all().expect("list");
+    assert_eq!(notes.len(), 1, "the rejected record must not be stored");
+    assert_eq!(
+        notes[0].fingerprint().sha256(),
+        digest(2),
+        "the replacement survives the refused write"
+    );
+}
+
+#[test]
+fn opening_a_database_that_claims_the_version_without_the_schema_is_refused() {
+    let file = temp_db("hollow");
+    let conn = rusqlite::Connection::open(&file).expect("create raw");
+    conn.execute_batch(
+        "CREATE TABLE schema_migrations (
+             version INTEGER PRIMARY KEY,
+             applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+         );
+         INSERT INTO schema_migrations (version) VALUES (1);",
+    )
+    .expect("seed the bookkeeping only");
+    drop(conn);
+
+    let error = IndexStore::open(&file)
+        .expect_err("a version row without the schema it names must not be trusted");
+    match error {
+        IndexError::IncompleteSchema { version, ref missing } => {
+            assert_eq!(version, SCHEMA_VERSION);
+            assert!(
+                missing.contains("notes") && missing.contains("notes_fts"),
+                "the missing objects must be named: {missing}"
+            );
+        }
+        other => panic!("unexpected error: {other}"),
+    }
+    let _ = std::fs::remove_file(&file);
+}
+
+#[test]
+fn a_failed_migration_leaves_the_database_unchanged() {
+    let file = temp_db("failed-migration");
+    let conn = rusqlite::Connection::open(&file).expect("create raw");
+    conn.execute_batch("CREATE TABLE notes (unrelated TEXT);")
+        .expect("an incompatible table blocks the initial migration");
+    drop(conn);
+
+    IndexStore::open(&file).expect_err("the initial migration must fail");
+
+    let conn = rusqlite::Connection::open(&file).expect("reopen raw");
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+        .expect("prepare")
+        .query_map([], |row| row.get(0))
+        .expect("query")
+        .collect::<Result<Vec<String>, _>>()
+        .expect("rows");
+    assert_eq!(
+        tables,
+        vec!["notes".to_owned()],
+        "a failed migration must leave no bookkeeping and no partial schema"
+    );
+    drop(conn);
+    let _ = std::fs::remove_file(&file);
 }
 
 #[test]

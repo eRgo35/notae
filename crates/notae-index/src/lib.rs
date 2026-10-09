@@ -14,14 +14,24 @@
 //!   rather than a convention.
 //! - `notes_fts` — an FTS5 index over note ID, title, composer/artist, tags,
 //!   filename, and OCR text, sharing row identifiers with `notes`.
-//! - `schema_migrations` — the versions applied to this database.
+//! - `schema_migrations` — the versions applied to this database. A recorded
+//!   version is verified against the objects it names when the database is
+//!   opened, and the table itself is created inside the migration transaction,
+//!   so a failed migration leaves no trace.
 //!
 //! # OCR text
 //!
 //! OCR text lives in its own [`OcrText`] value beside the note, written through
-//! [`IndexStore::upsert_note_with_ocr`] or replaced later with
+//! [`IndexStore::reindex_note_with_ocr`] or replaced later with
 //! [`IndexStore::set_ocr`]. See [`OcrText`] for why it is not part of
 //! `IndexedNote`.
+//!
+//! # Writing records
+//!
+//! [`IndexStore::reindex_note`] is the write a rescan uses. It resolves the two
+//! unique keys a record has — content hash and path — and reports which of the
+//! four resulting situations it wrote, as a [`ReindexOutcome`], so a caller
+//! never has to compare rows to tell a moved file from a changed one.
 
 mod schema;
 mod search;
@@ -29,4 +39,4 @@ mod store;
 
 pub use crate::schema::{MIGRATIONS, Migration, SCHEMA_VERSION};
 pub use crate::search::SearchHit;
-pub use crate::store::{IndexError, IndexStore, OcrText};
+pub use crate::store::{IndexError, IndexStore, OcrText, ReindexOutcome};
