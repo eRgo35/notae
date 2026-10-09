@@ -56,9 +56,11 @@
 //! [`SidecarWriter`] turns an index into a portable, versioned manifest that the
 //! Linux CLI writes beside its SQLite payload, and [`SidecarImporter`] brings
 //! one into an existing library. [`SidecarImporter::preview`] is read-only and
-//! classifies every entry as new, changed, unchanged, or a hash mismatch, and
-//! reports missing records, OCR availability, duplicate-ID conflicts, and the
-//! metadata that is preserved locally versus proposed by the sidecar.
+//! classifies every entry as new, changed, unchanged, absent, unreadable, or a
+//! hash mismatch — against the files in the library root, read through a
+//! [`PdfCatalog`], not against what the index last fingerprinted — and reports
+//! missing records, OCR availability, duplicate-ID conflicts, and the metadata
+//! that is preserved locally versus proposed by the sidecar.
 //! [`SidecarImporter::apply`] performs only what the user confirmed.
 //! [`SidecarManifest::validate`] runs before any mutation, so a malformed or
 //! unsupported sidecar leaves the library untouched.

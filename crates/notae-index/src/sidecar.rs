@@ -11,27 +11,38 @@
 //!
 //! Each [`SidecarEntry`] carries one indexed PDF: where it lives, the SHA-256
 //! fingerprint of its bytes, the note metadata with its per-field provenance,
-//! and the OCR text the PC recognized, if any. Nothing else is exported — no
-//! row identifiers, no pipeline bookkeeping — because the receiving app owns
-//! its own database and re-derives everything it needs.
+//! the pipeline [`IndexStatus`] the PC left the record in, and the OCR text the
+//! PC recognized, if any. Nothing else is exported — no row identifiers — because
+//! the receiving app owns its own database and re-derives everything else it
+//! needs.
 //!
 //! # What the manifest deliberately does not carry
 //!
 //! The manifest never claims that the receiving library matches it. It is a
-//! proposal: the receiving app compares each entry against what it has indexed
-//! and reports the difference, which is what [`crate::SidecarImporter`] does.
+//! proposal: the receiving app compares each entry against the files it actually
+//! has and reports the difference, which is what [`crate::SidecarImporter`]
+//! does. The manifest also carries no evidence about the receiving library's
+//! bytes, so the comparison has to be made against a
+//! [`PdfCatalog`](crate::PdfCatalog) rather than against the manifest alone.
+//!
+//! # Strictness
+//!
+//! The wire structs reject unknown fields and require `schema_version`. A
+//! producer and a consumer that do not agree must find out before anything is
+//! imported, not by silently dropping the fields the other side invented.
 
 use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::Path;
 
 use notae_domain::{
-    EpochTimestamp, FieldProvenance, IndexedNote, NoteMetadata, PdfFingerprint, RelativePdfPath,
-    Sha256Digest,
+    EpochTimestamp, FieldProvenance, IndexStatus, IndexedNote, NoteMetadata, PdfFingerprint,
+    RelativePdfPath, Sha256Digest,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::reconcile::CatalogError;
 use crate::{IndexError, IndexStore, OcrText};
 
 /// Version of the sidecar manifest this build writes and accepts.
@@ -39,7 +50,13 @@ use crate::{IndexError, IndexStore, OcrText};
 /// The version is part of the contract: a manifest written by another build
 /// with a different version is rejected rather than guessed at, because an
 /// unrecognized layout would otherwise import as silently wrong data.
-pub const SIDECAR_SCHEMA_VERSION: u32 = 1;
+///
+/// Version 2 added the required per-entry `status`, made `schema_version`
+/// required, and started rejecting unknown fields. Version 1 is not accepted:
+/// its entries carry no status, so a record the PC left in
+/// [`IndexStatus::DuplicateIdConflict`] would arrive on the phone
+/// indistinguishable from a free unnumbered one.
+pub const SIDECAR_SCHEMA_VERSION: u32 = 2;
 
 /// Failures produced by reading, writing, or importing a sidecar.
 ///
@@ -82,6 +99,12 @@ pub enum SidecarError {
     /// The local index could not be read or written.
     #[error(transparent)]
     Store(#[from] IndexError),
+    /// The library root could not be enumerated at all.
+    ///
+    /// Without a catalog there are no hashes to verify the sidecar against, so
+    /// this stops the import rather than letting an unverified entry through.
+    #[error(transparent)]
+    Catalog(#[from] CatalogError),
 }
 
 /// OCR text as it crosses the sidecar boundary.
@@ -91,6 +114,7 @@ pub enum SidecarError {
 /// separate wire type means the sidecar format cannot change just because the
 /// in-memory representation does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SidecarOcr {
     /// Normalized recognized text.
     text: String,
@@ -151,6 +175,7 @@ impl From<&SidecarOcr> for OcrText {
 ///   "relative_path": "12 - Autumn Leaves.pdf",
 ///   "fingerprint": {"sha256": "…", "byte_len": 1024},
 ///   "metadata": {"id": 12, "title": "Autumn Leaves", "provenance": {…}},
+///   "status": "duplicate_id_conflict",
 ///   "ocr": {"text": "…", "language": "eng"}
 /// }
 /// ```
@@ -159,7 +184,20 @@ impl From<&SidecarOcr> for OcrText {
 /// [`NoteMetadata`] refuses to deserialize without one, so a manifest cannot
 /// smuggle in a record whose manually edited fields are indistinguishable from
 /// fields that were never set.
+///
+/// `status` is the PC's own [`IndexStatus`] for the record, carried verbatim.
+/// It is what makes a *withheld* ID legible: a record the PC left in
+/// [`DuplicateIdConflict`](IndexStatus::DuplicateIdConflict) was written with
+/// no note ID at all, because two records claimed that number. Without this
+/// field the receiving app invents a status from whether OCR text came with
+/// the entry, and a contested record with no number becomes indistinguishable
+/// from a free unnumbered one. It also round-trips the condition a record was
+/// left in by a rescan that could not read or parse it
+/// ([`Inaccessible`](IndexStatus::Inaccessible) /
+/// [`InvalidPdf`](IndexStatus::InvalidPdf)), which the conflict marker must not
+/// replace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SidecarEntry {
     /// Path relative to the library root.
     relative_path: RelativePdfPath,
@@ -167,6 +205,8 @@ pub struct SidecarEntry {
     fingerprint: PdfFingerprint,
     /// Metadata, including per-field provenance.
     metadata: NoteMetadata,
+    /// Where the record sat in the PC's pipeline.
+    status: IndexStatus,
     /// OCR text recognized on the PC, when there is any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     ocr: Option<SidecarOcr>,
@@ -189,6 +229,7 @@ impl SidecarEntry {
             relative_path: note.path().clone(),
             fingerprint: note.fingerprint().clone(),
             metadata: note.metadata().clone(),
+            status: note.status(),
             ocr: ocr
                 .filter(|ocr| !ocr.text().is_empty())
                 .map(SidecarOcr::from_ocr),
@@ -225,6 +266,17 @@ impl SidecarEntry {
         self.ocr.as_ref()
     }
 
+    /// Returns where the record sat in the PC's pipeline.
+    ///
+    /// This is the PC's own status, not the receiving app's: a record the PC
+    /// could not read keeps [`IndexStatus::InvalidPdf`] here, and a record it
+    /// left in [`IndexStatus::DuplicateIdConflict`] is one whose note ID was
+    /// withheld because two records claimed it.
+    #[must_use]
+    pub const fn status(&self) -> IndexStatus {
+        self.status
+    }
+
     /// Returns the OCR text as stored text, when the entry carries any.
     #[must_use]
     pub fn ocr_text(&self) -> Option<OcrText> {
@@ -233,10 +285,9 @@ impl SidecarEntry {
 
     /// Rebuilds the indexed record this entry describes.
     ///
-    /// The status is not part of the sidecar: it describes the *receiving*
-    /// app's pipeline, not the PC's, and is decided when the entry is
-    /// classified. The rebuilt record therefore starts
-    /// [`notae_domain::IndexStatus::Discovered`].
+    /// The record takes the entry's [`status`](Self::status), so a conflict or
+    /// a condition the PC recorded survives the crossing instead of being
+    /// rebuilt as [`IndexStatus::Discovered`].
     #[must_use]
     pub fn to_note(&self) -> IndexedNote {
         IndexedNote::new(
@@ -244,6 +295,7 @@ impl SidecarEntry {
             self.fingerprint.clone(),
             self.metadata.clone(),
         )
+        .with_status(self.status)
     }
 }
 
@@ -254,7 +306,7 @@ impl SidecarEntry {
 ///
 /// ```json
 /// {
-///   "schema_version": 1,
+///   "schema_version": 2,
 ///   "generated_at": {"secs": 1700000000, "nanos": 0},
 ///   "tool_version": "notae-index 0.1.0",
 ///   "entries": [ … ]
@@ -265,9 +317,14 @@ impl SidecarEntry {
 /// library produce byte-identical manifests apart from `generated_at`. That is
 /// what makes a sidecar reviewable as a diff.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SidecarManifest {
     /// Version of this manifest's shape.
-    #[serde(default = "current_schema_version")]
+    ///
+    /// Required. A manifest that omits it has not declared which contract it
+    /// was written to, and reading it as the current version would be a guess:
+    /// the field is the one thing that tells a producer and a consumer whether
+    /// they agree, so a manifest without it is refused rather than assumed.
     schema_version: u32,
     /// When the PC run that produced this manifest finished.
     generated_at: EpochTimestamp,
@@ -275,12 +332,6 @@ pub struct SidecarManifest {
     tool_version: String,
     /// One entry per indexed PDF.
     entries: Vec<SidecarEntry>,
-}
-
-/// The manifest version this build writes, used as the default when a manifest
-/// omits the field.
-const fn current_schema_version() -> u32 {
-    SIDECAR_SCHEMA_VERSION
 }
 
 impl SidecarManifest {
