@@ -6,16 +6,25 @@
 //!
 //! # The library root boundary
 //!
-//! Two rules keep a run inside the root it was given.
+//! Three rules keep a run inside the root it was given.
 //!
-//! * **Symbolic links are never followed.** A symlinked file, including one
-//!   that resolves to a target still inside the root, is skipped and reported
-//!   as a [`CatalogFailure`]; a symlinked directory is not walked. Skipping
-//!   unconditionally — rather than canonicalising the target and comparing it
-//!   with the canonical root — is what makes the guarantee hold: the link is
-//!   never opened, so no bytes from outside the root can be read even if the
-//!   link is retargeted between the check and the read, and a symlink loop
-//!   terminates because the walk never follows a link in the first place.
+//! * **Symbolic links are never followed, including at the root.** A symlinked
+//!   file, including one that resolves to a target still inside the root, is
+//!   skipped and reported as a [`CatalogFailure`]; a symlinked directory is not
+//!   walked. Skipping unconditionally — rather than canonicalising the target
+//!   and comparing it with the canonical root — is what makes the guarantee
+//!   hold: the link is never opened, so no bytes from outside the root can be
+//!   read even if the link is retargeted between the check and the read, and a
+//!   symlink loop terminates because the walk never follows a link in the first
+//!   place.
+//! * **A symbolic link *as* the root is refused, not followed.** The rule above
+//!   has to reach the root itself or it means nothing: the root is the one name
+//!   a user hands the tool, so following a link there would let the run be
+//!   silently retargeted at a tree the user never selected, and would defeat
+//!   the guarantee for every entry below it. [`FilesystemCatalog::new`]
+//!   therefore rejects a symlinked root by name, with a message that says so
+//!   and tells the user to pass the directory it points at. The root is
+//!   canonicalised exactly zero times.
 //! * **A name the domain type cannot represent is a reported skip.** POSIX
 //!   permits filenames the portable [`RelativePdfPath`] rejects, such as
 //!   `C:.pdf`, whose leading `X:` would be a Windows drive prefix in a
@@ -24,6 +33,12 @@
 //!   [`CatalogFailure`]s and the rest of the batch continues. The domain
 //!   invariant stays strict and the catalog degrades, so one unusual Linux
 //!   filename costs one file rather than the whole run.
+//!
+//! A failure to read the root is not a [`CatalogFailure`] at all. The root is
+//! the boundary of the run: if it cannot be opened, nothing below it was ever
+//! seen, so there is no report to degrade and the run fails instead. The same
+//! is true of an unreadable *subdirectory*, but only for that directory — the
+//! rest of the tree is still enumerated and still reported.
 
 use std::cell::RefCell;
 use std::fs::File;
@@ -91,15 +106,55 @@ fn push_failure(
     });
 }
 
+/// Checks that `root` is a directory this process can actually open.
+///
+/// Three things are checked, in the order a user would fix them:
+///
+/// * [`std::fs::symlink_metadata`] inspects the name itself, so a root that is
+///   a symbolic link is refused by name. Nothing is opened, so a link cannot
+///   redirect the run between the check and the walk.
+/// * [`std::fs::read_dir`] proves the directory's entries can be listed at
+///   all, which is what a run actually needs from its root and what
+///   `metadata` cannot tell us: a directory with no read permission still
+///   answers `stat`.
+///
+/// # Errors
+/// Returns [`CatalogError::Unreadable`] naming `root` when any of the three
+/// fails, so the message identifies the directory the user must fix.
+fn check_root_is_readable(root: &Path) -> Result<(), CatalogError> {
+    let metadata = std::fs::symlink_metadata(root)
+        .map_err(|error| CatalogError::Unreadable(format!("{}: {error}", root.display())))?;
+    if metadata.file_type().is_symlink() {
+        return Err(CatalogError::Unreadable(format!(
+            "{} is a symbolic link, which is never followed; \
+             pass the directory it points at",
+            root.display()
+        )));
+    }
+    if !metadata.is_dir() {
+        return Err(CatalogError::Unreadable(format!(
+            "{} is not a directory",
+            root.display()
+        )));
+    }
+    // Opening the root is the point of the check, not a side effect: an
+    // unreadable root means nothing below it was ever seen, so there is no
+    // report to degrade into per-file skips.
+    std::fs::read_dir(root)
+        .map_err(|error| CatalogError::Unreadable(format!("{}: {error}", root.display())))?;
+    Ok(())
+}
+
 /// Enumerates the PDFs under one library root.
 ///
-/// Per-file problems — a file that cannot be opened, a directory that cannot be
-/// read — are recorded in [`failures`](Self::failures) and the corresponding
-/// entry is still enumerated as [`FileCondition::Unreadable`] where the path is
-/// known, so one bad PDF cannot abort a batch. Entries that are skipped
-/// outright — a symlink, or a name the portable path type rejects — appear in
-/// [`failures`](Self::failures) only; see the module documentation for the
-/// root-boundary rules that decide this.
+/// Per-file problems — a file that cannot be opened, a *subdirectory* that
+/// cannot be read — are recorded in [`failures`](Self::failures) and the
+/// corresponding entry is still enumerated as [`FileCondition::Unreadable`]
+/// where the path is known, so one bad PDF cannot abort a batch. Entries that
+/// are skipped outright — a symlink, or a name the portable path type rejects —
+/// appear in [`failures`](Self::failures) only; see the module documentation
+/// for the root-boundary rules that decide this. A root that cannot be read is
+/// neither: it is an error, because no part of the tree was seen.
 #[derive(Debug)]
 pub struct FilesystemCatalog {
     root: PathBuf,
@@ -111,16 +166,11 @@ impl FilesystemCatalog {
     ///
     /// # Errors
     /// Returns [`CatalogError::Unreadable`] when the root does not exist, is
-    /// not a directory, or cannot be opened.
+    /// not a directory, is a symbolic link, or cannot be read. A root that
+    /// cannot be read is a command failure rather than a reported skip: it is
+    /// the boundary of the run, so without it there is nothing to report on.
     pub fn new(root: PathBuf) -> Result<Self, CatalogError> {
-        let metadata = std::fs::metadata(&root)
-            .map_err(|error| CatalogError::Unreadable(format!("{}: {error}", root.display())))?;
-        if !metadata.is_dir() {
-            return Err(CatalogError::Unreadable(format!(
-                "{} is not a directory",
-                root.display()
-            )));
-        }
+        check_root_is_readable(&root)?;
         Ok(Self {
             root,
             failures: RefCell::new(Vec::new()),
@@ -150,8 +200,16 @@ impl FilesystemCatalog {
 
 impl PdfCatalog for FilesystemCatalog {
     fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
+        // The root is opened here rather than inside the walk so that failing
+        // to list it ends the run. A failure deeper in the tree is recorded
+        // and the walk continues; a failure at the root means the tree the
+        // caller asked for was never seen, so there is no report to trust.
+        let entries = std::fs::read_dir(&self.root).map_err(|error| {
+            CatalogError::Unreadable(format!("{}: {error}", self.root.display()))
+        })?;
+
         let mut relatives = Vec::new();
-        collect_pdf_paths(&self.root, &self.root, "", &mut relatives, &self.failures);
+        collect_pdf_paths(&self.root, &self.root, entries, "", &mut relatives, &self.failures);
         relatives.sort();
 
         let files = relatives
@@ -189,26 +247,25 @@ impl PdfCatalog for FilesystemCatalog {
     }
 }
 
-/// Collects every `.pdf`/`.PDF` path below `dir`, as `prefix`-joined
-/// forward-slash strings relative to the library root.
+/// Collects every `.pdf`/`.PDF` path below the already-opened `entries`,
+/// as `prefix`-joined forward-slash strings relative to the library root.
 ///
 /// Symbolic links are skipped without being followed; see the module
 /// documentation for why. `DirEntry::file_type` does not traverse a link, so
 /// this holds even for a loop or a link that leaves the root.
+///
+/// A subdirectory that cannot be opened is recorded and skipped: the walk
+/// continues, because one inaccessible directory does not invalidate what the
+/// rest of the tree showed. The root is opened by the caller for the opposite
+/// reason — see [`FilesystemCatalog::enumerate`].
 fn collect_pdf_paths(
     library_root: &Path,
     dir: &Path,
+    entries: std::fs::ReadDir,
     prefix: &str,
     out: &mut Vec<String>,
     failures: &RefCell<Vec<CatalogFailure>>,
 ) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(error) => {
-            push_failure(failures, library_root, dir, error.to_string());
-            return;
-        }
-    };
     for entry in entries {
         let entry = match entry {
             Ok(entry) => entry,
@@ -241,7 +298,14 @@ fn collect_pdf_paths(
             } else {
                 format!("{prefix}/{}", name.to_string_lossy())
             };
-            collect_pdf_paths(library_root, &path, &nested, out, failures);
+            // A subdirectory that cannot be opened is recorded and left behind:
+            // the rest of the tree still describes a real library.
+            match std::fs::read_dir(&path) {
+                Ok(nested_entries) => {
+                    collect_pdf_paths(library_root, &path, nested_entries, &nested, out, failures);
+                }
+                Err(error) => push_failure(failures, library_root, &path, error.to_string()),
+            }
             continue;
         }
         if !is_pdf(&name) {

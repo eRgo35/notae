@@ -505,11 +505,11 @@ fn a_symlink_inside_the_root_is_skipped_rather_than_followed() {
 
 #[cfg(unix)]
 #[test]
-fn an_unreadable_root_failure_names_the_root() {
+fn an_unreadable_root_fails_the_run_and_names_the_root() {
     use std::os::unix::fs::PermissionsExt;
 
     let library = Library::new();
-    library.write("hidden.pdf", "a");
+    library.write("hidden.pdf", KNOWN_CONTENT);
     fs::set_permissions(&library.root, fs::Permissions::from_mode(0o000))
         .expect("lock the root");
     if fs::read_dir(&library.root).is_ok() {
@@ -518,20 +518,121 @@ fn an_unreadable_root_failure_names_the_root() {
         return;
     }
 
-    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
-    let files = catalog.enumerate().expect("an unreadable root is isolated");
+    // The root is the boundary of the run: a tree whose top directory cannot
+    // be read yields no trustworthy report at all, so it is a command failure
+    // rather than an isolated per-file skip.
+    let error = FilesystemCatalog::new(library.root.clone())
+        .expect_err("a root that cannot be read is not a catalog");
     fs::set_permissions(&library.root, fs::Permissions::from_mode(0o755)).expect("unlock");
-
-    assert!(files.is_empty(), "nothing under an unreadable root is enumerated");
-    let failures = catalog.failures();
-    assert_eq!(failures.len(), 1, "the failure is recorded: {failures:?}");
     assert!(
-        !failures[0].path().is_empty(),
-        "the failure identifies what failed"
+        error.to_string().contains(&library.root.display().to_string()),
+        "the error names the root: {error}"
     );
+
+    let library = Library::new();
+    library.write("hidden.pdf", KNOWN_CONTENT);
+    fs::set_permissions(&library.root, fs::Permissions::from_mode(0o000))
+        .expect("lock the root");
+    let cli = parse(&[library.root.to_str().expect("utf-8 path")]).expect("arguments parse");
+    let run_error = notae_index_cli::run(cli).expect_err("an unreadable root cannot be reported on");
+    fs::set_permissions(&library.root, fs::Permissions::from_mode(0o755)).expect("unlock");
+    assert!(
+        run_error.to_string().contains(&library.root.display().to_string()),
+        "the run error names the root: {run_error}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_root_is_not_mistaken_for_an_isolated_file_failure() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let library = Library::new();
+    library.write("hidden.pdf", KNOWN_CONTENT);
+    let nested = library.root.join("nested");
+    fs::create_dir_all(&nested).expect("create a subdirectory");
+    fs::set_permissions(&nested, fs::Permissions::from_mode(0o000))
+        .expect("lock the subdirectory");
+    if fs::read_dir(&nested).is_ok() {
+        fs::set_permissions(&nested, fs::Permissions::from_mode(0o755)).expect("unlock");
+        return;
+    }
+
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("the root itself is readable");
+    let files = catalog.enumerate().expect("a locked subdirectory is an isolated failure");
+    fs::set_permissions(&nested, fs::Permissions::from_mode(0o755)).expect("unlock");
+
+    assert_eq!(
+        files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>(),
+        vec!["hidden.pdf"],
+        "the readable part of the tree is still enumerated"
+    );
+    let failures = catalog.failures();
+    assert_eq!(failures.len(), 1, "the locked subdirectory is reported: {failures:?}");
     assert_eq!(
         failures[0].path(),
-        library.root.display().to_string(),
-        "the failure names the root directory itself"
+        "nested",
+        "the failure names the subdirectory it concerns"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_root_is_refused_rather_than_followed() {
+    let library = Library::new();
+    let outside = library._dir.path().join("outside-library");
+    fs::create_dir_all(&outside).expect("create the directory outside the root");
+    fs::write(outside.join("secret.pdf"), "outside content").expect("write the target");
+    fs::write(library.root.join("inside.pdf"), KNOWN_CONTENT).expect("write inside the root");
+    let link = library._dir.path().join("library-link");
+    std::os::unix::fs::symlink(&outside, &link).expect("link the directory as the root");
+
+    // The root is the one name a user may legitimately hand the tool, so a
+    // link there would silently retarget the whole run outside the tree the
+    // user believes they selected. The link is refused by name instead.
+    let error = FilesystemCatalog::new(link.clone())
+        .expect_err("a symlinked root is not a catalog");
+    assert!(
+        error.to_string().contains("symbolic link"),
+        "the refusal says the root is a link: {error}"
+    );
+    assert!(
+        error.to_string().contains(&link.display().to_string()),
+        "the refusal names the root as given: {error}"
+    );
+
+    let cli = parse(&[link.to_str().expect("utf-8 path")]).expect("arguments parse");
+    let validate_error = cli
+        .validate()
+        .expect_err("argument validation refuses the link too");
+    assert!(
+        validate_error.to_string().contains("symbolic link"),
+        "validation says the same thing: {validate_error}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_inside_the_root_still_degrades_to_a_reported_skip() {
+    let library = Library::new();
+    let outside = library._dir.path().join("outside-library");
+    fs::create_dir_all(&outside).expect("create the directory outside the root");
+    fs::write(outside.join("secret.pdf"), "outside content").expect("write the target");
+    library.write("inside.pdf", KNOWN_CONTENT);
+    std::os::unix::fs::symlink(&outside, library.root.join("linkdir"))
+        .expect("link a directory inside the root");
+
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("the root is a real directory");
+    let files = catalog.enumerate().expect("a linked entry is an isolated failure");
+
+    assert_eq!(
+        files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>(),
+        vec!["inside.pdf"],
+        "the rest of the tree is still indexed"
+    );
+    assert!(
+        catalog.failures().iter().any(|f| f.path() == "linkdir"),
+        "the skipped link is reported: {:?}",
+        catalog.failures()
     );
 }
