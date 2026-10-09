@@ -30,14 +30,25 @@
 //! The wire structs reject unknown fields and require `schema_version`. A
 //! producer and a consumer that do not agree must find out before anything is
 //! imported, not by silently dropping the fields the other side invented.
+//!
+//! That rule reaches every level of the manifest, not just its top. The
+//! domain types are deliberately lenient about what may be *absent* — a record
+//! may omit optional fields, and [`NoteMetadata`] migrates the legacy scalar
+//! `origin` — but `deny_unknown_fields` only guards the level it is written
+//! on, so reading through them would have left the fingerprint, the metadata
+//! object, the provenance object, and the timestamp free to carry fields this
+//! build silently drops. The sidecar therefore owns private wire types for
+//! those four shapes and converts them into domain values at the boundary. The
+//! compatibility migration stays in [`NoteMetadata`], where it belongs, and the
+//! wire contract is written once.
 
 use std::collections::BTreeSet;
 use std::io::Write as _;
 use std::path::Path;
 
 use notae_domain::{
-    EpochTimestamp, FieldProvenance, IndexStatus, IndexedNote, NoteMetadata, PdfFingerprint,
-    RelativePdfPath, Sha256Digest,
+    DomainError, EpochTimestamp, FieldProvenance, IndexStatus, IndexedNote, MetadataField,
+    MetadataOrigin, NoteId, NoteMetadata, PdfFingerprint, RelativePdfPath, Sha256Digest,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -197,7 +208,7 @@ impl From<&SidecarOcr> for OcrText {
 /// [`InvalidPdf`](IndexStatus::InvalidPdf)), which the conflict marker must not
 /// replace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "EntryWire")]
 pub struct SidecarEntry {
     /// Path relative to the library root.
     relative_path: RelativePdfPath,
@@ -208,7 +219,7 @@ pub struct SidecarEntry {
     /// Where the record sat in the PC's pipeline.
     status: IndexStatus,
     /// OCR text recognized on the PC, when there is any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     ocr: Option<SidecarOcr>,
 }
 
@@ -299,6 +310,199 @@ impl SidecarEntry {
     }
 }
 
+/// Why a strictly-read wire value could not become a domain value.
+///
+/// This is deliberately not a [`SidecarError`]: it is reached from inside
+/// `Deserialize`, where a serde error is what the caller sees, and every variant
+/// is a malformed manifest rather than a failed import.
+#[derive(Debug, Error)]
+enum WireError {
+    /// A value the domain constructors reject.
+    #[error(transparent)]
+    Domain(#[from] DomainError),
+    /// A timestamp whose nanoseconds are not below one billion.
+    #[error("sidecar timestamp nanoseconds are out of range")]
+    TimestampNanos,
+}
+
+/// The strict wire shape of the whole sidecar.
+///
+/// Strict for the same reason as [`EntryWire`]: the timestamp is read through a
+/// strict type, so a field added to it is refused rather than dropped.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestWire {
+    schema_version: u32,
+    generated_at: TimestampWire,
+    tool_version: String,
+    entries: Vec<EntryWire>,
+}
+
+/// The strict wire shape of one entry.
+///
+/// # Why the sidecar has its own nested types
+///
+/// The domain types are deliberately permissive about *absence* — a record may
+/// omit optional fields, and [`NoteMetadata`] accepts the legacy scalar `origin`
+/// so a manifest written before per-field provenance existed still migrates.
+/// That leniency is about what a *reader* will accept from an older producer;
+/// it is not permission to accept fields this build does not know.
+///
+/// `deny_unknown_fields` only guards the level it is written on, so a struct
+/// deriving `Deserialize` still takes its nested domain values through their own
+/// permissive deserializers: a fingerprint, a metadata object, a provenance
+/// object, and a timestamp were all read leniently, and a producer could add a
+/// field to any of them and have it silently dropped. These wire structs close
+/// that hole. They are private: the boundary converts in and out of the domain
+/// types, so the lenient compatibility migration stays where it belongs, in
+/// [`NoteMetadata`], and never becomes the sidecar's contract.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EntryWire {
+    relative_path: RelativePdfPath,
+    fingerprint: FingerprintWire,
+    metadata: MetadataWire,
+    status: IndexStatus,
+    #[serde(default)]
+    ocr: Option<SidecarOcr>,
+}
+
+/// The strict wire shape of a content fingerprint.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FingerprintWire {
+    sha256: Sha256Digest,
+    byte_len: u64,
+    #[serde(default)]
+    modified: Option<TimestampWire>,
+}
+
+/// The strict wire shape of a point in time.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TimestampWire {
+    secs: i64,
+    #[serde(default)]
+    nanos: u32,
+}
+
+/// The strict wire shape of a note's metadata.
+///
+/// `origin` is the legacy scalar [`NoteMetadata`] migrates from, accepted here
+/// for the same reason it is accepted there: a manifest written by an older
+/// producer still reads. The migration is unchanged — a scalar applies to every
+/// field — and a record carrying neither `provenance` nor `origin` is refused.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MetadataWire {
+    #[serde(default)]
+    id: Option<NoteId>,
+    title: String,
+    #[serde(default)]
+    composer_or_artist: Option<String>,
+    #[serde(default)]
+    tags: BTreeSet<String>,
+    provenance: Option<ProvenanceWire>,
+    origin: Option<MetadataOrigin>,
+}
+
+/// The strict wire shape of per-field provenance.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProvenanceWire {
+    #[serde(default)]
+    id: MetadataOrigin,
+    #[serde(default)]
+    title: MetadataOrigin,
+    #[serde(default)]
+    composer_or_artist: MetadataOrigin,
+    #[serde(default)]
+    tags: MetadataOrigin,
+}
+
+impl TryFrom<ManifestWire> for SidecarManifest {
+    type Error = WireError;
+
+    fn try_from(wire: ManifestWire) -> Result<Self, Self::Error> {
+        Ok(Self {
+            schema_version: wire.schema_version,
+            generated_at: wire.generated_at.try_into()?,
+            tool_version: wire.tool_version,
+            entries: wire
+                .entries
+                .into_iter()
+                .map(SidecarEntry::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+}
+
+impl TryFrom<EntryWire> for SidecarEntry {
+    type Error = WireError;
+
+    fn try_from(wire: EntryWire) -> Result<Self, Self::Error> {
+        Ok(Self {
+            relative_path: wire.relative_path,
+            fingerprint: wire.fingerprint.try_into()?,
+            metadata: wire.metadata.try_into()?,
+            status: wire.status,
+            ocr: wire.ocr,
+        })
+    }
+}
+
+impl TryFrom<FingerprintWire> for PdfFingerprint {
+    type Error = WireError;
+
+    fn try_from(wire: FingerprintWire) -> Result<Self, Self::Error> {
+        Ok(Self::new(
+            wire.sha256,
+            wire.byte_len,
+            wire.modified.map(TimestampWire::try_into).transpose()?,
+        ))
+    }
+}
+
+impl TryFrom<TimestampWire> for EpochTimestamp {
+    type Error = WireError;
+
+    fn try_from(wire: TimestampWire) -> Result<Self, Self::Error> {
+        Self::new(wire.secs, wire.nanos).ok_or(WireError::TimestampNanos)
+    }
+}
+
+impl TryFrom<MetadataWire> for NoteMetadata {
+    type Error = WireError;
+
+    fn try_from(wire: MetadataWire) -> Result<Self, Self::Error> {
+        let provenance = match (wire.provenance, wire.origin) {
+            (Some(provenance), _) => provenance.into(),
+            (None, Some(origin)) => FieldProvenance::with_every_field(origin),
+            (None, None) => return Err(WireError::from(DomainError::MissingProvenance)),
+        };
+        let mut metadata = Self::new(&wire.title, wire.composer_or_artist, wire.tags)?;
+        metadata.assign_id(wire.id, provenance.origin_of(MetadataField::Id));
+        metadata.set_origin(MetadataField::Title, provenance.origin_of(MetadataField::Title));
+        metadata.set_origin(
+            MetadataField::ComposerOrArtist,
+            provenance.origin_of(MetadataField::ComposerOrArtist),
+        );
+        metadata.set_origin(MetadataField::Tags, provenance.origin_of(MetadataField::Tags));
+        Ok(metadata)
+    }
+}
+
+impl From<ProvenanceWire> for FieldProvenance {
+    fn from(wire: ProvenanceWire) -> Self {
+        let mut provenance = Self::new();
+        provenance.set_origin(MetadataField::Id, wire.id);
+        provenance.set_origin(MetadataField::Title, wire.title);
+        provenance.set_origin(MetadataField::ComposerOrArtist, wire.composer_or_artist);
+        provenance.set_origin(MetadataField::Tags, wire.tags);
+        provenance
+    }
+}
+
 /// The whole sidecar: a versioned list of entries plus provenance about the
 /// run that produced it.
 ///
@@ -317,7 +521,7 @@ impl SidecarEntry {
 /// library produce byte-identical manifests apart from `generated_at`. That is
 /// what makes a sidecar reviewable as a diff.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "ManifestWire")]
 pub struct SidecarManifest {
     /// Version of this manifest's shape.
     ///
