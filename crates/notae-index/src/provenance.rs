@@ -113,6 +113,15 @@ pub(crate) fn refresh_from_parsed(
     existing: &NoteMetadata,
     parsed: &ParsedFilename,
 ) -> Result<(NoteMetadata, RefreshOutcome), MetadataRefreshError> {
+    let title = parsed.title().trim();
+    // The name is validated before any field is consulted. A name that carries
+    // no usable title is a bad file wherever it turns up, and a stored manual
+    // title must not excuse it: the file would otherwise be re-indexed or
+    // relocated under metadata its own name cannot justify.
+    if title.is_empty() {
+        return Err(MetadataRefreshError::Domain(DomainError::EmptyTitle));
+    }
+
     let mut metadata = existing.clone();
     let mut outcome = RefreshOutcome::default();
 
@@ -123,7 +132,7 @@ pub(crate) fn refresh_from_parsed(
 
     let title_is_manual = existing.provenance().is_manual(MetadataField::Title);
     if !title_is_manual {
-        metadata.assign_title(parsed.title(), MetadataOrigin::FilenameDerived)?;
+        metadata.assign_title(title, MetadataOrigin::FilenameDerived)?;
     }
     outcome.record(MetadataField::Title, !title_is_manual);
 

@@ -12,7 +12,8 @@ use notae_domain::{
     RelativePdfPath, Sha256Digest,
 };
 use notae_index::{
-    CatalogError, IndexStore, OcrText, PdfCatalog, PdfFile, Reconciler, refresh_from_filename,
+    CatalogError, FileCondition, FileFailureReason, IndexStore, OcrText, PdfCatalog, PdfFile,
+    Reconciler, refresh_from_filename,
 };
 
 fn digest(seed: u8) -> Sha256Digest {
@@ -325,7 +326,11 @@ fn duplicate_ids_are_reported_as_conflicts_with_both_paths() {
     ];
     let plan = Reconciler::plan(&store, &files).expect("plan");
     assert_eq!(plan.conflicts().len(), 1);
-    assert!(plan.additions().is_empty(), "the loser is never inserted");
+    assert_eq!(
+        plan.additions().len(),
+        1,
+        "the newcomer is indexed, not hidden"
+    );
 
     let conflict = &plan.conflicts()[0];
     assert_eq!(conflict.id(), NoteId::new(12));
@@ -336,13 +341,30 @@ fn duplicate_ids_are_reported_as_conflicts_with_both_paths() {
     assert_eq!(report.conflicts().len(), 1);
     assert!(report.failures().is_empty());
 
-    let stored = only_note(&store);
-    assert_eq!(stored.path(), &path("12 - Autumn Leaves.pdf"));
+    let notes = store.list_all().expect("list");
+    assert_eq!(notes.len(), 2, "both files stay in the library");
+    let kept = store
+        .get_by_id(NoteId::new(12))
+        .expect("query")
+        .expect("the indexed record keeps the ID");
+    assert_eq!(kept.path(), &path("12 - Autumn Leaves.pdf"));
+    let withheld = notes
+        .into_iter()
+        .find(|note| note.path() == &path("12 - Autumn Leaves (copy).pdf"))
+        .expect("the newcomer is indexed too");
     assert_eq!(
-        stored.status(),
-        IndexStatus::DuplicateIdConflict,
-        "the surviving record must show that its ID is contested"
+        withheld.id(),
+        None,
+        "the newcomer holds no ID until the user resolves the conflict"
     );
+    assert_eq!(withheld.title(), "Autumn Leaves (copy)");
+    for stored in [kept, withheld] {
+        assert_eq!(
+            stored.status(),
+            IndexStatus::DuplicateIdConflict,
+            "both sides show that the ID is contested"
+        );
+    }
     let _ = std::fs::remove_file(&database);
 }
 
@@ -510,4 +532,295 @@ fn refresh_reports_which_fields_it_preserved() {
     assert!(outcome.preserved().contains(&MetadataField::Title));
     assert!(outcome.refreshed().contains(&MetadataField::Id));
     assert!(!outcome.preserved().contains(&MetadataField::Id));
+}
+
+/// Defect 1: two unseen files whose names parse to one ID must both stay in
+/// the library. Dropping the loser hides a PDF the user owns, so the conflict
+/// is reported and *both* records are indexed.
+#[test]
+fn two_new_files_claiming_one_id_are_both_kept_with_the_conflict_surfaced() {
+    let (mut store, database) = open("duplicate-new");
+    let files = vec![file("12 - One.pdf", 1), file("12 - Two.pdf", 2)];
+
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.conflicts().len(), 1);
+    assert_eq!(
+        plan.additions().len(),
+        2,
+        "both PDFs stay in the plan; neither is hidden"
+    );
+    assert!(plan.failures().is_empty());
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(report.conflicts().len(), 1);
+    assert!(report.failures().is_empty());
+    assert_eq!(report.additions().len(), 2);
+
+    let mut notes = store.list_all().expect("list");
+    notes.sort_by_key(|note| note.path().as_str().to_owned());
+    assert_eq!(notes.len(), 2, "both files are visible in the library");
+    let [one, two] = notes.as_slice() else {
+        panic!("expected both conflicting files");
+    };
+    assert_eq!(one.path(), &path("12 - One.pdf"));
+    assert_eq!(two.path(), &path("12 - Two.pdf"));
+    assert_eq!(one.title(), "One");
+    assert_eq!(two.title(), "Two");
+    assert_eq!(
+        store.get_by_id(NoteId::new(12)).expect("query").map(|n| n.path().clone()),
+        Some(path("12 - One.pdf")),
+        "exactly one record holds the contested ID"
+    );
+    assert!(
+        two.id().is_none(),
+        "the newcomer holds no ID until the user resolves the conflict"
+    );
+    for note in notes {
+        assert_eq!(
+            note.status(),
+            IndexStatus::DuplicateIdConflict,
+            "both sides of a contested ID show the conflict"
+        );
+    }
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 2: two unseen paths holding the same bytes are one file, so the
+/// second is reported instead of planned as a second record — and the
+/// classification is the same on every rescan.
+#[test]
+fn identical_content_at_two_new_paths_is_deduplicated_stably() {
+    let (mut store, database) = open("duplicate-hash");
+    let files = vec![file("12 - One.pdf", 1), file("12 - Two.pdf", 1)];
+
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.additions().len(), 1);
+    assert!(plan.moves().is_empty());
+    assert_eq!(plan.failures().len(), 1);
+    assert_eq!(plan.failures()[0].path(), &path("12 - Two.pdf"));
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(report.additions().len(), 1);
+    assert_eq!(only_note(&store).path(), &path("12 - One.pdf"));
+
+    // A second identical rescan must not oscillate between the two paths.
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert!(plan.moves().is_empty(), "no oscillation");
+    assert!(plan.additions().is_empty());
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert!(report.moves().is_empty());
+    assert_eq!(report.failures().len(), 1);
+    assert_eq!(only_note(&store).path(), &path("12 - One.pdf"));
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 3: once the colliding file is gone the status must stop claiming a
+/// conflict, because the stored record then says something untrue.
+#[test]
+fn duplicate_conflict_status_clears_once_the_collision_is_gone() {
+    let (mut store, database) = open("conflict-clear");
+    let mut contested = note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves");
+    contested.set_status(IndexStatus::DuplicateIdConflict);
+    store.upsert_note(&contested).expect("seed");
+
+    let files = vec![file("12 - Autumn Leaves.pdf", 1)];
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert!(plan.conflicts().is_empty(), "the collision is over");
+    assert_eq!(
+        plan.updates().len(),
+        1,
+        "clearing the status is a write"
+    );
+    assert_ne!(
+        plan.updates()[0].note().status(),
+        IndexStatus::DuplicateIdConflict
+    );
+
+    Reconciler::apply(plan, &mut store).expect("apply");
+    let stored = only_note(&store);
+    assert_eq!(stored.id(), Some(NoteId::new(12)));
+    assert_ne!(
+        stored.status(),
+        IndexStatus::DuplicateIdConflict,
+        "the status must reflect that no conflict exists"
+    );
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 4: a bare `.pdf` has no title. A manual stored title must not let an
+/// unnameable file through as a silent relocation.
+#[test]
+fn a_bare_pdf_name_fails_even_when_the_stored_title_is_manual() {
+    let (mut store, database) = open("empty-title");
+    let mut manual = note(".pdf", 1, None, "Autumn Leaves");
+    let mut metadata = manual.metadata().clone();
+    metadata.set_title("Hand Written Title").expect("valid title");
+    manual = IndexedNote::new(
+        path(".pdf"),
+        PdfFingerprint::new(digest(1), 1_024, None),
+        metadata,
+    );
+    store.upsert_note(&manual).expect("seed");
+
+    let files = vec![file(".pdf", 2)];
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.failures().len(), 1, "the empty title is a per-file failure");
+    assert_eq!(plan.failures()[0].path(), &path(".pdf"));
+    assert!(matches!(
+        plan.failures()[0].reason(),
+        FileFailureReason::Metadata(_)
+    ));
+    assert!(plan.updates().is_empty());
+    assert!(plan.additions().is_empty());
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(report.failures().len(), 1);
+    assert_eq!(
+        only_note(&store).fingerprint().sha256(),
+        digest(1),
+        "the stored record is untouched"
+    );
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 5: a record whose path and bytes are unchanged still has
+/// filename-derived metadata to refresh, because a catalog's display name can
+/// differ from the path.
+#[test]
+fn same_path_and_hash_refreshes_filename_derived_metadata() {
+    let (mut store, database) = open("refresh-unchanged");
+    store
+        .upsert_note(&note("stable.pdf", 1, None, "Old Title"))
+        .expect("seed");
+
+    // The provider knows the document as `9 - New.pdf` while Notae files it at
+    // `stable.pdf`, and the bytes have not changed.
+    let files = vec![PdfFile::with_condition(
+        path("stable.pdf"),
+        "9 - New.pdf".to_owned(),
+        FileCondition::Readable(PdfFingerprint::new(digest(1), 1_024, None)),
+    )];
+
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert!(
+        plan.unchanged().is_empty(),
+        "stale metadata must not be reported as untouched"
+    );
+    let refreshed = plan.updates().first().expect("a metadata refresh");
+    assert_eq!(refreshed.note().title(), "New");
+    assert_eq!(refreshed.note().id(), Some(NoteId::new(9)));
+
+    Reconciler::apply(plan, &mut store).expect("apply");
+    let stored = only_note(&store);
+    assert_eq!(stored.title(), "New");
+    assert_eq!(stored.id(), Some(NoteId::new(9)));
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 6: the catalog must be able to report a file it could not read or
+/// could not parse, and such a file becomes a per-file failure rather than an
+/// indexed record.
+#[test]
+fn unreadable_and_invalid_pdfs_are_reported_per_file() {
+    let (mut store, database) = open("conditions");
+    let files = vec![
+        file("12 - Autumn Leaves.pdf", 1),
+        PdfFile::from_path_with_condition(path("13 - Locked.pdf"), FileCondition::Unreadable),
+        PdfFile::from_path_with_condition(path("14 - Corrupt.pdf"), FileCondition::InvalidPdf),
+    ];
+
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.additions().len(), 1, "only the readable file is indexed");
+    assert_eq!(plan.failures().len(), 2);
+    assert_eq!(plan.failures()[0].path(), &path("13 - Locked.pdf"));
+    assert!(matches!(
+        plan.failures()[0].reason(),
+        FileFailureReason::Unreadable
+    ));
+    assert_eq!(plan.failures()[1].path(), &path("14 - Corrupt.pdf"));
+    assert!(matches!(
+        plan.failures()[1].reason(),
+        FileFailureReason::InvalidPdf
+    ));
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(report.failures().len(), 2);
+    assert_eq!(only_note(&store).path(), &path("12 - Autumn Leaves.pdf"));
+    let _ = std::fs::remove_file(&database);
+}
+
+/// Defect 6, continued: a file that becomes unreadable keeps its record and is
+/// not mistaken for a deletion.
+#[test]
+fn an_unreadable_file_keeps_its_record_and_is_not_deleted() {
+    let (mut store, database) = open("conditions-kept");
+    let mut original = note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves");
+    original.set_status(IndexStatus::Ready);
+    store
+        .upsert_note_with_ocr(&original, Some(&OcrText::new("alto clef")))
+        .expect("seed");
+
+    let files = vec![PdfFile::from_path_with_condition(
+        path("12 - Autumn Leaves.pdf"),
+        FileCondition::Unreadable,
+    )];
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert!(plan.deletions().is_empty(), "a locked file is not a deletion");
+    assert_eq!(plan.failures().len(), 1);
+
+    Reconciler::apply(plan, &mut store).expect("apply");
+    let stored = only_note(&store);
+    assert_eq!(stored.path(), &path("12 - Autumn Leaves.pdf"));
+    assert_eq!(stored.id(), Some(NoteId::new(12)));
+    assert_eq!(
+        store.ocr_text(&digest(1)).expect("ocr").expect("text survives").text(),
+        "alto clef"
+    );
+    let _ = std::fs::remove_file(&database);
+}
+
+/// A file the catalog could not read still exists on disk, so the deletion
+/// pass must keep its record even while another file really is gone.
+#[test]
+fn an_unreadable_file_survives_the_deletion_pass() {
+    let (mut store, database) = open("conditions-delete");
+    store
+        .upsert_note(&note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves"))
+        .expect("seed kept");
+    store
+        .upsert_note(&note("13 - So What.pdf", 2, Some(NoteId::new(13)), "So What"))
+        .expect("seed gone");
+    store
+        .upsert_note(&note("14 - Locked.pdf", 3, Some(NoteId::new(14)), "Locked"))
+        .expect("seed locked");
+
+    let files = vec![
+        PdfFile::from_path_with_condition(path("12 - Autumn Leaves.pdf"), FileCondition::Unreadable),
+        file("14 - Locked.pdf", 3),
+    ];
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert_eq!(plan.deletions().len(), 1);
+    assert_eq!(plan.deletions()[0].path(), &path("13 - So What.pdf"));
+    assert_eq!(plan.failures().len(), 1);
+
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(report.deletions().len(), 1);
+    assert_eq!(report.failures().len(), 1);
+
+    let mut paths: Vec<String> = store
+        .list_all()
+        .expect("list")
+        .into_iter()
+        .map(|note| note.path().as_str().to_owned())
+        .collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        vec![
+            "12 - Autumn Leaves.pdf".to_owned(),
+            "14 - Locked.pdf".to_owned(),
+        ],
+        "the unreadable file keeps its record; only the deleted file is removed"
+    );
+    let _ = std::fs::remove_file(&database);
 }
