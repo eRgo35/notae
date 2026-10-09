@@ -11,21 +11,37 @@
 //! # Validation happens before mutation
 //!
 //! The manifest is validated in full before any classification runs: its schema
-//! version must be one this build understands, no path and no content hash may
-//! appear twice, and every value is a validated domain type by construction. A
-//! manifest that fails validation stops the import at
-//! [`SidecarImporter::preview`], so there is no state in which the local library
-//! has been partly written from a manifest that was then rejected.
+//! version must be one this build understands, unknown fields are refused
+//! outright, no path and no content hash may appear twice, and every value is a
+//! validated domain type by construction. A manifest that fails validation stops
+//! the import at [`SidecarImporter::preview`], so there is no state in which the
+//! local library has been partly written from a manifest that was then
+//! rejected.
 //!
-//! # Hash mismatches are reported, never applied
+//! # Hashes are verified against the files, not against the index
 //!
-//! A sidecar entry whose hash does not match what the local library indexed at
-//! the same path describes a file that changed after the PC wrote the sidecar.
-//! Importing it would overwrite a fingerprint the local rescan established from
-//! the bytes actually on the phone, so the entry is reported as
-//! [`EntryChange::HashMismatch`] and contributes nothing — no metadata, no OCR
-//! text, no write. The next manual rescan re-fingerprints the file and the two
-//! sides agree again.
+//! The store only knows what was fingerprinted at the last rescan. A file that
+//! changed since then still looks like a match, so comparing a sidecar entry
+//! against the store would write the PC's metadata and OCR text over bytes that
+//! no longer hold them. [`SidecarImporter::preview`] therefore takes a
+//! [`PdfCatalog`] — the same abstraction [`crate::Reconciler`] uses — and checks
+//! every entry against the file actually in the library root, which on Android is
+//! a Storage Access Framework tree walk.
+//!
+//! Three things can come out of that check, and all three are reported and
+//! applied to nothing:
+//!
+//! - The file is not in the library at all ([`EntryChange::Missing`]) — no
+//!   record is created for bytes nobody has.
+//! - The catalog could not read or parse it ([`EntryChange::Unverified`]) — no
+//!   hash means nothing was verified, and unverified is not unchanged.
+//! - The file hashes differently ([`EntryChange::HashMismatch`]) — the file
+//!   changed after the PC wrote the sidecar, so the next manual rescan
+//!   re-fingerprints it and the two sides agree again.
+//!
+//! `preview` itself stays read-only: the catalog is enumerated once, and the
+//! result is kept in the snapshot so an override re-derives without re-reading
+//! either the index or the tree.
 //!
 //! # Manual metadata wins by default
 //!
@@ -54,7 +70,11 @@
 //! that is a decision the user made — so the store refuses the write and it is
 //! reported as an [`ImportFailure`] rather than silently dropped. Every conflict
 //! is reported with both paths in [`ImportPreview::conflicts`], and both records
-//! take on [`IndexStatus::DuplicateIdConflict`], so neither looks healthy.
+//! take on [`IndexStatus::DuplicateIdConflict`], so neither looks healthy. That
+//! includes an incumbent the sidecar does not mention: it is not one of
+//! [`ImportPreview::entries`], so it is listed in
+//! [`ImportPreview::contested_records`] and written by `apply`, and a library
+//! can never end up with one side of a collision still marked healthy.
 //!
 //! Import never deletes: a record the sidecar does not mention is reported in
 //! [`ImportPreview::missing`] and left exactly as it is.
@@ -68,6 +88,7 @@ use notae_domain::{
     Sha256Digest, validate_unique_ids,
 };
 
+use crate::reconcile::{FileCondition, PdfCatalog};
 use crate::sidecar::{SidecarEntry, SidecarError, SidecarManifest};
 use crate::store::{IndexError, IndexStore, OcrText};
 
@@ -99,14 +120,30 @@ pub enum EntryChange {
         /// Path the record was indexed under before this import.
         from: RelativePdfPath,
     },
-    /// The local library indexed different bytes at this path.
+    /// The file at this path hashes differently from the entry.
     ///
-    /// The entry is reported and applied to nothing: its fingerprint describes a
-    /// file the phone does not have. The stored record keeps its identity, its
+    /// The entry is reported and applied to nothing: its fingerprint describes
+    /// bytes the phone no longer has. The stored record keeps its identity, its
     /// metadata, and its OCR text.
     HashMismatch {
-        /// Hash the local record at this path carries.
+        /// Hash the local file at this path actually has.
         local: Sha256Digest,
+    },
+    /// The library root does not contain the file this entry names.
+    ///
+    /// The entry is reported and applied to nothing. Creating a record for a
+    /// file that is not there would index bytes nobody can open, so the
+    /// difference is surfaced instead: copy the file across, or drop the entry.
+    Missing,
+    /// The catalog could not read or parse the file this entry names.
+    ///
+    /// Verification needs a hash of the local bytes, and an unreadable file
+    /// yields none, so the entry is reported and applied to nothing. Treating
+    /// "no hash" as "no difference" would import the PC's metadata and OCR text
+    /// for a file whose contents nobody has confirmed.
+    Unverified {
+        /// What the catalog observed about the file.
+        condition: FileCondition,
     },
 }
 
@@ -312,10 +349,16 @@ pub struct ImportPreview {
     manifest: SidecarManifest,
     local: Vec<IndexedNote>,
     ocr: HashMap<Sha256Digest, OcrText>,
+    /// The catalog's observation of each file, so an override re-verifies the
+    /// same bytes rather than re-reading the library root.
+    files: HashMap<RelativePdfPath, FileCondition>,
     overrides: BTreeMap<RelativePdfPath, BTreeSet<MetadataField>>,
     entries: Vec<ImportEntry>,
     missing: Vec<IndexedNote>,
     conflicts: Vec<ImportConflict>,
+    /// Local records the sidecar omits that take part in a conflict, in the
+    /// form they will be stored.
+    contested: Vec<IndexedNote>,
 }
 
 impl ImportPreview {
@@ -337,7 +380,11 @@ impl ImportPreview {
     pub fn changed_entries(&self) -> Vec<&ImportEntry> {
         self.filtered(|change| match change {
             EntryChange::Changed | EntryChange::Moved { .. } => true,
-            EntryChange::New | EntryChange::Unchanged | EntryChange::HashMismatch { .. } => false,
+            EntryChange::New
+            | EntryChange::Unchanged
+            | EntryChange::HashMismatch { .. }
+            | EntryChange::Missing
+            | EntryChange::Unverified { .. } => false,
         })
     }
 
@@ -351,6 +398,27 @@ impl ImportPreview {
     #[must_use]
     pub fn mismatches(&self) -> Vec<&ImportEntry> {
         self.filtered(|change| matches!(change, EntryChange::HashMismatch { .. }))
+    }
+
+    /// Returns the entries the library root does not contain.
+    ///
+    /// These are reported rather than imported: a sidecar describes files the PC
+    /// had, and the phone only owns the ones it actually has. Nothing is
+    /// created for a file that is not in the library.
+    #[must_use]
+    pub fn absent_entries(&self) -> Vec<&ImportEntry> {
+        self.filtered(|change| matches!(change, EntryChange::Missing))
+    }
+
+    /// Returns the entries whose file the catalog could not read.
+    ///
+    /// An entry is only as trustworthy as the hash it was checked against. A
+    /// file the catalog could not open or parse yields no hash, so the entry
+    /// cannot be verified and is reported here instead of being imported on the
+    /// strength of a hash nobody confirmed.
+    #[must_use]
+    pub fn unreadable_entries(&self) -> Vec<&ImportEntry> {
+        self.filtered(|change| matches!(change, EntryChange::Unverified { .. }))
     }
 
     /// Returns the records the sidecar does not mention.
@@ -367,6 +435,19 @@ impl ImportPreview {
     #[must_use]
     pub fn conflicts(&self) -> &[ImportConflict] {
         &self.conflicts
+    }
+
+    /// Returns the records the sidecar omits that are taking part in a conflict.
+    ///
+    /// A record the manifest does not mention still holds whatever note ID it
+    /// holds, so it still competes for that number. When a newcomer claims it,
+    /// the incumbent takes on [`IndexStatus::DuplicateIdConflict`] too — and
+    /// because it is not an entry, it would otherwise be reported as a conflict
+    /// and then silently left healthy. This is what shows the user both sides of
+    /// a collision before anything is written.
+    #[must_use]
+    pub fn contested_records(&self) -> &[IndexedNote] {
+        &self.contested
     }
 
     /// Returns the conflict a given path takes part in.
@@ -403,6 +484,7 @@ impl ImportPreview {
         overrides.entry(path.clone()).or_default().extend(fields);
         derive(
             self.manifest.clone(),
+            self.files.clone(),
             self.local.clone(),
             self.ocr.clone(),
             overrides,
@@ -433,8 +515,11 @@ pub struct ImportReport {
     imported: Vec<ImportEntry>,
     unchanged: Vec<ImportEntry>,
     mismatches: Vec<ImportEntry>,
+    absent: Vec<ImportEntry>,
+    unreadable: Vec<ImportEntry>,
     missing: Vec<IndexedNote>,
     conflicts: Vec<ImportConflict>,
+    contested: Vec<IndexedNote>,
     failures: Vec<ImportFailure>,
 }
 
@@ -457,6 +542,18 @@ impl ImportReport {
         &self.mismatches
     }
 
+    /// Returns the entries the library root did not contain.
+    #[must_use]
+    pub fn absent_entries(&self) -> &[ImportEntry] {
+        &self.absent
+    }
+
+    /// Returns the entries whose local file the catalog could not read.
+    #[must_use]
+    pub fn unreadable_entries(&self) -> &[ImportEntry] {
+        &self.unreadable
+    }
+
     /// The records the sidecar did not mention, left untouched.
     #[must_use]
     pub fn missing(&self) -> &[IndexedNote] {
@@ -467,6 +564,13 @@ impl ImportReport {
     #[must_use]
     pub fn conflicts(&self) -> &[ImportConflict] {
         &self.conflicts
+    }
+
+    /// Returns the records the sidecar omits that were written with
+    /// [`IndexStatus::DuplicateIdConflict`].
+    #[must_use]
+    pub fn contested_records(&self) -> &[IndexedNote] {
+        &self.contested
     }
 
     /// The records the index refused.
@@ -489,19 +593,32 @@ pub struct SidecarImporter;
 impl SidecarImporter {
     /// Compares a manifest against the local index without writing anything.
     ///
-    /// The index is read once; every classification, metadata merge, conflict
-    /// resolution, and OCR decision is computed from that snapshot. Entries are
-    /// processed in ascending path order, so which of two records keeps a
-    /// contested ID never depends on the order the manifest happened to be
-    /// written in.
+    /// `catalog` is how the importer learns the hashes of the files actually in
+    /// the library. The store only knows what was fingerprinted at the last
+    /// rescan, which is a snapshot: a file that changed since then still looks
+    /// like a match, and importing the sidecar would write the PC's metadata and
+    /// OCR text over bytes that no longer hold it. The [`PdfCatalog`] is the same
+    /// abstraction reconciliation uses, so on Android this is a Storage Access
+    /// Framework tree walk and on the desktop a directory walk, and this crate
+    /// still knows nothing about how files are read.
+    ///
+    /// The index and the catalog are each read once; every classification,
+    /// metadata merge, conflict resolution, and OCR decision is computed from
+    /// those two snapshots, which is also what lets
+    /// [`ImportPreview::with_override`] re-derive a preview without touching
+    /// either again. Entries are processed in ascending path order, so which of
+    /// two records keeps a contested ID never depends on the order the manifest
+    /// happened to be written in.
     ///
     /// # Errors
-    /// Returns [`SidecarError::Store`] when the index cannot be read, and
-    /// whatever [`SidecarManifest::validate`] reports for a manifest that must
-    /// be rejected before any mutation.
+    /// Returns [`SidecarError::Catalog`] when the library root cannot be
+    /// enumerated at all, [`SidecarError::Store`] when the index cannot be read,
+    /// and whatever [`SidecarManifest::validate`] reports for a manifest that
+    /// must be rejected before any mutation.
     pub fn preview(
         local: &IndexStore,
         sidecar: &SidecarManifest,
+        catalog: &dyn PdfCatalog,
     ) -> Result<ImportPreview, SidecarError> {
         sidecar.validate()?;
         let records = local.list_all()?;
@@ -515,7 +632,12 @@ impl SidecarImporter {
                     .map(|text| (note.fingerprint().sha256(), text))
             })
             .collect();
-        derive(sidecar.clone(), records, ocr, BTreeMap::new())
+        let files = catalog
+            .enumerate()?
+            .into_iter()
+            .map(|file| (file.path().clone(), file.condition().clone()))
+            .collect();
+        derive(sidecar.clone(), files, records, ocr, BTreeMap::new())
     }
 
     /// Performs the changes a preview describes.
@@ -523,8 +645,11 @@ impl SidecarImporter {
     /// Writes go in ascending path order, one record per call, and a record the
     /// index refuses becomes an [`ImportFailure`] in the report rather than
     /// aborting the rest — a single manual-ID collision must not strand the
-    /// whole import. Nothing is deleted: the records in
-    /// [`ImportReport::missing`] are reported and left alone.
+    /// whole import. The contested records in
+    /// [`ImportReport::contested_records`] are written too: an incumbent the
+    /// sidecar omits is not one of `preview.entries`, so both sides of a
+    /// conflict carrying the marker depends on this. Nothing is deleted: the
+    /// records in [`ImportReport::missing`] are reported and left alone.
     ///
     /// # Errors
     /// Returns [`SidecarError::Store`] when the index cannot be written. Every
@@ -540,6 +665,8 @@ impl SidecarImporter {
                 EntryChange::HashMismatch { .. } => {
                     report.mismatches.push(entry.clone());
                 }
+                EntryChange::Missing => report.absent.push(entry.clone()),
+                EntryChange::Unverified { .. } => report.unreadable.push(entry.clone()),
                 EntryChange::Unchanged => report.unchanged.push(entry.clone()),
                 EntryChange::New | EntryChange::Changed | EntryChange::Moved { .. } => {
                     // A store refusal is per record, so one contested manual ID
@@ -561,6 +688,17 @@ impl SidecarImporter {
                         }),
                     }
                 }
+            }
+        }
+        for note in &preview.contested {
+            // Only the status changes, so the write carries no OCR text and the
+            // stored text stands.
+            match local.reindex_note(note) {
+                Ok(_) => report.contested.push(note.clone()),
+                Err(error) => report.failures.push(ImportFailure {
+                    path: note.path().clone(),
+                    reason: error,
+                }),
             }
         }
         Ok(report)
@@ -606,10 +744,17 @@ fn rank(note: &IndexedNote, held: &BTreeMap<NoteId, HeldClaim>) -> u8 {
     u8::from(!same_record)
 }
 
-/// Recomputes the whole preview from a manifest, the local snapshot, the stored
-/// OCR text, and the fields the user has chosen to override.
+/// Recomputes the whole preview from a manifest, the catalog's observation of
+/// the library root, the local snapshot, the stored OCR text, and the fields
+/// the user has chosen to override.
+///
+/// Verification is decided from `files`, the bytes on the phone, and not from
+/// `local`, the index as it was last rescan. The two disagree exactly when a
+/// file changed since the last scan, which is the case that must not be
+/// imported.
 fn derive(
     manifest: SidecarManifest,
+    files: HashMap<RelativePdfPath, FileCondition>,
     local: Vec<IndexedNote>,
     ocr: HashMap<Sha256Digest, OcrText>,
     overrides: BTreeMap<RelativePdfPath, BTreeSet<MetadataField>>,
@@ -644,22 +789,22 @@ fn derive(
         let overrides = overrides.get(entry.path()).cloned().unwrap_or_default();
         let stored = by_path.get(entry.path()).copied();
 
-        // A hash mismatch is decided from the record filed at this path, before
-        // any move is considered: the file on the phone is not the file the
-        // sidecar describes, and no other record can change that.
-        if let Some(local) = stored
-            && local.fingerprint().sha256() != entry.fingerprint().sha256()
-        {
+        // Verification is against the file in the library, before anything else
+        // is considered. A file the phone does not have cannot be imported at
+        // all; one it could not read yields no hash to check the entry against;
+        // and one whose bytes differ from the entry's describes a file that
+        // changed after the PC wrote the sidecar. All three contribute nothing —
+        // no metadata, no OCR text, no record — and are reported instead.
+        if let Err(change) = verify(entry, files.get(entry.path())) {
             superseded.insert(entry.path().clone());
             entries.push(ImportEntry {
                 entry: entry.clone(),
-                change: EntryChange::HashMismatch {
-                    local: local.fingerprint().sha256(),
-                },
-                local: Some(local.clone()),
+                change,
+                local: stored.cloned(),
                 resolved: None,
                 metadata: MetadataImport {
-                    preserved: manual_fields(local.metadata()),
+                    preserved: stored
+                        .map_or_else(Vec::new, |local| manual_fields(local.metadata())),
                     ..MetadataImport::default()
                 },
                 ocr: OcrAssessment::NotApplied,
@@ -700,7 +845,11 @@ fn derive(
                     Some(_) => OcrAssessment::Importing,
                     None => OcrAssessment::NotOffered,
                 },
-                status_for_new_entry(entry),
+                // The PC's own status, so a record it left in
+                // `DuplicateIdConflict` — one whose note ID was withheld —
+                // arrives as contested rather than as a free unnumbered entry,
+                // and a record it could not read is not resurrected as healthy.
+                entry.status(),
             ),
         };
 
@@ -773,15 +922,59 @@ fn derive(
         .cloned()
         .collect();
 
+    // A record the sidecar omits that took part in a conflict is written only
+    // when its status actually changes; an incumbent that was already marked
+    // costs nothing.
+    let contested: Vec<IndexedNote> = candidates
+        .iter()
+        .filter(|candidate| candidate.entry.is_none())
+        .map(|candidate| &candidate.note)
+        .filter(|note| {
+            note.status() == IndexStatus::DuplicateIdConflict
+                && local
+                    .iter()
+                    .find(|stored| stored.path() == note.path())
+                    .is_none_or(|stored| stored.status() != IndexStatus::DuplicateIdConflict)
+        })
+        .cloned()
+        .collect();
+
     Ok(ImportPreview {
         manifest,
         local,
         ocr,
+        files,
         overrides,
         entries,
         missing,
         conflicts,
+        contested,
     })
+}
+
+/// Checks one entry against the file the library actually has.
+///
+/// The catalog's observation is the only evidence about the bytes on the phone,
+/// so this is where an entry earns the right to be applied at all. `Ok(())`
+/// means the file is present, readable, and hashes to what the sidecar claims.
+fn verify(entry: &SidecarEntry, condition: Option<&FileCondition>) -> Result<(), EntryChange> {
+    let Some(condition) = condition else {
+        return Err(EntryChange::Missing);
+    };
+    match condition {
+        FileCondition::Readable(fingerprint) => {
+            if fingerprint.sha256() == entry.fingerprint().sha256() {
+                Ok(())
+            } else {
+                Err(EntryChange::HashMismatch {
+                    local: fingerprint.sha256(),
+                })
+            }
+        }
+        FileCondition::Unreadable | FileCondition::InvalidPdf => Err(EntryChange::Unverified {
+            condition: condition.clone(),
+        }),
+    }
 }
 
 /// Resolves every note ID more than one surviving record claims.
@@ -890,18 +1083,6 @@ fn manual_fields(metadata: &NoteMetadata) -> Vec<MetadataField> {
         .into_iter()
         .filter(|field| metadata.provenance().is_manual(*field))
         .collect()
-}
-
-/// The status a record created by an import starts in.
-///
-/// An entry that carries OCR text is fully indexed; one that does not has text
-/// still to recognize.
-fn status_for_new_entry(entry: &SidecarEntry) -> IndexStatus {
-    if entry.ocr().is_some() {
-        IndexStatus::Ready
-    } else {
-        IndexStatus::OcrPending
-    }
 }
 
 /// Reports which fields an import takes and which it leaves alone.
