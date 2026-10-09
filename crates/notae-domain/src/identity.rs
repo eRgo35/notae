@@ -152,13 +152,19 @@ impl EpochTimestamp {
             );
         }
         let delta = UNIX_EPOCH.duration_since(time).ok()?;
+        let secs = i64::try_from(delta.as_secs()).ok()?;
         if delta.subsec_nanos() == 0 {
-            return Self::new(-(i64::try_from(delta.as_secs()).ok()?), 0);
+            // `-i64::MIN` is the one unrepresentable negation, and a
+            // pre-epoch `SystemTime` never reaches it, but the checked form
+            // keeps the range rule in one place.
+            return Self::new(secs.checked_neg()?, 0);
         }
         // Borrow one whole second: `UNIX_EPOCH - (N sec, 500 ms)` is
-        // `-(N + 1) sec, 500 ms` counted the same way.
+        // `-(N + 1) sec, 500 ms` counted the same way. At the negative
+        // boundary `N` is `i64::MAX`, so the borrowed second does not fit and
+        // the instant is reported as unrepresentable instead of overflowing.
         Self::new(
-            -(i64::try_from(delta.as_secs()).ok()? + 1),
+            secs.checked_add(1)?.checked_neg()?,
             NANOS_PER_SEC - delta.subsec_nanos(),
         )
     }

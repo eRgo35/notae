@@ -22,6 +22,11 @@ pub enum DomainError {
     /// A PDF path was not a valid root-relative path.
     #[error("invalid root-relative path: {0}")]
     InvalidRelativePath(String),
+    /// A record carried neither a `provenance` object nor a legacy `origin`
+    /// scalar, so its manual edits cannot be distinguished from never-set
+    /// fields.
+    #[error("missing metadata provenance: expected `provenance` or legacy `origin`")]
+    MissingProvenance,
 }
 
 /// Where a metadata field's value came from.
@@ -106,6 +111,21 @@ impl FieldProvenance {
             MetadataField::Title => self.title,
             MetadataField::ComposerOrArtist => self.composer_or_artist,
             MetadataField::Tags => self.tags,
+        }
+    }
+
+    /// Returns provenance where every field carries the same origin.
+    ///
+    /// This is how a legacy record's scalar `origin` migrates onto the
+    /// per-field representation: an old `origin: "manual"` means the whole
+    /// record was hand-edited, so every field must stay authoritative.
+    #[must_use]
+    pub fn with_every_field(origin: MetadataOrigin) -> Self {
+        Self {
+            id: origin,
+            title: origin,
+            composer_or_artist: origin,
+            tags: origin,
         }
     }
 
@@ -210,56 +230,106 @@ impl NoteMetadata {
         self.provenance.origin_of(field)
     }
 
-    /// Records the origin of one field, for example after a PC import.
+    /// Records the origin of one field without changing its value, for example
+    /// when a reconciliation preserves a value the user edited by hand.
     pub fn set_origin(&mut self, field: MetadataField, origin: MetadataOrigin) {
         self.provenance.set_origin(field, origin);
     }
 
-    /// Marks one field as edited by the user.
+    /// Marks one field as edited by the user without changing its value.
     pub fn mark_manual(&mut self, field: MetadataField) {
         self.provenance.mark_manual(field);
     }
 
-    /// Replaces the note ID, keeping the ID's provenance unchanged so that
-    /// filename-derived IDs are not mistaken for manual edits.
+    /// Replaces the note ID as a user edit.
+    ///
+    /// The ID field is marked [`MetadataOrigin::Manual`] even when `id` is
+    /// `None`: removing a number by hand is exactly the decision that a PC
+    /// import must not undo. Use [`NoteMetadata::assign_id`] for values that
+    /// come from a filename or an import.
     pub fn set_id(&mut self, id: Option<NoteId>) {
-        self.id = id;
+        self.assign_id(id, MetadataOrigin::Manual);
     }
 
-    /// Replaces the title, marking the title field as
+    /// Replaces the note ID with an explicit origin, for filename parsing,
+    /// indexing, and PC import.
+    ///
+    /// Unlike [`NoteMetadata::set_id`], the origin is whatever the caller
+    /// passes, so a filename-derived ID is never mistaken for a manual edit.
+    pub fn assign_id(&mut self, id: Option<NoteId>, origin: MetadataOrigin) {
+        self.id = id;
+        self.set_origin(MetadataField::Id, origin);
+    }
+
+    /// Replaces the title as a user edit, marking the title field as
     /// [`MetadataOrigin::Manual`].
     ///
     /// # Errors
     /// Returns [`DomainError::EmptyTitle`] when the trimmed title is empty.
     pub fn set_title(&mut self, title: &str) -> Result<(), DomainError> {
+        self.assign_title(title, MetadataOrigin::Manual)
+    }
+
+    /// Replaces the title with an explicit origin, for filename parsing and PC
+    /// import.
+    ///
+    /// # Errors
+    /// Returns [`DomainError::EmptyTitle`] when the trimmed title is empty,
+    /// leaving the record untouched.
+    pub fn assign_title(
+        &mut self,
+        title: &str,
+        origin: MetadataOrigin,
+    ) -> Result<(), DomainError> {
         let title = title.trim();
         if title.is_empty() {
             return Err(DomainError::EmptyTitle);
         }
         self.title.clear();
         self.title.push_str(title);
-        self.mark_manual(MetadataField::Title);
+        self.set_origin(MetadataField::Title, origin);
         Ok(())
     }
 
-    /// Replaces the composer or artist.
+    /// Replaces the composer or artist as a user edit.
     ///
-    /// Passing `None` clears the field and clears its manual marker, because a
-    /// cleared field holds no user intent to preserve.
+    /// The field is marked [`MetadataOrigin::Manual`] even when
+    /// `composer_or_artist` is `None`, because a composer the user deleted
+    /// must not be refilled by an import. Use
+    /// [`NoteMetadata::assign_composer_or_artist`] for import and
+    /// initialization paths.
     pub fn set_composer_or_artist(&mut self, composer_or_artist: Option<String>) {
-        self.composer_or_artist = composer_or_artist;
-        if self.composer_or_artist.is_some() {
-            self.mark_manual(MetadataField::ComposerOrArtist);
-        } else {
-            self.set_origin(MetadataField::ComposerOrArtist, MetadataOrigin::Unset);
-        }
+        self.assign_composer_or_artist(composer_or_artist, MetadataOrigin::Manual);
     }
 
-    /// Replaces the whole tag set, marking the tags field as
+    /// Replaces the composer or artist with an explicit origin, for filename
+    /// parsing, initialization, and PC import.
+    pub fn assign_composer_or_artist(
+        &mut self,
+        composer_or_artist: Option<String>,
+        origin: MetadataOrigin,
+    ) {
+        self.composer_or_artist = composer_or_artist;
+        self.set_origin(MetadataField::ComposerOrArtist, origin);
+    }
+
+    /// Replaces the whole tag set as a user edit, marking the tags field as
     /// [`MetadataOrigin::Manual`].
+    ///
+    /// An empty set is still a manual edit: the user removed those tags.
     pub fn set_tags(&mut self, tags: impl IntoIterator<Item = String>) {
+        self.assign_tags(tags, MetadataOrigin::Manual);
+    }
+
+    /// Replaces the whole tag set with an explicit origin, for filename
+    /// parsing, initialization, and PC import.
+    pub fn assign_tags(
+        &mut self,
+        tags: impl IntoIterator<Item = String>,
+        origin: MetadataOrigin,
+    ) {
         self.tags = normalize_tags(tags);
-        self.mark_manual(MetadataField::Tags);
+        self.set_origin(MetadataField::Tags, origin);
     }
 
     /// Adds a tag, applying the same normalization as the constructor and
@@ -283,6 +353,14 @@ impl NoteMetadata {
 impl<'de> Deserialize<'de> for NoteMetadata {
     /// Routes every inbound record through [`NoteMetadata::new`], so a sidecar
     /// cannot produce metadata that the constructor would have rejected.
+    ///
+    /// A record must carry provenance, either as the `provenance` object or as
+    /// the legacy scalar `origin`. A record with neither is rejected rather
+    /// than treated as wholly [`MetadataOrigin::Unset`]: absence of a marker
+    /// is not evidence that the user never edited the field, and accepting it
+    /// would let an import overwrite genuinely manual metadata. The legacy
+    /// scalar is migrated uniformly to all four fields, so `origin:
+    /// "manual"` keeps every field authoritative.
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         struct Raw {
@@ -293,15 +371,25 @@ impl<'de> Deserialize<'de> for NoteMetadata {
             composer_or_artist: Option<String>,
             #[serde(default)]
             tags: BTreeSet<String>,
-            #[serde(default)]
-            provenance: FieldProvenance,
+            provenance: Option<FieldProvenance>,
+            origin: Option<MetadataOrigin>,
         }
 
         let raw = Raw::deserialize(deserializer)?;
+        let provenance = match (raw.provenance, raw.origin) {
+            (Some(provenance), _) => provenance,
+            (None, Some(origin)) => {
+                FieldProvenance::with_every_field(origin)
+            }
+            (None, None) => {
+                return Err(serde::de::Error::custom(DomainError::MissingProvenance));
+            }
+        };
+
         let mut meta = NoteMetadata::new(&raw.title, raw.composer_or_artist, raw.tags)
             .map_err(serde::de::Error::custom)?;
         meta.id = raw.id;
-        meta.provenance = raw.provenance;
+        meta.provenance = provenance;
         Ok(meta)
     }
 }
