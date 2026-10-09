@@ -74,7 +74,20 @@
 //! includes an incumbent the sidecar does not mention: it is not one of
 //! [`ImportPreview::entries`], so it is listed in
 //! [`ImportPreview::contested_records`] and written by `apply`, and a library
-//! can never end up with one side of a collision still marked healthy.
+//! can never end up with one side of a collision still marked healthy. It also
+//! includes an incumbent whose sidecar entry could not be verified: the entry
+//! contributes nothing, but the record is still in the library and still holds
+//! its number, so it competes for it and the collision is resolved rather than
+//! surfacing as a store refusal on the newcomer.
+//!
+//! A record the catalog could not use is the one exception to the marker. Its
+//! status says what was observed of the file — [`IndexStatus::Inaccessible`] or
+//! [`IndexStatus::InvalidPdf`] — and that observation is not overwritten. Both
+//! facts are then true at once: the row carries the condition, and the
+//! collision is reported through [`ImportPreview::conflicts`] and
+//! [`ImportPreview::conflict_for`], which name the record as one of the two
+//! paths. Reconciliation applies the same rule, so a record cannot be marked by
+//! one path and left unmarked by the other.
 //!
 //! Import never deletes: a record the sidecar does not mention is reported in
 //! [`ImportPreview::missing`] and left exactly as it is.
@@ -445,6 +458,11 @@ impl ImportPreview {
     /// because it is not an entry, it would otherwise be reported as a conflict
     /// and then silently left healthy. This is what shows the user both sides of
     /// a collision before anything is written.
+    ///
+    /// A record the catalog could not read or parse is not in this list even
+    /// when it takes part in a conflict: its status keeps the observed
+    /// condition and needs no write, so it is reported through
+    /// [`conflicts`](Self::conflicts) instead of being rewritten.
     #[must_use]
     pub fn contested_records(&self) -> &[IndexedNote] {
         &self.contested
@@ -580,9 +598,18 @@ impl ImportReport {
     }
 
     /// Whether nothing was written.
+    ///
+    /// Both write categories count. An entry written through
+    /// [`imported`](Self::imported) is one the preview called a write, and a
+    /// contested incumbent written through
+    /// [`contested_records`](Self::contested_records) is a status mutation the
+    /// entries do not account for: the sidecar omits that record, so there is
+    /// no entry for it to be counted in. Leaving it out would report an import
+    /// that marked both sides of a collision as having done nothing, and hide
+    /// any failure the same import refused along the way.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.imported.is_empty()
+        self.imported.is_empty() && self.contested.is_empty()
     }
 }
 
@@ -725,8 +752,16 @@ struct HeldClaim {
 #[derive(Debug, Clone)]
 struct Candidate {
     note: IndexedNote,
-    /// Index into the entry list, or `None` for a record the sidecar omits.
+    /// Index into the entry list, or `None` for a record the sidecar omits or
+    /// cannot import.
     entry: Option<usize>,
+    /// Whether the catalog could not use this record's file on this run.
+    ///
+    /// Such a record's status says what was observed of the file, so it is not
+    /// overwritten with a conflict marker; the collision it takes part in is
+    /// reported through [`ImportConflict`] instead. This is the same rule
+    /// reconciliation applies to a record it could not re-index.
+    conditioned: bool,
 }
 
 /// Ranks a candidate for a contested ID: 0 if the index already filed this very
@@ -797,6 +832,18 @@ fn derive(
         // no metadata, no OCR text, no record — and are reported instead.
         if let Err(change) = verify(entry, files.get(entry.path())) {
             superseded.insert(entry.path().clone());
+            // The entry contributes no candidate, but the record the index
+            // already holds under this path is still there and still holds
+            // whatever number it holds. Dropping it would let a newcomer claim
+            // that number and be refused by the store's unique-ID constraint
+            // instead of being resolved by the conflict resolution below.
+            if let Some(stored) = stored {
+                candidates.push(Candidate {
+                    note: stored.clone(),
+                    entry: None,
+                    conditioned: matches!(change, EntryChange::Unverified { .. }),
+                });
+            }
             entries.push(ImportEntry {
                 entry: entry.clone(),
                 change,
@@ -880,6 +927,9 @@ fn derive(
         candidates.push(Candidate {
             note: note.clone(),
             entry: Some(entries.len()),
+            // Verified: the file is present, readable, and hashes to what the
+            // entry claims, so its status is this import's to write.
+            conditioned: false,
         });
         entries.push(ImportEntry {
             entry: entry.clone(),
@@ -899,6 +949,13 @@ fn derive(
             candidates.push(Candidate {
                 note: note.clone(),
                 entry: None,
+                // The catalog's observation stands wherever it came from, not
+                // only where a sidecar entry names the path: a file it could
+                // not read keeps its condition rather than taking a marker.
+                conditioned: matches!(
+                    files.get(note.path()),
+                    Some(FileCondition::Unreadable | FileCondition::InvalidPdf)
+                ),
             });
         }
     }
@@ -1027,9 +1084,21 @@ fn resolve_conflicts(
         // Both records carry the marker so neither looks healthy, and the loser
         // is written without the contested number — unless the user set that
         // number by hand, which an import may not undo.
-        candidates[keeper].note =
-            candidates[keeper].note.with_status(IndexStatus::DuplicateIdConflict);
-        candidates[loser].note = candidates[loser].note.with_status(IndexStatus::DuplicateIdConflict);
+        //
+        // A record whose file the catalog could not use keeps the condition it
+        // was observed in: that condition is what was actually seen of the
+        // file, and the collision is reported through `ImportConflict` and
+        // `ImportEntry::conflict` instead. Reconciliation applies the same rule,
+        // so a record cannot be marked by one path and left unmarked by the
+        // other.
+        if !candidates[keeper].conditioned {
+            candidates[keeper].note =
+                candidates[keeper].note.with_status(IndexStatus::DuplicateIdConflict);
+        }
+        if !candidates[loser].conditioned {
+            candidates[loser].note =
+                candidates[loser].note.with_status(IndexStatus::DuplicateIdConflict);
+        }
         if candidates[loser]
             .note
             .metadata()

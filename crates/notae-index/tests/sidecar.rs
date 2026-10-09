@@ -1259,6 +1259,105 @@ fn a_manifest_with_an_unknown_field_is_rejected() {
     let _ = std::fs::remove_file(&entry_extra);
 }
 
+/// A manifest carrying exactly one entry, built from the JSON fragments the
+/// test varies.
+fn manifest_json(entry: String) -> String {
+    format!(
+        r#"{{
+            "schema_version": 2,
+            "generated_at": {{"secs": 1700000000, "nanos": 0}},
+            "tool_version": "notae-index 0.1.0",
+            "entries": [{entry}]
+        }}"#
+    )
+}
+
+/// One entry carrying the given fingerprint and metadata objects.
+fn entry_json(fingerprint: String, metadata: String) -> String {
+    format!(
+        r#"{{
+            "relative_path": "a.pdf",
+            "fingerprint": {fingerprint},
+            "metadata": {metadata},
+            "status": "ready"
+        }}"#
+    )
+}
+
+/// The provenance object as the writer emits it.
+fn provenance_json() -> String {
+    r#"{"id": "filename_derived", "title": "filename_derived", "composer_or_artist": "unset", "tags": "unset"}"#.to_string()
+}
+
+#[test]
+fn an_unknown_field_in_any_nested_value_is_rejected() {
+    // The digest crosses the wire as the 32 raw bytes it is, not as hex.
+    let digest = format!("[{}]", vec!["1"; 32].join(", "));
+    let good_fingerprint = format!(r#"{{"sha256": {digest}, "byte_len": 10}}"#);
+    let good_metadata =
+        format!(r#"{{"id": null, "title": "A", "provenance": {}}}"#, provenance_json());
+
+    let cases: [(&str, String); 4] = [
+        (
+            "fingerprint",
+            manifest_json(entry_json(
+                format!(r#"{{"sha256": {digest}, "byte_len": 10, "future": 1}}"#),
+                good_metadata.clone(),
+            )),
+        ),
+        (
+            "metadata",
+            manifest_json(entry_json(
+                good_fingerprint.clone(),
+                format!(
+                    r#"{{"id": null, "title": "A", "provenance": {}, "future": 1}}"#,
+                    provenance_json()
+                ),
+            )),
+        ),
+        (
+            "provenance",
+            manifest_json(entry_json(
+                good_fingerprint.clone(),
+                r#"{"id": null, "title": "A", "provenance": {"id": "filename_derived", "title": "filename_derived", "composer_or_artist": "unset", "tags": "unset", "future": 1}}"#.to_string(),
+            )),
+        ),
+        (
+            "timestamp",
+            r#"{
+                "schema_version": 2,
+                "generated_at": {"secs": 1700000000, "nanos": 0, "future": 1},
+                "tool_version": "notae-index 0.1.0",
+                "entries": []
+            }"#
+            .to_string(),
+        ),
+    ];
+
+    for (where_, json) in cases {
+        let file = temp_file(&format!("nested-extra-{where_}"), "json");
+        std::fs::write(&file, json).expect("write the file");
+        assert!(
+            matches!(SidecarManifest::read(&file), Err(SidecarError::Json(_))),
+            "an unknown field inside {where_} must be refused before import, not \
+             silently dropped: a producer and a consumer that do not agree have \
+             to find out"
+        );
+        let _ = std::fs::remove_file(&file);
+    }
+
+    // The same nested shapes without the extra field still load, so strictness
+    // is about unknown fields and nothing else.
+    let file = temp_file("nested-clean", "json");
+    std::fs::write(
+        &file,
+        manifest_json(entry_json(good_fingerprint, good_metadata)),
+    )
+    .expect("write the file");
+    assert!(SidecarManifest::read(&file).is_ok());
+    let _ = std::fs::remove_file(&file);
+}
+
 #[test]
 fn a_manifest_without_a_schema_version_is_rejected() {
     let file = temp_file("no-version", "json");
@@ -1374,6 +1473,138 @@ fn a_conflict_with_an_omitted_incumbent_marks_both_records() {
     let loser = record_at(&store, "loser.pdf");
     assert_eq!(loser.status(), IndexStatus::DuplicateIdConflict);
     assert_eq!(loser.id(), None, "the newcomer is written without the contested id");
+
+    let _ = std::fs::remove_file(&database);
+}
+
+#[test]
+fn a_contested_incumbent_write_is_not_an_empty_report() {
+    // The incumbent is omitted by the sidecar and still holds the number, so
+    // applying the preview writes its status even when no entry is imported at
+    // all. A report that calls that empty hides a real write.
+    let (store, database) = open("contested-not-empty");
+    store
+        .upsert_note(&note("held.pdf", 1, Some(NoteId::new(30)), "Held", None, &[]))
+        .expect("index the record that holds the id");
+
+    // The only entry is the incumbent's own file, imported under a manual ID the
+    // store refuses: nothing is imported, one record fails, and the omitted
+    // incumbent is still written with the conflict marker.
+    let mut manual = metadata(Some(NoteId::new(30)), "Held", None, &[]);
+    manual.set_id(Some(NoteId::new(30)));
+    let sidecar = manifest(vec![SidecarEntry::new(
+        &record("held-copy.pdf", 2, manual),
+        None,
+    )]);
+    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+
+    let report = SidecarImporter::apply(preview, &store).expect("apply");
+    assert_eq!(
+        report.contested_records().len(),
+        1,
+        "the omitted incumbent is written with the conflict marker"
+    );
+    assert!(
+        !report.is_empty(),
+        "a report that wrote a contested incumbent is not empty: \
+         imported={} contested={} failures={}",
+        report.imported().len(),
+        report.contested_records().len(),
+        report.failures().len()
+    );
+
+    let _ = std::fs::remove_file(&database);
+}
+
+#[test]
+fn an_empty_report_stays_empty_without_a_contested_write() {
+    let (store, database) = open("still-empty");
+    store
+        .upsert_note(&note("a.pdf", 1, Some(NoteId::new(1)), "A", None, &[]))
+        .expect("index the record");
+
+    let sidecar = manifest(vec![entry("a.pdf", 1, Some(NoteId::new(1)), "A")]);
+    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let report = SidecarImporter::apply(preview, &store).expect("apply");
+
+    assert_eq!(report.contested_records().len(), 0);
+    assert!(report.is_empty(), "nothing was written, so the report is empty");
+
+    let _ = std::fs::remove_file(&database);
+}
+
+#[test]
+fn a_condition_failed_incumbent_still_takes_part_in_the_conflict() {
+    let (store, database) = open("condition-incumbent");
+    // The incumbent holds 7 and the catalog cannot read its file this run, so
+    // its entry is unverified and contributes no candidate of its own. It still
+    // exists in the library and still holds the number.
+    let mut incumbent = note("inc.pdf", 1, Some(NoteId::new(7)), "Incumbent", None, &[]);
+    incumbent.set_status(IndexStatus::Inaccessible);
+    store.upsert_note(&incumbent).expect("index the incumbent");
+
+    let sidecar = manifest(vec![
+        entry("inc.pdf", 1, Some(NoteId::new(7)), "Incumbent"),
+        entry("new.pdf", 2, Some(NoteId::new(7)), "Newcomer"),
+    ]);
+    let catalog = TestCatalog::new(vec![
+        PdfFile::from_path_with_condition(path("inc.pdf"), FileCondition::Unreadable),
+        PdfFile::from_path(path("new.pdf"), fingerprint(2)),
+    ]);
+
+    let preview = SidecarImporter::preview(&store, &sidecar, &catalog).expect("preview");
+
+    assert_eq!(preview.unreadable_entries().len(), 1);
+    assert_eq!(
+        preview.conflicts().len(),
+        1,
+        "an unverified incumbent still holds its id, so the collision is real"
+    );
+    let conflict = &preview.conflicts()[0];
+    assert_eq!(conflict.id(), NoteId::new(7));
+    assert_eq!(conflict.existing(), &path("inc.pdf"));
+    assert_eq!(conflict.conflicting(), &path("new.pdf"));
+    assert!(
+        preview.conflict_for(&path("inc.pdf")).is_some(),
+        "the condition-failed incumbent is reported as one side of the conflict"
+    );
+    assert!(
+        preview.conflict_for(&path("new.pdf")).is_some(),
+        "and so is the newcomer"
+    );
+
+    let newcomer = preview.new_entries()[0];
+    assert_eq!(
+        newcomer.resolved().and_then(IndexedNote::id),
+        None,
+        "the newcomer is written without the number the incumbent already holds"
+    );
+    assert_eq!(
+        newcomer.resolved().map(IndexedNote::status),
+        Some(IndexStatus::DuplicateIdConflict)
+    );
+
+    let report = SidecarImporter::apply(preview, &store).expect("apply");
+    assert_eq!(report.conflicts().len(), 1);
+    assert_eq!(
+        report.failures().len(),
+        0,
+        "the collision is resolved by the import instead of by a store refusal: \
+         {:?}",
+        report.failures()
+    );
+
+    let written = record_at(&store, "new.pdf");
+    assert_eq!(written.status(), IndexStatus::DuplicateIdConflict);
+    assert_eq!(written.id(), None);
+
+    let kept = record_at(&store, "inc.pdf");
+    assert_eq!(
+        kept.status(),
+        IndexStatus::Inaccessible,
+        "the observed condition is kept, not overwritten by a conflict marker"
+    );
+    assert_eq!(kept.id(), Some(NoteId::new(7)));
 
     let _ = std::fs::remove_file(&database);
 }
