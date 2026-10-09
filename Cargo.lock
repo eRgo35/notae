@@ -129,6 +129,8 @@ version = "0.1.0"
 dependencies = [
  "notae-domain",
  "rusqlite",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 
