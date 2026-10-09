@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::NoteId;
+use crate::{NoteId, PdfFingerprint, RelativePdfPath};
 use thiserror::Error;
 
 /// Typed failures produced by domain validation.
@@ -391,6 +391,66 @@ impl<'de> Deserialize<'de> for NoteMetadata {
         meta.id = raw.id;
         meta.provenance = provenance;
         Ok(meta)
+    }
+}
+
+/// One indexed PDF: where it lives, what it looks like, and its metadata.
+///
+/// This is the record the index stores and the browsing order sorts, so it
+/// owns the file identity alongside the user-visible metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexedNote {
+    /// Path relative to the library root.
+    path: RelativePdfPath,
+    /// Observed content identity.
+    fingerprint: PdfFingerprint,
+    /// User-visible metadata.
+    metadata: NoteMetadata,
+}
+
+impl IndexedNote {
+    /// Builds an indexed record.
+    #[must_use]
+    pub const fn new(
+        path: RelativePdfPath,
+        fingerprint: PdfFingerprint,
+        metadata: NoteMetadata,
+    ) -> Self {
+        Self {
+            path,
+            fingerprint,
+            metadata,
+        }
+    }
+
+    /// Returns the library-relative path.
+    #[must_use]
+    pub const fn path(&self) -> &RelativePdfPath {
+        &self.path
+    }
+
+    /// Returns the content fingerprint.
+    #[must_use]
+    pub const fn fingerprint(&self) -> &PdfFingerprint {
+        &self.fingerprint
+    }
+
+    /// Returns the metadata.
+    #[must_use]
+    pub const fn metadata(&self) -> &NoteMetadata {
+        &self.metadata
+    }
+
+    /// Returns the note ID, when one is known.
+    #[must_use]
+    pub const fn id(&self) -> Option<NoteId> {
+        self.metadata.id
+    }
+
+    /// Returns the title.
+    #[must_use]
+    pub fn title(&self) -> &str {
+        self.metadata.title()
     }
 }
 
