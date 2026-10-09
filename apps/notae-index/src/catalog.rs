@@ -3,6 +3,27 @@
 //! This is the only place in the CLI that knows about `std::fs`. Everything
 //! above it consumes [`PdfFile`] values, so the Android Storage Access
 //! Framework adapter and this desktop walk are interchangeable.
+//!
+//! # The library root boundary
+//!
+//! Two rules keep a run inside the root it was given.
+//!
+//! * **Symbolic links are never followed.** A symlinked file, including one
+//!   that resolves to a target still inside the root, is skipped and reported
+//!   as a [`CatalogFailure`]; a symlinked directory is not walked. Skipping
+//!   unconditionally — rather than canonicalising the target and comparing it
+//!   with the canonical root — is what makes the guarantee hold: the link is
+//!   never opened, so no bytes from outside the root can be read even if the
+//!   link is retargeted between the check and the read, and a symlink loop
+//!   terminates because the walk never follows a link in the first place.
+//! * **A name the domain type cannot represent is a reported skip.** POSIX
+//!   permits filenames the portable [`RelativePdfPath`] rejects, such as
+//!   `C:.pdf`, whose leading `X:` would be a Windows drive prefix in a
+//!   sidecar. Those files are not indexed, because indexing them would put a
+//!   non-portable path in the sidecar; they are recorded as
+//!   [`CatalogFailure`]s and the rest of the batch continues. The domain
+//!   invariant stays strict and the catalog degrades, so one unusual Linux
+//!   filename costs one file rather than the whole run.
 
 use std::cell::RefCell;
 use std::fs::File;
@@ -40,12 +61,45 @@ impl CatalogFailure {
     }
 }
 
+/// Records one traversal problem.
+///
+/// The path is shown relative to `root` when it lies inside it, so reports read
+/// the same way as the paths that succeeded. The root itself has no relative
+/// form — [`Path::strip_prefix`] yields an empty path for it — so an empty
+/// result falls back to the root as given, which is what identifies the thing
+/// that failed.
+fn push_failure(
+    failures: &RefCell<Vec<CatalogFailure>>,
+    root: &Path,
+    path: &Path,
+    error: impl Into<String>,
+) {
+    let relative = path.strip_prefix(root).map_or_else(
+        |_| path.display().to_string(),
+        |inside| {
+            let inside = inside.display().to_string();
+            if inside.is_empty() {
+                root.display().to_string()
+            } else {
+                inside
+            }
+        },
+    );
+    failures.borrow_mut().push(CatalogFailure {
+        path: relative,
+        error: error.into(),
+    });
+}
+
 /// Enumerates the PDFs under one library root.
 ///
 /// Per-file problems — a file that cannot be opened, a directory that cannot be
 /// read — are recorded in [`failures`](Self::failures) and the corresponding
 /// entry is still enumerated as [`FileCondition::Unreadable`] where the path is
-/// known, so one bad PDF cannot abort a batch.
+/// known, so one bad PDF cannot abort a batch. Entries that are skipped
+/// outright — a symlink, or a name the portable path type rejects — appear in
+/// [`failures`](Self::failures) only; see the module documentation for the
+/// root-boundary rules that decide this.
 #[derive(Debug)]
 pub struct FilesystemCatalog {
     root: PathBuf,
@@ -86,7 +140,11 @@ impl FilesystemCatalog {
     }
 
     fn record(&self, path: &Path, error: &io::Error) {
-        record_failure(&self.failures, &self.root, path, error);
+        push_failure(&self.failures, &self.root, path, error.to_string());
+    }
+
+    fn record_message(&self, path: &Path, error: impl Into<String>) {
+        push_failure(&self.failures, &self.root, path, error);
     }
 }
 
@@ -98,16 +156,23 @@ impl PdfCatalog for FilesystemCatalog {
 
         let files = relatives
             .into_iter()
-            .map(|relative| {
+            .filter_map(|relative| {
                 let filename = relative
                     .rsplit('/')
                     .next()
                     .unwrap_or(relative.as_str())
                     .to_owned();
-                let path = RelativePdfPath::new(relative)
-                    .expect("collected paths are already root relative");
+                // A name POSIX allows but the portable path type refuses is a
+                // reported skip, not a panic: one file is lost, not the batch.
+                let path = match RelativePdfPath::new(&relative) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        self.record_message(Path::new(&relative), error.to_string());
+                        return None;
+                    }
+                };
                 let absolute = self.root.join(path.as_str());
-                match fingerprint(&absolute) {
+                Some(match fingerprint(&absolute) {
                     Ok(fingerprint) => PdfFile::with_condition(
                         path,
                         filename,
@@ -117,7 +182,7 @@ impl PdfCatalog for FilesystemCatalog {
                         self.record(&absolute, &error);
                         PdfFile::with_condition(path, filename, FileCondition::Unreadable)
                     }
-                }
+                })
             })
             .collect();
         Ok(files)
@@ -126,6 +191,10 @@ impl PdfCatalog for FilesystemCatalog {
 
 /// Collects every `.pdf`/`.PDF` path below `dir`, as `prefix`-joined
 /// forward-slash strings relative to the library root.
+///
+/// Symbolic links are skipped without being followed; see the module
+/// documentation for why. `DirEntry::file_type` does not traverse a link, so
+/// this holds even for a loop or a link that leaves the root.
 fn collect_pdf_paths(
     library_root: &Path,
     dir: &Path,
@@ -136,7 +205,7 @@ fn collect_pdf_paths(
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(error) => {
-            record_failure(failures, library_root, dir, &error);
+            push_failure(failures, library_root, dir, error.to_string());
             return;
         }
     };
@@ -144,7 +213,7 @@ fn collect_pdf_paths(
         let entry = match entry {
             Ok(entry) => entry,
             Err(error) => {
-                record_failure(failures, library_root, dir, &error);
+                push_failure(failures, library_root, dir, error.to_string());
                 continue;
             }
         };
@@ -153,10 +222,19 @@ fn collect_pdf_paths(
         let file_type = match entry.file_type() {
             Ok(file_type) => file_type,
             Err(error) => {
-                record_failure(failures, library_root, &path, &error);
+                push_failure(failures, library_root, &path, error.to_string());
                 continue;
             }
         };
+        if file_type.is_symlink() {
+            push_failure(
+                failures,
+                library_root,
+                &path,
+                format!("{}: symbolic link skipped", name.to_string_lossy()),
+            );
+            continue;
+        }
         if file_type.is_dir() {
             let nested = if prefix.is_empty() {
                 name.to_string_lossy().into_owned()
@@ -177,22 +255,6 @@ fn collect_pdf_paths(
     }
 }
 
-fn record_failure(
-    failures: &RefCell<Vec<CatalogFailure>>,
-    root: &Path,
-    path: &Path,
-    error: &io::Error,
-) {
-    let display = match path.strip_prefix(root) {
-        Ok(relative) => relative.display().to_string(),
-        Err(_) => path.display().to_string(),
-    };
-    failures.borrow_mut().push(CatalogFailure {
-        path: display,
-        error: error.to_string(),
-    });
-}
-
 /// Whether a directory entry name names a PDF, case-insensitively.
 fn is_pdf(name: &std::ffi::OsStr) -> bool {
     name.to_str()
@@ -201,12 +263,33 @@ fn is_pdf(name: &std::ffi::OsStr) -> bool {
 
 /// Hashes one file end to end and collects its platform metadata.
 ///
+/// The link check is the last line of defence for the root boundary. The walk
+/// already refuses to collect a symlink, but a regular file can be replaced by
+/// one between collection and this call; [`std::fs::symlink_metadata`] inspects
+/// the name itself, and comparing its device and inode with those of the handle
+/// that was actually opened proves the bytes came from the vetted entry. The
+/// check costs two `stat` calls and no syscall beyond them.
+///
 /// # Errors
-/// Returns the I/O error when the file cannot be opened or read, so the caller
-/// can record it and enumerate the file as unreadable.
+/// Returns the I/O error when the file is a symbolic link, changed identity
+/// between the two calls, or cannot be opened or read, so the caller can record
+/// it and enumerate the file as unreadable.
 fn fingerprint(path: &Path) -> Result<PdfFingerprint, io::Error> {
-    let metadata = std::fs::metadata(path)?;
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() {
+        return Err(io::Error::other("symbolic link skipped"));
+    }
     let mut file = File::open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let opened = file.metadata()?;
+        if opened.dev() != metadata.dev() || opened.ino() != metadata.ino() {
+            return Err(io::Error::other(
+                "the entry changed identity while it was being read",
+            ));
+        }
+    }
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; READ_BUFFER];
     let mut byte_len = 0_u64;

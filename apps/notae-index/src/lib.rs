@@ -78,6 +78,14 @@ impl RunReport {
 
 /// Runs the indexer for one parsed command line.
 ///
+/// A name the catalog skipped, an unreadable PDF, and a directory it could not
+/// read are all reported through the returned [`RunReport`]. `Err` is reserved
+/// for a run that could not start or could not enumerate at all, which is the
+/// only case that ends in a non-zero exit status. Later stages — text
+/// extraction, OCR, reconciliation, sidecar output — hang off
+/// [`RunReport::files`] and report their own per-file problems the same way, so
+/// `Ok` keeps meaning "a report was produced", not "everything succeeded".
+///
 /// # Errors
 /// Returns [`CliError`] when the library root is unusable, or when the tree
 /// cannot be enumerated at all. A single unreadable PDF is reported through the
@@ -104,9 +112,11 @@ pub fn run(cli: Cli) -> Result<RunReport, CliError> {
                 file.path()
             );
         }
-        for failure in catalog.failures() {
-            eprintln!("skipped {}: {}", failure.path(), failure.error());
-        }
+    }
+    // Failures are printed whatever the verbosity: a run that reports per-file
+    // problems is still a successful run, so the exit status cannot carry them.
+    for failure in catalog.failures() {
+        eprintln!("skipped {}: {}", failure.path(), failure.error());
     }
 
     Ok(RunReport {

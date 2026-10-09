@@ -369,3 +369,169 @@ fn rereads_rewritten_content_rather_than_caching() {
         .expect("enumerate");
     assert_eq!(files[0].fingerprint().expect("readable").byte_len(), 5);
 }
+
+// --- Root boundary: names the domain rejects, symlinks, and root failures ---
+
+#[test]
+fn records_a_drive_prefix_filename_without_aborting_the_batch() {
+    let library = Library::new();
+    library.write("C:.pdf", "drive");
+    library.write("good.pdf", KNOWN_CONTENT);
+
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let files = catalog
+        .enumerate()
+        .expect("a rejected name is a per-file failure, not a panic");
+
+    assert_eq!(
+        files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>(),
+        vec!["good.pdf"],
+        "only representable paths are enumerated"
+    );
+    assert!(
+        files.iter().all(|f| f.is_readable()),
+        "the rest of the batch was still fingerprinted"
+    );
+
+    let failures = catalog.failures();
+    assert_eq!(failures.len(), 1, "the rejected name is reported: {failures:?}");
+    assert_eq!(failures[0].path(), "C:.pdf");
+    assert!(
+        failures[0].error().contains("C:.pdf"),
+        "the failure explains the rejected path: {}",
+        failures[0].error()
+    );
+}
+
+#[test]
+fn a_rejected_name_in_a_subdirectory_is_reported_with_its_relative_path() {
+    // A drive prefix is only a drive prefix at index 0, so `nested/C:.pdf` is
+    // a legitimate POSIX path; a backslash is the separator the portable sidecar
+    // cannot carry, wherever it appears.
+    let library = Library::new();
+    library.write("nested/C:.pdf", "fine");
+    library.write("nested/back\\slash.pdf", "rejected");
+
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let files = catalog.enumerate().expect("enumerate");
+
+    assert_eq!(
+        files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>(),
+        vec!["nested/C:.pdf"],
+        "only the representable path is enumerated"
+    );
+    let failures = catalog.failures();
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert_eq!(failures[0].path(), "nested/back\\slash.pdf");
+}
+
+#[cfg(unix)]
+#[test]
+fn never_reads_or_reports_a_symlink_pointing_outside_the_root() {
+    let library = Library::new();
+    library.write("inside.pdf", KNOWN_CONTENT);
+    let outside = library._dir.path().join("outside-target.pdf");
+    fs::write(&outside, "outside content").expect("write the target outside the root");
+    std::os::unix::fs::symlink(&outside, library.root.join("outside-link.pdf"))
+        .expect("link outside the root");
+
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let files = catalog.enumerate().expect("enumerate");
+
+    let found = files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>();
+    assert_eq!(found, vec!["inside.pdf"], "the link is not enumerated: {found:?}");
+    assert!(
+        !files
+            .iter()
+            .any(|f| f.path().as_str() == "outside-link.pdf"
+                && f.fingerprint().is_some_and(|fp| fp.byte_len() == "outside content".len() as u64)),
+        "no fingerprint of the external target exists"
+    );
+
+    let failures = catalog.failures();
+    assert!(
+        failures.iter().any(|f| f.path() == "outside-link.pdf"),
+        "the skipped link is reported: {failures:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn never_reads_a_symlink_that_points_outside_through_a_subdirectory() {
+    let library = Library::new();
+    let outside_dir = library._dir.path().join("outside-dir");
+    fs::create_dir_all(&outside_dir).expect("create the directory outside the root");
+    fs::write(outside_dir.join("target.pdf"), "outside content").expect("write the target");
+    std::os::unix::fs::symlink(&outside_dir, library.root.join("linkdir"))
+        .expect("link the directory");
+
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let files = catalog.enumerate().expect("enumerate");
+
+    assert!(files.is_empty(), "a linked directory is not walked: {files:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_loop_terminates_without_reading_the_target() {
+    let library = Library::new();
+    library.write("real.pdf", KNOWN_CONTENT);
+    std::os::unix::fs::symlink("loop.pdf", library.root.join("loop.pdf"))
+        .expect("create a self-referencing link");
+    std::os::unix::fs::symlink(&library.root, library.root.join("selfdir"))
+        .expect("create a self-referencing directory link");
+
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let files = catalog.enumerate().expect("a loop does not hang or fail the run");
+
+    let found = files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>();
+    assert_eq!(found, vec!["real.pdf"], "only the real file is enumerated: {found:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlink_inside_the_root_is_skipped_rather_than_followed() {
+    let library = Library::new();
+    library.write("target.pdf", KNOWN_CONTENT);
+    std::os::unix::fs::symlink("target.pdf", library.root.join("alias.pdf"))
+        .expect("link inside the root");
+
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let files = catalog.enumerate().expect("enumerate");
+
+    let found = files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>();
+    assert_eq!(found, vec!["target.pdf"], "only the real file is enumerated: {found:?}");
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_root_failure_names_the_root() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let library = Library::new();
+    library.write("hidden.pdf", "a");
+    fs::set_permissions(&library.root, fs::Permissions::from_mode(0o000))
+        .expect("lock the root");
+    if fs::read_dir(&library.root).is_ok() {
+        // Running as a user that bypasses permissions (root).
+        fs::set_permissions(&library.root, fs::Permissions::from_mode(0o755)).expect("unlock");
+        return;
+    }
+
+    let catalog = FilesystemCatalog::new(library.root.clone()).expect("catalog");
+    let files = catalog.enumerate().expect("an unreadable root is isolated");
+    fs::set_permissions(&library.root, fs::Permissions::from_mode(0o755)).expect("unlock");
+
+    assert!(files.is_empty(), "nothing under an unreadable root is enumerated");
+    let failures = catalog.failures();
+    assert_eq!(failures.len(), 1, "the failure is recorded: {failures:?}");
+    assert!(
+        !failures[0].path().is_empty(),
+        "the failure identifies what failed"
+    );
+    assert_eq!(
+        failures[0].path(),
+        library.root.display().to_string(),
+        "the failure names the root directory itself"
+    );
+}

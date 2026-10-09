@@ -22,7 +22,8 @@ pub struct Cli {
     #[arg(value_name = "LIBRARY_ROOT")]
     library_root: PathBuf,
 
-    /// Print per-file progress and failures to standard error.
+    /// Print per-file progress to standard error. Traversal failures are
+    /// printed either way.
     #[arg(short, long)]
     verbose: bool,
 }
@@ -32,13 +33,23 @@ impl Cli {
     ///
     /// # Errors
     /// Returns [`CliError::Usage`] when the arguments do not match the command
-    /// shape, for example when the required root is missing.
+    /// shape, for example when the required root is missing, and
+    /// [`CliError::Informational`] when the request was `--help` or
+    /// `--version`. Those two are successes, so they are distinguished here
+    /// rather than folded into [`CliError::Usage`]; the caller prints the
+    /// first to stdout and exits zero.
     pub fn try_parse_from<I, T>(args: I) -> Result<Self, CliError>
     where
         I: IntoIterator<Item = T>,
         T: Into<std::ffi::OsString> + Clone,
     {
-        <Self as Parser>::try_parse_from(args).map_err(|error| CliError::Usage(error.to_string()))
+        <Self as Parser>::try_parse_from(args).map_err(|error| {
+            if error.use_stderr() {
+                CliError::Usage(error.to_string())
+            } else {
+                CliError::Informational(error.to_string())
+            }
+        })
     }
 
     /// The library root named on the command line.
@@ -71,6 +82,12 @@ impl Cli {
 /// Failures produced before or during a run.
 #[derive(Debug, Error)]
 pub enum CliError {
+    /// The command line asked for something informational, such as `--help` or
+    /// `--version`. This is not a failure: the message goes to standard output
+    /// and the process exits zero.
+    #[error("{0}")]
+    Informational(String),
+
     /// The command line did not match the command shape.
     #[error("{0}")]
     Usage(String),
