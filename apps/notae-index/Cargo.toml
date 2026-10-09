@@ -14,6 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+hayro = "0.8"
+image = "0.25"
 notae-domain = { path = "../../crates/notae-domain" }
 notae-index = { path = "../../crates/notae-index" }
 sha2 = "0.10"
