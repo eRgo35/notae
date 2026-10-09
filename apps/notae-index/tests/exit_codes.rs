@@ -9,7 +9,7 @@
 //! * `0` — an informational request (`--help`, `--version`) and any run that
 //!   produced a report, including one carrying isolated per-file failures.
 //! * non-zero — the command line is invalid, or no report could be produced at
-//!   all (missing/unusable root, a catalog-wide failure).
+//!   all (missing/unusable root, a symlinked root, a catalog-wide failure).
 
 use std::fs;
 use std::path::Path;
@@ -168,5 +168,124 @@ fn a_clean_run_exits_zero() {
         stdout(&output).contains("indexed 1 of 1"),
         "the summary is printed: {}",
         stdout(&output)
+    );
+}
+
+/// Removes read permission from `path`, reporting whether the lock took effect.
+///
+/// A user that bypasses permissions — root — would see the directory as
+/// readable whatever the mode says, and the caller skips its assertion rather
+/// than pretending the run failed for the wrong reason.
+fn lock_directory(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o000)).expect("lock the directory");
+    if fs::read_dir(path).is_ok() {
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("unlock");
+        return false;
+    }
+    true
+}
+
+fn unlock_directory(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("unlock");
+}
+
+#[test]
+fn an_unreadable_root_exits_non_zero_and_names_it() {
+    let library = Library::new();
+    library.write("hidden.pdf", "content");
+    if !lock_directory(library.root()) {
+        return;
+    }
+
+    let output = index(&[library.root().to_str().expect("utf-8 path")]);
+    unlock_directory(library.root());
+
+    assert!(
+        !output.status.success(),
+        "a run over a root it cannot read cannot be trusted, so it exits non-zero; \
+         stdout: {}",
+        stdout(&output)
+    );
+    assert!(
+        !stdout(&output).contains("indexed"),
+        "no report is claimed: {}",
+        stdout(&output)
+    );
+    assert!(
+        stderr(&output).contains(&library.root().display().to_string()),
+        "the message names the root that could not be read: {}",
+        stderr(&output)
+    );
+}
+
+#[test]
+fn an_unreadable_file_under_a_readable_root_still_exits_zero() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let library = Library::new();
+    library.write("readable.pdf", "content");
+    library.write("nested/locked.pdf", "content");
+    let locked = library.root().join("nested/locked.pdf");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("lock the file");
+    if fs::File::open(&locked).is_ok() {
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).expect("unlock");
+        return;
+    }
+
+    let output = index(&[library.root().to_str().expect("utf-8 path")]);
+    let _ = fs::set_permissions(&locked, fs::Permissions::from_mode(0o644));
+
+    assert!(
+        output.status.success(),
+        "an isolated per-file failure does not fail the run; stderr: {}",
+        stderr(&output)
+    );
+    assert!(
+        stdout(&output).contains("indexed 1 of 2"),
+        "the summary counts the unreadable file: {}",
+        stdout(&output)
+    );
+    let reported = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        reported.contains("nested/locked.pdf"),
+        "the unreadable file is still named: {reported}"
+    );
+}
+
+#[test]
+fn a_symlinked_root_never_indexes_the_directory_it_points_at() {
+    let library = Library::new();
+    let outside = library._dir.path().join("outside-library");
+    fs::create_dir_all(&outside).expect("create the directory outside the root");
+    fs::write(outside.join("secret.pdf"), "outside content").expect("write the target");
+    let link = library._dir.path().join("library-link");
+    std::os::unix::fs::symlink(&outside, &link).expect("link the directory as the root");
+
+    let output = index(&[link.to_str().expect("utf-8 path")]);
+
+    let reported = format!("{}{}", stdout(&output), stderr(&output));
+    assert!(
+        !reported.contains("secret.pdf") && !stdout(&output).contains("indexed"),
+        "nothing behind the link is indexed or reported: {reported}"
+    );
+    assert!(
+        !output.status.success(),
+        "a symlinked root is refused rather than followed, so it exits non-zero; \
+         stdout: {}",
+        stdout(&output)
+    );
+    assert!(
+        stderr(&output).contains("symbolic link"),
+        "the refusal says why: {}",
+        stderr(&output)
+    );
+    assert!(
+        stderr(&output).contains(&link.display().to_string()),
+        "the refusal names the root as given: {}",
+        stderr(&output)
     );
 }

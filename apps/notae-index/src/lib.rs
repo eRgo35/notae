@@ -78,18 +78,22 @@ impl RunReport {
 
 /// Runs the indexer for one parsed command line.
 ///
-/// A name the catalog skipped, an unreadable PDF, and a directory it could not
-/// read are all reported through the returned [`RunReport`]. `Err` is reserved
-/// for a run that could not start or could not enumerate at all, which is the
-/// only case that ends in a non-zero exit status. Later stages — text
-/// extraction, OCR, reconciliation, sidecar output — hang off
-/// [`RunReport::files`] and report their own per-file problems the same way, so
-/// `Ok` keeps meaning "a report was produced", not "everything succeeded".
+/// A name the catalog skipped, an unreadable PDF, and a subdirectory it could
+/// not read are all reported through the returned [`RunReport`]. `Err` is
+/// reserved for a run that could not start or could not enumerate at all,
+/// which is the only case that ends in a non-zero exit status. The boundary is
+/// the library root: a root that cannot be read, or that is a symbolic link,
+/// ends the run; the same problem anywhere below it is one entry in the report.
+/// Later stages — text extraction, OCR, reconciliation, sidecar output — hang
+/// off [`RunReport::files`] and report their own per-file problems the same
+/// way, so `Ok` keeps meaning "a report was produced", not "everything
+/// succeeded".
 ///
 /// # Errors
-/// Returns [`CliError`] when the library root is unusable, or when the tree
-/// cannot be enumerated at all. A single unreadable PDF is reported through the
-/// returned [`RunReport`], never as an error.
+/// Returns [`CliError`] when the library root is unusable — absent, not a
+/// directory, unreadable, or a symbolic link — or when the tree cannot be
+/// enumerated at all. A single unreadable PDF is reported through the returned
+/// [`RunReport`], never as an error.
 pub fn run(cli: Cli) -> Result<RunReport, CliError> {
     cli.validate()?;
     let catalog = FilesystemCatalog::new(cli.library_root().to_path_buf())?;

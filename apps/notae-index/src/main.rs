@@ -5,9 +5,18 @@
 //! * `0` — the command succeeded: an informational request (`--help`,
 //!   `--version`), or a run that produced a [`RunReport`]. A report that
 //!   carries isolated per-file failures is still a report, so it exits zero and
-//!   the failures are printed rather than signalled through the status.
+//!   the failures are printed rather than signalled through the status. An
+//!   isolated failure is any problem with something *below* the library root: a
+//!   PDF that cannot be read, a subdirectory that cannot be listed, a skipped
+//!   symbolic link, or a name the portable path type rejects.
 //! * non-zero — the command could not produce a report at all: the arguments
-//!   are invalid, or the library root is unusable.
+//!   are invalid, or the library root is unusable. A root is unusable when it
+//!   is absent, is not a directory, cannot be read, or is a symbolic link.
+//!
+//! The dividing line is the library root itself. A root that exists but cannot
+//! be read yields a run whose numbers describe nothing, so it is a command
+//! failure rather than a report of zero PDFs — "indexed 0 of 0" would claim a
+//! complete scan of a tree the process never saw.
 //!
 //! A non-zero status therefore means "look at the command", never "some PDFs
 //! were unreadable"; per-file problems are reported on standard error and
