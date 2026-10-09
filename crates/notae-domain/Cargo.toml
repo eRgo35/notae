@@ -1,0 +1,15 @@
+[package]
+name = "notae-domain"
+description = "Pure domain model for Notae, independent of storage and platform crates."
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = "1"
+
+[lints]
+workspace = true
