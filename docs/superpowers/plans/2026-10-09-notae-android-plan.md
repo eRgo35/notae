@@ -197,7 +197,7 @@
 - `enumerate_document_tree(reader: &impl DocumentTreeReader, root_id: &str) -> Result<Vec<PdfFile>, CatalogError>` is the host-testable recursive walk.
 - `SafPdfCatalog::enumerate() -> Result<Vec<PdfFile>, CatalogError>` implements `notae_index::PdfCatalog` by adapting `ContentResolver` to `DocumentTreeReader`.
 
-- [ ] **Step 1: Write failing recursive-catalog tests**
+- [x] **Step 1: Write failing recursive-catalog tests**
 
   In `tests/saf_catalog.rs`, implement a fake `DocumentTreeReader` with a root PDF, a nested directory containing another PDF, a non-PDF, and one unreadable PDF. Assert the two readable PDFs have stable root-relative paths and fingerprints, the non-PDF is omitted, the unreadable entry has `FileCondition::Unreadable`, and a child-query failure returns `CatalogError` rather than a partial list.
 
@@ -210,15 +210,15 @@
   assert!(files.iter().all(|file| file.filename() != "notes.txt"));
   ```
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
   Run: `cargo test -p notae-android --test saf_catalog`
 
   Expected: FAIL because `enumerate_document_tree` and the SAF adapter are not implemented.
 
-- [ ] **Step 3: Implement the SAF document-tree walk**
+- [x] **Step 3: Implement the SAF document-tree walk**
 
-  Implement `DocumentTreeReader` for an Android adapter in `saf.rs`. Use `DocumentsContract.buildChildDocumentsUriUsingTree` with each parent document ID, read each query cursor into `DocumentRow` values, recurse into directory MIME types, and construct document URIs with `DocumentsContract.buildDocumentUriUsingTree`. Open PDF streams through `ContentResolver.openInputStream`, read them with `read_into_vec`, and use the existing fingerprint helpers. Convert individual PDF read failures to `FileCondition::Unreadable`; return `CatalogError` on any directory-query failure so reconciliation cannot mistake an inaccessible subtree for deleted files. Close every cursor on success and error paths. Never convert a SAF URI into a filesystem path.
+  Implement `DocumentTreeReader` for an Android adapter in `saf.rs`. Use `DocumentsContract.buildChildDocumentsUriUsingTree` with each parent document ID, read child rows into `DocumentRow`, and recurse into directory MIME types. Open PDF streams through `ContentResolver.openInputStream` and read them in fixed-size chunks through JNI; the host-testable walker computes fingerprints and root-relative `PdfFile` paths. Convert individual PDF read failures to `FileCondition::Unreadable`; return `CatalogError` on any directory-query failure so reconciliation cannot mistake an inaccessible subtree for deleted files. Close every cursor and input stream on success and error paths. Reject display names that are not one path segment; never convert a SAF URI into a filesystem path.
 
   ```java
   Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId);
@@ -227,13 +227,19 @@
   InputStream pdf = resolver.openInputStream(document);
   ```
 
-- [ ] **Step 4: Run host and device catalog scenarios**
+- [x] **Step 4: Verify host catalog behavior**
 
-  Run: `cargo test -p notae-android --test saf_catalog` and `cargo test -p notae-android --test storage_state`. On the tablet, choose a test tree containing PDFs at multiple depths and a non-PDF file, then rescan and verify the nested PDFs are indexed while the non-PDF is ignored.
+  Run: `cargo test -p notae-android --test saf_catalog` and `cargo test -p notae-android --test storage_state`. Expected: nested PDFs have stable root-relative paths and fingerprints; non-PDF files are omitted; unreadable PDFs are represented as `FileCondition::Unreadable`; child-query failures abort enumeration rather than returning a partial list.
 
-  Expected: host traversal tests pass; on-device enumeration yields the same tree-relative PDF set and isolates per-file read failures.
+  Verified: `cargo test -p notae-android` passes (37 tests), including the SAF catalog and storage-state suites; Android-target `cargo apk2 check` and release APK build pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Verify recursive enumeration on the Galaxy Tab S10 FE+**
+
+  Choose a test tree containing PDFs at multiple depths and a non-PDF file, rescan, and verify nested PDFs are indexed while the non-PDF is ignored and per-file read failures are isolated. This hardware gate cannot be marked complete without the target tablet.
+
+  Status: pending; `adb devices` reported no connected device. Repeat this scenario in the Android-plan completion check below.
+
+- [x] **Step 6: Commit**
 
   ```bash
   git add apps/notae-android
