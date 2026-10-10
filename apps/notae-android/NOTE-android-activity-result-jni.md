@@ -1,119 +1,152 @@
 # Wiring Android Activity Results back to Rust
 
-## Why this note exists
+## Status (round 4)
 
-`android-activity` 0.6 (the runtime `cargo-apk` packages for this
-crate) does **not** surface Activity Results through its
-`AndroidApp::poll_events` loop. The `PollEvent` enum is `{ Wake,
-Timeout, Main(MainEvent) }` and `MainEvent` is the standard
-`NativeActivity` lifecycle set (`InitWindow`, `Resume`, `Pause`,
-`Destroy`, `ConfigChanged`, `LowMemory`, …). There is no
-`MainEvent::ActivityResult`. (Verified against
-`android-activity-0.6.1/src/lib.rs:455-547` in the registry.)
+**The seam this note used to describe is closed.** `cargo-apk` 0.10
+does not compile Java sources (it runs neither `javac` nor
+`gradle`), and it hard-codes the shipped manifest's
+`android:name` to `android.app.NativeActivity` (the
+`ndk-build` `default_activity_name` in
+`/tmp/ndk-build-0.10.0/src/manifest.rs:330` is
+`"android.app.NativeActivity"`, with no `[package.metadata.android]`
+field to override it). As a result:
 
-That gap is the seam this note documents. The Storage Access
-Framework picker is a `startActivityForResult` call, so without a
-seam somewhere in the build, the user would tap "Select folder", the
-OS picker would open, the user would pick a folder, and the Rust
-future would never see the result. The runtime does not hand it to
-us.
+* The `NotaeActivity` subclass and its JNI bridge
+  (`Java_org_notae_android_NotaeActivity_nativeOnActivityResult`)
+  that previous rounds shipped are **dead code** — the subclass is
+  not compiled, and even if it were the OS would never instantiate
+  it because the manifest points at the plain `NativeActivity`.
+* `apps/notae-android/android/src/main/java/org/notae/android/NotaeActivity.java`
+  is **deleted** (round 4 commit; the empty `android/src/` tree is
+  gone too). The corresponding JNI symbol and `deliver_activity_result`
+  in `apps/notae-android/src/android/saf.rs` are also deleted.
+* `apps/notae-android/android/AndroidManifest.xml` now references
+  `android.app.NativeActivity` (matches what cargo-apk 0.10 actually
+  ships) instead of the deleted subclass.
+* `select_root` still launches `ACTION_OPEN_DOCUMENT_TREE` and the
+  picker will open on the user's device. The activity result is
+  delivered to `NativeActivity` — Rust has no hook into that
+  path. **The picker future will hang** on the device until one of
+  the two follow-on options below is taken.
 
-## How the seam is wired
+The `notae-android` *contract* — `LibraryRootProvider` /
+`LibrarySource` / `StorageState` — is host-testable today
+(`cargo test -p notae-android`), and the waker-map bug from
+round 3 is fixed: `SelectRootFuture` now registers through
+`PickerState::register_waker`, the same map `dispatch` walks
+(see `apps/notae-android/src/picker_fut.rs::poll_outcome` and
+`tests/picker_fut.rs::poll_outcome_registers_waker_into_dispatchers_map_and_completes`).
+The architecture is sound. The on-device bridge from "user picked
+a folder" to "the picker future completes" is the missing seam,
+and it cannot be closed on this host with `cargo-apk` 0.10.
 
-The fix is a Java `NativeActivity` subclass —
-`apps/notae-android/android/src/main/java/org/notae/android/NotaeActivity.java`
-— that overrides `Activity.onActivityResult(int requestCode, int
-resultCode, Intent data)` and routes the call back into Rust through
-a JNI symbol the `jni` crate resolves by name:
+## Why the previous Java subclass was deleted
 
-```java
-package org.notae.android;
+* `cargo-apk` 0.10 does not invoke `javac`, `kotlinc`, or any Java
+  build step. The Java file under `android/src/main/java/**/` is
+  read by **nothing** in the build pipeline. The `cdylib` is the
+  only payload it packs into the APK; `libnotae_android.so` gets
+  found by `System.loadLibrary("notae_android")` via the
+  `<meta-data android:name="android.app.lib_name">` entry.
+* `cargo-apk`'s default activity name (passed straight through to
+  the produced `AndroidManifest.xml`) is `android.app.NativeActivity`,
+  not whatever the user names in `[package.metadata.android]`. There
+  is no field exposed in `cargo-apk` 0.10's manifest schema to
+  override it (`/tmp/ndk-build-0.10.0/src/manifest.rs:330`). The OS
+  therefore instantiates the bare `NativeActivity`, never the
+  `NotaeActivity` subclass. Even if Java did compile, the override
+  would never fire.
+* The `Java_org_notae_android_NotaeActivity_nativeOnActivityResult`
+  JNI symbol was the bridge, and with the Java caller gone it has
+  no caller. It is removed.
 
-import android.app.NativeActivity;
-import android.content.Intent;
-import android.os.Bundle;
+## Two follow-on options (not implemented)
 
-public class NotaeActivity extends NativeActivity {
-    static {
-        System.loadLibrary("notae_android");
-    }
+These are the two paths forward. Round 4 records them so the user
+can pick; this round does not implement either.
 
-    private static native void nativeOnActivityResult(
-        int requestCode, int resultCode, Intent data);
+### Option 1 — pure-Rust `ANativeActivity_callbacks` hook
 
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        nativeOnActivityResult(requestCode, resultCode, data);
-        super.onActivityResult(requestCode, resultCode, data);
-    }
-}
-```
+`android-activity` 0.6 hands `AndroidApp::activity_as_ptr()` to
+the Rust side; the returned pointer is an `ANativeActivity*`
+whose `callbacks` field carries the `onActivityResult` function
+pointer. The plan:
 
-The Rust side declares the matching `extern "system" fn
-Java_org_notae_android_NotaeActivity_nativeOnActivityResult` in
-`apps/notae-android/src/android/saf.rs`. The symbol's name is the
-`jni` 0.22 "mangled" form of `nativeOnActivityResult(JNIEnv*, jobject,
-jint, jint, jobject)` — the `jni_mangle!` proc-macro emits it. The
-function body attaches to the JVM, parses `data.getData()` into the
-`tree:` URI string, and forwards it to
-[`PickerState::dispatch`](crate::picker_fut::PickerState::dispatch)
-under the same `request_code` the picker future registered.
+1. Read the `ANativeActivity_callbacks` struct from
+   `AndroidApp::activity_as_ptr()`, obtain the `onActivityResult`
+   slot, and the `callbacks` pointer we read it from.
+2. Replace `onActivityResult` with a Rust trampoline that calls
+   `PickerState::dispatch` with the bridged (requestCode,
+   resultCode, data) tuple, then chains to the original
+   `onActivityResult` so the rest of the platform lifecycle stays
+   intact.
+3. The trampoline is `unsafe` (it crosses a C-ABI function
+   pointer table). The `apps/notae-android/NOTE-unsafe-android-main.md`
+   exception currently covers `android_main.rs` and `saf.rs`;
+   `saf.rs` is the natural home for the trampoline, so no
+   additional user agreement is needed.
+4. Build the `trampoline` signature against the `jni` 0.22
+   `Env<'_>` shape (same one the round-3
+   `activity_as_jobject` fix uses), thread the `JNIEnv*` the
+   platform hands the trampoline through to a `PickerState::dispatch`
+   call.
 
-The `AndroidManifest.xml`'s `<activity android:name="…">` entry has
-to point at the subclass (`org.notae.android.NotaeActivity`) rather
-than `android.app.NativeActivity` so the override is hit. The
-`lib_name` meta-data stays `notae_android` so `System.loadLibrary`
-finds `libnotae_android.so`.
+This closes the seam without a Gradle migration. Cost: a few
+hundred lines of FFI against the `ANativeActivity_callbacks` v1
+struct layout (Documented in `android/native_activity.h` from the
+NDK headers) and a memory model decision (do we restore the
+original `onActivityResult` on app shutdown, or leave the
+trampoline installed for the process lifetime?).
 
-## Why the alternative is rejected
+### Option 2 — Gradle migration
 
-The brief noted two options:
+Stop using `cargo-apk`. Move to a Gradle-based Android project
+that:
 
-* **Option A (this note, the implemented path):** a Java
-  `NativeActivity` subclass + a JNI symbol.
-* **Option B:** poll `ANativeActivity_callbacks::onActivityResult`
-  directly from Rust through a raw-pointer shim. `android-activity`
-  0.6 does not expose the field and 0.5/0.6 do not push
-  `MainEvent::ActivityResult`, so the only path that does not involve
-  a fork of `android-activity` is the Java subclass.
+1. Compiles Java sources through the standard Android Gradle
+   plugin.
+2. Calls into the Rust `cdylib` via the standard Android NDK
+   mechanism (`externalNativeBuild` block in `build.gradle`).
+3. Provides the `NotaeActivity` subclass properly (the seam closes
+   exactly like the round-2 design intended).
 
-`cargo-apk` accepts the Java file under
-`android/src/main/java/org/notae/android/` because the standard
-Android Gradle plugin picks up `src/main/java/**/*.java` into the
-`classes.jar` it bundles. We do not need to enable the Gradle
-plugin's full features; the Java source is compiled to a class and
-slammed into the APK alongside the `cdylib` Rust produces.
+Cost: a significantly larger refactor. We lose the
+single-`Cargo.toml` build description; the `notae-android`
+crate becomes a thin Rust library called into from a Gradle
+project. `cargo-apk` would not be involved in the build any more.
+The host tests still run on Linux (the storage-state, picker-fut,
+and smoke suites are platform-independent); only the APK build
+moves to Gradle.
 
-## Risks / things to watch
+The user has to pick one of these. Round 4 does not.
 
-1. **`request_code` collisions.** The picker future reserves
-   request codes through `PickerState::next_request_code`, which
-   starts at `1` and increments. The picker can launch while another
-   picker is in flight only if the user is faster than the OS, which
-   is the same scenario the rest of the handshake is built for. If
-   a second picker ever ships, the bridge has to also handle
-   `Activity.RESULT_CANCELED` as "first picker was dismissed" and
-   not as "second picker was dismissed" — a future task, not
-   this one.
-2. **`Intent` may be `null`.** When `resultCode != RESULT_OK` the
-   platform hands us a `null` `Intent`. The JNI bridge has to handle
-   the null without crashing; a `null` data is the "user
-   dismissed" signal and maps to
-   [`StorageError::Cancelled`](crate::storage::StorageError::Cancelled).
-3. **`data.getData()` is a `Uri`, not a `String`.** The JNI bridge
-   calls `Uri.toString()` to get the canonical tree URI; the result
-   is what the future yields as
-   [`PickerOutcome::Ok::tree_uri`](crate::picker_fut::PickerOutcome::Ok::tree_uri).
-4. **Compile-time only.** The host tests (`tests/picker_fut.rs`)
-   exercise the handshake directly and do not need a device. The
-   device-side check is a manual run on the Galaxy Tab S10 FE+.
+## What currently works on the host
 
-## Files
+* `cargo test -p notae-android` passes (29 tests: 5 lib + 9
+  picker-fut + 7 smoke + 8 storage-state).
+* `cargo test --workspace` passes.
+* `cargo clippy --workspace --all-targets -- -D warnings` is
+  clean on the host target.
+* `cargo apk build --release -p notae-android` produces a signed,
+  aligned, verified APK. The release `.so` carries every JNI
+  helper except the dead `NotaeActivity` bridge.
+* `tests/picker_fut.rs::poll_outcome_registers_waker_into_dispatchers_map_and_completes`
+  proves the waker is registered into the dispatcher's map and is
+  fired by the next dispatch. `SelectRootFuture::poll` (the
+  Android-only future) calls the same helper, so the contract it
+  enforces on Linux is the contract that ships on the device.
 
-| File                                                              | Role                                                  |
-|-------------------------------------------------------------------|-------------------------------------------------------|
-| `apps/notae-android/android/src/main/java/org/notae/android/NotaeActivity.java` | The `NativeActivity` subclass that overrides `onActivityResult`. |
-| `apps/notae-android/android/AndroidManifest.xml`                  | `<activity android:name>` points at `NotaeActivity`.   |
-| `apps/notae-android/src/android/saf.rs`                           | Declares `Java_org_notae_android_NotaeActivity_nativeOnActivityResult` and forwards to `PickerState::dispatch`. |
-| `apps/notae-android/src/android_main.rs`                          | Wires the SAF handles (`SafHandles`) into the Slint callbacks; does not touch JNI directly. |
-| `apps/notae-android/tests/picker_fut.rs`                          | Host tests that cover the handshake contract; do not need a device. |
+What does **not** work on the device: the picker future hangs
+after the user picks a folder, because the OS's onActivityResult
+has no Rust hook. Fixing that is Options 1 or 2.
+
+## Files touched this round
+
+| File | Change |
+|------|--------|
+| `apps/notae-android/src/picker_fut.rs` | Make `register_waker` `pub`; add `pub fn poll_outcome` shared by both futures; add `pub fn inner_pending_len` for tests. |
+| `apps/notae-android/src/android/saf.rs` | Delete `PENDING_ROOT_ENTRIES` / `PendingRootEntries` and the static `NEXT_REQUEST_CODE`. `SelectRootFuture` stores an `Arc<AtomicWaker>` and calls `poll_outcome` (registers into the dispatcher's map). Delete `deliver_activity_result`, the `Java_org_notae_android_NotaeActivity_nativeOnActivityResult` JNI symbol, and `launch_picker_jni`'s self-allocation of the request code (the caller now allocates from `PickerState::next_request_code`). |
+| `apps/notae-android/android/src/main/java/org/notae/android/NotaeActivity.java` | **Deleted**. |
+| `apps/notae-android/android/src/**` (empty tree) | **Deleted**. |
+| `apps/notae-android/android/AndroidManifest.xml` | Reference manifest now points at `android.app.NativeActivity` (matches cargo-apk 0.10's hard-coded default). |
+| `apps/notae-android/tests/picker_fut.rs` | Add `poll_outcome_registers_waker_into_dispatchers_map_and_completes` and `poll_outcome_fast_paths_when_outcome_already_dispatched`. The pre-existing `dispatch_wakes_the_future_waker` covers `SelectRootHandshake` (the host-testable future); the two new tests cover `SelectRootFuture`'s polling helper directly. |
