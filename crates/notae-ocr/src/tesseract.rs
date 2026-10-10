@@ -15,6 +15,7 @@
 use std::ffi::CStr;
 use std::path::{Path, PathBuf};
 
+use notae_domain::normalize_whitespace;
 use tesseract::plumbing::TessBaseApi;
 
 use crate::language::{InstalledLanguages, LanguagePolicy};
@@ -27,10 +28,17 @@ use crate::{
 /// `tessdata_dir` is the directory that holds the `*.traineddata` files
 /// (e.g. `/usr/share/tesseract/tessdata` on most Linux systems, or the
 /// `tests/tessdata/` directory the test fixtures use). `available_languages`
-/// is the set of packs discovered at that directory; passing an empty list
-/// is allowed and surfaces as an initialization failure on the first
-/// recognition, so the indexer can see the empty library immediately
-/// rather than at the end of the run.
+/// is the set of packs discovered at that directory. The list is
+/// deferred — an empty `available_languages` is accepted at construction
+/// and surfaced on the first recognition. With a [`Fixed`] policy the
+/// result carries a [`MissingLanguagePack`] warning for every requested
+/// pack; with an [`Automatic`] policy the result is an empty
+/// `OcrText`. In both cases the indexer sees the empty library on the
+/// first page it tries rather than having to special-case configuration
+/// errors up front.
+///
+/// [`Fixed`]: crate::LanguagePolicy::Fixed
+/// [`MissingLanguagePack`]: crate::OcrWarning::MissingLanguagePack
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TesseractConfig {
     tessdata_dir: PathBuf,
@@ -41,9 +49,10 @@ impl TesseractConfig {
     /// Builds a configuration from a tessdata directory and the packs the
     /// caller found there.
     ///
-    /// The directory is consulted by name; the configuration holds it but
-    /// does not stat it, so a later deletion is caught at recognition time
-    /// rather than at construction.
+    /// The directory is held by name; the configuration does not stat it.
+    /// The directory is validated at provider construction (see
+    /// [`TesseractProvider::new`]) and the language list is validated at
+    /// the first recognition.
     #[must_use]
     pub fn new(
         tessdata_dir: impl Into<PathBuf>,
@@ -75,11 +84,16 @@ pub struct TesseractProvider {
 impl TesseractProvider {
     /// Builds a provider from a [`TesseractConfig`].
     ///
-    /// Construction does not touch the tessdata directory; the directory
-    /// is opened on the first recognition. The constructor's only job is
-    /// to keep the configuration and surface a typed error if the caller
-    /// handed us a configuration no recognition could honour — for
-    /// example, a tessdata directory that does not exist.
+    /// Construction stats the tessdata directory to surface an obvious
+    /// misconfiguration — a missing path or a non-directory — before any
+    /// recognition is attempted. The language list is **not** checked
+    /// here; an empty list is accepted at construction and surfaces on
+    /// the first recognition as warnings (for a [`Fixed`] policy) or as
+    /// an empty result (for an [`Automatic`] policy), matching the
+    /// deferred-validation contract of [`TesseractConfig::new`].
+    ///
+    /// [`Fixed`]: crate::LanguagePolicy::Fixed
+    /// [`Automatic`]: crate::LanguagePolicy::Automatic
     pub fn new(config: TesseractConfig) -> Result<Self, OcrError> {
         if !config.tessdata_dir.exists() {
             return Err(OcrError::TessdataDirectoryUnavailable {
@@ -161,7 +175,7 @@ fn recognize_with(
     match outcome {
         RecognizeOutcome::Recognized { text, confidence } => {
             let mut ocr = OcrText::new(
-                normalize_ocr(&text),
+                text,
                 packs.to_vec(),
                 clamp_confidence(confidence),
             );
@@ -237,7 +251,7 @@ fn recognize_inner(
     let Ok(text) = api.get_utf8_text() else {
         return Ok(RecognizeOutcome::Failed);
     };
-    let normalized = normalize_ocr(&text.as_ref().to_string_lossy());
+    let normalized = normalize_whitespace(&text.as_ref().to_string_lossy());
     let confidence = api.mean_text_conf();
     if normalized.is_empty() {
         Ok(RecognizeOutcome::Empty)
@@ -247,14 +261,6 @@ fn recognize_inner(
             confidence,
         })
     }
-}
-
-/// Collapses whitespace runs to a single space and trims the ends.
-///
-/// Matches the normalization [`notae_index::OcrText::new`] applies, so the
-/// text stored in the sidecar equals the text the provider returns.
-fn normalize_ocr(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Clamps a mean confidence to the `0..=100` range exposed by [`OcrText`].
