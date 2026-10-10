@@ -16,14 +16,26 @@
                                                .package
   * `android:label = "Notae"`              -> [package.metadata.android]
                                                .application.label
-  * `android:name = "org.notae.android.NotaeActivity"`
-                                             -> the NativeActivity
-                                                subclass that overrides
-                                                `onActivityResult` so
-                                                the SAF picker's
-                                                Activity Result
-                                                reaches Rust. See
-                                                `apps/notae-android/NOTE-android-activity-result-jni.md`.
+  * `android:name = "android.app.NativeActivity"`
+                                             -> cargo-apk 0.10's hard-coded
+                                                default (see `ndk-build`
+                                                `default_activity_name`).
+                                                There is no field in
+                                                `[package.metadata.android]`
+                                                to override it; the
+                                                `android-activity` runtime
+                                                loads our `android_main`
+                                                symbol by literal C name.
+                                                Round 4 confirmed cargo-apk
+                                                0.10 does not compile
+                                                Java sources, so the
+                                                `NotaeActivity` subclass
+                                                that would have overridden
+                                                `onActivityResult` is gone;
+                                                the picker-result bridge is
+                                                closed only after a Gradle
+                                                migration (see
+                                                `apps/notae-android/NOTE-android-activity-result-jni.md`).
   * `MAIN` / `LAUNCHER` intent filter      -> injected by cargo-apk
                                                when missing.
   * `android:exported = "true"` on S+      -> injected by cargo-apk
@@ -38,7 +50,7 @@
     <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="34" />
 
     <application android:label="Notae" android:hasCode="true">
-        <activity android:name="org.notae.android.NotaeActivity"
+        <activity android:name="android.app.NativeActivity"
                   android:exported="true"
                   android:configChanges="orientation|keyboardHidden|screenSize">
             <intent-filter>

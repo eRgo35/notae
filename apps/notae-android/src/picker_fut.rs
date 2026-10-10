@@ -156,7 +156,15 @@ impl PickerState {
     /// Replacing an existing entry is allowed; the waker contract
     /// guarantees at least one wake is delivered when
     /// [`dispatch`](Self::dispatch) fires.
-    fn register_waker(&self, request_code: i32, waker: Arc<AtomicWaker>) {
+    ///
+    /// `pub` (not `fn`) so the Android-only
+    /// [`SelectRootFuture`](crate::android::saf::SelectRootFuture) can
+    /// register its waker into the *same* map `dispatch` walks —
+    /// writing into a parallel map is exactly the bug round 4 fixed.
+    /// The map is the single source of truth; both the
+    /// host-testable [`SelectRootHandshake`] and the production
+    /// Android future use this method.
+    pub fn register_waker(&self, request_code: i32, waker: Arc<AtomicWaker>) {
         let mut guard = self
             .inner
             .pending
@@ -236,6 +244,23 @@ impl PickerState {
             inner: Arc::clone(&self.inner),
         }
     }
+
+    /// Number of waker slots currently registered. `pub` so the
+    /// integration tests in `tests/picker_fut.rs` can assert that
+    /// `poll_outcome` / `dispatch` are operating on the same map
+    /// (the round-4 regression net for the parallel-map bug).
+    /// `inner` is private to keep the rest of the surface narrow;
+    /// this accessor is the safe handle tests use to inspect the
+    /// dispatcher's map.
+    #[must_use]
+    pub fn inner_pending_len(&self) -> usize {
+        let guard = self
+            .inner
+            .pending
+            .lock()
+            .expect("pending requests mutex poisoned");
+        guard.len()
+    }
 }
 
 impl Default for PickerState {
@@ -306,22 +331,7 @@ impl Future for SelectRootHandshake {
 
     fn poll(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
         let me = self.get_mut();
-        // Fast path: an answer is already in. Skip the waker
-        // registration entirely — the callback has fired, and
-        // registering a waker now would only wake ourselves.
-        if let Some(outcome) = me.state.take_outcome(me.request_code) {
-            return Poll::Ready(outcome_to_result(outcome));
-        }
-        // Slow path: register the waker, then re-check the outcome
-        // so we do not race with a callback that fires between the
-        // first read and the registration.
-        me.waker.register(context.waker());
-        me.state
-            .register_waker(me.request_code, Arc::clone(&me.waker));
-        if let Some(outcome) = me.state.take_outcome(me.request_code) {
-            return Poll::Ready(outcome_to_result(outcome));
-        }
-        Poll::Pending
+        poll_outcome(&me.state, me.request_code, &me.waker, context)
     }
 }
 
@@ -342,6 +352,48 @@ fn outcome_to_result(outcome: PickerOutcome) -> Result<Option<LibraryRoot>, Stor
         }
         PickerOutcome::Platform { error } => Err(StorageError::Other(error)),
     }
+}
+
+/// One-shot poll helper for any future that awaits an
+/// `PickerOutcome` under `request_code`. Returns `Poll::Ready` once
+/// the bridge has delivered an outcome (consuming it), or
+/// `Poll::Pending` after registering `waker` so the next dispatch
+/// wakes the caller.
+///
+/// This is the **single** waker-registration path used by every
+/// picker future in the crate. Before round 4, the Android
+/// `SelectRootFuture` registered into a parallel map
+/// (`PENDING_ROOT_ENTRIES`) that the dispatcher never walked; the
+/// wake never reached the future. Both the host-testable
+/// [`SelectRootHandshake`] and the production Android future now
+/// call this function, so the host tests exercise the same
+/// code path the device ships.
+///
+/// The `waker` is `Arc`-shared with the [`PickerState`] so the
+/// dispatcher's wake can fire even after `poll` returns
+/// `Poll::Pending` and the future drops. The `AtomicWaker`
+/// contract guarantees the wake still reaches the consumer.
+pub fn poll_outcome(
+    state: &PickerState,
+    request_code: i32,
+    waker: &Arc<AtomicWaker>,
+    context: &mut Context<'_>,
+) -> Poll<Result<Option<LibraryRoot>, StorageError>> {
+    // Fast path: an answer is already in. Skip the waker
+    // registration entirely — the callback has fired, and
+    // registering a waker now would only wake ourselves.
+    if let Some(outcome) = state.take_outcome(request_code) {
+        return Poll::Ready(outcome_to_result(outcome));
+    }
+    // Slow path: register the waker, then re-check the outcome
+    // so we do not race with a callback that fires between the
+    // first read and the registration.
+    waker.register(context.waker());
+    state.register_waker(request_code, Arc::clone(waker));
+    if let Some(outcome) = state.take_outcome(request_code) {
+        return Poll::Ready(outcome_to_result(outcome));
+    }
+    Poll::Pending
 }
 
 #[cfg(test)]

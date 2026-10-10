@@ -16,7 +16,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
 use notae_android::picker_fut::{
-    new_picker_state, DispatchOutcome, PickerOutcome, SelectRootHandshake,
+    new_picker_state, poll_outcome, DispatchOutcome, PickerOutcome, SelectRootHandshake,
 };
 use notae_android::storage::{LibraryRootId, StorageError};
 
@@ -212,4 +212,125 @@ fn dispatch_wakes_the_future_waker() {
         Pin::new(&mut future).poll(&mut context),
         Poll::Ready(Ok(None))
     ));
+}
+
+// 8. Round 4's host test: drive the same `poll_outcome` helper the
+//    Android-only `SelectRootFuture::poll` uses, and prove that:
+//
+//    (a) A pending poll registers the waker into the dispatcher's
+//        map (`PickerState.inner.pending`), not into a parallel map
+//        the dispatcher never walks.
+//    (b) The next dispatch fires that waker (no other thread
+//        needed).
+//    (c) The poll after the dispatch returns `Poll::Ready` with
+//        the bridged outcome.
+//
+//    This is the regression net for the round-3 bug
+//    (`SelectRootFuture::poll` registering into
+//    `PENDING_ROOT_ENTRIES`, a different map the dispatcher never
+//    walked). The host tests can't construct
+//    `SelectRootFuture` (it requires an `AndroidApp`), but the
+//    polling helper *is* the production path; covering it covers
+//    the bug.
+#[test]
+fn poll_outcome_registers_waker_into_dispatchers_map_and_completes() {
+    use std::sync::Arc;
+    use atomic_waker::AtomicWaker;
+    use std::task::{Wake, Waker};
+
+    struct FlagWaker(std::sync::atomic::AtomicBool);
+    impl Wake for FlagWaker {
+        fn wake(self: Arc<Self>) {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    let flag = Arc::new(FlagWaker(std::sync::atomic::AtomicBool::new(false)));
+    let registered_waker: Waker = Arc::clone(&flag).into();
+    let mut context = Context::from_waker(&registered_waker);
+
+    let state = new_picker_state();
+    let code: i32 = state.next_request_code();
+    let shared = Arc::new(AtomicWaker::new());
+
+    // (a) Pending poll: waker is registered into the dispatcher's map.
+    let first = poll_outcome(&state, code, &shared, &mut context);
+    assert!(matches!(first, Poll::Pending), "first poll must be Pending");
+    {
+        // The waker lives in `state.inner.pending` keyed by
+        // `code`. If a future registered into a parallel map
+        // (`PENDING_ROOT_ENTRIES` was the round-3 bug), this
+        // assertion would fail.
+        let pending_len = state.clone_state().inner_pending_len();
+        assert_eq!(
+            pending_len, 1,
+            "the waker must be registered in `PickerState`'s map (the dispatcher walks it)",
+        );
+    }
+
+    // (b) Dispatch fires the registered waker.
+    state.dispatch(code, ok_outcome());
+    assert!(
+        flag.0.load(std::sync::atomic::Ordering::SeqCst),
+        "dispatch MUST fire the waker the poll_outcome helper registered",
+    );
+
+    // (c) The next poll completes with the outcome — and the
+    //     waker is consumed out of the map by `dispatch`/`take`.
+    let second = poll_outcome(&state, code, &shared, &mut context);
+    match second {
+        Poll::Ready(Ok(Some(root))) => {
+            assert_eq!(root.display_name(), "Documents");
+        }
+        other => panic!(
+            "second poll must surface the dispatch outcome as `Ready(Ok(Some(root)))`, got {other:?}"
+        ),
+    }
+
+    // After the future completes, the dispatcher's map no longer
+    // holds the waker for this request code.
+    assert_eq!(
+        state.clone_state().inner_pending_len(),
+        0,
+        "the waker must be removed once the outcome has been delivered",
+    );
+}
+
+// 9. Round 4's "callback before first poll" path through the same
+//    helper: an outcome delivered before `poll_outcome` is ever
+//    called must return `Poll::Ready` on the first invocation,
+//    without ever registering a waker (the dispatcher is still
+//    holding the waker slot's — there is no registered waker at
+//    all until the future polls).
+#[test]
+fn poll_outcome_fast_paths_when_outcome_already_dispatched() {
+    use std::sync::Arc;
+    use atomic_waker::AtomicWaker;
+
+    let state = new_picker_state();
+    let code = state.next_request_code();
+    state.dispatch(code, ok_outcome());
+
+    let shared = Arc::new(AtomicWaker::new());
+    let waker = Waker::noop().clone();
+    let mut context = Context::from_waker(&waker);
+
+    match poll_outcome(&state, code, &shared, &mut context) {
+        Poll::Ready(Ok(Some(root))) => assert_eq!(root.display_name(), "Documents"),
+        other => panic!("expected Ready(Ok(Some(root))) from fast path, got {other:?}"),
+    }
+
+    // Fast path never registered the waker — the pending map is
+    // empty (the dispatcher's `or_insert` ran but the waker
+    // stored there was the empty placeholder, then `wake` was
+    // called on a noop waker). The pending count of `0` is the
+    // observable side of the fast path.
+    assert_eq!(
+        state.clone_state().inner_pending_len(),
+        0,
+        "fast-path poll must not register a waker",
+    );
 }

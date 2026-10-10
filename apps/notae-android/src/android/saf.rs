@@ -56,26 +56,23 @@
 // before the call.
 #![allow(deprecated)]
 
-use std::collections::HashMap;
 use std::future::Future;
 use std::io::Read;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll};
 
 use android_activity::AndroidApp;
 use atomic_waker::AtomicWaker;
 use jni::errors::Error as JniError;
 use jni::objects::{JObject, JString};
-use jni::sys::jint;
 use jni::{jni_sig, jni_str, JValue};
 use sha2::{Digest, Sha256};
 
 use notae_domain::{PdfFingerprint, RelativePdfPath, Sha256Digest};
 use notae_index::{CatalogError, FileCondition, PdfCatalog, PdfFile};
 
-use crate::picker_fut::{new_picker_state, PickerOutcome, PickerState};
+use crate::picker_fut::{new_picker_state, poll_outcome, PickerState};
 use crate::storage::{
     LibraryRoot, LibraryRootId, LibraryRootProvider, LibrarySource, StorageError,
 };
@@ -83,42 +80,30 @@ use crate::storage::{
 // ---------------------------------------------------------------------------
 // Shared state for the activity-result handshake.
 //
-// The picker is launched with a request code; the result is delivered
-// to the Java `NotaeActivity` subclass, which forwards the call into
-// the `Java_org_notae_android_NotaeActivity_nativeOnActivityResult`
-// JNI symbol defined at the bottom of this file. The bridge then
-// dispatches the result into the [`PickerState`] the future is
-// registered with.
+// Round 4 fix: there is now a *single* map for in-flight picker
+// wakers — the [`PickerState`]'s `pending`. The Android
+// `SelectRootFuture` registers its waker through
+// [`PickerState::register_waker`] (same map `dispatch` walks), so the
+// wake the bridge fires reaches the future. The previous round
+// registered into a parallel `PENDING_ROOT_ENTRIES` map the
+// dispatcher never walked; the wake never reached the future.
+//
+// The `Java_org_notae_android_NotaeActivity_*` JNI bridge that
+// previously called into `deliver_activity_result` is gone — see
+// `apps/notae-android/NOTE-android-activity-result-jni.md` for the
+// `cargo-apk` 0.10 limitation that prevents the on-device
+// `onActivityResult` → Rust wake from being closed without a Gradle
+// build (which `cargo-apk` does not provide). The
+// `PickerState::dispatch` site is the contract the device-side
+// follow-on has to wire into when the bridge closes.
 // ---------------------------------------------------------------------------
 
-/// Shared in-flight picker state keyed by request code. The
-/// `AtomicWaker` per request is what the bridge wakes; the outcome
-/// map is what the future reads.
-#[derive(Default)]
-struct PendingRootEntries {
-    /// Map from request code to the `AtomicWaker` the future
-    /// registered. The bridge wakes the waker when the activity
-    /// result arrives.
-    pending: Mutex<HashMap<i32, Arc<AtomicWaker>>>,
-}
-
-static PENDING_ROOT_ENTRIES: LazyLock<PendingRootEntries> =
-    LazyLock::new(PendingRootEntries::default);
-
-/// One global [`PickerState`] shared by the provider, the JNI
-/// bridge, and any other future the app launches.
+/// One global [`PickerState`] shared by the provider and any other
+/// future the app launches.
 static PICKER_STATE: LazyLock<PickerState> = LazyLock::new(new_picker_state);
 
 fn picker_state() -> &'static PickerState {
     &PICKER_STATE
-}
-
-/// Next request code. Starts at 1 so 0 (`RESULT_CANCELED`) cannot
-/// collide.
-static NEXT_REQUEST_CODE: AtomicI32 = AtomicI32::new(1);
-
-fn next_request_code() -> i32 {
-    NEXT_REQUEST_CODE.fetch_add(1, Ordering::Relaxed)
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +129,13 @@ const KEY_ROOT_ID: &str = "root_id";
 
 /// Result extra key for the picked tree URI. The OS hands us this
 /// when the picker returns successfully.
+///
+/// Round 4: marked `#[allow(dead_code)]` because the JNI
+/// `pick_intent_data` path that consumed it is gone (the bridge
+/// from `onActivityResult` → Rust is closed only after Options 1 or
+/// 2 in `NOTE-android-activity-result-jni.md` lands). The constant
+/// stays so the future bridge work has the right key documented.
+#[allow(dead_code)]
 const PICKED_TREE_URI_EXTRA: &str = "android.intent.extra.chosen_tree_uri";
 
 // ---------------------------------------------------------------------------
@@ -202,17 +194,25 @@ fn activity_as_jobject<'local>(
     Ok(owned)
 }
 
-/// Launches the SAF tree picker and returns the request code the
-/// future will be woken under. The full JNI sequence is
+/// Launches the SAF tree picker under the supplied `request_code`.
+/// The full JNI sequence is
 /// `Intent(ACTION_OPEN_DOCUMENT_TREE).startActivityForResult(...)`.
+///
+/// The `request_code` is allocated by the caller (through
+/// [`PickerState::next_request_code`]) so the same counter the
+/// dispatcher's `dispatch` looks up is the one passed into
+/// `startActivityForResult`. Round 4's bug had the launch allocate
+/// the code from a static counter, leaving the dispatcher's
+/// view of the future's `request_code` decoupled from the launch's
+/// view; the bridge would have looked up the wrong code anyway.
+/// Now both share [`PickerState`]'s counter.
 ///
 /// On success the `EXTRA_INITIAL_URI` extra is set to the previous
 /// tree URI when one is known so the picker opens at the same
 /// directory the user last selected.
-fn launch_picker_jni(app: &AndroidApp) -> Result<i32, JniError> {
-    let request_code = next_request_code();
+fn launch_picker_jni(app: &AndroidApp, request_code: i32) -> Result<(), JniError> {
     let activity_ptr = app.activity_as_ptr();
-    with_env(app, move |env| -> Result<i32, JniError> {
+    with_env(app, move |env| -> Result<(), JniError> {
         let activity = activity_as_jobject(env, activity_ptr)?;
 
         // `new Intent()`.
@@ -267,7 +267,7 @@ fn launch_picker_jni(app: &AndroidApp) -> Result<i32, JniError> {
             &[JValue::Object(intent.as_ref()), JValue::Int(request_code)],
         )?;
 
-        Ok(request_code)
+        Ok(())
     })
 }
 
@@ -275,6 +275,10 @@ fn launch_picker_jni(app: &AndroidApp) -> Result<i32, JniError> {
 struct PersistedRoot {
     root: LibraryRoot,
     tree_uri: String,
+    /// Display name the picker reported. Round 4: `#[allow(dead_code)]`
+    /// because the host tests never drive the `read_persisted_root_jni`
+    /// round trip; Task 4's device-side `reopen` reads it.
+    #[allow(dead_code)]
     display_name: String,
 }
 
@@ -442,35 +446,6 @@ fn write_persisted_root_jni(
     })
 }
 
-/// Notifies the in-flight future that the activity result arrived.
-/// This is the body of the
-/// `Java_org_notae_android_NotaeActivity_nativeOnActivityResult` JNI
-/// symbol; the Java `NotaeActivity` subclass calls into it from its
-/// `onActivityResult` override.
-fn deliver_activity_result(
-    request_code: i32,
-    result_code: i32,
-    tree_uri: Option<String>,
-    display_name: Option<String>,
-    root_id: Option<LibraryRootId>,
-) {
-    let outcome = match (result_code, tree_uri) {
-        (0, _) => PickerOutcome::Cancelled, // Activity.RESULT_CANCELED == 0
-        (_, Some(uri)) => {
-            let root_id = root_id.unwrap_or_else(|| LibraryRootId::from_string(uri.clone()));
-            PickerOutcome::Ok {
-                tree_uri: uri,
-                display_name: display_name.unwrap_or_default(),
-                root_id,
-            }
-        }
-        _ => PickerOutcome::Platform {
-            error: "onActivityResult returned RESULT_OK with no data".to_owned(),
-        },
-    };
-    picker_state().dispatch(request_code, outcome);
-}
-
 // ---------------------------------------------------------------------------
 // Provider and catalog.
 // ---------------------------------------------------------------------------
@@ -508,10 +483,7 @@ impl SafLibraryRootProvider {
 
 impl LibraryRootProvider for SafLibraryRootProvider {
     fn select_root(&self) -> impl Future<Output = Result<LibraryRoot, StorageError>> + Send {
-        SelectRootFuture {
-            app: self.app.clone(),
-            request_code: None,
-        }
+        SelectRootFuture::new(self.app.clone())
     }
 
     fn reopen(&self, _root: &LibraryRoot) -> Result<LibrarySource, StorageError> {
@@ -536,65 +508,82 @@ impl LibraryRootProvider for SafLibraryRootProvider {
 }
 
 /// The future returned by [`SafLibraryRootProvider::select_root`].
+///
+/// Round 4: this future now registers its `AtomicWaker` through
+/// `picker_state().register_waker(…)` — the *same* map
+/// `PickerState::dispatch` walks. The previous round registered
+/// into `PENDING_ROOT_ENTRIES`, a parallel map the dispatcher
+/// never walked; the wake the bridge fired never reached the
+/// future. The polling itself is `poll_outcome` (host-testable
+/// via `tests/picker_fut.rs::poll_outcome_registers_waker_into_dispatchers_map_and_completes`),
+/// so the wake contract is exercised on Linux without an Android
+/// runtime.
+///
+/// Cancellation: the Android provider treats "user dismissed" as
+/// `Err(StorageError::Cancelled)` rather than `Ok(None)` because
+/// there is no recovery the UI can offer — the user already saw
+/// the picker and chose to leave it. `poll_outcome` returns
+/// `Ok(None)` for `PickerOutcome::Cancelled`; we map it to
+/// `Err(StorageError::Cancelled)` here so the Android contract
+/// stays the round-3 shape the UI renders.
 struct SelectRootFuture {
     app: AndroidApp,
     /// The request code the picker was launched with. `None` until
     /// the first poll fires the JNI launch; once set, subsequent
     /// polls reuse the same request code so the bridge can find us.
     request_code: Option<i32>,
+    /// The waker we registered with the [`PickerState`]. Kept here
+    /// (Arc-shared with the dispatcher's map) so `poll` can
+    /// re-register across multiple pending polls and so the wake
+    /// survives `poll` returning `Pending`.
+    waker: Arc<AtomicWaker>,
+}
+
+impl SelectRootFuture {
+    /// Builds the future. Allocates no request code yet; that
+    /// happens on the first poll when the JNI launch fires.
+    #[must_use]
+    fn new(app: AndroidApp) -> Self {
+        Self {
+            app,
+            request_code: None,
+            waker: Arc::new(AtomicWaker::new()),
+        }
+    }
 }
 
 impl Future for SelectRootFuture {
     type Output = Result<LibraryRoot, StorageError>;
 
     fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-        // 1. Allocate the request code on the first poll. The launch
-        //    is a side-effecting JNI call; we only run it once.
+        // 1. Allocate the request code on the first poll and launch
+        //    the picker. The launch is a side-effecting JNI call;
+        //    we only run it once. The code is allocated from the
+        //    shared [`PickerState`] so the launch and the dispatcher
+        //    agree on which slot to use.
         if self.request_code.is_none() {
-            match launch_picker_jni(&self.app) {
-                Ok(code) => self.request_code = Some(code),
-Err(_error) => {
+            let code = picker_state().next_request_code();
+            match launch_picker_jni(&self.app, code) {
+                Ok(()) => self.request_code = Some(code),
+                Err(_error) => {
                     return Poll::Ready(Err(StorageError::PermissionDenied));
                 }
             }
         }
         let request_code = self.request_code.expect("request_code set above");
 
-        // 2. Register the waker before checking the outcome so we
-        //    never miss a wake that lands between the check and the
-        //    register.
-        let waker = PENDING_ROOT_ENTRIES
-            .pending
-            .lock()
-            .expect("pending requests mutex poisoned")
-            .entry(request_code)
-            .or_insert_with(|| Arc::new(AtomicWaker::new()))
-            .clone();
-        waker.register(context.waker());
-
-        // 3. If the bridge has already delivered an outcome, take
-        //    it and return `Poll::Ready`. Otherwise stay pending;
-        //    the bridge's `dispatch` will wake the future when the
-        //    activity result arrives.
-        if let Some(outcome) = picker_state().take_outcome_for(request_code) {
-            return Poll::Ready(outcome_to_result(outcome));
+        // 2. Drive the shared poll helper. The waker is registered
+        //    into `PickerState.inner.pending` (the dispatcher's map);
+        //    `dispatch` walks the same map and fires our waker
+        //    when the activity result arrives.
+        match poll_outcome(picker_state(), request_code, &self.waker, context) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(Ok(Some(root))) => Poll::Ready(Ok(root)),
+            // Cancellation and platform errors collapse to a single
+            // `Err(_)` arm — the UI renders the message either way.
+            Poll::Ready(Ok(None)) => Poll::Ready(Err(StorageError::Cancelled)),
+            Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
         }
-        Poll::Pending
-    }
-}
-
-fn outcome_to_result(outcome: PickerOutcome) -> Result<LibraryRoot, StorageError> {
-    match outcome {
-        PickerOutcome::Cancelled => Err(StorageError::Cancelled),
-        PickerOutcome::Ok {
-            tree_uri,
-            display_name,
-            root_id,
-        } => {
-            let root = LibraryRoot::from_parts(root_id, display_name, tree_uri);
-            Ok(root)
-        }
-        PickerOutcome::Platform { error } => Err(StorageError::Other(error)),
     }
 }
 
@@ -740,90 +729,4 @@ impl SafHandles {
     pub fn provider(&self) -> SafLibraryRootProvider {
         SafLibraryRootProvider::new(self.app.clone())
     }
-}
-
-// ---------------------------------------------------------------------------
-// JNI bridge for the Java `NotaeActivity.onActivityResult` override.
-//
-// `apps/notae-android/android/src/main/java/org/notae/android/NotaeActivity.java`
-// calls `nativeOnActivityResult(requestCode, resultCode, data)` from
-// its `onActivityResult` override. The Rust symbol below is the JNI
-// entry point; it parses `data.getData().toString()` into the tree
-// URI, looks up the display name (when the platform provided one),
-// and dispatches into [`PickerState::dispatch`] under the same
-// request code the picker future registered.
-//
-// See `apps/notae-android/NOTE-android-activity-result-jni.md` for
-// the rationale.
-// ---------------------------------------------------------------------------
-
-/// The JNI symbol the Java `NotaeActivity` calls into. The symbol
-/// name is `jni`'s "mangled" form of
-/// `nativeOnActivityResult(JNIEnv*, jobject this, jint requestCode,
-/// jint resultCode, jobject data)` — the prefix `Java_org_notae_android_NotaeActivity_`
-/// is the package + class the JVM looks up.
-#[cfg(target_os = "android")]
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_org_notae_android_NotaeActivity_nativeOnActivityResult(
-    mut env: jni::Env<'_>,
-    _class: jni::objects::JObject<'_>,
-    request_code: jint,
-    result_code: jint,
-    data: jni::objects::JObject<'_>,
-) {
-    // Parse `data.getData().toString()` into the tree URI. We
-    // tolerate every failure (no `data`, no `getData`, no
-    // `toString`) so a malformed callback can never crash the
-    // process; the picker future sees `PickerOutcome::Platform`.
-    let tree_uri = if !data.is_null() {
-        let get_data = env.call_method(
-            data.as_ref(),
-            jni_str!("getData"),
-            jni_sig!("()Landroid/net/Uri;"),
-            &[],
-        );
-        match get_data {
-            Ok(uri_value) => {
-                let uri = uri_value.l();
-                match uri {
-                    Ok(uri_ref) if !uri_ref.is_null() => {
-                        let to_string = env.call_method(
-                            uri_ref.as_ref(),
-                            jni_str!("toString"),
-                            jni_sig!("()Ljava/lang/String;"),
-                            &[],
-                        );
-                        match to_string {
-                            Ok(value) => {
-                                let str_obj = value.l();
-                                str_obj.ok().and_then(|obj| {
-                                    if obj.is_null() {
-                                        None
-                                    } else {
-                                        let jstr = unsafe {
-                                            JString::from_raw(&mut env, obj.as_raw() as jni::sys::jstring)
-                                        };
-                                        jstring_to_string(&mut env, jstr).ok()
-                                    }
-                                })
-                            }
-                            Err(error) => {
-                                eprintln!("notae: getData().toString() failed: {error}");
-                                None
-                            }
-                        }
-                    }
-                    _ => None,
-                }
-            }
-            Err(error) => {
-                eprintln!("notae: getData() failed: {error}");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    deliver_activity_result(request_code, result_code, tree_uri, None, None);
 }
