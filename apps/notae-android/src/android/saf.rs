@@ -181,18 +181,24 @@ fn jstring_to_string(env: &mut jni::Env<'_>, value: JString<'_>) -> Result<Strin
 /// reference is an *unowned* global JNI reference; we must not delete
 /// it (no `Auto`, no `Global::delete`). The pointer is valid for the
 /// activity's lifetime per `android-activity`'s contract.
+///
+/// `JObject::from_raw` in jni 0.22 takes a shared `&Env<'local>`; we
+/// reborrow our `&mut Env<'local>` through `&*env` so the type lines
+/// up without going through `EnvUnowned` (which is only for raw FFI
+/// callbacks that do not have a borrowed `Env`).
 fn activity_as_jobject<'local>(
     env: &mut jni::Env<'local>,
     activity_ptr: *mut std::ffi::c_void,
 ) -> Result<JObject<'local>, JniError> {
     let raw_activity = activity_ptr as jni::sys::jobject;
     // SAFETY: `raw_activity` is a JNI global reference `android-activity`
-    // hands us for the activity's lifetime. We construct a temporary
-    // `JObject<'_>` local reference bound to the current `Env`'s
-    // stack frame using `Env::new_local_ref` which calls `NewLocalRef`
-    // under the hood.
-    let env_ptr = unsafe { jni::EnvUnowned::from_raw(env as *mut _ as *mut _) };
-    let owned = unsafe { JObject::from_raw(&env_ptr, raw_activity) };
+    // hands us for the activity's lifetime. `JObject::from_raw` only
+    // requires that `raw` be a valid JNI reference (or null); we
+    // construct a `JObject<'_>` whose lifetime is tied to the current
+    // `Env`'s stack frame. The local reference is dropped automatically
+    // when the JNI frame unwinds (no `Auto`, no `Global::delete`), so
+    // the underlying global reference outlives the wrapper.
+    let owned = unsafe { JObject::from_raw(&*env, raw_activity) };
     Ok(owned)
 }
 
