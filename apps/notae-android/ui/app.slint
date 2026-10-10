@@ -1,13 +1,17 @@
-// Notae — task 1 Slint shell.
+// Notae — task 2 Slint shell.
 //
-// This file defines *only* the layout the smoke state machine can stay
-// honest about: a top-level `AppWindow`, a `setup_screen` shown when
-// `state.screen == Setup`, an empty `library_screen` placeholder shown
-// otherwise, a `search_field` that's always present, and a
-// `rescan_button` whose `enabled` is driven by the property
-// `rescan_enabled` (which the host-side controller sets to `false` on a
-// fresh app). The actual data bindings and event wiring land in later
-// tasks once the state model has more to show.
+// The layout shows one of three screens, chosen by the storage state:
+//
+//   * `setup_screen`      — fresh install / no library root chosen.
+//   * `recovery_screen`   — library root was selected once but the
+//                            persisted permission was revoked.
+//   * `library_screen`    — a library root is selected and open.
+//
+// Each screen has a single primary action whose callback the host code
+// wires to the `LibraryRootProvider`. The setup and recovery screens
+// share the same `accepted` callback name (`setup_chosen`) so a single
+// Slint callback on `AppWindow` is enough to drive both flows — the
+// Rust side decides which action to take based on the storage state.
 
 import { Button, LineEdit } from "std-widgets.slint";
 
@@ -29,15 +33,51 @@ component SetupScreen inherits Rectangle {
         }
 
         Text {
-            text: "Pick a library root to begin.";
+            text: "Pick a library folder to begin.";
             horizontal-alignment: center;
             color: #cccccc;
             wrap: word-wrap;
         }
 
         Button {
-            text: "Choose folder…";
+            text: "Select folder";
             primary: true;
+            min-height: 48px;
+            clicked => { root.accepted(); }
+        }
+    }
+}
+
+component RecoveryScreen inherits Rectangle {
+    background: #1e1e1e;
+
+    in-out property <string> folder_name: "this folder";
+
+    callback accepted();
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 16px;
+        padding: 32px;
+
+        Text {
+            text: "Permission lost";
+            font-size: 28px;
+            horizontal-alignment: center;
+            color: #ffffff;
+        }
+
+        Text {
+            text: "Access to '" + root.folder_name + "' was revoked. Reauthorize to continue indexing it.";
+            horizontal-alignment: center;
+            color: #cccccc;
+            wrap: word-wrap;
+        }
+
+        Button {
+            text: "Reauthorize folder";
+            primary: true;
+            min-height: 48px;
             clicked => { root.accepted(); }
         }
     }
@@ -72,6 +112,8 @@ export component AppWindow inherits Window {
     // values at startup and reads them when a callback fires, while the
     // Slint side can read or set them in response to user gestures.
     in-out property <bool> show_setup: true;
+    in-out property <bool> show_recovery: false;
+    in-out property <string> recovery_folder_name: "";
     in-out property <bool> rescan_enabled: false;
     in-out property <string> search_text: "";
 
@@ -106,6 +148,11 @@ export component AppWindow inherits Window {
             accepted() => { root.setup_chosen(); }
         }
 
-        if !root.show_setup : LibraryScreen { }
+        if root.show_recovery : RecoveryScreen {
+            folder_name: root.recovery_folder_name;
+            accepted() => { root.setup_chosen(); }
+        }
+
+        if !root.show_setup && !root.show_recovery : LibraryScreen { }
     }
 }
