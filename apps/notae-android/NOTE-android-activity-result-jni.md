@@ -1,6 +1,6 @@
 # Wiring Android Activity Results back to Rust
 
-## Status (Tasks 2–3 implementation, 2026-10-10)
+## Status (Tasks 2–4 implementation, 2026-10-10)
 
 The approved `cargo-apk2` 1.4.0 path is implemented. Java
 `NotaeActivity` forwards picker results to Rust; Rust validates the
@@ -15,11 +15,16 @@ recursive walker to produce root-relative paths and fingerprints.
 Per-file read failures remain file conditions; child-query failures
 abort catalog enumeration instead of returning a partial tree.
 
-Host tests, Android-target Rust compilation, release APK packaging,
-manifest inspection, and APK payload inspection pass. Device behavior
-is still unverified: `adb devices` reported no connected device. The
-target-tablet picker, nested-tree, persistence/revocation, and
-responsiveness smoke remains required.
+`LibraryViewModel` now uses the shared index search/ranking contract and
+projects metadata, status, and stable content keys. The Slint shell has a
+search-first library/results layout, Rescan, and Settings; Task 5 will
+connect it to the worker-populated index.
+
+Host tests, Android-target Rust compilation, and release APK packaging
+pass. Device behavior is still unverified: `adb devices` reported no
+connected device. The picker, nested-tree, persistence/revocation,
+search-screen sizing/keyboard/scrolling, and responsiveness smoke
+remains required.
 
 ## Why `cargo-apk` 0.10 could not close the result-delivery seam
 
@@ -115,9 +120,12 @@ Each cursor row uses its own JNI local-reference frame, bounding temporary
 references independently of folder size.
 `enumerate_document_tree` is host-testable and covers nested PDFs,
 fingerprints, per-file read failures, and child-query errors.
+`LibraryViewModel` uses `IndexStore` ranking/order and produces
+`SearchRow`s; the UI model accepts worker-projected rows and converts
+them into the Slint list model.
 
 `cargo apk2 check -p notae-android --target aarch64-linux-android`
-passes. `cargo test -p notae-android` passes (37 tests). The release
+passes. `cargo test -p notae-android` passes (41 tests). The release
 APK is signed and aligned; its manifest declares `.NotaeActivity`,
 `android.app.lib_name=notae_android`, and the launcher intent filter,
 and its payload contains `classes.dex` and

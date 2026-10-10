@@ -148,6 +148,28 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
         });
     }
 
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_settings_clicked(move || {
+            report_transition(model.borrow_mut().dispatch(UiEvent::OpenSettings));
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_settings_closed(move || {
+            report_transition(model.borrow_mut().dispatch(UiEvent::CloseSettings));
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
     // 5. UI loop. Returns `Ok(())` when the activity is destroyed by the
     // OS — not an error path. `.expect` matches the Slint template.
     window.run().expect("Slint UI loop exited with an error");
@@ -191,6 +213,14 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_setup_error_text(setup_error.into());
     window.set_rescan_enabled(state.operation() == &OperationState::Idle);
     window.set_search_text(state.search().query.as_str().into());
+    window.set_show_settings(matches!(state.screen(), Screen::Settings));
+    let rows: Vec<crate::LibraryRow> = model
+        .search_rows()
+        .iter()
+        .cloned()
+        .map(crate::LibraryRow::from)
+        .collect();
+    window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
 }
 
 /// Logs the outcome of a state transition at the level the platform
@@ -199,14 +229,17 @@ fn report_transition(outcome: Result<Transition, EventError>) {
     match outcome {
         Ok(Transition::NoOp) => {}
         Ok(Transition::BeginRescan) => {
-            // The worker is wired up in Task 4. For now we just
-            // observe the transition.
+            // The background worker is wired up in Task 5; for now we
+            // only expose the accepted transition.
         }
         Err(EventError::OperationAlreadyInProgress) => {
             // The UI is expected to disable the controls that produce
             // this branch, so seeing the error means the wiring has
             // drifted. Surface it on `adb logcat` (stderr on the host).
             eprintln!("notae: rejected overlapping operation");
+        }
+        Err(EventError::SettingsUnavailable) => {
+            eprintln!("notae: settings are unavailable until a library is open");
         }
     }
 }
