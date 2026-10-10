@@ -124,8 +124,9 @@ pub enum StorageStateKindView {
     /// The string is the root's display name, used as the body text
     /// of the recovery screen.
     PermissionLost(String),
-    /// Storage failed in a way the user has to dismiss.
-    Error,
+    /// Storage failed in a way the user has to dismiss. The string is
+    /// the user-facing error message the setup screen surfaces.
+    Error(String),
 }
 
 impl UiModel {
@@ -140,7 +141,7 @@ impl UiModel {
             StorageState::PermissionLost(root) => {
                 StorageStateKindView::PermissionLost(root.display_name().to_owned())
             }
-            StorageState::Error(_) => StorageStateKindView::Error,
+            StorageState::Error(error) => StorageStateKindView::Error(error.to_string()),
         }
     }
 }

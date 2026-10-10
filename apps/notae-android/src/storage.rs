@@ -143,6 +143,18 @@ impl LibraryRoot {
         }
     }
 
+    /// Builds an empty placeholder root. Used by the Android
+    /// provider when it needs to surface a [`StorageError::PermissionLost`]
+    /// but has no persisted root to attach to (the user has not
+    /// picked anything yet, or the persisted state has been cleared).
+    /// The placeholder carries a fresh id and empty fields so the
+    /// error carries a `LibraryRoot` shape the storage state can
+    /// render.
+    #[must_use]
+    pub fn placeholder() -> Self {
+        Self::new("", "")
+    }
+
     /// Returns the root's unique id.
     #[must_use]
     pub fn id(&self) -> &LibraryRootId {
@@ -195,6 +207,14 @@ pub enum StorageError {
     /// re-grant read access.
     #[error("permission for the library root was lost; reauthorize to continue")]
     PermissionLost,
+
+    /// The platform refused to grant the SAF permission outright
+    /// (e.g. a `SecurityException` from the JNI side or a missing
+    /// manifest entry). Distinct from [`PermissionLost`](Self::PermissionLost),
+    /// which is a revocation after-the-fact: this one never had the
+    /// permission to begin with.
+    #[error("the platform refused to grant the SAF permission")]
+    PermissionDenied,
 
     /// A lower-level failure: an I/O error, a JNI panic, an unexpected
     /// platform response. The string is what the platform reported.
@@ -281,14 +301,6 @@ impl LibrarySource {
     pub fn root(&self) -> &LibraryRoot {
         &self.root
     }
-
-    /// Decomposes the source into its root and catalog. Used by tests
-    /// that want to assert on the wrapped catalog directly.
-    #[must_use]
-    #[allow(dead_code)] // Used by host tests; not yet exercised by the UI.
-    pub fn into_parts(self) -> (LibraryRoot, Box<dyn PdfCatalog + Send>) {
-        (self.root, self.catalog)
-    }
 }
 
 impl fmt::Debug for LibrarySource {
@@ -369,10 +381,7 @@ mod host {
 
     use notae_index_cli::catalog::{FilesystemCatalog, ValidatedRoot};
 
-    use super::{
-        CatalogError, LibraryRoot, LibraryRootId, LibrarySource, PdfCatalog, PdfFile,
-        StorageError,
-    };
+    use super::{LibraryRoot, LibraryRootId, LibrarySource, StorageError};
 
     /// What the next
     /// [`select_root`](super::LibraryRootProvider::select_root)
@@ -515,31 +524,12 @@ mod host {
                     StorageError::Other(message)
                 }
             })?;
+            // `FilesystemCatalog` is itself `Send` (its `RefCell` holds
+            // `Vec<CatalogFailure>` which is `Send`), so the `+ Send`
+            // bound the trait object carries is satisfied without an
+            // adapter wrapper.
             let catalog = FilesystemCatalog::new(validated);
-            Ok(LibrarySource::new(
-                root.clone(),
-                Box::new(FilesystemCatalogAdapter::new(catalog)),
-            ))
-        }
-    }
-
-    /// Thin wrapper around [`FilesystemCatalog`] for trait-object
-    /// dispatch. `FilesystemCatalog` is itself `Send` (its `RefCell`
-    /// holds `Vec<CatalogFailure>` which is `Send`), so the
-    /// `+ Send` bound the trait object carries is satisfied.
-    struct FilesystemCatalogAdapter {
-        inner: FilesystemCatalog,
-    }
-
-    impl FilesystemCatalogAdapter {
-        fn new(inner: FilesystemCatalog) -> Self {
-            Self { inner }
-        }
-    }
-
-    impl PdfCatalog for FilesystemCatalogAdapter {
-        fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
-            self.inner.enumerate()
+            Ok(LibrarySource::new(root.clone(), Box::new(catalog)))
         }
     }
 }

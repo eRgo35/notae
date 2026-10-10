@@ -109,7 +109,6 @@ fn persisted_root_restoration_reopens_as_ready() {
     // The catalog re-hashes the file independently. This is what
     // protects the test against a `LibrarySource` that just hands
     // back a fabricated fingerprint.
-    let pdf_relative = pdf_path.file_name().unwrap().to_str().unwrap().to_owned();
     assert_catalog_rehashes(&source, &pdf_path, &expected_sha);
 
     // The provider, as built, is the only piece of state the test
@@ -121,12 +120,6 @@ fn persisted_root_restoration_reopens_as_ready() {
         matches!(outcome, Err(StorageError::PermissionLost)),
         "a fresh provider has no persisted entry: {outcome:?}"
     );
-
-    // The catalog must not silently fabricate files. With the fresh
-    // provider we only re-hash because the persisted provider did, so
-    // we already covered that path. Suppress the unused-variable
-    // warning the only way the borrow checker accepts.
-    let _ = pdf_relative;
 }
 
 // 3. Permission loss — a `LibraryRoot` whose underlying permission

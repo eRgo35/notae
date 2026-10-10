@@ -3500,6 +3500,7 @@ name = "notae-android"
 version = "0.1.0"
 dependencies = [
  "android-activity 0.6.1",
+ "atomic-waker",
  "jni 0.22.4",
  "notae-domain",
  "notae-index",

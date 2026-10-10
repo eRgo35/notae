@@ -159,3 +159,57 @@ fn dispatch_outcome_helper_constructs_platform_outcome() {
         _ => panic!("DispatchOutcome::platform produced a non-Platform outcome"),
     }
 }
+
+// 7. After `dispatch`, the waker the future registered is fired.
+//    The handshake's "callback fires on the Java main looper,
+//    poll runs on the Slint thread" property is what this test
+//    guards — the future MUST be woken so the Slint executor gets
+//    a chance to drive it on the next iteration.
+#[test]
+fn dispatch_wakes_the_future_waker() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::task::{Wake, Waker};
+
+    /// A tiny `Arc<AtomicBool>`-backed `Waker` whose `wake` flips
+    /// the flag. `Arc<AtomicWaker>` already does this internally;
+    /// we use a separate counter so the test can assert the waker
+    /// was fired without poking into `AtomicWaker`'s private state.
+    struct FlagWaker(Arc<AtomicBool>);
+
+    impl Wake for FlagWaker {
+        fn wake(self: Arc<Self>) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    let flag = Arc::new(AtomicBool::new(false));
+    let waker: Waker = Arc::new(FlagWaker(Arc::clone(&flag))).into();
+
+    let state = new_picker_state();
+    let mut future = SelectRootHandshake::new(state.clone_state(), 17);
+
+    // First poll: pending, registers the waker.
+    let mut context = Context::from_waker(&waker);
+    assert!(matches!(
+        Pin::new(&mut future).poll(&mut context),
+        Poll::Pending
+    ));
+
+    // The handshake guarantees at least one wake when the
+    // callback fires. The dispatch must wake the future.
+    state.dispatch(17, PickerOutcome::Cancelled);
+    assert!(
+        flag.load(Ordering::SeqCst),
+        "the registered waker MUST be fired after dispatch",
+    );
+
+    // The next poll completes the future.
+    assert!(matches!(
+        Pin::new(&mut future).poll(&mut context),
+        Poll::Ready(Ok(None))
+    ));
+}

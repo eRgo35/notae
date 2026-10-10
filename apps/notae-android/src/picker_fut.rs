@@ -176,6 +176,27 @@ impl PickerState {
         guard.remove(&request_code)
     }
 
+    /// Looks up the outcome for a request code without draining it.
+    /// The Android `select_root` future uses this to know whether the
+    /// bridge has already delivered an answer for the request code
+    /// it allocated.
+    pub fn peek_outcome(&self, request_code: i32) -> Option<PickerOutcome> {
+        let guard = self
+            .inner
+            .outcomes
+            .lock()
+            .expect("outcomes mutex poisoned");
+        guard.get(&request_code).cloned()
+    }
+
+    /// Drains the outcome for a request code. The future calls this
+    /// once it has confirmed the bridge has written one, so the next
+    /// `select_root` for the same request code observes a clean
+    /// state.
+    pub fn take_outcome_for(&self, request_code: i32) -> Option<PickerOutcome> {
+        self.take_outcome(request_code)
+    }
+
     /// Called by the activity-result callback (or any test stand-in
     /// for it) with the answer for `request_code`. The first
     /// dispatch wins: subsequent dispatches for the same code are
