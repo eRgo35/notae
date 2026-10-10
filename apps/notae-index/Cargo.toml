@@ -18,6 +18,7 @@ hayro = "0.8"
 image = "0.25"
 notae-domain = { path = "../../crates/notae-domain" }
 notae-index = { path = "../../crates/notae-index" }
+notae-ocr = { path = "../../crates/notae-ocr" }
 sha2 = "0.10"
 thiserror = { workspace = true }
 

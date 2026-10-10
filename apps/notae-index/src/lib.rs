@@ -8,148 +8,35 @@
 //! # Shape of a run
 //!
 //! [`run`] validates the arguments, enumerates the library through a
-//! [`FilesystemCatalog`], and returns a [`RunReport`]. Every later stage of the
-//! pipeline hangs off that enumeration: text extraction and page rendering
-//! (PDF adapters), OCR, reconciliation against the index, and sidecar output.
-//! Argument handling is a separate module and never changes shape as stages are
-//! added.
+//! [`FilesystemCatalog`], and returns a [`RunReport`]. The catalog phase is
+//! read-only — it fingerprints files, classifies their condition, and
+//! observes traversal problems. The pipeline phase lives in
+//! [`pipeline::IndexPipeline::run`] and is what turns the catalog's view of
+//! the library into indexed records: text extraction, OCR, reconciliation,
+//! and per-file bookkeeping.
+//!
+//! [`run`]: crate::run
+//! [`FilesystemCatalog`]: crate::catalog::FilesystemCatalog
 
 pub mod args;
 pub mod catalog;
 pub mod image;
 pub mod pdf;
-
-use std::path::{Path, PathBuf};
+pub mod pipeline;
+pub mod report;
 
 use notae_index::PdfCatalog;
 
 use crate::args::{Cli, CliError};
-use crate::catalog::{CatalogFailure, FilesystemCatalog};
+use crate::catalog::FilesystemCatalog;
+use crate::report::RunReport;
 
-/// What a run observed, independent of what it wrote.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RunReport {
-    library_root: PathBuf,
-    files: Vec<PdfState>,
-    failures: Vec<CatalogFailure>,
-}
-
-impl RunReport {
-    /// The library root that was enumerated.
-    ///
-    /// This is the name the run actually used: the name the user gave, without
-    /// the trailing separators and `.` components Linux resolves away before
-    /// it stats anything (see [`crate::catalog::ValidatedRoot::open`]). It is
-    /// the directory that was opened, so `library`, `library/` and
-    /// `library/.` all report the same root.
-    #[must_use]
-    pub fn library_root(&self) -> &Path {
-        &self.library_root
-    }
-
-    /// The enumerated files, in stable relative-path order.
-    #[must_use]
-    pub fn files(&self) -> &[PdfState] {
-        &self.files
-    }
-
-    /// The library-relative path of each enumerated file, in order.
-    #[must_use]
-    pub fn paths(&self) -> Vec<&str> {
-        self.files.iter().map(|file| file.path()).collect()
-    }
-
-    /// How many PDFs were enumerated.
-    #[must_use]
-    pub fn enumerated(&self) -> usize {
-        self.files.len()
-    }
-
-    /// How many PDFs were read and fingerprinted.
-    #[must_use]
-    pub fn readable(&self) -> usize {
-        self.files.iter().filter(|file| file.is_readable()).count()
-    }
-
-    /// How many PDFs could not be read.
-    #[must_use]
-    pub fn unreadable(&self) -> usize {
-        self.files.iter().filter(|file| !file.is_readable()).count()
-    }
-
-    /// Traversal problems that did not stop enumeration.
-    #[must_use]
-    pub fn failures(&self) -> &[CatalogFailure] {
-        &self.failures
-    }
-}
-
-/// Runs the indexer for one parsed command line.
-///
-/// A name the catalog skipped, an unreadable PDF, and a subdirectory it could
-/// not read are all reported through the returned [`RunReport`]. `Err` is
-/// reserved for a run that could not start or could not enumerate at all,
-/// which is the only case that ends in a non-zero exit status. The boundary is
-/// the library root: a root that cannot be read, that is a symbolic link, or
-/// that is replaced between being validated and being walked, ends the run; the
-/// same problem anywhere below it is one entry in the report.
-///
-/// The root is checked exactly once. [`Cli::validate`] opens the directory and
-/// hands back the [`ValidatedRoot`] that is then walked, so there is no second
-/// lookup between the check and the use that could accept a replacement; and
-/// because that object holds the directory open, the catalog can check the name
-/// still resolves to it before enumerating, so the boundary holds across the
-/// whole run rather than only at the instant of validation. Later stages — text
-/// extraction, OCR, reconciliation, sidecar output — hang off
-/// [`RunReport::files`] and report their own per-file problems the same way, so
-/// `Ok` keeps meaning "a report was produced", not "everything succeeded".
-///
-/// # Errors
-/// Returns [`CliError`] when the library root is unusable — absent, not a
-/// directory, unreadable, or a symbolic link however it is spelled — or when
-/// the tree cannot be enumerated at all. A single unreadable PDF is reported
-/// through the returned [`RunReport`], never as an error.
-pub fn run(cli: Cli) -> Result<RunReport, CliError> {
-    // The one root check, and the object that answers it: what is walked is
-    // what was opened, not a name looked at twice.
-    let root = cli.validate()?;
-    let catalog = FilesystemCatalog::new(root);
-    let verbose = cli.is_verbose();
-
-    let files = catalog
-        .enumerate()?
-        .into_iter()
-        .map(PdfState::from_file)
-        .collect::<Vec<_>>();
-    if verbose {
-        for file in &files {
-            eprintln!(
-                "{} {}",
-                if file.is_readable() {
-                    "found"
-                } else {
-                    "unreadable"
-                },
-                file.path()
-            );
-        }
-    }
-    // Failures are printed whatever the verbosity: a run that reports per-file
-    // problems is still a successful run, so the exit status cannot carry them.
-    for failure in catalog.failures() {
-        eprintln!("skipped {}: {}", failure.path(), failure.error());
-    }
-
-    Ok(RunReport {
-        library_root: catalog.root().to_path_buf(),
-        failures: catalog.failures(),
-        files,
-    })
-}
+/// Re-exports the types a caller of [`run`] reaches for.
+pub use crate::pipeline::{IndexPipeline, PipelineError, ProgressEvent};
 
 /// The CLI's own view of one enumerated PDF.
 ///
-/// The catalog yields [`notae_index::PdfFile`] values; this wrapper is what the
+/// The catalog yields [`notae_index::PdfFile`] values; this wrapper is what
 /// pipeline stages attach to as text extraction, OCR, and sidecar fields are
 /// added.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -178,7 +65,7 @@ impl PdfState {
 
     /// Whether the catalog read and hashed the file.
     #[must_use]
-    pub fn is_readable(&self) -> bool {
+    pub const fn is_readable(&self) -> bool {
         self.readable
     }
 
@@ -187,4 +74,54 @@ impl PdfState {
     pub fn fingerprint(&self) -> Option<&notae_domain::PdfFingerprint> {
         self.fingerprint.as_ref()
     }
+}
+
+/// Runs the indexer for one parsed command line.
+///
+/// A name the catalog skipped, an unreadable PDF, and a subdirectory it could
+/// not read are all reported through the returned [`RunReport`]. `Err` is
+/// reserved for a run that could not start or could not enumerate at all,
+/// which is the only case that ends in a non-zero exit status.
+///
+/// The root is checked exactly once. [`Cli::validate`] opens the directory
+/// and hands back the [`ValidatedRoot`](crate::catalog::ValidatedRoot) that
+/// is then walked, so there is no second lookup between the check and the
+/// use that could accept a replacement; and because that object holds the
+/// directory open, the catalog can check the name still resolves to it
+/// before enumerating, so the boundary holds across the whole run rather
+/// than only at the instant of validation.
+///
+/// # Errors
+/// Returns [`CliError`] when the library root is unusable — absent, not a
+/// directory, unreadable, or a symbolic link however it is spelled — or when
+/// the tree cannot be enumerated at all. A single unreadable PDF is reported
+/// through the returned [`RunReport`], never as an error.
+pub fn run(cli: Cli) -> Result<RunReport, CliError> {
+    let root = cli.validate()?;
+    let catalog = FilesystemCatalog::new(root);
+    let verbose = cli.is_verbose();
+
+    let files: Vec<PdfState> = catalog
+        .enumerate()?
+        .into_iter()
+        .map(PdfState::from_file)
+        .collect();
+    if verbose {
+        for file in &files {
+            eprintln!(
+                "{} {}",
+                if file.is_readable() {
+                    "found"
+                } else {
+                    "unreadable"
+                },
+                file.path()
+            );
+        }
+    }
+    for failure in catalog.failures() {
+        eprintln!("skipped {}: {}", failure.path(), failure.error());
+    }
+
+    Ok(RunReport::from_catalog(&catalog, files))
 }
