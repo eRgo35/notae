@@ -1,22 +1,25 @@
 # Wiring Android Activity Results back to Rust
 
-## Status (Task 2 implementation, 2026-10-10)
+## Status (Tasks 2–3 implementation, 2026-10-10)
 
-The approved `cargo-apk2` 1.4.0 path is implemented. The APK now
-contains the Java `NotaeActivity` subclass and its Rust JNI result
-handler. The result handler validates the selected URI/read grant,
-persists the URI permission and root metadata, then dispatches the
-picker outcome. `handle_picker_response` uses `slint::spawn_local`,
-so it does not block the event loop while awaiting the Activity result.
+The approved `cargo-apk2` 1.4.0 path is implemented. Java
+`NotaeActivity` forwards picker results to Rust; Rust validates the
+read grant, persists the URI permission and root metadata, and
+dispatches the picker outcome. `handle_picker_response` uses
+`slint::spawn_local`, so it does not block the event loop while
+awaiting the Activity result.
+
+`SafPdfCatalog` now traverses child documents through the SAF
+`ContentResolver`, reads PDF streams, and uses the host-testable
+recursive walker to produce root-relative paths and fingerprints.
+Per-file read failures remain file conditions; child-query failures
+abort catalog enumeration instead of returning a partial tree.
 
 Host tests, Android-target Rust compilation, release APK packaging,
 manifest inspection, and APK payload inspection pass. Device behavior
 is still unverified: `adb devices` reported no connected device. The
-target-tablet picker/responsiveness/relaunch/revocation smoke remains
-required before calling the SAF path end-to-end validated.
-
-Recursive SAF enumeration is not implemented yet; it is Task 3 in
-`docs/superpowers/plans/2026-10-09-notae-android-plan.md`.
+target-tablet picker, nested-tree, persistence/revocation, and
+responsiveness smoke remains required.
 
 ## Why `cargo-apk` 0.10 could not close the result-delivery seam
 
@@ -49,9 +52,8 @@ round 3 is fixed: `SelectRootFuture` now registers through
 `PickerState::register_waker`, the same map `dispatch` walks
 (see `apps/notae-android/src/picker_fut.rs::poll_outcome` and
 `tests/picker_fut.rs::poll_outcome_registers_waker_into_dispatchers_map_and_completes`).
-The bridge was missing for the `cargo-apk` 0.10 packaging path. The
-approved `cargo-apk2` migration described above replaces that path;
-it remains pending implementation.
+The approved `cargo-apk2` migration replaced that path in Task 2. The
+bridge is now implemented as described above.
 
 ## Why the previous Java subclass was deleted
 
@@ -107,17 +109,24 @@ result through `PickerState`.
 
 `handle_picker_response` schedules `LibraryRootProvider::select_root`
 with `slint::spawn_local`; it does not block the main event loop.
+`SafPdfCatalog` implements `PdfCatalog` by querying tree children and
+reading document streams through the Android `ContentResolver`.
+Each cursor row uses its own JNI local-reference frame, bounding temporary
+references independently of folder size.
+`enumerate_document_tree` is host-testable and covers nested PDFs,
+fingerprints, per-file read failures, and child-query errors.
+
 `cargo apk2 check -p notae-android --target aarch64-linux-android`
-passes. `cargo test -p notae-android` passes (33 tests). The release
+passes. `cargo test -p notae-android` passes (37 tests). The release
 APK is signed and aligned; its manifest declares `.NotaeActivity`,
 `android.app.lib_name=notae_android`, and the launcher intent filter,
 and its payload contains `classes.dex` and
 `lib/arm64-v8a/libnotae_android.so`.
 
 These checks do not prove Android runtime behavior. No device is
-attached, so actual Activity result delivery, permission persistence
-across relaunch, permission revocation handling, and event-loop
-responsiveness remain to be smoke-tested on the Galaxy Tab S10 FE+.
+attached, so actual Activity result delivery, nested SAF enumeration,
+permission persistence/revocation, and event-loop responsiveness
+remain to be smoke-tested on the Galaxy Tab S10 FE+.
 
 ## Files touched in round 4
 
