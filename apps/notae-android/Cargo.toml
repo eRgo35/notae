@@ -19,6 +19,14 @@ thiserror = { workspace = true }
 notae-domain = { path = "../../crates/notae-domain" }
 notae-index = { path = "../../crates/notae-index" }
 sha2 = "0.10"
+# `atomic-waker` is the standard library the SAF picker handshake
+# uses to bridge the Slint main thread (where `select_root` is
+# polled) and the Java main looper (where the activity-result
+# callback fires). The `AtomicWaker::register` / `wake` pair is
+# the canonical idiom: the producer registers its `Waker` before
+# the consumer wakes it, so nothing is lost across the platform
+# callback's thread boundary.
+atomic-waker = "1"
 # `pollster` is the `block_on` helper the Android entry uses to await
 # the async `select_root` future from inside the synchronous Slint
 # callback. The picker is round-tripped through the OS, so the future
