@@ -22,14 +22,13 @@
 //!
 //! # Why `unsafe` is scoped to this module
 //!
-//! The high-level bindings in `android-activity` do not yet cover
-//! Activity Results or `ContentResolver` iteration, so this file does
-//! both via JNI. The `unsafe` is contained to the helper functions
-//! below; everything else (the `LibraryRootProvider` impl, the
-//! catalog, the permission storage) is safe Rust. The same
-//! `#![allow(unsafe_code)]` + doc-comment pattern `android_main.rs`
-//! uses is in force here so the rest of the crate keeps
-//! `#![forbid(unsafe_code)]`.
+//! The Java `NotaeActivity` delivers Activity results to this module
+//! through JNI. This file also uses JNI for `ContentResolver` iteration
+//! and permission persistence. The `unsafe` is contained to the JNI
+//! helpers and the documented local-reference conversion; the
+//! `LibraryRootProvider` impl, catalog, and persistence logic are safe
+//! Rust. The same `#![allow(unsafe_code)]` policy as `android_main.rs`
+//! keeps `#![forbid(unsafe_code)]` active elsewhere in the crate.
 //!
 //! # Persistence
 //!
@@ -66,13 +65,16 @@ use android_activity::AndroidApp;
 use atomic_waker::AtomicWaker;
 use jni::errors::Error as JniError;
 use jni::objects::{JObject, JString};
-use jni::{jni_sig, jni_str, JValue};
+use jni::{jni_sig, jni_str, EnvUnowned, JValue};
 use sha2::{Digest, Sha256};
 
 use notae_domain::{PdfFingerprint, RelativePdfPath, Sha256Digest};
 use notae_index::{CatalogError, FileCondition, PdfCatalog, PdfFile};
 
-use crate::picker_fut::{new_picker_state, poll_outcome, PickerState};
+use crate::picker_fut::{
+    decode_activity_result, new_picker_state, poll_outcome, PickerOutcome, PickerState,
+    FLAG_GRANT_READ_URI_PERMISSION,
+};
 use crate::storage::{
     LibraryRoot, LibraryRootId, LibraryRootProvider, LibrarySource, StorageError,
 };
@@ -88,14 +90,8 @@ use crate::storage::{
 // registered into a parallel `PENDING_ROOT_ENTRIES` map the
 // dispatcher never walked; the wake never reached the future.
 //
-// The `Java_org_notae_android_NotaeActivity_*` JNI bridge that
-// previously called into `deliver_activity_result` is gone — see
-// `apps/notae-android/NOTE-android-activity-result-jni.md` for the
-// `cargo-apk` 0.10 limitation that prevents the on-device
-// `onActivityResult` → Rust wake from being closed without a Gradle
-// build (which `cargo-apk` does not provide). The
-// `PickerState::dispatch` site is the contract the device-side
-// follow-on has to wire into when the bridge closes.
+// `NotaeActivity.onActivityResult` dispatches through this same state
+// after validating and persisting the selected tree.
 // ---------------------------------------------------------------------------
 
 /// One global [`PickerState`] shared by the provider and any other
@@ -127,16 +123,7 @@ const KEY_DISPLAY_NAME: &str = "display_name";
 /// Key the library-root id is stored under.
 const KEY_ROOT_ID: &str = "root_id";
 
-/// Result extra key for the picked tree URI. The OS hands us this
-/// when the picker returns successfully.
-///
-/// Round 4: marked `#[allow(dead_code)]` because the JNI
-/// `pick_intent_data` path that consumed it is gone (the bridge
-/// from `onActivityResult` → Rust is closed only after Options 1 or
-/// 2 in `NOTE-android-activity-result-jni.md` lands). The constant
-/// stays so the future bridge work has the right key documented.
-#[allow(dead_code)]
-const PICKED_TREE_URI_EXTRA: &str = "android.intent.extra.chosen_tree_uri";
+const DOCUMENT_DISPLAY_NAME: &str = "document_display_name";
 
 // ---------------------------------------------------------------------------
 // JNI helpers.
@@ -146,9 +133,9 @@ const PICKED_TREE_URI_EXTRA: &str = "android.intent.extra.chosen_tree_uri";
 // above can be reasoned about without thinking about JNI.
 // ---------------------------------------------------------------------------
 
-/// Attaches to the Java VM and runs `f` with an `Env`. The closure
-/// must return a `JniError`-compatible `Result`; the `Env` is bound
-/// to the current JNI stack frame and dropped when `f` returns.
+/// Attaches to the Java VM and runs `f` with an `Env`. Any pending
+/// Java exception is cleared when `f` returns an error, because callers
+/// convert JNI failures into Rust storage or picker outcomes.
 fn with_env<F, R>(app: &AndroidApp, f: F) -> Result<R, JniError>
 where
     F: FnOnce(&mut jni::Env<'_>) -> Result<R, JniError>,
@@ -160,7 +147,13 @@ where
     // closure returns is bound to the current JNI stack frame and
     // dropped when the closure returns.
     let vm = unsafe { jni::JavaVM::from_raw(vm_ptr as *mut _) };
-    vm.attach_current_thread(f)
+    vm.attach_current_thread(|env| {
+        let result = f(env);
+        if result.is_err() && env.exception_check() {
+            env.exception_clear();
+        }
+        result
+    })
 }
 
 /// Reads a Java `String` into a Rust `String`.
@@ -239,12 +232,8 @@ fn launch_picker_jni(app: &AndroidApp, request_code: i32) -> Result<(), JniError
             &[JValue::Int(0x00000001)],
         )?;
 
-        // If a previous tree URI is in `SharedPreferences`, set it as
-        // `EXTRA_INITIAL_URI` so the picker opens at the same
-        // directory. We tolerate any failure here — the picker
-        // opens at the default root and the user re-navigates.
-        if let Ok(Some(initial)) = read_persisted_root_jni(app) {
-            if !initial.tree_uri.is_empty() {
+        match read_persisted_root_jni(app) {
+            Ok(Some(initial)) if !initial.tree_uri.is_empty() => {
                 let key_string = env.new_string("android.provider.extra.INITIAL_URI")?;
                 let value_string = env.new_string(&initial.tree_uri)?;
                 let _ = env.call_method(
@@ -256,6 +245,12 @@ fn launch_picker_jni(app: &AndroidApp, request_code: i32) -> Result<(), JniError
                         JValue::Object(&value_string),
                     ],
                 );
+            }
+            Ok(Some(_)) | Ok(None) => {}
+            Err(_) => {
+                if env.exception_check() {
+                    env.exception_clear();
+                }
             }
         }
 
@@ -275,11 +270,6 @@ fn launch_picker_jni(app: &AndroidApp, request_code: i32) -> Result<(), JniError
 struct PersistedRoot {
     root: LibraryRoot,
     tree_uri: String,
-    /// Display name the picker reported. Round 4: `#[allow(dead_code)]`
-    /// because the host tests never drive the `read_persisted_root_jni`
-    /// round trip; Task 4's device-side `reopen` reads it.
-    #[allow(dead_code)]
-    display_name: String,
 }
 
 /// Reads the persisted root from `SharedPreferences` and re-acquires
@@ -360,8 +350,10 @@ fn read_persisted_root_jni(app: &AndroidApp) -> Result<Option<PersistedRoot>, Jn
         )?;
         let parsed_uri = parsed_uri.l()?;
 
-        // FLAG_GRANT_READ_URI_PERMISSION.
-        let _ = env.call_method(
+        // Reacquiring a revoked tree grant throws SecurityException. Propagate
+        // the JNI error so `reopen` maps it to PermissionLost; `with_env`
+        // clears the pending exception before detaching.
+        env.call_method(
             resolver.as_ref(),
             jni_str!("takePersistableUriPermission"),
             jni_sig!("(Landroid/net/Uri;I)V"),
@@ -369,81 +361,265 @@ fn read_persisted_root_jni(app: &AndroidApp) -> Result<Option<PersistedRoot>, Jn
                 JValue::Object(parsed_uri.as_ref()),
                 JValue::Int(0x00000001),
             ],
-        );
+        )?;
 
         let root = LibraryRoot::from_parts(
             LibraryRootId::from_string(root_id_str),
-            display_name.clone(),
+            display_name,
             tree_uri.clone(),
         );
-        Ok(Some(PersistedRoot {
-            root,
-            tree_uri,
-            display_name,
-        }))
+        Ok(Some(PersistedRoot { root, tree_uri }))
     })
 }
 
-/// Writes the tree URI, display name, and root id to the
-/// `SharedPreferences` file the provider reads on reopen.
-fn write_persisted_root_jni(
-    app: &AndroidApp,
+fn content_resolver<'local>(
+    env: &mut jni::Env<'local>,
+    activity: &JObject<'local>,
+) -> Result<JObject<'local>, JniError> {
+    Ok(env
+        .call_method(
+            activity,
+            jni_str!("getContentResolver"),
+            jni_sig!("()Landroid/content/ContentResolver;"),
+            &[],
+        )?
+        .l()?)
+}
+
+fn selected_tree_outcome<'local>(
+    env: &mut jni::Env<'local>,
+    activity: &JObject<'local>,
+    tree_uri: String,
+) -> Result<PickerOutcome, JniError> {
+    let resolver = content_resolver(env, activity)?;
+    let uri_string = env.new_string(&tree_uri)?;
+    let tree_uri_object = env
+        .call_static_method(
+            jni_str!("android/net/Uri"),
+            jni_str!("parse"),
+            jni_sig!("(Ljava/lang/String;)Landroid/net/Uri;"),
+            &[JValue::Object(&uri_string)],
+        )?
+        .l()?;
+
+    env.call_method(
+        &resolver,
+        jni_str!("takePersistableUriPermission"),
+        jni_sig!("(Landroid/net/Uri;I)V"),
+        &[
+            JValue::Object(&tree_uri_object),
+            JValue::Int(FLAG_GRANT_READ_URI_PERMISSION),
+        ],
+    )?;
+
+    let document_id = env
+        .call_static_method(
+            jni_str!("android/provider/DocumentsContract"),
+            jni_str!("getTreeDocumentId"),
+            jni_sig!("(Landroid/net/Uri;)Ljava/lang/String;"),
+            &[JValue::Object(&tree_uri_object)],
+        )?
+        .l()?;
+    let document_uri = env
+        .call_static_method(
+            jni_str!("android/provider/DocumentsContract"),
+            jni_str!("buildDocumentUriUsingTree"),
+            jni_sig!(
+                "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"
+            ),
+            &[
+                JValue::Object(&tree_uri_object),
+                JValue::Object(&document_id),
+            ],
+        )?
+        .l()?;
+    let null = JObject::null();
+    let cursor = env
+        .call_method(
+            &resolver,
+            jni_str!("query"),
+            jni_sig!(
+                "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;"
+            ),
+            &[
+                JValue::Object(&document_uri),
+                JValue::Object(&null),
+                JValue::Object(&null),
+                JValue::Object(&null),
+                JValue::Object(&null),
+            ],
+        )?
+        .l()?;
+    if cursor.is_null() {
+        return Err(JniError::NullPtr("ContentResolver.query cursor"));
+    }
+
+    let display_name_result = (|| -> Result<String, JniError> {
+        let has_row = env
+            .call_method(
+                &cursor,
+                jni_str!("moveToFirst"),
+                jni_sig!("()Z"),
+                &[],
+            )?
+            .z()?;
+        if !has_row {
+            return Err(JniError::NullPtr("tree document row"));
+        }
+        let column_name = env.new_string(DOCUMENT_DISPLAY_NAME)?;
+        let column_index = env
+            .call_method(
+                &cursor,
+                jni_str!("getColumnIndex"),
+                jni_sig!("(Ljava/lang/String;)I"),
+                &[JValue::Object(&column_name)],
+            )?
+            .i()?;
+        if column_index < 0 {
+            return Err(JniError::NullPtr("tree document display-name column"));
+        }
+        let display_name = env
+            .call_method(
+                &cursor,
+                jni_str!("getString"),
+                jni_sig!("(I)Ljava/lang/String;"),
+                &[JValue::Int(column_index)],
+            )?
+            .l()?;
+        if display_name.is_null() {
+            return Err(JniError::NullPtr("tree document display name"));
+        }
+        // SAFETY: Cursor.getString returned this local reference as a Java String.
+        let display_name = unsafe {
+            JString::from_raw(env, display_name.as_raw() as jni::sys::jstring)
+        };
+        jstring_to_string(env, display_name)
+    })();
+    let close_result = env
+        .call_method(&cursor, jni_str!("close"), jni_sig!("()V"), &[])
+        .map(|_| ());
+    let display_name = display_name_result?;
+    close_result?;
+    if display_name.is_empty() {
+        return Err(JniError::NullPtr("empty tree document display name"));
+    }
+
+    let root = LibraryRoot::new(display_name.clone(), tree_uri.clone());
+    if !write_persisted_root(env, activity, &tree_uri, &display_name, root.id())? {
+        return Ok(PickerOutcome::Platform {
+            error: "Could not save the selected library folder.".to_owned(),
+        });
+    }
+    Ok(PickerOutcome::Ok {
+        tree_uri,
+        display_name,
+        root_id: root.id().clone(),
+    })
+}
+
+fn write_persisted_root(
+    env: &mut jni::Env<'_>,
+    activity: &JObject<'_>,
     tree_uri: &str,
     display_name: &str,
     root_id: &LibraryRootId,
-) -> Result<(), JniError> {
-    let activity_ptr = app.activity_as_ptr();
-    with_env(app, move |env| -> Result<(), JniError> {
-        let activity = activity_as_jobject(env, activity_ptr)?;
+) -> Result<bool, JniError> {
+    let prefs_name = env.new_string(PREFS_FILE)?;
+    let prefs = env.call_method(
+        activity,
+        jni_str!("getSharedPreferences"),
+        jni_sig!("(Ljava/lang/String;I)Landroid/content/SharedPreferences;"),
+        &[JValue::Object(&prefs_name), JValue::Int(0)],
+    )?;
+    let prefs = prefs.l()?;
 
-        let prefs_name = env.new_string(PREFS_FILE)?;
-        let prefs = env.call_method(
-            &activity,
-            jni_str!("getSharedPreferences"),
-            jni_sig!("(Ljava/lang/String;I)Landroid/content/SharedPreferences;"),
-            &[
-                JValue::Object(&prefs_name),
-                JValue::Int(0),
-            ],
-        )?;
-        let prefs = prefs.l()?;
+    let editor = env.call_method(
+        prefs.as_ref(),
+        jni_str!("edit"),
+        jni_sig!("()Landroid/content/SharedPreferences$Editor;"),
+        &[],
+    )?;
+    let editor = editor.l()?;
 
-        // `prefs.edit()` returns a `SharedPreferences.Editor`.
-        let editor = env.call_method(
-            prefs.as_ref(),
-            jni_str!("edit"),
-            jni_sig!("()Landroid/content/SharedPreferences$Editor;"),
-            &[],
-        )?;
-        let editor = editor.l()?;
-
-        // Three `putString(key, value)` calls, then `apply()`.
-        let mut put = |key: &str, value: &str| -> Result<(), JniError> {
-            let key_obj = env.new_string(key)?;
-            let value_obj = env.new_string(value)?;
-            env.call_method(
-                editor.as_ref(),
-                jni_str!("putString"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;"),
-                &[
-                    JValue::Object(&key_obj),
-                    JValue::Object(&value_obj),
-                ],
-            )?;
-            Ok(())
-        };
-        put(KEY_TREE_URI, tree_uri)?;
-        put(KEY_DISPLAY_NAME, display_name)?;
-        put(KEY_ROOT_ID, root_id.as_str())?;
-
+    let mut put = |key: &str, value: &str| -> Result<(), JniError> {
+        let key_obj = env.new_string(key)?;
+        let value_obj = env.new_string(value)?;
         env.call_method(
             editor.as_ref(),
-            jni_str!("apply"),
-            jni_sig!("()V"),
-            &[],
+            jni_str!("putString"),
+            jni_sig!(
+                "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;"
+            ),
+            &[JValue::Object(&key_obj), JValue::Object(&value_obj)],
         )?;
         Ok(())
-    })
+    };
+    put(KEY_TREE_URI, tree_uri)?;
+    put(KEY_DISPLAY_NAME, display_name)?;
+    put(KEY_ROOT_ID, root_id.as_str())?;
+
+    // Success is dispatched only after SharedPreferences confirms the write.
+    env.call_method(&editor, jni_str!("commit"), jni_sig!("()Z"), &[])?.z()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_notae_android_NotaeActivity_nativeOnActivityResult<'local>(
+    mut unowned_env: EnvUnowned<'local>,
+    activity: JObject<'local>,
+    request_code: jni::sys::jint,
+    result_code: jni::sys::jint,
+    tree_uri: JString<'local>,
+    grant_flags: jni::sys::jint,
+) {
+    unowned_env
+        .with_env(|env| -> Result<(), JniError> {
+            let tree_uri = if tree_uri.is_null() {
+                None
+            } else {
+                match jstring_to_string(env, tree_uri) {
+                    Ok(uri) => Some(uri),
+                    Err(error) => {
+                        if env.exception_check() {
+                            env.exception_clear();
+                        }
+                        picker_state().dispatch(
+                            request_code,
+                            PickerOutcome::Platform {
+                                error: error.to_string(),
+                            },
+                        );
+                        return Ok(());
+                    }
+                }
+            };
+
+            let outcome = match decode_activity_result(
+                result_code,
+                tree_uri,
+                grant_flags,
+            ) {
+                Ok(None) => PickerOutcome::Cancelled,
+                Err(error) => PickerOutcome::Platform {
+                    error: error.to_string(),
+                },
+                Ok(Some(tree_uri)) => {
+                    match selected_tree_outcome(env, &activity, tree_uri) {
+                        Ok(outcome) => outcome,
+                        Err(error) => {
+                            if env.exception_check() {
+                                env.exception_clear();
+                            }
+                            PickerOutcome::Platform {
+                                error: error.to_string(),
+                            }
+                        }
+                    }
+                }
+            };
+            picker_state().dispatch(request_code, outcome);
+            Ok(())
+        })
+        .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 }
 
 // ---------------------------------------------------------------------------
@@ -465,20 +641,6 @@ impl SafLibraryRootProvider {
         Self { app }
     }
 
-    /// Persists the picked root. Called from the device-side
-    /// post-pick path (the bridge calls this when
-    /// `PickerOutcome::Ok` arrives); the host tests do not exercise
-    /// this.
-    #[allow(dead_code)]
-    pub(crate) fn persist_root(
-        &self,
-        tree_uri: &str,
-        display_name: &str,
-        root_id: &LibraryRootId,
-    ) -> Result<(), StorageError> {
-        write_persisted_root_jni(&self.app, tree_uri, display_name, root_id)
-            .map_err(|error| StorageError::Other(format!("write_persisted_root: {error}")))
-    }
 }
 
 impl LibraryRootProvider for SafLibraryRootProvider {
@@ -487,13 +649,16 @@ impl LibraryRootProvider for SafLibraryRootProvider {
     }
 
     fn reopen(&self, _root: &LibraryRoot) -> Result<LibrarySource, StorageError> {
-        let persisted = read_persisted_root_jni(&self.app)
-            .map_err(|error| StorageError::Other(format!("read_persisted_root: {error}")))?;
-        let Some(persisted) = persisted else {
-            // No persisted entry: the user has not picked a folder
-            // yet, or the persisted state was cleared. The recovery
-            // screen (PermissionLost) is what the UI shows.
-            return Err(StorageError::PermissionLost);
+        let persisted = match read_persisted_root_jni(&self.app) {
+            Ok(Some(persisted)) => persisted,
+            Ok(None) | Err(JniError::JavaException) => {
+                return Err(StorageError::PermissionLost);
+            }
+            Err(error) => {
+                return Err(StorageError::Other(format!(
+                    "read_persisted_root: {error}"
+                )));
+            }
         };
 
         // Build the catalog over the persisted tree URI. The walker

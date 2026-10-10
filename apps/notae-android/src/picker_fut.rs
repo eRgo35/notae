@@ -51,6 +51,40 @@ use atomic_waker::AtomicWaker;
 
 use crate::storage::{LibraryRoot, LibraryRootId, StorageError};
 
+const RESULT_OK: i32 = -1;
+const RESULT_CANCELED: i32 = 0;
+pub const FLAG_GRANT_READ_URI_PERMISSION: i32 = 1;
+
+/// Decodes a Java Activity result before the Android bridge touches it.
+///
+/// A canceled picker is a normal no-selection outcome. A successful
+/// result is accepted only when it contains a non-empty URI and the
+/// read permission Notae needs to enumerate PDFs. Unknown result codes
+/// and malformed success results become a storage error.
+pub fn decode_activity_result(
+    result_code: i32,
+    tree_uri: Option<String>,
+    grant_flags: i32,
+) -> Result<Option<String>, StorageError> {
+    match result_code {
+        RESULT_CANCELED => Ok(None),
+        RESULT_OK => {
+            let Some(tree_uri) = tree_uri.filter(|uri| !uri.is_empty()) else {
+                return Err(StorageError::Other(
+                    "SAF picker returned no tree URI".to_owned(),
+                ));
+            };
+            if grant_flags & FLAG_GRANT_READ_URI_PERMISSION == 0 {
+                return Err(StorageError::PermissionDenied);
+            }
+            Ok(Some(tree_uri))
+        }
+        code => Err(StorageError::Other(format!(
+            "SAF picker returned unexpected result code {code}",
+        ))),
+    }
+}
+
 /// Outcome of one picker request.
 ///
 /// The handshake hands one of these to the future when the activity

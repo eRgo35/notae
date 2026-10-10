@@ -101,7 +101,7 @@
 - The Rust JNI symbol `Java_org_notae_android_NotaeActivity_nativeOnActivityResult` uses the Activity receiver to access `ContentResolver`, persists the URI permission and root metadata before dispatching `PickerOutcome` through `PickerState::dispatch(request_code, outcome)`.
 - `LibraryRootProvider::select_root()` completes only after the matching result has been validated and persisted. `handle_picker_response` schedules its future with `slint::spawn_local`; it MUST NOT block the Slint/Android main event loop while awaiting the picker.
 
-- [ ] **Step 1: Write failing result-contract tests**
+- [x] **Step 1: Write failing result-contract tests**
 
   Add host tests for a successful result with read permission, cancellation, `RESULT_OK` without a URI, and `RESULT_OK` without the read grant. Assert the accepted URI; reuse the existing request-code dispatch tests rather than duplicating them.
 
@@ -123,13 +123,13 @@
   assert!(decode_activity_result(RESULT_OK, Some(uri), 0).is_err());
   ```
 
-- [ ] **Step 2: Run focused tests and verify they fail**
+- [x] **Step 2: Run focused tests and verify they fail**
 
   Run: `cargo test -p notae-android --test picker_fut`
 
   Expected: FAIL because Activity-result validation and the new boundary tests are not implemented.
 
-- [ ] **Step 3: Configure cargo-apk2 and implement the result bridge**
+- [x] **Step 3: Configure cargo-apk2 and implement the result bridge**
 
   Install the documented CLI version with `cargo install cargo-apk2 --version 1.4.0`. In `Cargo.toml`, set `java_sources = "android/src/main/java"` and `apk_name = "notae-android"`, declare `.NotaeActivity` as the launcher activity, set `application.has_code = true`, add the `MAIN`/`LAUNCHER` filter, and add activity metadata `android.app.lib_name = "notae_android"`. Keep the existing min/target SDK values.
 
@@ -161,15 +161,21 @@
  
  In `android_main.rs`, remove `pollster::block_on` from `handle_picker_response`. Schedule the future with `slint::spawn_local(async move { ... })`, then call `apply_picker_result` when it resolves. The callback must return immediately so Slint and Android can process events, including the Activity result that wakes the future. Remove the now-unused Android app dependency on `pollster`; retain its host-test uses if still needed elsewhere.
 
-- [ ] **Step 4: Verify host behavior and packaged APK**
+- [x] **Step 4: Verify host behavior and packaged APK**
 
   Run: `cargo test -p notae-android --test picker_fut`, `cargo test -p notae-android --test storage_state`, and `cargo apk2 build --release -p notae-android`.
 
   Inspect `target/release/apk/notae-android.apk` with `$HOME/Android/Sdk/build-tools/36.0.0/aapt dump xmltree target/release/apk/notae-android.apk AndroidManifest.xml` and `unzip -l target/release/apk/notae-android.apk`. Expected: launcher is `org.notae.android.NotaeActivity`, its `android.app.lib_name` is `notae_android`, the APK contains `classes.dex` and `libnotae_android.so`, and host tests pass.
- 
-  Install with `cargo apk2 run -p notae-android` on the Galaxy Tab S10 FE+. Open the folder picker and confirm Notae's UI remains event-responsive while DocumentsUI is active; select a folder, cancel a second selection, relaunch and reopen the saved root, then revoke the permission in Android Settings and verify recovery UI. This hardware gate cannot be marked complete without the target tablet.
 
-- [ ] **Step 5: Commit**
+  Verified: `cargo test -p notae-android` (33 tests), `cargo apk2 check -p notae-android --target aarch64-linux-android`, release APK build, manifest and payload inspection. APK signing and alignment verification passed.
+
+- [ ] **Step 5: Smoke-test the picker on the Galaxy Tab S10 FE+**
+
+  Install with `cargo apk2 run -p notae-android`. Open the folder picker and confirm Notae's UI remains event-responsive while DocumentsUI is active; select a folder, cancel a second selection, relaunch and reopen the saved root, then revoke the permission in Android Settings and verify recovery UI. This hardware gate cannot be marked complete without the target tablet.
+
+  Status: pending; `adb devices` reported no connected device. Repeat this scenario in the Android-plan completion check below.
+
+- [ ] **Step 6: Commit**
 
   ```bash
   git add apps/notae-android

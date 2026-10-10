@@ -216,14 +216,13 @@ fn report_transition(outcome: Result<Transition, EventError>) {
 /// The flow on both screens is the same:
 /// 1. The user taps the primary button.
 /// 2. We launch `ACTION_OPEN_DOCUMENT_TREE` via the SAF provider.
-/// 3. The platform callback (registered in `saf.rs`) completes the
-///    future the provider returned.
-/// 4. We poll the future here, then `reopen` the resulting handle to
-///    confirm the persisted permission is set; the storage state
-///    becomes `Ready` (or `PermissionLost` / `Error` on failure).
+/// 3. The Activity-result callback dispatches the outcome and wakes the
+///    pending selection future.
+/// 4. Slint resumes the task, which reopens the persisted root and
+///    updates the storage state.
 ///
-/// The future is `Send` because the provider returns one; we await it
-/// via `pollster::block_on` so the Slint callback stays synchronous.
+/// This callback must return to the event loop while the picker is open:
+/// Android delivers `onActivityResult` on the same main thread.
 fn handle_picker_response(
     model: &Rc<RefCell<UiModel>>,
     window_weak: &slint::Weak<AppWindow>,
@@ -232,10 +231,11 @@ fn handle_picker_response(
     let provider = provider.clone();
     let model = Rc::clone(model);
     let window_weak = window_weak.clone();
-
-    let future = provider.select_root();
-    let result = pollster::block_on(future);
-    apply_picker_result(&model, &window_weak, &provider, result);
+    slint::spawn_local(async move {
+        let result = provider.select_root().await;
+        apply_picker_result(&model, &window_weak, &provider, result);
+    })
+    .expect("failed to schedule SAF picker future on Slint event loop");
 }
 
 fn apply_picker_result(

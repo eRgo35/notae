@@ -16,7 +16,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
 use notae_android::picker_fut::{
-    new_picker_state, poll_outcome, DispatchOutcome, PickerOutcome, SelectRootHandshake,
+    decode_activity_result, new_picker_state, poll_outcome, DispatchOutcome, PickerOutcome,
+    SelectRootHandshake,
 };
 use notae_android::storage::{LibraryRootId, StorageError};
 
@@ -333,4 +334,51 @@ fn poll_outcome_fast_paths_when_outcome_already_dispatched() {
         0,
         "fast-path poll must not register a waker",
     );
+}
+
+#[test]
+fn activity_result_accepts_only_ok_with_read_grant_and_uri() {
+    const RESULT_OK: i32 = -1;
+    const FLAG_GRANT_READ_URI_PERMISSION: i32 = 1;
+    let uri = "content://provider/tree/music".to_owned();
+
+    assert!(matches!(
+        decode_activity_result(
+            RESULT_OK,
+            Some(uri.clone()),
+            FLAG_GRANT_READ_URI_PERMISSION,
+        ),
+        Ok(Some(selected)) if selected == uri
+    ));
+}
+
+#[test]
+fn activity_result_cancellation_returns_no_selection() {
+    const RESULT_CANCELED: i32 = 0;
+
+    assert!(matches!(
+        decode_activity_result(RESULT_CANCELED, None, 0),
+        Ok(None)
+    ));
+}
+
+#[test]
+fn activity_result_without_uri_is_rejected() {
+    const RESULT_OK: i32 = -1;
+    const FLAG_GRANT_READ_URI_PERMISSION: i32 = 1;
+
+    assert!(decode_activity_result(
+        RESULT_OK,
+        None,
+        FLAG_GRANT_READ_URI_PERMISSION,
+    )
+    .is_err());
+}
+
+#[test]
+fn activity_result_without_read_grant_is_rejected() {
+    const RESULT_OK: i32 = -1;
+    let uri = "content://provider/tree/music".to_owned();
+
+    assert!(decode_activity_result(RESULT_OK, Some(uri), 0).is_err());
 }

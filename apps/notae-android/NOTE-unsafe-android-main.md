@@ -7,11 +7,8 @@
 `ui.rs`, `picker_fut.rs`) re-asserts `#![forbid(unsafe_code)]`.
 
 ## Why an `unsafe` surface is unavoidable
-- `cargo-apk` packages this crate as a `cdylib` (`Cargo.toml` `[lib] crate-type`) loaded
-  by `android.app.NativeActivity`.
-- `NativeActivity` calls `android_main` by **literal C symbol name** when the activity
-  starts. Rust mangles names by default; without `#[unsafe(no_mangle)]` the runtime
-  cannot find the entry point and the app fails to launch.
+- `cargo-apk2` packages this crate as a `cdylib` (`Cargo.toml` `[lib] crate-type`) loaded by the Java `NotaeActivity`, which extends `android.app.NativeActivity`.
+- `NativeActivity` calls `android_main` by **literal C symbol name** when the activity starts. Rust mangles names by default; without `#[unsafe(no_mangle)]` the runtime cannot find the entry point and the app fails to launch.
 - `extern "C"` selects the platform's C calling convention — the OS ABI, not Rust's.
 - `#[unsafe(no_mangle)]` (the current spelling; `#[no_mangle]` is deprecated) is the
   mechanism Rust provides for that export.
@@ -26,14 +23,7 @@ and the `unsafe` blocks inside are minimal:
    starts. The body itself is safe Rust (Slint platform glue + safe `AppController`
    / `UiModel` calls).
 
-2. **`src/android/saf.rs`** — the JNI bridge the Storage Access Framework provider
-   uses to (a) launch the `ACTION_OPEN_DOCUMENT_TREE` intent, (b) read the
-   persisted tree URI from `SharedPreferences`, (c) walk the tree via
-   `ContentResolver.query` / `openInputStream`. Each JNI call is wrapped in a
-   `with_env` helper that attaches the calling thread to the JVM and returns a
-   fresh `Env`. The `unsafe` blocks are localised to the helper functions; the
-   `LibraryRootProvider` impl, the catalog, and the permission storage are safe
-   Rust.
+2. **`src/android/saf.rs`** — the JNI bridge launched by `NotaeActivity.onActivityResult`. It validates the picker result, takes and persists the read grant, reads the tree's display name through `ContentResolver`, and dispatches the outcome. Calls made from `android_main` use `with_env` to attach to the JVM; the native-method entry receives `EnvUnowned` for its existing Java attachment. The only raw-reference conversion is local and documented; storage and picker state remain safe Rust.
 
 ## Why this scoping is correct, not a smell
 - Workspace `forbid` stays in force everywhere else in the repo (`Cargo.toml`

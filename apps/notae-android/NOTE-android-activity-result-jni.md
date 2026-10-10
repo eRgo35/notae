@@ -1,22 +1,22 @@
 # Wiring Android Activity Results back to Rust
 
-## Status (round 5; design approved 2026-10-10)
+## Status (Task 2 implementation, 2026-10-10)
 
-The selected implementation path is `cargo-apk2` 1.4.0 with a thin
-Java `NotaeActivity extends NativeActivity`. The Java class forwards
-`onActivityResult` to Rust; the approved design is recorded in
-`docs/superpowers/specs/2026-10-09-notae-design.md` and the steps are
-in `docs/superpowers/plans/2026-10-09-notae-android-plan.md`. This is
-planned, not implemented: until Task 2 lands, the picker future still
-cannot complete on-device.
+The approved `cargo-apk2` 1.4.0 path is implemented. The APK now
+contains the Java `NotaeActivity` subclass and its Rust JNI result
+handler. The result handler validates the selected URI/read grant,
+persists the URI permission and root metadata, then dispatches the
+picker outcome. `handle_picker_response` uses `slint::spawn_local`,
+so it does not block the event loop while awaiting the Activity result.
 
-Task 2 also must replace `pollster::block_on` in
-`android_main.rs::handle_picker_response`. That callback runs on the
-Slint/Android main thread, while `onActivityResult` is delivered on
-that same main thread. Blocking while awaiting the result prevents
-the callback that completes the future from running. The approved
-implementation uses `slint::spawn_local` and returns to the event
-loop while the picker is open.
+Host tests, Android-target Rust compilation, release APK packaging,
+manifest inspection, and APK payload inspection pass. Device behavior
+is still unverified: `adb devices` reported no connected device. The
+target-tablet picker/responsiveness/relaunch/revocation smoke remains
+required before calling the SAF path end-to-end validated.
+
+Recursive SAF enumeration is not implemented yet; it is Task 3 in
+`docs/superpowers/plans/2026-10-09-notae-android-plan.md`.
 
 ## Why `cargo-apk` 0.10 could not close the result-delivery seam
 
@@ -95,37 +95,29 @@ Java sources and packages a custom `NativeActivity` subclass without
 introducing Gradle. The user approved this path on 2026-10-10. Do not
 fake the callback by extending or casting the NDK struct.
 
-The SAF state machine, URI persistence, and picker-future host
-contract remain testable on Linux. They do not prove on-device
-result delivery. Recursive SAF enumeration is also not implemented.
+## Current result-delivery implementation
 
-The project is no longer blocked on an architecture decision.
-End-to-end SAF root selection is planned with `cargo-apk2` and the
-Java Activity bridge; implementation remains pending in Task 2.
+`NotaeActivity extends NativeActivity` forwards Android's
+`onActivityResult` request/result codes, URI string, and read-grant bit
+through `Java_org_notae_android_NotaeActivity_nativeOnActivityResult`.
+Rust validates the result with `decode_activity_result`, persists the
+read permission through the Activity's `ContentResolver`, stores the
+selected root URI/name/ID in `SharedPreferences`, and dispatches the
+result through `PickerState`.
 
-## Last recorded host verification (round 4)
+`handle_picker_response` schedules `LibraryRootProvider::select_root`
+with `slint::spawn_local`; it does not block the main event loop.
+`cargo apk2 check -p notae-android --target aarch64-linux-android`
+passes. `cargo test -p notae-android` passes (33 tests). The release
+APK is signed and aligned; its manifest declares `.NotaeActivity`,
+`android.app.lib_name=notae_android`, and the launcher intent filter,
+and its payload contains `classes.dex` and
+`lib/arm64-v8a/libnotae_android.so`.
 
-* `cargo test -p notae-android` passes (29 tests: 5 lib + 9
-  picker-fut + 7 smoke + 8 storage-state).
-* `cargo test --workspace` passes.
-* `cargo clippy --workspace --all-targets -- -D warnings` is
-  clean on the host target.
-* `cargo apk build --release -p notae-android` produces a signed,
-  aligned, verified APK. The release `.so` carries every JNI
-  helper except the dead `NotaeActivity` bridge.
-* `tests/picker_fut.rs::poll_outcome_registers_waker_into_dispatchers_map_and_completes`
-  proves the waker is registered into the dispatcher's map and is
-  fired by the next dispatch. `SelectRootFuture::poll` (the
-  Android-only future) calls the same helper, so the contract it
-  enforces on Linux is the contract that ships on the device.
-
-What does **not** work on the device yet: after a user selects a
-folder, the picker future cannot complete because the shipped APK has
-no custom Java result bridge. A custom Java Activity in a build that
-compiles Java sources is required for this design. The existing
-`pollster::block_on` call also blocks the UI thread that must deliver
-the result; Task 2 replaces it with Slint's asynchronous event-loop
-executor.
+These checks do not prove Android runtime behavior. No device is
+attached, so actual Activity result delivery, permission persistence
+across relaunch, permission revocation handling, and event-loop
+responsiveness remain to be smoke-tested on the Galaxy Tab S10 FE+.
 
 ## Files touched in round 4
 

@@ -1,6 +1,6 @@
 # `.cargo/config.toml` for the `notae-android` crate.
 #
-# `cargo-apk` invokes `cargo` under the appropriate NDK environment, but
+# `cargo-apk2` invokes `cargo` under the appropriate NDK environment, but
 # the linker needs to be told explicitly per Android target. Each
 # `target.*` block points the linker at the NDK r26d clang binary; the
 # `ar` value is `llvm-ar` from the same directory.
