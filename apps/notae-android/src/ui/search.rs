@@ -14,6 +14,8 @@ pub struct SearchRow {
     pub tags: Vec<String>,
     /// User-facing indexing/OCR status.
     pub status: String,
+    /// Library-relative path used to resolve the SAF document for PDF viewing.
+    pub relative_path: String,
     /// Stable content key used by open and edit actions.
     pub note_key: String,
 }
@@ -28,6 +30,7 @@ impl SearchRow {
             tags: metadata.tags().iter().cloned().collect(),
             status: status_label(note.status()).to_owned(),
             note_key: note.fingerprint().sha256().to_string(),
+            relative_path: note.path().as_str().to_owned(),
         }
     }
 }
@@ -42,6 +45,7 @@ impl From<SearchRow> for crate::LibraryRow {
             tags: row.tags.join(", ").into(),
             status: row.status.into(),
             note_key: row.note_key.into(),
+            relative_path: row.relative_path.into(),
         }
     }
 }

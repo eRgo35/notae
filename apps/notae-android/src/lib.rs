@@ -36,6 +36,7 @@ mod android_main;
 pub mod ui;
 
 pub mod operations;
+pub mod pdf_intent;
 
 // Pull in the Slint-generated bindings for `app.slint`. The build script
 // in `build.rs` writes this file as `$OUT_DIR/app.rs`; the path uses

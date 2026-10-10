@@ -339,6 +339,39 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
     {
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
+        let app = app.clone();
+        window.on_open_pdf_requested(move |relative_path| {
+            let relative_path = relative_path.to_string();
+            let result = model
+                .borrow()
+                .library_root_handle()
+                .ok_or_else(|| {
+                    crate::pdf_intent::ViewerError::Platform(
+                        "No active library folder is available.".to_owned(),
+                    )
+                })
+                .and_then(|tree_uri| {
+                    crate::android::saf::document_content_uri(
+                        app.clone(),
+                        &tree_uri,
+                        &relative_path,
+                    )
+                })
+                .and_then(|uri| {
+                    crate::android::pdf_intent::PdfLauncher::new(app.clone()).open(uri)
+                });
+            model
+                .borrow_mut()
+                .set_pdf_launch_error(result.err().map(|error| error.to_string()));
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
         window.on_settings_clicked(move || {
             report_transition(model.borrow_mut().dispatch(UiEvent::OpenSettings));
             if let Some(window) = window_weak.upgrade() {
@@ -463,6 +496,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
             .into(),
     );
     window.set_metadata_error_text(model.metadata_error().unwrap_or_default().into());
+    window.set_pdf_launch_error_text(model.pdf_launch_error().unwrap_or_default().into());
     let preview = model.import_preview_summary();
     window.set_show_import_preview(preview.is_some());
     window.set_import_preview_text(preview.map_or_else(String::new, import_preview_text).into());

@@ -1,9 +1,9 @@
 //! Storage Access Framework provider for Android.
 //!
-//! This module is the *only* place in the crate that talks to the
-//! Android platform: `ContentResolver`, tree URIs, persisted read
-//! permission, and the `ACTION_OPEN_DOCUMENT_TREE` intent that opens
-//! the system file picker.
+//! This module owns the Android storage/document-provider integration:
+//! `ContentResolver`, tree URIs, persisted read permission, and the
+//! `ACTION_OPEN_DOCUMENT_TREE` intent that opens the system file picker.
+//! External PDF `ACTION_VIEW` handoff lives in `android::pdf_intent`.
 //!
 //! # The two halves
 //!
@@ -138,7 +138,7 @@ const DOCUMENT_DISPLAY_NAME: &str = "document_display_name";
 /// Attaches to the Java VM and runs `f` with an `Env`. Any pending
 /// Java exception is cleared when `f` returns an error, because callers
 /// convert JNI failures into Rust storage or picker outcomes.
-fn with_env<F, R>(app: &AndroidApp, f: F) -> Result<R, JniError>
+pub(super) fn with_env<F, R>(app: &AndroidApp, f: F) -> Result<R, JniError>
 where
     F: FnOnce(&mut jni::Env<'_>) -> Result<R, JniError>,
 {
@@ -173,7 +173,7 @@ fn jstring_to_string(env: &mut jni::Env<'_>, value: JString<'_>) -> Result<Strin
 /// reborrow our `&mut Env<'local>` through `&*env` so the type lines
 /// up without going through `EnvUnowned` (which is only for raw FFI
 /// callbacks that do not have a borrowed `Env`).
-fn activity_as_jobject<'local>(
+pub(super) fn activity_as_jobject<'local>(
     env: &mut jni::Env<'local>,
     activity_ptr: *mut std::ffi::c_void,
 ) -> Result<JObject<'local>, JniError> {
@@ -908,7 +908,57 @@ impl DocumentTreeReader for SafPdfCatalog {
     }
 }
 
-fn parse_uri<'local>(env: &mut jni::Env<'local>, uri: &str) -> Result<JObject<'local>, JniError> {
+/// Resolves a root-relative library path to the SAF document URI shared with viewers.
+pub fn document_content_uri(
+    app: AndroidApp,
+    tree_uri: &str,
+    relative_path: &str,
+) -> Result<crate::pdf_intent::ContentUri, crate::pdf_intent::ViewerError> {
+    let catalog = SafPdfCatalog::new(app.clone(), tree_uri.to_owned());
+    let root_id = catalog
+        .root_document_id()
+        .map_err(|error| crate::pdf_intent::ViewerError::Platform(error.to_string()))?;
+    let document_id = crate::saf_tree::find_document_id(&catalog, &root_id, relative_path)
+        .map_err(|error| crate::pdf_intent::ViewerError::Platform(error.to_string()))?;
+    let value = with_env(&app, |env| {
+        let tree_uri = parse_uri(env, tree_uri)?;
+        let document_id = env.new_string(document_id)?;
+        let document_uri = env
+            .call_static_method(
+                jni_str!("android/provider/DocumentsContract"),
+                jni_str!("buildDocumentUriUsingTree"),
+                jni_sig!("(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"),
+                &[JValue::Object(&tree_uri), JValue::Object(&document_id)],
+            )?
+            .l()?;
+        if document_uri.is_null() {
+            return Err(JniError::NullPtr(
+                "DocumentsContract.buildDocumentUriUsingTree",
+            ));
+        }
+        let value = env
+            .call_method(
+                &document_uri,
+                jni_str!("toString"),
+                jni_sig!("()Ljava/lang/String;"),
+                &[],
+            )?
+            .l()?;
+        if value.is_null() {
+            return Err(JniError::NullPtr("Uri.toString"));
+        }
+        // SAFETY: Uri.toString returns a local reference to a Java String.
+        let value = unsafe { JString::from_raw(env, value.as_raw() as jni::sys::jstring) };
+        jstring_to_string(env, value)
+    })
+    .map_err(|error| crate::pdf_intent::ViewerError::Platform(error.to_string()))?;
+    crate::pdf_intent::ContentUri::new(value)
+}
+
+pub(super) fn parse_uri<'local>(
+    env: &mut jni::Env<'local>,
+    uri: &str,
+) -> Result<JObject<'local>, JniError> {
     let uri_string = env.new_string(uri)?;
     let parsed_uri = env
         .call_static_method(

@@ -22,6 +22,7 @@ export struct LibraryRow {
     tags: string,
     status: string,
     note_key: string,
+    relative_path: string,
 }
 
 export struct ImportRow {
@@ -117,6 +118,7 @@ component RecoveryScreen inherits Rectangle {
 component LibraryResultRow inherits Rectangle {
     in property <LibraryRow> note;
     callback edit_requested(string);
+    callback open_requested(string);
     background: #292929;
     width: 100%;
     height: 128px;
@@ -152,10 +154,18 @@ component LibraryResultRow inherits Rectangle {
                 color: #aaaaaa;
             }
         }
-        Button {
-            text: "Edit";
-            min-height: 48px;
-            clicked => { root.edit_requested(root.note.note_key); }
+        HorizontalLayout {
+            spacing: 8px;
+            Button {
+                text: "Open";
+                min-height: 48px;
+                clicked => { root.open_requested(root.note.relative_path); }
+            }
+            Button {
+                text: "Edit";
+                min-height: 48px;
+                clicked => { root.edit_requested(root.note.note_key); }
+            }
         }
     }
 }
@@ -164,6 +174,7 @@ component LibraryScreen inherits Rectangle {
     in property <[LibraryRow]> rows: [];
     in property <string> search_text: "";
     callback edit_requested(string);
+    callback open_requested(string);
     background: #1e1e1e;
 
     VerticalLayout {
@@ -193,6 +204,7 @@ component LibraryScreen inherits Rectangle {
             for item in root.rows : LibraryResultRow {
                 note: item;
                 edit_requested(key) => { root.edit_requested(key); }
+                open_requested(path) => { root.open_requested(path); }
             }
         }
     }
@@ -349,6 +361,7 @@ export component AppWindow inherits Window {
     in-out property <string> metadata_composer_or_artist: "";
     in-out property <string> metadata_tags: "";
     in property <string> metadata_error_text: "";
+    in property <string> pdf_launch_error_text: "";
     callback settings_clicked();
     callback settings_closed();
 
@@ -362,6 +375,7 @@ export component AppWindow inherits Window {
     callback edit_metadata_requested(string);
     callback metadata_save_requested(string, string, string, string, string);
     callback metadata_cancelled();
+    callback open_pdf_requested(string);
 
     VerticalLayout {
         spacing: 8px;
@@ -408,6 +422,14 @@ export component AppWindow inherits Window {
             color: #cccccc;
             font-size: 16px;
             horizontal-alignment: center;
+        }
+
+        if root.pdf_launch_error_text != "" && !root.show_settings : Text {
+            text: root.pdf_launch_error_text;
+            color: #ff8888;
+            font-size: 16px;
+            horizontal-alignment: center;
+            wrap: word-wrap;
         }
 
         if root.show_import_preview && !root.show_settings : Rectangle {
@@ -470,6 +492,7 @@ export component AppWindow inherits Window {
             rows: root.library_rows;
             search_text: root.search_text;
             edit_requested(note_key) => { root.edit_metadata_requested(note_key); }
+            open_requested(path) => { root.open_pdf_requested(path); }
         }
 
         if root.show_metadata_editor && !root.show_settings : MetadataEditorPanel {
