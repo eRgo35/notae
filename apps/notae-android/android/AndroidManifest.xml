@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Reference AndroidManifest for `notae-android`.
+
+  `cargo-apk` 0.10 generates the actual `AndroidManifest.xml` it packs
+  into the APK from `[package.metadata.android]` in `Cargo.toml`. This
+  file is kept here so:
+
+  1. The spec asked for it under `apps/notae-android/android/`.
+  2. Anyone reading the crate can see what the produced APK should
+     contain without having to navigate the cargo-apk manifest schema.
+
+  Field-by-field equivalence to the generated manifest:
+
+  * `package = "org.notae.android"`         -> [package.metadata.android]
+                                               .package
+  * `android:label = "Notae"`              -> [package.metadata.android]
+                                               .application.label
+  * `android:name = "android.app.NativeActivity"`
+    (left as cargo-apk's default)            -> untouched; see the
+                                               `lib_name` meta-data
+                                               entry cargo-apk emits.
+  * `MAIN` / `LAUNCHER` intent filter      -> injected by cargo-apk
+                                               when missing.
+  * `android:exported = "true"` on S+      -> injected by cargo-apk
+                                               when targeting API 31+.
+
+  Verifying the shipped manifest: `cargo apk build --release -p
+  notae-android` writes the produced `AndroidManifest.xml` to
+  `target/android*/release/` for inspection.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="org.notae.android">
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35" />
+
+    <application android:label="Notae" android:hasCode="true">
+        <activity android:name="android.app.NativeActivity"
+                  android:exported="true"
+                  android:configChanges="orientation|keyboardHidden|screenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="android.app.lib_name"
+                       android:value="notae_android" />
+        </activity>
+    </application>
+</manifest>

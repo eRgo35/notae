@@ -1,0 +1,71 @@
+[package]
+name = "notae-android"
+description = "Slint + android-activity UI for the Notae portable sidecar."
+edition.workspace = true
+version.workspace = true
+publish = false
+
+# Both crate types are produced together:
+#   * `cdylib` so `cargo-apk` can bundle `libnotae_android.so` as the
+#     `android.app.lib_name` payload for the NativeActivity.
+#   * `rlib` so `cargo test` on Linux can link the host-side smoke test
+#     against the same state machine that runs on device.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+slint = { version = "1.18", features = ["backend-android-activity-06"] }
+thiserror = { workspace = true }
+
+# `notae-index` (rusqlite + SQLite bundled) and `notae-ocr` (Tesseract C++
+# bindings) are intentionally NOT listed here yet. They cross-compile
+# poorly to Android without a per-task NDK configuration; later tasks add
+# them when the corresponding feature (rescan, OCR) is wired in.
+
+[build-dependencies]
+# `slint-build` parses the .slint file at build time, emits a Rust module
+# into $OUT_DIR, and is compiled into the lib on every target — Android
+# included — without dragging in the heavy renderer at test time.
+slint-build = "1.18"
+
+# `cargo-apk` reads `[package.metadata.android]` to assemble the APK
+# manifest, signing config, and per-ABI filter. The defaults it picks
+# when fields are absent match the Galaxy Tab S10 FE+ target.
+[package.metadata.android]
+package = "org.notae.android"
+
+[package.metadata.android.application]
+label = "Notae"
+
+# `cargo-apk` will inject the `MAIN`/`LAUNCHER` intent filter and set
+# `android:exported="true"` automatically when `target_sdk_version >= 31`.
+# The activity name stays at `android.app.NativeActivity` so the
+# android-activity runtime loads our `android_main` symbol.
+
+[package.metadata.android.sdk]
+min_sdk_version = 23
+# NDK r26d supports API 21-34. Until a newer NDK lands, target API 34,
+# which is also the latest API the installed NDK can compile against.
+target_sdk_version = 34
+
+# Use the SDK's auto-generated debug keystore for release builds during
+# development. When Notae ships, a real release keystore will land in
+# this slot via the project's release configuration.
+[package.metadata.android.signing.release]
+path = "$HOME/.android/debug.keystore"
+keystore_password = "android"
+
+# The Android crate is the one place in the workspace that has to expose
+# an `extern "C"` symbol — `android_main` — to the
+# `android-activity` runtime. The `#[unsafe(no_mangle)]` attribute is
+# what surfaces the symbol in the produced `libnotae_android.so`. Rust's
+# `unsafe_code` lint flags every `unsafe` attribute, including harmless
+# ones, so the workspace's `forbid` level would override any local
+# `#[allow(...)]` and break the build.
+#
+# We drop the level from `forbid` to `deny` here so the FFI shim can
+# use `#[allow(unsafe_code)]` locally, and the host-testable core
+# (`state.rs`, `ui.rs`) keeps a strict `#![forbid(unsafe_code)]` of its
+# own. Everywhere else in the workspace, `forbid` remains in force.
+[lints.rust]
+unsafe_code = "deny"

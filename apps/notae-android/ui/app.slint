@@ -1,0 +1,111 @@
+// Notae — task 1 Slint shell.
+//
+// This file defines *only* the layout the smoke state machine can stay
+// honest about: a top-level `AppWindow`, a `setup_screen` shown when
+// `state.screen == Setup`, an empty `library_screen` placeholder shown
+// otherwise, a `search_field` that's always present, and a
+// `rescan_button` whose `enabled` is driven by the property
+// `rescan_enabled` (which the host-side controller sets to `false` on a
+// fresh app). The actual data bindings and event wiring land in later
+// tasks once the state model has more to show.
+
+import { Button, LineEdit } from "std-widgets.slint";
+
+component SetupScreen inherits Rectangle {
+    background: #1e1e1e;
+
+    callback accepted();
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 16px;
+        padding: 32px;
+
+        Text {
+            text: "Notae";
+            font-size: 32px;
+            horizontal-alignment: center;
+            color: #ffffff;
+        }
+
+        Text {
+            text: "Pick a library root to begin.";
+            horizontal-alignment: center;
+            color: #cccccc;
+            wrap: word-wrap;
+        }
+
+        Button {
+            text: "Choose folder…";
+            primary: true;
+            clicked => { root.accepted(); }
+        }
+    }
+}
+
+component LibraryScreen inherits Rectangle {
+    background: #1e1e1e;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 8px;
+        Text {
+            text: "No notes yet.";
+            horizontal-alignment: center;
+            color: #cccccc;
+        }
+        Text {
+            text: "Tap Rescan after configuring a library.";
+            horizontal-alignment: center;
+            color: #888888;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Notae";
+    background: #1e1e1e;
+
+    // Two-way properties: the Rust side (`UiModel`) writes initial
+    // values at startup and reads them when a callback fires, while the
+    // Slint side can read or set them in response to user gestures.
+    in-out property <bool> show_setup: true;
+    in-out property <bool> rescan_enabled: false;
+    in-out property <string> search_text: "";
+
+    callback setup_chosen();
+    callback rescan_clicked();
+    callback search_changed(string);
+
+    VerticalLayout {
+        spacing: 8px;
+        padding: 12px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            search_field := LineEdit {
+                placeholder-text: "Search notes";
+                text: root.search_text;
+                edited(text) => {
+                    root.search_text = text;
+                    root.search_changed(text);
+                }
+            }
+            Button {
+                text: "Rescan";
+                enabled: root.rescan_enabled;
+                clicked => {
+                    root.rescan_clicked();
+                }
+            }
+        }
+
+        if root.show_setup : SetupScreen {
+            accepted() => { root.setup_chosen(); }
+        }
+
+        if !root.show_setup : LibraryScreen { }
+    }
+}
