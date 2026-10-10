@@ -33,8 +33,7 @@ mod android;
 #[cfg(target_os = "android")]
 mod android_main;
 
-#[cfg(target_os = "android")]
-mod ui;
+pub mod ui;
 
 // Pull in the Slint-generated bindings for `app.slint`. The build script
 // in `build.rs` writes this file as `$OUT_DIR/app.rs`; the path uses

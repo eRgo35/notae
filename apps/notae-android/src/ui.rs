@@ -1,26 +1,22 @@
-//! Slint glue between the `state` model and the `app.slint` UI.
+//! UI state bridge and host-testable library/search view models.
 //!
-//! This module is Android-only: the `app.slint` build script emits
-//! bindings into `$OUT_DIR/app.rs`, and those bindings reference
-//! platform symbols that aren't on the build graph when the host smoke
-//! test runs. Keeping the Slint glue behind `cfg(target_os = "android")`
-//! lets the same crate expose the host-testable [`state`] module on
-//! both targets.
-//!
-//! Task 2 adds the [`StorageState`](crate::storage::StorageState)
-//! half: the picker callback updates the storage state, and the Slint
-//! `sync_window` derives its visible fields from it. The host smoke
-//! test still drives only the in-memory [`state`] module.
+//! `library` and `search` project the shared index into rows the Android
+//! surface can display, and compile on Linux for deterministic tests. The
+//! `UiModel` keeps storage and application state synchronized; the Slint
+//! bindings and Android event loop remain in their Android-only modules.
 //!
 //! [`state`]: crate::state
 
 #![forbid(unsafe_code)]
+pub mod library;
+pub mod search;
 
 use std::rc::Rc;
 use std::sync::Mutex;
 
 use crate::state::{AppController, AppState, EventError, Transition, UiEvent};
 use crate::storage::StorageState;
+use crate::ui::search::SearchRow;
 
 /// Bridge between the Slint-generated UI types and the [`AppState`].
 ///
@@ -35,6 +31,7 @@ use crate::storage::StorageState;
 pub struct UiModel {
     controller: AppController,
     storage: Rc<Mutex<StorageState>>,
+    search_rows: Vec<SearchRow>,
 }
 
 impl UiModel {
@@ -43,7 +40,11 @@ impl UiModel {
     /// state with the picker callback closures.
     #[must_use]
     pub fn from_parts(controller: AppController, storage: Rc<Mutex<StorageState>>) -> Self {
-        Self { controller, storage }
+        Self {
+            controller,
+            storage,
+            search_rows: Vec::new(),
+        }
     }
 
     /// Builds a `UiModel` around a fresh `AppController` and an
@@ -59,16 +60,16 @@ impl UiModel {
     }
 
     /// Returns a reference to the underlying [`AppController`]. Used by
-    /// future tasks (Task 4 in particular) to plug a worker thread into
+    /// future tasks (Task 5 in particular) to plug the operation worker into
     /// the same state machine the UI is mutating.
-    #[allow(dead_code)] // Touched by Task 4's worker integration.
+    #[allow(dead_code)] // Touched by Task 5's worker integration.
     pub fn controller(&self) -> &AppController {
         &self.controller
     }
 
     /// Returns a mutable reference to the underlying [`AppController`].
     /// Same future use as [`UiModel::controller`].
-    #[allow(dead_code)] // Touched by Task 4's worker integration.
+    #[allow(dead_code)] // Touched by Task 5's worker integration.
     pub fn controller_mut(&mut self) -> &mut AppController {
         &mut self.controller
     }
@@ -76,6 +77,20 @@ impl UiModel {
     /// Updates the storage state in place.
     pub fn set_storage(&mut self, state: StorageState) {
         *self.storage.lock().expect("storage mutex poisoned") = state;
+    }
+
+    /// Replaces the rows currently displayed by the library screen.
+    ///
+    /// The operation worker owns the index and sends its search projection
+    /// back to the UI thread through this method.
+    pub fn set_search_rows(&mut self, rows: Vec<SearchRow>) {
+        self.search_rows = rows;
+    }
+
+    /// Returns the rows most recently projected by the operation worker.
+    #[must_use]
+    pub fn search_rows(&self) -> &[SearchRow] {
+        &self.search_rows
     }
 
     /// Returns the current [`AppState`].

@@ -13,7 +13,16 @@
 // Slint callback on `AppWindow` is enough to drive both flows — the
 // Rust side decides which action to take based on the storage state.
 
-import { Button, LineEdit } from "std-widgets.slint";
+import { Button, LineEdit, ListView } from "std-widgets.slint";
+
+export struct LibraryRow {
+    id: string,
+    title: string,
+    composer_or_artist: string,
+    tags: string,
+    status: string,
+    note_key: string,
+}
 
 component SetupScreen inherits Rectangle {
     background: #1e1e1e;
@@ -95,23 +104,99 @@ component RecoveryScreen inherits Rectangle {
     }
 }
 
+component LibraryResultRow inherits Rectangle {
+    in property <LibraryRow> note;
+    background: #292929;
+    width: 100%;
+    height: 104px;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 4px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            Text {
+                text: root.note.id == "" ? root.note.title : root.note.id + " · " + root.note.title;
+                font-size: 20px;
+                color: #ffffff;
+                horizontal-stretch: 1;
+            }
+            Text {
+                text: root.note.status;
+                color: #dddddd;
+                vertical-alignment: center;
+            }
+        }
+
+        if root.note.composer_or_artist != "" : Text {
+            text: root.note.composer_or_artist;
+            font-size: 16px;
+            color: #cccccc;
+        }
+
+        if root.note.tags != "" : Text {
+            text: root.note.tags;
+            font-size: 14px;
+            color: #aaaaaa;
+        }
+    }
+}
+
 component LibraryScreen inherits Rectangle {
+    in property <[LibraryRow]> rows: [];
+    in property <string> search_text: "";
+    background: #1e1e1e;
+
+    VerticalLayout {
+        spacing: 8px;
+
+        if root.rows.length == 0 : VerticalLayout {
+            alignment: center;
+            vertical-stretch: 1;
+            Text {
+                text: root.search_text == "" ? "No notes yet." : "No matching notes.";
+                horizontal-alignment: center;
+                color: #cccccc;
+                font-size: 20px;
+            }
+            Text {
+                text: root.search_text == "" ? "Tap Rescan to index this library." : "Try another search.";
+                horizontal-alignment: center;
+                color: #888888;
+                font-size: 14px;
+                wrap: word-wrap;
+            }
+        }
+
+        if root.rows.length > 0 : ListView {
+            width: 100%;
+            vertical-stretch: 1;
+            for item in root.rows : LibraryResultRow {
+                note: item;
+            }
+        }
+    }
+}
+
+component SettingsScreen inherits Rectangle {
+    callback closed();
     background: #1e1e1e;
 
     VerticalLayout {
         alignment: center;
-        spacing: 8px;
+        spacing: 16px;
+        padding: 32px;
         Text {
-            text: "No notes yet.";
+            text: "Settings";
+            font-size: 28px;
+            color: #ffffff;
             horizontal-alignment: center;
-            color: #cccccc;
         }
-        Text {
-            text: "Tap Rescan after configuring a library.";
-            horizontal-alignment: center;
-            color: #888888;
-            font-size: 12px;
-            wrap: word-wrap;
+        Button {
+            text: "Back to library";
+            min-height: 48px;
+            clicked => { root.closed(); }
         }
     }
 }
@@ -120,15 +205,18 @@ export component AppWindow inherits Window {
     title: "Notae";
     background: #1e1e1e;
 
-    // Two-way properties: the Rust side (`UiModel`) writes initial
-    // values at startup and reads them when a callback fires, while the
-    // Slint side can read or set them in response to user gestures.
+    // Rust writes screen and result state; the Slint side updates the
+    // search text in response to user input.
     in-out property <bool> show_setup: true;
     in-out property <bool> show_recovery: false;
     in-out property <string> recovery_folder_name: "";
     in-out property <string> setup_error_text: "";
     in-out property <bool> rescan_enabled: false;
+    in property <bool> show_settings: false;
+    in property <[LibraryRow]> library_rows: [];
     in-out property <string> search_text: "";
+    callback settings_clicked();
+    callback settings_closed();
 
     callback setup_chosen();
     callback rescan_clicked();
@@ -138,11 +226,14 @@ export component AppWindow inherits Window {
         spacing: 8px;
         padding: 12px;
 
-        HorizontalLayout {
+        if !root.show_setup && !root.show_recovery && !root.show_settings : HorizontalLayout {
             spacing: 8px;
-            search_field := LineEdit {
+            LineEdit {
                 placeholder-text: "Search notes";
                 text: root.search_text;
+                height: 56px;
+                horizontal-stretch: 1;
+                font-size: 20px;
                 edited(text) => {
                     root.search_text = text;
                     root.search_changed(text);
@@ -151,9 +242,13 @@ export component AppWindow inherits Window {
             Button {
                 text: "Rescan";
                 enabled: root.rescan_enabled;
-                clicked => {
-                    root.rescan_clicked();
-                }
+                min-height: 48px;
+                clicked => { root.rescan_clicked(); }
+            }
+            Button {
+                text: "Settings";
+                min-height: 48px;
+                clicked => { root.settings_clicked(); }
             }
         }
 
@@ -167,6 +262,15 @@ export component AppWindow inherits Window {
             accepted() => { root.setup_chosen(); }
         }
 
-        if !root.show_setup && !root.show_recovery : LibraryScreen { }
+        if root.show_settings : SettingsScreen {
+            vertical-stretch: 1;
+            closed() => { root.settings_closed(); }
+        }
+
+        if !root.show_setup && !root.show_recovery && !root.show_settings : LibraryScreen {
+            vertical-stretch: 1;
+            rows: root.library_rows;
+            search_text: root.search_text;
+        }
     }
 }

@@ -55,10 +55,8 @@ pub enum UiEvent {
 ///
 /// `BeginRescan` means the worker thread should kick off (or continue)
 /// a rescan once the UI has had a moment to display the new
-/// `OperationState`. Task 1 only needs to be able to *expose* the
-/// trigger — actual rescan work lands in Task 4 — but the controller
-/// produces a `BeginRescan` from the relevant events so the state
-/// machine stays in one shape across tasks.
+/// `OperationState`. The controller exposes this transition; Task 5
+/// connects it to the background worker.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Transition {
     /// No external work needs to happen. Used for events that only touch
@@ -79,6 +77,9 @@ pub enum EventError {
     /// the wiring let a stale click through.
     #[error("a rescan or import is already in progress")]
     OperationAlreadyInProgress,
+    /// Settings are only available while a configured library is open.
+    #[error("settings are unavailable until a library is open")]
+    SettingsUnavailable,
 }
 
 /// What top-level view the user is on.
@@ -111,20 +112,17 @@ pub enum Setup {
     },
 }
 
-/// Rows shown in the library list, derived from `IndexStore::list_all()`.
+/// Rows shown in the library list after indexing.
 ///
-/// Empty for Task 1 — the local index store isn't wired in yet. The
-/// shape is in place so later tasks only fill in `rows`.
+/// The state starts empty. Task 5 populates rows from completed index
+/// operations; Task 4 owns the separate search projection.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LibraryState {
     /// The rows to show in the library list, in display order.
     pub rows: Vec<LibraryRow>,
 }
 
-/// A single library row.
-///
-/// The fields mirror the display columns set in `ui/app.slint`. Task 1
-/// stores an empty `rows` vec; the population logic lands in Task 4.
+/// A compact library row retained by the application state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryRow {
     /// The portable [`note_id`](notae_domain::NoteId) for this record.
@@ -134,10 +132,7 @@ pub struct LibraryRow {
     pub title: String,
     /// The PDF's path relative to the configured library root.
     pub relative_path: PathBuf,
-    /// A short, single-word summary of the
-    /// [`IndexStatus`](notae_domain::IndexStatus) — `Ready`, `Stale`,
-    /// `OcrPending`, etc. The status *kind* lands here so the UI doesn't
-    /// need to format domain errors.
+    /// A short summary of the indexing status.
     pub status: String,
 }
 
@@ -306,10 +301,16 @@ impl AppController {
                 Ok(Transition::NoOp)
             }
             UiEvent::OpenSettings => {
+                if !matches!(&self.state.screen, Screen::Library) {
+                    return Err(EventError::SettingsUnavailable);
+                }
                 self.state.screen = Screen::Settings;
                 Ok(Transition::NoOp)
             }
             UiEvent::CloseSettings => {
+                if !matches!(&self.state.screen, Screen::Settings) {
+                    return Err(EventError::SettingsUnavailable);
+                }
                 self.state.screen = Screen::Library;
                 Ok(Transition::NoOp)
             }
