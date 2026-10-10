@@ -341,45 +341,54 @@
 
   Verified: `cargo test -p notae-android` (48 tests), Android-target `cargo apk2 check`, and signed/aligned release APK build. Worker smoke tests cover explicit start, unreadable-file isolation, cancellation before writes, automatic root-sidecar discovery, hash-mismatch preview, and no sidecar write before confirmation. No rendered-page input exists in this task, so OCR execution/provider injection is deferred to Task 8; sidecar OCR availability and metadata are shown in the preview.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
   git add apps/notae-android
   git commit -m "feat: add manual rescan and sidecar preview"
   ```
 
+  Commit: `3ebeb24 feat: add manual rescan and sidecar preview`.
+
 ### Task 6: Implement metadata editing
 
 **Files:**
 - Create: `apps/notae-android/src/ui/metadata_editor.rs`
+- Modify: `apps/notae-android/src/ui.rs`
+- Modify: `apps/notae-android/src/ui/search.rs`
+- Modify: `apps/notae-android/src/operations/events.rs`
+- Modify: `apps/notae-android/src/operations/rescan.rs`
+- Modify: `apps/notae-android/src/android_main.rs`
 - Modify: `apps/notae-android/ui/app.slint`
-- Modify: `apps/notae-android/src/main.rs`
 - Create: `apps/notae-android/tests/metadata_editor.rs`
+- Modify: `apps/notae-android/tests/operation_state.rs`
 
 **Interfaces:**
 - `MetadataEditor::load(note_key) -> Result<EditableMetadata, UiError>`
 - `MetadataEditor::save(input: EditableMetadata) -> Result<(), UiError>`
 - `EditableMetadata { id, title, composer_or_artist, tags }`
 
-- [ ] **Step 1: Write failing editor tests**
+- [x] **Step 1: Write failing editor tests**
 
   Cover valid edits, empty-title rejection, duplicate-ID rejection, tag normalization, unchanged filename, manual provenance marking, and persistence after a rescan.
 
-- [ ] **Step 2: Run the focused tests and verify they fail**
+- [x] **Step 2: Run the focused tests and verify they fail**
 
   Run: `cargo test -p notae-android --test metadata_editor`
 
   Expected: FAIL because the editor is not implemented.
 
-- [ ] **Step 3: Implement the editor and save transaction**
+- [x] **Step 3: Implement the editor and save transaction**
 
   Validate through `notae-domain`, update the local index transactionally, preserve the PDF path and filename, and mark edited fields as manual provenance.
 
-- [ ] **Step 4: Run tests and perform device edit scenario**
+- [x] **Step 4: Run host tests and Android build**
 
-  Run: `cargo test -p notae-android --test metadata_editor`. Edit a title, composer, tags, and ID on the tablet, rescan, and import a sidecar that proposes different generated metadata.
+  Run: `cargo test -p notae-android --test metadata_editor`, Android-target `cargo apk2 check`, and release APK build.
 
   Expected: edits remain and the import preview identifies them as preserved manual fields.
+
+  Verified on host and Android build; device scenario remains pending because no tablet is attached. `cargo test -p notae-android` (54 tests), Android-target `cargo apk2 check`, and signed/aligned release APK build pass. Tests verify normalized edits, unique-ID rejection without partial writes, preserved file identity/status/OCR, manual provenance across rescan, sidecar preservation preview, and worker/UI event flow.
 
 - [ ] **Step 5: Commit**
 

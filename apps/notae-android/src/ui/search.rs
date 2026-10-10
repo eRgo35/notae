@@ -61,13 +61,18 @@ fn status_label(status: IndexStatus) -> &'static str {
     }
 }
 
-/// An error returned while projecting search results for the library UI.
 /// An error returned while projecting search results or applying a library operation.
 #[derive(Debug, thiserror::Error)]
 pub enum UiError {
     /// The local index could not produce the requested rows.
     #[error("library search failed: {0}")]
     Index(#[from] IndexError),
+    /// A metadata value failed domain validation.
+    #[error(transparent)]
+    Domain(#[from] notae_domain::DomainError),
+    /// The requested content key is not in the local index.
+    #[error("indexed note not found: {0}")]
+    NoteNotFound(String),
     /// A sidecar preview could not be read or applied.
     #[error(transparent)]
     Import(#[from] notae_index::SidecarError),

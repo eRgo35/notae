@@ -9,6 +9,7 @@
 
 #![forbid(unsafe_code)]
 pub mod library;
+pub mod metadata_editor;
 pub mod search;
 
 use std::rc::Rc;
@@ -19,6 +20,7 @@ use crate::operations::events::{
 };
 use crate::state::{AppController, AppState, EventError, Transition, UiEvent};
 use crate::storage::StorageState;
+use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
 
 /// Bridge between the Slint-generated UI types and the [`AppState`].
@@ -36,6 +38,8 @@ pub struct UiModel {
     storage: Rc<Mutex<StorageState>>,
     search_rows: Vec<SearchRow>,
     import_preview_summary: Option<ImportPreviewSummary>,
+    metadata_editor: Option<EditableMetadata>,
+    metadata_error: Option<String>,
 }
 
 impl UiModel {
@@ -49,6 +53,8 @@ impl UiModel {
             storage,
             search_rows: Vec::new(),
             import_preview_summary: None,
+            metadata_editor: None,
+            metadata_error: None,
         }
     }
 
@@ -110,6 +116,33 @@ impl UiModel {
         self.import_preview_summary = None;
     }
 
+    /// The metadata currently shown by the editor, if one is open.
+    #[must_use]
+    pub fn metadata_editor(&self) -> Option<&EditableMetadata> {
+        self.metadata_editor.as_ref()
+    }
+
+    /// Error from the latest metadata load/save attempt, if any.
+    #[must_use]
+    pub fn metadata_error(&self) -> Option<&str> {
+        self.metadata_error.as_deref()
+    }
+
+    /// Closes the editor and clears its error message.
+    pub fn close_metadata_editor(&mut self) {
+        self.metadata_editor = None;
+        self.metadata_error = None;
+    }
+
+    /// Opens an editor while the worker loads the selected record.
+    pub fn begin_metadata_edit(&mut self, note_key: String) {
+        self.metadata_error = None;
+        self.metadata_editor = Some(EditableMetadata {
+            note_key,
+            ..EditableMetadata::default()
+        });
+    }
+
     /// Applies a worker event to the UI-owned state and row projection.
     pub fn apply_operation_event(&mut self, event: OperationEvent) -> Result<(), EventError> {
         match event {
@@ -134,6 +167,17 @@ impl UiModel {
                 self.controller.complete_operation(import_summary(&summary));
             }
             OperationEvent::SearchRows(rows) => self.search_rows = rows,
+            OperationEvent::MetadataLoaded(metadata) => {
+                self.metadata_error = None;
+                self.metadata_editor = Some(metadata);
+            }
+            OperationEvent::MetadataSaved { rows } => {
+                self.search_rows = rows;
+                self.close_metadata_editor();
+            }
+            OperationEvent::MetadataFailed { reason } => {
+                self.metadata_error = Some(reason);
+            }
             OperationEvent::Failed { reason } => self.controller.fail_operation(reason),
         }
         Ok(())

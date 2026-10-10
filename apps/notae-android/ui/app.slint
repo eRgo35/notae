@@ -116,39 +116,46 @@ component RecoveryScreen inherits Rectangle {
 
 component LibraryResultRow inherits Rectangle {
     in property <LibraryRow> note;
+    callback edit_requested(string);
     background: #292929;
     width: 100%;
-    height: 104px;
+    height: 128px;
 
-    VerticalLayout {
+    HorizontalLayout {
         padding: 12px;
-        spacing: 4px;
-
-        HorizontalLayout {
-            spacing: 8px;
-            Text {
-                text: root.note.id == "" ? root.note.title : root.note.id + " · " + root.note.title;
-                font-size: 20px;
-                color: #ffffff;
-                horizontal-stretch: 1;
+        spacing: 12px;
+        VerticalLayout {
+            spacing: 4px;
+            horizontal-stretch: 1;
+            HorizontalLayout {
+                spacing: 8px;
+                Text {
+                    text: root.note.id == "" ? root.note.title : root.note.id + " · " + root.note.title;
+                    font-size: 20px;
+                    color: #ffffff;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: root.note.status;
+                    color: #dddddd;
+                    vertical-alignment: center;
+                }
             }
-            Text {
-                text: root.note.status;
-                color: #dddddd;
-                vertical-alignment: center;
+            if root.note.composer_or_artist != "" : Text {
+                text: root.note.composer_or_artist;
+                font-size: 16px;
+                color: #cccccc;
+            }
+            if root.note.tags != "" : Text {
+                text: root.note.tags;
+                font-size: 14px;
+                color: #aaaaaa;
             }
         }
-
-        if root.note.composer_or_artist != "" : Text {
-            text: root.note.composer_or_artist;
-            font-size: 16px;
-            color: #cccccc;
-        }
-
-        if root.note.tags != "" : Text {
-            text: root.note.tags;
-            font-size: 14px;
-            color: #aaaaaa;
+        Button {
+            text: "Edit";
+            min-height: 48px;
+            clicked => { root.edit_requested(root.note.note_key); }
         }
     }
 }
@@ -156,6 +163,7 @@ component LibraryResultRow inherits Rectangle {
 component LibraryScreen inherits Rectangle {
     in property <[LibraryRow]> rows: [];
     in property <string> search_text: "";
+    callback edit_requested(string);
     background: #1e1e1e;
 
     VerticalLayout {
@@ -184,6 +192,75 @@ component LibraryScreen inherits Rectangle {
             vertical-stretch: 1;
             for item in root.rows : LibraryResultRow {
                 note: item;
+                edit_requested(key) => { root.edit_requested(key); }
+            }
+        }
+    }
+}
+
+component MetadataEditorPanel inherits Rectangle {
+    in-out property <string> note_key: "";
+    in-out property <string> note_id: "";
+    in-out property <string> title: "";
+    in-out property <string> composer_or_artist: "";
+    in-out property <string> tags: "";
+    in property <string> error_text: "";
+    callback save_requested(string, string, string, string, string);
+    callback cancel_requested();
+    background: #303030;
+    height: 380px;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 8px;
+        Text {
+            text: "Edit note metadata";
+            font-size: 20px;
+            color: #ffffff;
+        }
+        LineEdit {
+            placeholder-text: "Note ID (optional)";
+            text: root.note_id;
+            min-height: 48px;
+            edited(value) => { root.note_id = value; }
+        }
+        LineEdit {
+            placeholder-text: "Title";
+            text: root.title;
+            min-height: 48px;
+            edited(value) => { root.title = value; }
+        }
+        LineEdit {
+            placeholder-text: "Composer or artist (optional)";
+            text: root.composer_or_artist;
+            min-height: 48px;
+            edited(value) => { root.composer_or_artist = value; }
+        }
+        LineEdit {
+            placeholder-text: "Tags, separated by commas";
+            text: root.tags;
+            min-height: 48px;
+            edited(value) => { root.tags = value; }
+        }
+        if root.error_text != "" : Text {
+            text: root.error_text;
+            color: #ff8888;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            Button {
+                text: "Save";
+                primary: true;
+                min-height: 48px;
+                clicked => {
+                    root.save_requested(root.note_key, root.note_id, root.title, root.composer_or_artist, root.tags);
+                }
+            }
+            Button {
+                text: "Cancel";
+                min-height: 48px;
+                clicked => { root.cancel_requested(); }
             }
         }
     }
@@ -265,6 +342,13 @@ export component AppWindow inherits Window {
     in property <bool> cancel_enabled: false;
     in property <bool> show_import_preview: false;
     in property <string> import_preview_text: "";
+    in property <bool> show_metadata_editor: false;
+    in-out property <string> metadata_note_key: "";
+    in-out property <string> metadata_id: "";
+    in-out property <string> metadata_title: "";
+    in-out property <string> metadata_composer_or_artist: "";
+    in-out property <string> metadata_tags: "";
+    in property <string> metadata_error_text: "";
     callback settings_clicked();
     callback settings_closed();
 
@@ -275,6 +359,9 @@ export component AppWindow inherits Window {
     callback import_confirmed();
     callback import_cancelled();
     callback search_changed(string);
+    callback edit_metadata_requested(string);
+    callback metadata_save_requested(string, string, string, string, string);
+    callback metadata_cancelled();
 
     VerticalLayout {
         spacing: 8px;
@@ -382,6 +469,20 @@ export component AppWindow inherits Window {
             vertical-stretch: 1;
             rows: root.library_rows;
             search_text: root.search_text;
+            edit_requested(note_key) => { root.edit_metadata_requested(note_key); }
+        }
+
+        if root.show_metadata_editor && !root.show_settings : MetadataEditorPanel {
+            note_key: root.metadata_note_key;
+            note_id: root.metadata_id;
+            title: root.metadata_title;
+            composer_or_artist: root.metadata_composer_or_artist;
+            tags: root.metadata_tags;
+            error_text: root.metadata_error_text;
+            save_requested(key, id, title, composer, tags) => {
+                root.metadata_save_requested(key, id, title, composer, tags);
+            }
+            cancel_requested() => { root.metadata_cancelled(); }
         }
     }
 }

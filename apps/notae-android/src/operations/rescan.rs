@@ -8,10 +8,10 @@ use notae_index::{IndexStore, Reconciler, SidecarImporter, SidecarManifest};
 
 use crate::operations::events::{ImportSummary, OperationEvent, RescanSummary};
 use crate::operations::import::ImportPreviewViewModel;
-use crate::ui::library::LibraryViewModel;
-use crate::ui::search::{SearchRow, UiError};
-
 use crate::storage::LibraryCatalog;
+use crate::ui::library::LibraryViewModel;
+use crate::ui::metadata_editor::{EditableMetadata, MetadataEditor};
+use crate::ui::search::{SearchRow, UiError};
 
 /// Owns the worker that serializes all index access away from the UI thread.
 pub struct OperationController {
@@ -28,6 +28,8 @@ enum WorkerCommand {
     PreviewImport(SidecarManifest),
     ConfirmImport,
     DiscardImport,
+    LoadMetadata(String),
+    SaveMetadata(EditableMetadata),
     Shutdown,
 }
 
@@ -121,6 +123,20 @@ impl OperationController {
             .map_err(|_| UiError::WorkerStopped)
     }
 
+    /// Loads an indexed note into the editor on the index-owning worker.
+    pub fn load_metadata(&self, note_key: String) -> Result<(), UiError> {
+        self.commands
+            .send(WorkerCommand::LoadMetadata(note_key))
+            .map_err(|_| UiError::WorkerStopped)
+    }
+
+    /// Saves edited metadata on the index-owning worker.
+    pub fn save_metadata(&self, metadata: EditableMetadata) -> Result<(), UiError> {
+        self.commands
+            .send(WorkerCommand::SaveMetadata(metadata))
+            .map_err(|_| UiError::WorkerStopped)
+    }
+
     /// Receives one event without blocking the UI loop.
     pub fn try_event(&self) -> Option<OperationEvent> {
         self.events.try_recv().ok()
@@ -180,6 +196,36 @@ fn run_worker(
                     Err(error) => send(
                         &events,
                         OperationEvent::Failed {
+                            reason: error.to_string(),
+                        },
+                    ),
+                }
+            }
+            WorkerCommand::LoadMetadata(note_key) => {
+                match MetadataEditor::new(&local).load(&note_key) {
+                    Ok(metadata) => send(&events, OperationEvent::MetadataLoaded(metadata)),
+                    Err(error) => send(
+                        &events,
+                        OperationEvent::MetadataFailed {
+                            reason: error.to_string(),
+                        },
+                    ),
+                }
+            }
+            WorkerCommand::SaveMetadata(metadata) => {
+                match MetadataEditor::new(&local).save(metadata) {
+                    Ok(()) => match project_rows(&local, &query) {
+                        Ok(rows) => send(&events, OperationEvent::MetadataSaved { rows }),
+                        Err(error) => send(
+                            &events,
+                            OperationEvent::MetadataFailed {
+                                reason: error.to_string(),
+                            },
+                        ),
+                    },
+                    Err(error) => send(
+                        &events,
+                        OperationEvent::MetadataFailed {
                             reason: error.to_string(),
                         },
                     ),
