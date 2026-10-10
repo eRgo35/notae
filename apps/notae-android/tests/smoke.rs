@@ -9,6 +9,7 @@
 use notae_android::state::{
     AppController, AppState, EventError, OperationState, Screen, Setup, Transition, UiEvent,
 };
+use notae_android::storage::{StorageError, StorageState};
 
 #[test]
 fn fresh_app_exposes_setup_unconfigured_and_idle() {
@@ -71,4 +72,53 @@ fn overlapping_rescan_requests_are_rejected() {
         controller.dispatch(UiEvent::RequestRescan),
         Err(EventError::OperationAlreadyInProgress)
     );
+}
+
+// P3 #7: `StorageState::Error(_)` carries a payload the UI can
+// render. The display string is what `StorageStateKindView::Error(message)`
+// hands to the Slint `setup_error_label`.
+#[test]
+fn storage_state_error_carries_message_to_kind() {
+    let state = StorageState::Error(StorageError::Other(
+        "Permission refused".to_owned(),
+    ));
+    match state.kind() {
+        notae_android::storage::StorageStateKind::Error => {}
+        other => panic!("expected Error kind, got {other:?}"),
+    }
+    // The display string the UI uses is the underlying `Display`
+    // impl, which is what the user sees.
+    let message = match state {
+        StorageState::Error(error) => error.to_string(),
+        _ => unreachable!(),
+    };
+    assert_eq!(message, "storage error: Permission refused");
+}
+
+// P3 #8: the `PermissionDenied` variant exists and is distinct from
+// `PermissionLost` (the platform-refused shape vs. revocation-after-the-fact).
+#[test]
+fn storage_error_permission_denied_is_a_distinct_variant() {
+    let denied = StorageError::PermissionDenied;
+    assert!(matches!(denied, StorageError::PermissionDenied));
+    // The two variants are distinct: the platform-refused shape is
+    // never observed as a revocation.
+    assert!(!matches!(
+        StorageError::PermissionLost,
+        StorageError::PermissionDenied
+    ));
+    assert!(!matches!(
+        StorageError::PermissionDenied,
+        StorageError::PermissionLost
+    ));
+}
+
+// `LibraryRoot::placeholder()` returns a usable default for the
+// `PermissionLost` payload the Android provider surfaces when the
+// persisted entry is missing.
+#[test]
+fn library_root_placeholder_is_usable() {
+    let placeholder = notae_android::storage::LibraryRoot::placeholder();
+    assert_eq!(placeholder.display_name(), "");
+    assert_eq!(placeholder.handle(), "");
 }

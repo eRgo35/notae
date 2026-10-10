@@ -167,15 +167,28 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
 /// the storage state is authoritative for the picker-driven flows.
 fn sync_window(window: &AppWindow, model: &UiModel) {
     let state = model.state();
-    let (show_setup, show_recovery, recovery_folder_name) = match model.storage_kind() {
-        crate::ui::StorageStateKindView::Unconfigured => (true, false, String::new()),
-        crate::ui::StorageStateKindView::Ready => (false, false, String::new()),
-        crate::ui::StorageStateKindView::PermissionLost(name) => (false, true, name),
-        crate::ui::StorageStateKindView::Error => (true, false, String::new()),
-    };
+    let (show_setup, show_recovery, recovery_folder_name, setup_error) =
+        match model.storage_kind() {
+            crate::ui::StorageStateKindView::Unconfigured => {
+                (true, false, String::new(), String::new())
+            }
+            crate::ui::StorageStateKindView::Ready => {
+                (false, false, String::new(), String::new())
+            }
+            crate::ui::StorageStateKindView::PermissionLost(name) => {
+                (false, true, name, String::new())
+            }
+            crate::ui::StorageStateKindView::Error(message) => {
+                // The setup screen stays visible so the user can
+                // re-tap "Select folder"; the error label is the body
+                // text the user sees.
+                (true, false, String::new(), message)
+            }
+        };
     window.set_show_setup(show_setup);
     window.set_show_recovery(show_recovery);
     window.set_recovery_folder_name(recovery_folder_name.into());
+    window.set_setup_error_text(setup_error.into());
     window.set_rescan_enabled(state.operation() == &OperationState::Idle);
     window.set_search_text(state.search().query.as_str().into());
 }
@@ -238,10 +251,13 @@ fn apply_picker_result(
             Err(error) => StorageState::Error(error),
         },
         Err(StorageError::Cancelled) => return, // user dismissed, no change
-        Err(StorageError::NotADirectory) => return, // wrong pick, no change
-        Err(StorageError::PermissionLost) => return, // already in recovery
-        Err(StorageError::Other(message)) => {
-            eprintln!("notae: SAF picker failed: {message}");
+        Err(error) => {
+            // `select_root` only returns `Cancelled` (the user
+            // dismissed) or a platform-level failure. `NotADirectory`
+            // and `PermissionLost` come from `reopen` and never appear
+            // here; the variants exist on `StorageError` for the host
+            // tests' contract but the Android side never sees them.
+            eprintln!("notae: SAF picker failed: {error}");
             return;
         }
     };
