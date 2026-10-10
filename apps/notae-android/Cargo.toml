@@ -6,8 +6,8 @@ version.workspace = true
 publish = false
 
 # Both crate types are produced together:
-#   * `cdylib` so `cargo-apk` can bundle `libnotae_android.so` as the
-#     `android.app.lib_name` payload for the NativeActivity.
+#   * `cdylib` so `cargo-apk2` can bundle `libnotae_android.so` as the
+#     `android.app.lib_name` payload for `NotaeActivity`.
 #   * `rlib` so `cargo test` on Linux can link the host-side smoke test
 #     against the same state machine that runs on device.
 [lib]
@@ -27,12 +27,6 @@ sha2 = "0.10"
 # the consumer wakes it, so nothing is lost across the platform
 # callback's thread boundary.
 atomic-waker = "1"
-# `pollster` is the `block_on` helper the Android entry uses to await
-# the async `select_root` future from inside the synchronous Slint
-# callback. The picker is round-tripped through the OS, so the future
-# completes before the callback returns in normal use; `pollster` is
-# what makes that awaitable without pulling in a full async runtime.
-pollster = "0.4"
 
 # `notae-index-cli` is the Linux indexer binary crate. It pulls in C/C++
 # deps (hayro, image, Tesseract via `notae-ocr`) that don't cross-compile,
@@ -59,8 +53,8 @@ jni = "0.22"
 #
 # Cross-compiling `notae-index` to Android is non-trivial because it bundles
 # SQLite via `cc-rs`. The build expects the NDK clang in the PATH for
-# `aarch64-linux-android`; `cargo apk build` sets that up. The host test
-# link only the trait types — see `apps/notae-android/tests/storage_state.rs`.
+# `aarch64-linux-android`; `cargo apk2` sets that up. The host test
+# links only the trait types — see `apps/notae-android/tests/storage_state.rs`.
 
 [build-dependencies]
 # `slint-build` parses the .slint file at build time, emits a Rust module
@@ -71,20 +65,32 @@ slint-build = "1.18"
 [dev-dependencies]
 # `tempfile` is what the host tests build a temporary library root out of.
 tempfile = "3"
-
-# `cargo-apk` reads `[package.metadata.android]` to assemble the APK
-# manifest, signing config, and per-ABI filter. The defaults it picks
-# when fields are absent match the Galaxy Tab S10 FE+ target.
+pollster = "0.4"
+# `cargo-apk2` compiles the Java result adapter and generates the
+# launcher manifest from the metadata below.
 [package.metadata.android]
 package = "org.notae.android"
+apk_name = "notae-android"
+java_sources = "android/src/main/java"
 
 [package.metadata.android.application]
 label = "Notae"
+has_code = true
 
-# `cargo-apk` will inject the `MAIN`/`LAUNCHER` intent filter and set
-# `android:exported="true"` automatically when `target_sdk_version >= 31`.
-# The activity name stays at `android.app.NativeActivity` so the
-# android-activity runtime loads our `android_main` symbol.
+[[package.metadata.android.application.activity]]
+name = ".NotaeActivity"
+config_changes = "orientation|keyboardHidden|screenSize"
+exported = true
+
+[[package.metadata.android.application.activity.meta_data]]
+name = "android.app.lib_name"
+value = "notae_android"
+
+[[package.metadata.android.application.activity.intent_filter]]
+actions = ["android.intent.action.MAIN"]
+categories = ["android.intent.category.LAUNCHER"]
+
+# The target SDK stays within the NDK r26d API range.
 
 [package.metadata.android.sdk]
 min_sdk_version = 23
