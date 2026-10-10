@@ -28,7 +28,10 @@ fn fresh_controller_has_no_background_work_in_flight() {
     // `AppController::new` does nothing beyond constructing the initial
     // `AppState`. No threads, no timers, no spawn.
     let controller = AppController::new();
-    assert_eq!(controller.state().screen(), &Screen::Setup(Setup::Unconfigured));
+    assert_eq!(
+        controller.state().screen(),
+        &Screen::Setup(Setup::Unconfigured)
+    );
     assert_eq!(controller.state().operation(), &OperationState::Idle);
 }
 
@@ -44,26 +47,34 @@ fn state_machine_exposes_a_way_to_begin_a_rescan() {
     // just confirms the API is wired without asserting on the screen
     // transition — the production flow drives the screen transition
     // first via `PickLibraryRoot` and *then* requests the rescan.
-    controller.dispatch(UiEvent::PickLibraryRoot {
-        root: std::path::PathBuf::from("/tmp/example"),
-    }).expect("picking a root moves the app off the setup screen");
+    controller
+        .dispatch(UiEvent::PickLibraryRoot {
+            root: std::path::PathBuf::from("/tmp/example"),
+        })
+        .expect("picking a root moves the app off the setup screen");
     assert_eq!(controller.state().screen(), &Screen::Library);
 
-    let transition = controller.dispatch(UiEvent::RequestRescan)
+    let transition = controller
+        .dispatch(UiEvent::RequestRescan)
         .expect("the first rescan request goes through");
     assert_eq!(transition, Transition::BeginRescan);
     assert_eq!(
         controller.state().operation(),
-        &OperationState::RescanInProgress
+        &OperationState::RescanInProgress {
+            completed: 0,
+            total: 0,
+        }
     );
 }
 
 #[test]
 fn overlapping_rescan_requests_are_rejected() {
     let mut controller = AppController::new();
-    controller.dispatch(UiEvent::PickLibraryRoot {
-        root: std::path::PathBuf::from("/tmp/example"),
-    }).unwrap();
+    controller
+        .dispatch(UiEvent::PickLibraryRoot {
+            root: std::path::PathBuf::from("/tmp/example"),
+        })
+        .unwrap();
     controller.dispatch(UiEvent::RequestRescan).unwrap();
     // A second rescan request while one is in progress is a wiring bug
     // at the UI layer. The state machine refuses and reports the
@@ -79,9 +90,7 @@ fn overlapping_rescan_requests_are_rejected() {
 // hands to the Slint `setup_error_label`.
 #[test]
 fn storage_state_error_carries_message_to_kind() {
-    let state = StorageState::Error(StorageError::Other(
-        "Permission refused".to_owned(),
-    ));
+    let state = StorageState::Error(StorageError::Other("Permission refused".to_owned()));
     match state.kind() {
         notae_android::storage::StorageStateKind::Error => {}
         other => panic!("expected Error kind, got {other:?}"),

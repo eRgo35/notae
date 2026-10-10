@@ -1,9 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
 
-use notae_android::saf_tree::{DocumentRow, DocumentTreeReader, enumerate_document_tree};
-use notae_domain::{PdfFingerprint, Sha256Digest};
-use notae_index::{CatalogError, FileCondition};
+use notae_android::saf_tree::{
+    DocumentRow, DocumentTreeReader, discover_sidecar_manifest, enumerate_document_tree,
+};
+use notae_domain::{EpochTimestamp, PdfFingerprint, Sha256Digest};
+use notae_index::{CatalogError, FileCondition, SidecarManifest};
 use sha2::{Digest, Sha256};
 
 const DIRECTORY_MIME: &str = "vnd.android.document/directory";
@@ -145,4 +147,31 @@ fn pdf_display_name_cannot_create_an_implicit_path() {
         enumerate_document_tree(&tree, "root"),
         Err(CatalogError::Failed(_))
     ));
+}
+
+#[test]
+fn discovers_and_validates_the_root_sidecar_manifest() {
+    let manifest = SidecarManifest::new(
+        EpochTimestamp::new(0, 0).expect("valid timestamp"),
+        "fixture",
+        Vec::new(),
+    );
+    let encoded = manifest.to_json().expect("serialize sidecar");
+    let mut tree = FakeTree::default();
+    tree.children.insert(
+        "root".to_owned(),
+        vec![row("sidecar-dir", ".notae", DIRECTORY_MIME)],
+    );
+    tree.children.insert(
+        "sidecar-dir".to_owned(),
+        vec![row("manifest", "manifest.json", "application/json")],
+    );
+    tree.pdfs
+        .insert("manifest".to_owned(), encoded.into_bytes());
+
+    let found = discover_sidecar_manifest(&tree, "root")
+        .expect("sidecar lookup succeeds")
+        .expect("root manifest is present");
+    assert_eq!(found.entries().len(), 0);
+    assert_eq!(found.tool_version(), "fixture");
 }

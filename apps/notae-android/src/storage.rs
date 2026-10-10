@@ -56,11 +56,11 @@
 #![forbid(unsafe_code)]
 
 use std::fmt;
-use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use notae_index::{CatalogError, PdfCatalog, PdfFile};
+use notae_index::{CatalogError, PdfCatalog, PdfFile, SidecarManifest};
 
 /// A monotonic counter used to disambiguate [`LibraryRootId`] values
 /// created in the same nanosecond. Wall-clock nanoseconds give us a
@@ -224,24 +224,20 @@ pub enum StorageError {
 
 /// The high-level state of the storage layer.
 ///
-/// `Ready` carries a live [`LibrarySource`] so the UI can render the
-/// library list. `PermissionLost` carries the original
-/// [`LibraryRoot`] so the recovery screen can offer a "reauthorize"
-/// button that re-uses the same handle. `Error` carries the
-/// [`StorageError`] so the UI can show a retry-able message.
+/// `Ready` carries a shared, mutex-protected [`LibrarySource`]. The UI
+/// reads only its ready state; the worker takes the source lock while it
+/// enumerates PDFs, keeping the non-`Sync` platform catalog off the UI thread.
+/// `PermissionLost` carries the original [`LibraryRoot`] so the UI can offer
+/// reauthorization with the same handle. `Error` carries the [`StorageError`].
 #[derive(Debug)]
 pub enum StorageState {
-    /// The user has not picked a library root yet, or the install is
-    /// fresh. The UI shows the setup screen.
+    /// No library root is configured.
     Unconfigured,
-    /// A library root is selected and open; the contained
-    /// [`LibrarySource`] is what the rescan logic will consume.
-    Ready(LibrarySource),
-    /// The root's persisted permission was revoked. The UI shows the
-    /// recovery screen with the root's display name.
+    /// A selected root and the worker's live PDF source.
+    Ready(Arc<Mutex<LibrarySource>>),
+    /// The persisted permission was revoked.
     PermissionLost(LibraryRoot),
-    /// Storage failed in a way that is not recoverable without user
-    /// intervention; the UI shows an error message.
+    /// Storage failed in a recoverable way.
     Error(StorageError),
 }
 
@@ -286,13 +282,21 @@ pub enum StorageStateKind {
 /// Android).
 pub struct LibrarySource {
     root: LibraryRoot,
-    catalog: Box<dyn PdfCatalog + Send>,
+    catalog: Box<dyn LibraryCatalog + Send>,
+}
+
+/// Catalog capabilities consumed by the library worker.
+pub trait LibraryCatalog: PdfCatalog + Send {
+    /// Reads the optional root-level PC sidecar manifest without applying it.
+    fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
+        Ok(None)
+    }
 }
 
 impl LibrarySource {
     /// Wraps an already-opened catalog under `root`.
     #[must_use]
-    pub fn new(root: LibraryRoot, catalog: Box<dyn PdfCatalog + Send>) -> Self {
+    pub fn new(root: LibraryRoot, catalog: Box<dyn LibraryCatalog + Send>) -> Self {
         Self { root, catalog }
     }
 
@@ -319,6 +323,37 @@ impl fmt::Debug for LibrarySource {
 impl PdfCatalog for LibrarySource {
     fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
         self.catalog.enumerate()
+    }
+}
+
+impl LibraryCatalog for LibrarySource {
+    fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
+        self.catalog.sidecar_manifest()
+    }
+}
+
+/// A `PdfCatalog` adapter for the UI-owned shared library source.
+///
+/// The mutex permits the non-`Sync` platform catalog to move behind a
+/// `Send` worker boundary. Only the worker enumerates through this adapter.
+#[derive(Clone)]
+pub struct SharedLibraryCatalog(pub Arc<Mutex<LibrarySource>>);
+
+impl PdfCatalog for SharedLibraryCatalog {
+    fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
+        self.0
+            .lock()
+            .map_err(|_| CatalogError::Failed("library source lock poisoned".to_owned()))?
+            .enumerate()
+    }
+}
+
+impl LibraryCatalog for SharedLibraryCatalog {
+    fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
+        self.0
+            .lock()
+            .map_err(|_| CatalogError::Failed("library source lock poisoned".to_owned()))?
+            .sidecar_manifest()
     }
 }
 
@@ -379,10 +414,51 @@ mod host {
     use std::path::PathBuf;
     use std::sync::{Mutex, MutexGuard};
 
+    use notae_index::{CatalogError, PdfCatalog, PdfFile, SidecarManifest};
     use notae_index_cli::catalog::{FilesystemCatalog, ValidatedRoot};
 
-    use super::{LibraryRoot, LibraryRootId, LibrarySource, StorageError};
+    use super::{LibraryCatalog, LibraryRoot, LibraryRootId, LibrarySource, StorageError};
 
+    struct HostLibraryCatalog {
+        catalog: FilesystemCatalog,
+        root: PathBuf,
+    }
+
+    impl PdfCatalog for HostLibraryCatalog {
+        fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
+            self.catalog.enumerate()
+        }
+    }
+
+    impl LibraryCatalog for HostLibraryCatalog {
+        fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
+            let directory = self.root.join(".notae");
+            let directory_metadata = match std::fs::symlink_metadata(&directory) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => return Err(CatalogError::Failed(error.to_string())),
+            };
+            if directory_metadata.file_type().is_symlink() || !directory_metadata.is_dir() {
+                return Err(CatalogError::Failed(
+                    "sidecar directory is not a regular directory".to_owned(),
+                ));
+            }
+            let manifest_path = directory.join("manifest.json");
+            let manifest_metadata = match std::fs::symlink_metadata(&manifest_path) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+                Err(error) => return Err(CatalogError::Failed(error.to_string())),
+            };
+            if manifest_metadata.file_type().is_symlink() || !manifest_metadata.is_file() {
+                return Err(CatalogError::Failed(
+                    "sidecar manifest is not a regular file".to_owned(),
+                ));
+            }
+            SidecarManifest::read(manifest_path)
+                .map(Some)
+                .map_err(|error| CatalogError::Failed(error.to_string()))
+        }
+    }
     /// What the next
     /// [`select_root`](super::LibraryRootProvider::select_root)
     /// call should return. Tests queue a path before calling
@@ -524,11 +600,10 @@ mod host {
                     StorageError::Other(message)
                 }
             })?;
-            // `FilesystemCatalog` is itself `Send` (its `RefCell` holds
-            // `Vec<CatalogFailure>` which is `Send`), so the `+ Send`
-            // bound the trait object carries is satisfied without an
-            // adapter wrapper.
-            let catalog = FilesystemCatalog::new(validated);
+            let catalog = HostLibraryCatalog {
+                catalog: FilesystemCatalog::new(validated),
+                root: path,
+            };
             Ok(LibrarySource::new(root.clone(), Box::new(catalog)))
         }
     }

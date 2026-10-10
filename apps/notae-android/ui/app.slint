@@ -24,6 +24,16 @@ export struct LibraryRow {
     note_key: string,
 }
 
+export struct ImportRow {
+    path: string,
+    change: string,
+    local_metadata: string,
+    proposed_metadata: string,
+    fields: string,
+    ocr: string,
+    conflict: string,
+}
+
 component SetupScreen inherits Rectangle {
     background: #1e1e1e;
 
@@ -179,6 +189,40 @@ component LibraryScreen inherits Rectangle {
     }
 }
 
+component ImportPreviewListRow inherits Rectangle {
+    in property <ImportRow> item;
+    background: #252525;
+    height: 112px;
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 3px;
+        Text {
+            text: root.item.path + " · " + root.item.change;
+            color: #ffffff;
+            font-size: 16px;
+        }
+        Text {
+            text: "Local: " + root.item.local_metadata;
+            color: #bbbbbb;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+        Text {
+            text: "PC: " + root.item.proposed_metadata;
+            color: #bbbbbb;
+            font-size: 13px;
+            wrap: word-wrap;
+        }
+        Text {
+            text: root.item.fields + root.item.ocr + root.item.conflict;
+            color: #aaaaaa;
+            font-size: 12px;
+            wrap: word-wrap;
+        }
+    }
+}
+
 component SettingsScreen inherits Rectangle {
     callback closed();
     background: #1e1e1e;
@@ -212,14 +256,24 @@ export component AppWindow inherits Window {
     in-out property <string> recovery_folder_name: "";
     in-out property <string> setup_error_text: "";
     in-out property <bool> rescan_enabled: false;
+    in property <bool> acknowledge_enabled: false;
     in property <bool> show_settings: false;
     in property <[LibraryRow]> library_rows: [];
+    in property <[ImportRow]> import_rows: [];
     in-out property <string> search_text: "";
+    in property <string> operation_progress_text: "";
+    in property <bool> cancel_enabled: false;
+    in property <bool> show_import_preview: false;
+    in property <string> import_preview_text: "";
     callback settings_clicked();
     callback settings_closed();
 
     callback setup_chosen();
     callback rescan_clicked();
+    callback cancel_rescan_clicked();
+    callback acknowledge_clicked();
+    callback import_confirmed();
+    callback import_cancelled();
     callback search_changed(string);
 
     VerticalLayout {
@@ -245,10 +299,67 @@ export component AppWindow inherits Window {
                 min-height: 48px;
                 clicked => { root.rescan_clicked(); }
             }
+            if root.cancel_enabled : Button {
+                text: "Cancel";
+                min-height: 48px;
+                clicked => { root.cancel_rescan_clicked(); }
+            }
+            if root.acknowledge_enabled : Button {
+                text: "Done";
+                min-height: 48px;
+                clicked => { root.acknowledge_clicked(); }
+            }
             Button {
                 text: "Settings";
                 min-height: 48px;
                 clicked => { root.settings_clicked(); }
+            }
+        }
+
+        if root.operation_progress_text != "" && !root.show_settings : Text {
+            text: root.operation_progress_text;
+            color: #cccccc;
+            font-size: 16px;
+            horizontal-alignment: center;
+        }
+
+        if root.show_import_preview && !root.show_settings : Rectangle {
+            background: #303030;
+            height: 300px;
+            VerticalLayout {
+                padding: 12px;
+                spacing: 8px;
+                Text {
+                    text: "PC sidecar import preview";
+                    font-size: 20px;
+                    color: #ffffff;
+                }
+                Text {
+                    text: root.import_preview_text;
+                    wrap: word-wrap;
+                    color: #cccccc;
+                    font-size: 13px;
+                }
+                ListView {
+                    vertical-stretch: 1;
+                    for item in root.import_rows : ImportPreviewListRow {
+                        item: item;
+                    }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    Button {
+                        text: "Apply import";
+                        primary: true;
+                        min-height: 48px;
+                        clicked => { root.import_confirmed(); }
+                    }
+                    Button {
+                        text: "Keep local";
+                        min-height: 48px;
+                        clicked => { root.import_cancelled(); }
+                    }
+                }
             }
         }
 

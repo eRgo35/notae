@@ -83,7 +83,9 @@ pub enum SidecarError {
     #[error("sidecar manifest is malformed: {0}")]
     Json(#[from] serde_json::Error),
     /// The manifest declares a version this build does not understand.
-    #[error("sidecar schema version {found} is not supported; this build reads version {supported}")]
+    #[error(
+        "sidecar schema version {found} is not supported; this build reads version {supported}"
+    )]
     UnsupportedSchemaVersion {
         /// Version found in the manifest.
         found: u32,
@@ -482,12 +484,18 @@ impl TryFrom<MetadataWire> for NoteMetadata {
         };
         let mut metadata = Self::new(&wire.title, wire.composer_or_artist, wire.tags)?;
         metadata.assign_id(wire.id, provenance.origin_of(MetadataField::Id));
-        metadata.set_origin(MetadataField::Title, provenance.origin_of(MetadataField::Title));
+        metadata.set_origin(
+            MetadataField::Title,
+            provenance.origin_of(MetadataField::Title),
+        );
         metadata.set_origin(
             MetadataField::ComposerOrArtist,
             provenance.origin_of(MetadataField::ComposerOrArtist),
         );
-        metadata.set_origin(MetadataField::Tags, provenance.origin_of(MetadataField::Tags));
+        metadata.set_origin(
+            MetadataField::Tags,
+            provenance.origin_of(MetadataField::Tags),
+        );
         Ok(metadata)
     }
 }
@@ -665,7 +673,20 @@ impl SidecarManifest {
     /// structurally valid but unusable manifest.
     pub fn read(source: impl AsRef<Path>) -> Result<Self, SidecarError> {
         let text = std::fs::read_to_string(source)?;
-        let manifest: Self = serde_json::from_str(&text)?;
+        Self::from_json(&text)
+    }
+
+    /// Parses and validates a serialized manifest from an arbitrary byte source.
+    ///
+    /// This is the SAF boundary: the Android app reads `manifest.json` through
+    /// `ContentResolver` and passes its UTF-8 contents here without converting a
+    /// `content:` URI into a filesystem path.
+    ///
+    /// # Errors
+    /// Returns [`SidecarError::Json`] when the wire format is invalid and any
+    /// validation error returned by [`SidecarManifest::validate`].
+    pub fn from_json(text: &str) -> Result<Self, SidecarError> {
+        let manifest: Self = serde_json::from_str(text)?;
         manifest.validate()?;
         Ok(manifest)
     }
@@ -717,7 +738,11 @@ impl SidecarWriter {
     /// Returns [`SidecarError::Store`] when the index cannot be read, and
     /// [`SidecarError::Io`] or [`SidecarError::Json`] when the manifest cannot
     /// be written.
-    pub fn write(&self, root: &IndexStore, destination: impl AsRef<Path>) -> Result<(), SidecarError> {
+    pub fn write(
+        &self,
+        root: &IndexStore,
+        destination: impl AsRef<Path>,
+    ) -> Result<(), SidecarError> {
         let mut notes = root.list_all()?;
         notes.sort_by(|left, right| left.path().cmp(right.path()));
         let entries = notes
