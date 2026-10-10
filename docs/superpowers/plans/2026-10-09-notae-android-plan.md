@@ -258,29 +258,36 @@
 - `LibraryViewModel::set_query(query: String)`
 - `LibraryViewModel::search() -> Result<Vec<SearchRow>, UiError>`
 - `SearchRow` contains ID, title, composer/artist, tags, status, and stable note key.
-- `UiEvent::{OpenNote, EditMetadata, StartRescan, OpenSettings}`.
+- `LibraryViewModel` uses the host-testable search projection; existing `RequestRescan` and `OpenSettings` actions remain in the state machine. `OpenNote` and `EditMetadata` are added with the PDF/editor tasks when their handlers are implemented.
 
-- [ ] **Step 1: Write failing view-model tests**
+- [x] **Step 1: Write failing view-model tests**
 
   Assert empty state, result projection, numeric ordering, query propagation, exact-match ranking, and status display for OCR pending/error/conflict.
 
-- [ ] **Step 2: Run the focused tests and verify they fail**
+- [x] **Step 2: Run the focused tests and verify they fail**
 
   Run: `cargo test -p notae-android --test search_state`
 
   Expected: FAIL because the view model does not exist.
 
-- [ ] **Step 3: Implement the Slint tablet layout and view model**
+- [x] **Step 3: Implement the Slint tablet layout and view model**
 
-  Use a prominent search field, readable touch-sized rows, restrained Material-3-inspired spacing, and an explicit Rescan action. Do not add folder/category navigation.
+  Use a prominent search field, readable touch-sized rows, restrained Material-3-inspired spacing, and an explicit Rescan action. `LibraryViewModel` queries `IndexStore` for ranked search or numeric-order browsing and projects stable note keys and status labels. The result-list binding is ready for rows; Task 5 connects it to rescan output. Do not add folder/category navigation.
 
-- [ ] **Step 4: Run tests and visually inspect the device UI**
+- [x] **Step 4: Run host tests and build the APK**
 
-  Run: `cargo test -p notae-android --test search_state`. Install the APK and verify portrait/landscape resizing, keyboard input, scrolling, and touch targets on the target tablet.
+  Run: `cargo test -p notae-android` and `cargo apk2 build --release -p notae-android`.
 
-  Expected: PASS and a usable search-first library screen.
+  Verified: all 41 package tests pass; Android-target `cargo apk2 check` and signed/aligned release APK build pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Visually inspect the library on the Galaxy Tab S10 FE+**
+
+  Verify portrait/landscape resizing, keyboard input, scrolling, and touch targets on the target tablet.
+
+  Status: pending; `adb devices` reported no connected device. Repeat this scenario in the Android-plan completion check below.
+
+
+- [x] **Step 6: Commit**
 
   ```bash
   git add apps/notae-android
