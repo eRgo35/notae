@@ -1172,6 +1172,7 @@ dependencies = [
  "image",
  "notae-domain",
  "notae-index",
+ "notae-ocr",
  "sha2",
  "tempfile",
  "thiserror 2.0.21",
