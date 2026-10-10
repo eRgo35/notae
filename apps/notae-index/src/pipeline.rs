@@ -38,7 +38,7 @@ use std::sync::mpsc;
 
 use notae_domain::{IndexedNote, RelativePdfPath};
 use notae_index::{
-    CatalogError, FileCondition, FileFailureReason, IndexError, IndexStore, OcrText, PdfCatalog,
+    CatalogError, FileFailureReason, IndexError, IndexStore, OcrText, PdfCatalog,
     PdfFile, ReconcileError, Reconciler,
 };
 use notae_ocr::{LanguagePolicy, OcrProvider};
@@ -204,43 +204,64 @@ impl IndexPipeline {
                 total,
             });
 
-            // Catalog condition the plan tolerates by leaving the file out of
-            // every write category. Surface it as a PDF failure now.
-            if matches!(
-                file.condition(),
-                FileCondition::Unreadable | FileCondition::InvalidPdf
-            ) {
-                let reason = short_reason_for_condition(file.condition());
-                counters.pdf_failed += 1;
-                let _ = output.send(ProgressEvent::FileFailed {
-                    path: path.clone(),
-                    reason,
-                });
-                continue;
-            }
-
+            // The reconciler's verdict is authoritative. A file the catalog
+            // could not use may produce both a status correction in
+            // `plan.updates` and a failure reason in `plan.failures` — the
+            // existing record's status must be written before the file is
+            // reported, so the row never claims otherwise. The catalog-only
+            // `Unreadable` / `InvalidPdf` short-circuit that used to live
+            // here short-circuited every write path for these files and
+            // therefore left the store out of sync with the catalog; the
+            // plan-driven classification below is the single source of
+            // truth now.
             if let Some(reason) = failures.remove(file.path()) {
                 record_failure(&output, &mut counters, &path, &reason);
+                if let Some(note) = updates.remove(file.path()) {
+                    // Status correction (e.g. `Inaccessible` for a file that
+                    // could no longer be read). The note keeps the file's
+                    // fingerprint, so its stored OCR text is still the right
+                    // description; [`apply_note`] is the write path that
+                    // preserves it, leaving `None` for the OCR parameter on
+                    // the store call. A store refusal is reported by
+                    // `apply_note`'s own `FileFailed`, alongside the
+                    // breakdown `record_failure` already counted.
+                    let _ = apply_note(store, &note, &output, &path)?;
+                }
                 continue;
             }
 
             if let Some(note) = unchanged.remove(file.path()) {
-                counters.reused += apply_note(store, &note, &output, &path)?;
-                let _ = output.send(ProgressEvent::FileCompleted { path });
+                // `apply_note` returns 1 on a successful write, 0 on refusal.
+                // Only emit `FileCompleted` when the store actually accepted
+                // the write, so a `DuplicateNoteId` rejection cannot be
+                // followed by an "indexed" line for the same path.
+                if apply_note(store, &note, &output, &path)? == 1 {
+                    counters.reused += 1;
+                    let _ = output.send(ProgressEvent::FileCompleted { path });
+                }
                 continue;
             }
 
             if let Some(note) = moves.remove(file.path()) {
-                counters.moved += apply_note(store, &note, &output, &path)?;
-                let _ = output.send(ProgressEvent::FileCompleted { path });
+                if apply_note(store, &note, &output, &path)? == 1 {
+                    counters.moved += 1;
+                    let _ = output.send(ProgressEvent::FileCompleted { path });
+                }
                 continue;
             }
 
             if let Some(note) = additions.remove(file.path()) {
+                // Track whether the store write actually succeeded. The
+                // matching `apply_with_ocr` call emits `FileFailed` on
+                // refusal; we emit `FileCompleted` only on success, so a
+                // refusal does not produce both events for the same file.
+                let mut write_succeeded = false;
                 match self.process_for_text(file, &catalog_root, ocr, policy, &output, &path) {
                     Ok(text) => {
-                        counters.inserted +=
-                            apply_with_ocr(store, &note, &text, &output, &path)?;
+                        if apply_with_ocr(store, &note, &text, &output, &path)? == 1 {
+                            counters.inserted += 1;
+                            write_succeeded = true;
+                        }
                     }
                     Err(FileProcessingError::Pdf) => {
                         // The PDF itself is unusable, so the catalog's view
@@ -256,30 +277,40 @@ impl IndexPipeline {
                         });
                     }
                     Err(FileProcessingError::Ocr) => {
-                        // OCR errors roll up under `pdf_failed` per the brief
-                        // (item 6): record the file as a failure and keep the
-                        // run going. The record is still written with empty
-                        // OCR text so the file is visible in the index — a
-                        // future run can retry OCR.
+                        // An OCR-engine failure is a per-page story (the
+                        // brief counts it under `pdf_failed`), but it is also
+                        // its own bucket (`ocr_failed`) so the summary line
+                        // tells the two failures apart. The record is still
+                        // written with empty OCR text so the file stays
+                        // visible in the index — a future run can retry OCR.
                         counters.pdf_failed += 1;
-                        let _ = apply_with_ocr(
+                        counters.ocr_failed += 1;
+                        if apply_with_ocr(
                             store,
                             &note,
                             &empty_ocr_text(),
                             &output,
                             &path,
-                        )?;
+                        )? == 1
+                        {
+                            write_succeeded = true;
+                        }
                     }
                 }
-                let _ = output.send(ProgressEvent::FileCompleted { path });
+                if write_succeeded {
+                    let _ = output.send(ProgressEvent::FileCompleted { path });
+                }
                 continue;
             }
 
             if let Some(note) = updates.remove(file.path()) {
+                let mut write_succeeded = false;
                 match self.process_for_text(file, &catalog_root, ocr, policy, &output, &path) {
                     Ok(text) => {
-                        counters.updated +=
-                            apply_with_ocr(store, &note, &text, &output, &path)?;
+                        if apply_with_ocr(store, &note, &text, &output, &path)? == 1 {
+                            counters.updated += 1;
+                            write_succeeded = true;
+                        }
                     }
                     Err(FileProcessingError::Pdf) => {
                         counters.pdf_failed += 1;
@@ -290,16 +321,22 @@ impl IndexPipeline {
                     }
                     Err(FileProcessingError::Ocr) => {
                         counters.pdf_failed += 1;
-                        let _ = apply_with_ocr(
+                        counters.ocr_failed += 1;
+                        if apply_with_ocr(
                             store,
                             &note,
                             &empty_ocr_text(),
                             &output,
                             &path,
-                        )?;
+                        )? == 1
+                        {
+                            write_succeeded = true;
+                        }
                     }
                 }
-                let _ = output.send(ProgressEvent::FileCompleted { path });
+                if write_succeeded {
+                    let _ = output.send(ProgressEvent::FileCompleted { path });
+                }
                 continue;
             }
 
@@ -521,15 +558,6 @@ fn record_failure(
     });
 }
 
-/// A short, one-line description of a catalog [`FileCondition`].
-fn short_reason_for_condition(condition: &FileCondition) -> String {
-    match condition {
-        FileCondition::Readable(_) => "readable".to_string(),
-        FileCondition::Unreadable => "could not read the file".to_string(),
-        FileCondition::InvalidPdf => "the file is not a readable PDF".to_string(),
-    }
-}
-
 /// A short, one-line description of a [`FileFailureReason`].
 fn short_reason(reason: &FileFailureReason) -> String {
     match reason {
@@ -608,25 +636,6 @@ enum FileProcessingError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use notae_domain::Sha256Digest;
-
-    #[test]
-    fn short_reason_for_a_readable_file_is_neutral() {
-        let fingerprint = notae_domain::PdfFingerprint::from_system_time(
-            Sha256Digest::from_bytes([0_u8; 32]),
-            0,
-            None,
-        )
-        .expect("placeholder fingerprint is valid");
-        let condition = FileCondition::Readable(fingerprint);
-        assert_eq!(short_reason_for_condition(&condition), "readable");
-    }
-
-    #[test]
-    fn short_reason_for_an_unreadable_file_says_so() {
-        let condition = FileCondition::Unreadable;
-        assert!(short_reason_for_condition(&condition).contains("could not read"));
-    }
 
     #[test]
     fn into_index_ocr_picks_the_primary_language_when_one_is_present() {

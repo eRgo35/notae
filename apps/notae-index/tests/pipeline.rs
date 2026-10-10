@@ -16,7 +16,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Mutex};
 
-use notae_domain::{NoteId, Sha256Digest};
+use notae_domain::{IndexStatus, NoteId, Sha256Digest};
 use notae_index::IndexStore;
 use notae_index_cli::catalog::{FilesystemCatalog, ValidatedRoot};
 use notae_index_cli::pipeline::{IndexPipeline, ProgressEvent};
@@ -325,6 +325,14 @@ fn a_duplicate_id_conflict_is_counted_but_does_not_overwrite() {
 
     assert_eq!(report.processed(), 2);
     assert_eq!(report.conflicts(), 1, "one duplicate-ID conflict surfaced");
+    let notes = store
+        .list_all()
+        .expect("both records are still in the index after a conflict");
+    assert_eq!(
+        notes.len(),
+        2,
+        "duplicate-ID resolution keeps both records in the index: {notes:?}"
+    );
 }
 
 #[test]
@@ -395,8 +403,16 @@ fn ocr_failure_records_an_ocr_failure_count_and_keeps_the_record() {
 
     let notes = store.list_all().expect("list the index");
     assert_eq!(notes.len(), 1, "the record still exists");
-    // OCR errors are counted under pdf_failed per the brief.
-    assert!(report.ocr_failed() + report.pdf_failed() >= 1);
+    // OCR errors populate both buckets: per the brief item 6 an OCR error is
+    // a `pdf_failed` outcome (so the summary line surfaces it on the same
+    // axis as any other PDF-side failure), but `ocr_failed` is its own
+    // counter so the CLI can tell the two stories apart.
+    assert_eq!(report.ocr_failed(), 1, "an OCR failure is its own counter");
+    assert_eq!(
+        report.pdf_failed(),
+        1,
+        "and it is also counted as a PDF failure per the brief"
+    );
 }
 
 #[test]
@@ -437,4 +453,87 @@ fn progress_events_capture_started_and_finished() {
         .filter(|event| matches!(event, ProgressEvent::FileStarted { .. }))
         .collect();
     assert_eq!(file_started.len(), 1, "one FileStarted event per file");
+}
+
+/// Cover the Readable→Unreadable flip the early `Unreadable` / `InvalidPdf`
+/// short-circuit used to skip.
+///
+/// The first run reads the file, fingerprints it, and writes a record with
+/// [`IndexStatus::Discovered`] (the status `IndexedNote::new` assigns by
+/// default). Stripping permissions from the file forces the catalog to
+/// classify it as `Unreadable` on a second run; the reconciler emits both
+/// a status correction (the record now lives under
+/// [`IndexStatus::Inaccessible`](IndexStatus::Inaccessible)) and a
+/// `FileFailureReason::Unreadable` failure. Without the pipeline-level fix
+/// the store row kept its old `Discovered` status: the test fails because
+/// the stored status no longer matches what the catalog saw.
+#[cfg(unix)]
+#[test]
+fn a_file_that_becomes_unreadable_updates_its_stored_status() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let library = Library::new();
+    let source = library.root.join("1 - First.pdf");
+    fixture_to(&library.root, "text-layer.pdf", "1 - First.pdf");
+
+    let pipeline = IndexPipeline::default_dpi();
+    let catalog = library.catalog();
+    let mut store = library.store();
+    let ocr = FakeOcr::new();
+
+    let _ = pipeline
+        .run(&catalog, &mut store, &ocr, &policy(), mpsc::channel().0)
+        .expect("first run");
+
+    let seed = store
+        .list_all()
+        .expect("seed record exists")
+        .into_iter()
+        .find(|note| note.path().as_str() == "1 - First.pdf")
+        .expect("the seed record is the only one in the index");
+    assert_eq!(
+        seed.status(),
+        IndexStatus::Discovered,
+        "the seed is indexed before the lock"
+    );
+
+    // Strip read permissions so a regular user cannot open the file. Skip
+    // the assertion (rather than pass with a confusing status) when running
+    // as a user that bypasses permissions.
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o000))
+        .expect("lock the source file");
+    if fs::File::open(&source).is_ok() {
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o644))
+            .expect("unlock the source file");
+        return;
+    }
+
+    let report = pipeline
+        .run(&catalog, &mut store, &ocr, &policy(), mpsc::channel().0)
+        .expect("locked run");
+
+    let _ = fs::set_permissions(&source, fs::Permissions::from_mode(0o644));
+
+    assert_eq!(report.processed(), 1);
+    assert_eq!(report.pdf_failed(), 1, "the unreadable file is reported");
+    assert_eq!(report.reused(), 0, "no write survives as a no-op reuse");
+
+    let after = store
+        .get_by_hash(&seed.fingerprint().sha256())
+        .expect("read the stored record")
+        .expect("the record is still in the index");
+    assert_eq!(
+        after.status(),
+        IndexStatus::Inaccessible,
+        "the stored row reflects the catalog's Unreadable observation"
+    );
+    assert_eq!(
+        after.path().as_str(),
+        seed.path().as_str(),
+        "the path does not change just because the file became unreadable"
+    );
+    assert!(
+        after.id().is_some(),
+        "the correction never strips the note ID"
+    );
 }
