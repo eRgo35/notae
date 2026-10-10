@@ -40,6 +40,7 @@ pub struct UiModel {
     import_preview_summary: Option<ImportPreviewSummary>,
     metadata_editor: Option<EditableMetadata>,
     metadata_error: Option<String>,
+    pdf_launch_error: Option<String>,
 }
 
 impl UiModel {
@@ -55,6 +56,7 @@ impl UiModel {
             import_preview_summary: None,
             metadata_editor: None,
             metadata_error: None,
+            pdf_launch_error: None,
         }
     }
 
@@ -88,6 +90,32 @@ impl UiModel {
     /// Updates the storage state in place.
     pub fn set_storage(&mut self, state: StorageState) {
         *self.storage.lock().expect("storage mutex poisoned") = state;
+    }
+
+    /// Returns the persisted SAF tree URI for the active library.
+    #[must_use]
+    pub fn library_root_handle(&self) -> Option<String> {
+        let guard = self.storage.lock().ok()?;
+        match &*guard {
+            StorageState::Ready(source) => source
+                .lock()
+                .ok()
+                .map(|source| source.root().handle().to_owned()),
+            StorageState::Unconfigured
+            | StorageState::PermissionLost(_)
+            | StorageState::Error(_) => None,
+        }
+    }
+
+    /// Returns the latest PDF launch error, when a viewer could not be opened.
+    #[must_use]
+    pub fn pdf_launch_error(&self) -> Option<&str> {
+        self.pdf_launch_error.as_deref()
+    }
+
+    /// Replaces the user-facing PDF launch error.
+    pub fn set_pdf_launch_error(&mut self, error: Option<String>) {
+        self.pdf_launch_error = error;
     }
 
     /// Replaces the rows currently displayed by the library screen.

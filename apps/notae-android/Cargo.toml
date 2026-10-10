@@ -48,9 +48,8 @@ android-activity = "0.6"
 jni = "0.22"
 
 # `notae-index` adds the [`PdfCatalog`](notae_index::PdfCatalog) trait and the
-# [`PdfFile`] / [`CatalogError`] types that `LibrarySource` must implement.
-# `notae-ocr` itself remains unused until Task 7.
-#
+# `PdfFile` / `CatalogError` types that `LibrarySource` must implement.
+# `notae-ocr` remains unused until Task 8 adds Android PDF-page and OCR adapters.
 # Cross-compiling `notae-index` to Android is non-trivial because it bundles
 # SQLite via `cc-rs`. The build expects the NDK clang in the PATH for
 # `aarch64-linux-android`; `cargo apk2` sets that up. The host test
@@ -72,6 +71,15 @@ pollster = "0.4"
 package = "org.notae.android"
 apk_name = "notae-android"
 java_sources = "android/src/main/java"
+
+[[package.metadata.android.queries.package]]
+name = "com.samsung.android.app.notes"
+
+[[package.metadata.android.queries.intent]]
+actions = ["android.intent.action.VIEW"]
+
+[[package.metadata.android.queries.intent.data]]
+mime_type = "application/pdf"
 
 [package.metadata.android.application]
 label = "Notae"

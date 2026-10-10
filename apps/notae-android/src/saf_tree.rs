@@ -71,6 +71,42 @@ pub fn discover_sidecar_manifest(
         .map_err(|error| CatalogError::Failed(format!("invalid sidecar manifest: {error}")))
 }
 
+/// Resolves a validated library-relative PDF path to its opaque SAF document ID.
+pub fn find_document_id(
+    reader: &impl DocumentTreeReader,
+    root_id: &str,
+    relative_path: &str,
+) -> Result<String, CatalogError> {
+    let path = RelativePdfPath::new(relative_path.to_owned())
+        .map_err(|error| CatalogError::Failed(format!("invalid PDF path: {error}")))?;
+    let mut segments = path.as_str().split('/').peekable();
+    let mut parent_id = root_id.to_owned();
+    while let Some(segment) = segments.next() {
+        let is_file = segments.peek().is_none();
+        if is_file && !is_pdf_name(segment) {
+            return Err(CatalogError::Failed(format!(
+                "not a PDF library path: {relative_path}"
+            )));
+        }
+        let children = reader.children(&parent_id)?;
+        let mut matches = children.iter().filter(|row| {
+            row.display_name == segment && (row.mime_type == DIRECTORY_MIME) != is_file
+        });
+        let Some(row) = matches.next() else {
+            return Err(CatalogError::Failed(format!(
+                "SAF document not found: {relative_path}"
+            )));
+        };
+        if matches.next().is_some() {
+            return Err(CatalogError::Failed(format!(
+                "ambiguous SAF path segment {segment:?} in {relative_path}"
+            )));
+        }
+        parent_id.clone_from(&row.document_id);
+    }
+    Ok(parent_id)
+}
+
 /// Recursively enumerates PDFs below a SAF root as root-relative index rows.
 pub fn enumerate_document_tree(
     reader: &impl DocumentTreeReader,
