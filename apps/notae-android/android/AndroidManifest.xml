@@ -31,7 +31,7 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           package="org.notae.android">
-    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35" />
+    <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="34" />
 
     <application android:label="Notae" android:hasCode="true">
         <activity android:name="android.app.NativeActivity"
