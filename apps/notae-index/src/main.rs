@@ -11,11 +11,14 @@
 //!   cannot be listed, a skipped symbolic link, or a name the portable path
 //!   type rejects.
 //! * non-zero — the command could not produce a report at all: the
-//!   arguments are invalid, or the library root is unusable. A root is
-//!   unusable when it is absent, is not a directory, cannot be read, is a
-//!   symbolic link however it is spelled, or no longer names the directory
-//!   the run opened — the root is validated once, and the directory that
-//!   validation opened is the one that gets walked.
+//!   arguments are invalid, the library root is unusable, or the sidecar
+//!   could not be written. A root is unusable when it is absent, is not a
+//!   directory, cannot be read, is a symbolic link however it is spelled,
+//!   or no longer names the directory the run opened — the root is
+//!   validated once, and the directory that validation opened is the one
+//!   that gets walked. A sidecar that the run produced but could not
+//!   write is also a non-zero exit, because the next stage (the Android
+//!   import) has nothing to import.
 //!
 //! The dividing line is the library root itself. A root that exists but
 //! cannot be read yields a run whose numbers describe nothing, so it is a
@@ -26,18 +29,29 @@
 //! PDFs were unreadable"; per-file problems are reported on standard error
 //! and counted in the summary line.
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::mpsc;
 use std::thread;
 
+use notae_domain::EpochTimestamp;
 use notae_index::IndexStore;
 use notae_index_cli::args::{Cli, CliError};
 use notae_index_cli::catalog::FilesystemCatalog;
 use notae_index_cli::pipeline::{IndexPipeline, PipelineError, ProgressEvent};
 use notae_index_cli::report::RunReport;
+use notae_ocr::{LanguagePolicy, TesseractConfig, TesseractProvider};
 
 /// Where the SQLite index is stored on disk.
 const DEFAULT_INDEX_PATH: &str = ".notae/index.sqlite";
+
+/// The name of the sidecar manifest the indexer writes beside the SQLite
+/// index. The receiving app reads the same file.
+const DEFAULT_MANIFEST_PATH: &str = ".notae/manifest.json";
+
+/// The default tessdata directory, used when neither `--tessdata-dir` nor
+/// `TESSDATA_PREFIX` is set.
+const DEFAULT_TESSDATA_DIR: &str = "/usr/share/tesseract/tessdata";
 
 fn main() -> ExitCode {
     let cli = match Cli::try_parse_from(std::env::args_os()) {
@@ -55,7 +69,26 @@ fn main() -> ExitCode {
         Err(error) => return report_cli_error(error),
     };
 
-    run_pipeline(catalog, verbose)
+    run_pipeline(catalog, verbose, cli.tessdata_dir().map(PathBuf::from))
+}
+
+/// Resolves the tessdata directory the OCR provider should use, applying the
+/// priority `--tessdata-dir` → `TESSDATA_PREFIX` → [`DEFAULT_TESSDATA_DIR`].
+fn resolve_tessdata_dir(explicit: Option<PathBuf>) -> PathBuf {
+    explicit.unwrap_or_else(|| PathBuf::from(DEFAULT_TESSDATA_DIR))
+}
+
+/// Reports a missing tessdata directory as a typed CLI error and exits
+/// non-zero. Used when the directory exists but holds no `*.traineddata`
+/// files — the OCR layer would have nothing to recognize, so a run that
+/// produced a sidecar without OCR text is not the run the user asked for.
+fn report_missing_tesseract_data(directory: &std::path::Path) -> ExitCode {
+    eprintln!(
+        "notae-index: no tesseract language data at {}; \
+         install eng.traineddata or set TESSDATA_PREFIX",
+        directory.display(),
+    );
+    ExitCode::FAILURE
 }
 
 /// Runs the indexing pipeline against `catalog`.
@@ -65,11 +98,20 @@ fn main() -> ExitCode {
 /// error; the main thread waits for the pipeline to finish and emits the
 /// final summary line along with the catalog-phase diagnostics.
 ///
+/// After the pipeline finishes the run writes the sidecar manifest. A run
+/// that produced a report but cannot save the manifest exits non-zero: the
+/// Android import has nothing to import, so the run has not delivered the
+/// product the spec asks for.
+///
 /// The catalog is walked exactly once across a CLI run: validation builds
 /// it, and the pipeline enumerates it. Catalog-phase diagnostics that
 /// previously came from the catalog-only path are read off the report
 /// after the pipeline runs, so the tree is not re-listed for printing.
-fn run_pipeline(catalog: FilesystemCatalog, verbose: bool) -> ExitCode {
+fn run_pipeline(
+    catalog: FilesystemCatalog,
+    verbose: bool,
+    tessdata_dir: Option<PathBuf>,
+) -> ExitCode {
     let library_root = catalog.root().to_path_buf();
     let index_path = library_root.join(DEFAULT_INDEX_PATH);
     if let Some(parent) = index_path.parent()
@@ -92,6 +134,34 @@ fn run_pipeline(catalog: FilesystemCatalog, verbose: bool) -> ExitCode {
         }
     };
 
+    let tessdata_dir = resolve_tessdata_dir(tessdata_dir);
+    let config = match TesseractConfig::discover(&tessdata_dir) {
+        Ok(config) => config,
+        Err(error) => {
+            eprintln!(
+                "notae-index: tessdata directory at {} is unavailable: {error}",
+                tessdata_dir.display(),
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+    let installed = config.available_languages().languages().to_vec();
+    if installed.is_empty() {
+        return report_missing_tesseract_data(&tessdata_dir);
+    }
+    let policy = LanguagePolicy::Automatic {
+        installed: config.available_languages().clone(),
+    };
+    let ocr = match TesseractProvider::new(config) {
+        Ok(provider) => provider,
+        Err(error) => {
+            eprintln!(
+                "notae-index: could not initialise Tesseract: {error}"
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+
     let (sender, receiver) = mpsc::channel();
     let printer_receiver = receiver;
     let printer = thread::spawn(move || {
@@ -103,35 +173,41 @@ fn run_pipeline(catalog: FilesystemCatalog, verbose: bool) -> ExitCode {
     });
 
     let pipeline = IndexPipeline::default_dpi();
-    // The fixed-language policy is a placeholder for the OCR provider the
-    // pipeline is configured with. For now the binary does not run OCR — the
-    // pipeline still works for text-layer PDFs, which are the bulk of the
-    // fixtures — so the policy only matters for image-only PDFs and is left
-    // to the OCR provider's defaults when one is configured.
-    let policy = notae_ocr::LanguagePolicy::Fixed(vec!["eng".to_string()]);
-    struct NoOcr;
-    impl notae_ocr::OcrProvider for NoOcr {
-        fn recognize(
-            &self,
-            _page: &notae_ocr::OcrImage,
-            _policy: &notae_ocr::LanguagePolicy,
-        ) -> Result<notae_ocr::OcrText, notae_ocr::OcrError> {
-            Err(notae_ocr::OcrError::EngineInitializationFailed {
-                reason: "no OCR provider is configured".to_string(),
-            })
-        }
-    }
-    let ocr = NoOcr;
-
     let outcome = pipeline.run(&catalog, &mut store, &ocr, &policy, sender);
     let _ = printer.join();
     match outcome {
         Ok(report) => {
             print_catalog_diagnostics(&report, verbose);
-            print_summary(&report)
+            let summary = print_summary(&report);
+            if let Err(error) = write_sidecar(&library_root, &store) {
+                eprintln!(
+                    "notae-index: could not write sidecar at {}: {error}",
+                    library_root.join(DEFAULT_MANIFEST_PATH).display()
+                );
+                return ExitCode::FAILURE;
+            }
+            summary
         }
         Err(error) => report_pipeline_error(error),
     }
+}
+
+/// Writes the sidecar manifest beside the SQLite index.
+///
+/// Both files are written so the receiving app has a complete sidecar: the
+/// SQLite database is the engine the app can rebuild the search index from,
+/// and the manifest is the cross-platform contract the app uses to know
+/// what was in the library. A run that produced one but not the other has
+/// not delivered the product the spec asks for, so a write failure is
+/// reported as a non-zero exit by the caller.
+fn write_sidecar(library_root: &std::path::Path, store: &IndexStore) -> Result<(), String> {
+    let generated_at = EpochTimestamp::now()
+        .ok_or_else(|| "system clock returned an out-of-range timestamp".to_string())?;
+    let writer = notae_index::SidecarWriter::new(env!("CARGO_PKG_VERSION"), generated_at);
+    let manifest_path = library_root.join(DEFAULT_MANIFEST_PATH);
+    writer
+        .write(store, &manifest_path)
+        .map_err(|error| error.to_string())
 }
 
 /// Emits the catalog-phase diagnostics the run observed.

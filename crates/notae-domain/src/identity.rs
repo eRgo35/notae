@@ -169,6 +169,17 @@ impl EpochTimestamp {
         )
     }
 
+    /// Captures the current wall-clock time as a portable timestamp.
+    ///
+    /// Returns `None` only when the platform reports a time outside the
+    /// representable range — the instants the domain can describe are the
+    /// same ones a [`SystemTime`] can describe, so this matches the
+    /// behaviour of [`from_system_time`](Self::from_system_time).
+    #[must_use]
+    pub fn now() -> Option<Self> {
+        Self::from_system_time(SystemTime::now())
+    }
+
     /// Returns the seconds since the epoch; negative before 1970.
     #[must_use]
     pub const fn seconds(self) -> i64 {
