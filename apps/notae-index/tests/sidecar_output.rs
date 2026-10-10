@@ -502,6 +502,43 @@ fn a_run_with_no_trained_data_at_tessdata_exits_non_zero() {
     );
 }
 
+#[test]
+fn a_sidecar_that_cannot_be_written_exits_non_zero_but_leaves_the_index() {
+    // A run that produced a SQLite index but cannot save the manifest
+    // is a command failure rather than a report: the Android import has
+    // nothing to import, so the spec asks for a non-zero exit. The
+    // index that did get written stays on disk because the live DB
+    // exists and may be inspected by the user.
+    //
+    // The cheapest way to force a write failure without depending on
+    // Tesseract side effects is to pre-create the manifest destination
+    // as a directory; `File::create` then fails with `EISDIR` because
+    // the destination is not a file.
+    let library = Library::new();
+    library.copy_fixture("text-layer.pdf", "1 - First.pdf");
+    let manifest = library.manifest_path();
+    fs::create_dir_all(&manifest).expect("pre-create manifest as a directory");
+
+    let output = run_index(&[library.root().to_str().expect("utf-8 path")]);
+    assert!(
+        !output.status.success(),
+        "an unwritable manifest exits non-zero; stdout: {}\nstderr: {}",
+        stdout(&output),
+        stderr(&output)
+    );
+    assert!(
+        stderr(&output).contains("could not write sidecar"),
+        "the reason names the sidecar write: {}",
+        stderr(&output)
+    );
+    assert!(
+        library.index_path().is_file(),
+        "the SQLite index is still written: stdout: {}\nstderr: {}",
+        stdout(&output),
+        stderr(&output)
+    );
+}
+
 // -----------------------------------------------------------------------
 // Rename / duplicate-ID scenarios from the smoke test
 // -----------------------------------------------------------------------
