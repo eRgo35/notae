@@ -12,6 +12,7 @@ use std::path::Path;
 use notae_domain::{
     EpochTimestamp, FieldProvenance, IndexedNote, IndexStatus, MetadataField, MetadataOrigin,
     NoteId, NoteMetadata, PdfFingerprint, RelativePdfPath, Sha256Digest, compare_library_order,
+    normalize_whitespace,
 };
 use rusqlite::{Connection, OptionalExtension, Row, ToSql, params, params_from_iter};
 use thiserror::Error;
@@ -874,5 +875,5 @@ fn status_from_text(text: &str) -> Option<IndexStatus> {
 /// Collapses whitespace runs so the stored OCR text is comparable and the
 /// FTS5 tokenizer sees clean token boundaries.
 fn normalize_ocr_text(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+    normalize_whitespace(text)
 }

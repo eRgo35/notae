@@ -498,7 +498,7 @@ fn normalize_tags(tags: impl IntoIterator<Item = String>) -> BTreeSet<String> {
 }
 
 fn normalize_tag(tag: &str) -> Option<String> {
-    let collapsed = tag.split_whitespace().collect::<Vec<_>>().join(" ");
+    let collapsed = crate::text::normalize_whitespace(tag);
     if collapsed.is_empty() {
         None
     } else {
