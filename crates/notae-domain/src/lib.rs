@@ -8,6 +8,7 @@ mod identity;
 mod metadata;
 mod ordering;
 mod status;
+mod text;
 
 pub use filename::{
     FilenameError, ParsedFilename, is_note_filename, parse_filename, parse_note_filename,
@@ -18,3 +19,4 @@ pub use metadata::{
 };
 pub use ordering::{DuplicateId, compare_library_order, validate_unique_ids};
 pub use status::IndexStatus;
+pub use text::normalize_whitespace;
