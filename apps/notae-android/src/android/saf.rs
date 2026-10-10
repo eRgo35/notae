@@ -65,18 +65,20 @@ use android_activity::AndroidApp;
 use atomic_waker::AtomicWaker;
 use jni::errors::Error as JniError;
 use jni::objects::{JObject, JString};
-use jni::{jni_sig, jni_str, EnvUnowned, JValue};
+use jni::{EnvUnowned, JValue, jni_sig, jni_str};
 
-use notae_index::{CatalogError, PdfCatalog, PdfFile};
+use notae_index::{CatalogError, PdfCatalog, PdfFile, SidecarManifest};
 
-use crate::saf_tree::{DocumentRow, DocumentTreeReader, enumerate_document_tree};
+use crate::saf_tree::{
+    DocumentRow, DocumentTreeReader, discover_sidecar_manifest, enumerate_document_tree,
+};
 
 use crate::picker_fut::{
-    decode_activity_result, new_picker_state, poll_outcome, PickerOutcome, PickerState,
-    FLAG_GRANT_READ_URI_PERMISSION,
+    FLAG_GRANT_READ_URI_PERMISSION, PickerOutcome, PickerState, decode_activity_result,
+    new_picker_state, poll_outcome,
 };
 use crate::storage::{
-    LibraryRoot, LibraryRootId, LibraryRootProvider, LibrarySource, StorageError,
+    LibraryCatalog, LibraryRoot, LibraryRootId, LibraryRootProvider, LibrarySource, StorageError,
 };
 
 // ---------------------------------------------------------------------------
@@ -209,11 +211,7 @@ fn launch_picker_jni(app: &AndroidApp, request_code: i32) -> Result<(), JniError
         let activity = activity_as_jobject(env, activity_ptr)?;
 
         // `new Intent()`.
-        let intent = env.new_object(
-            jni_str!("android/content/Intent"),
-            jni_sig!("()V"),
-            &[],
-        )?;
+        let intent = env.new_object(jni_str!("android/content/Intent"), jni_sig!("()V"), &[])?;
 
         // `intent.setAction(ACTION_OPEN_DOCUMENT_TREE)`.
         let action_string = env.new_string("android.intent.action.OPEN_DOCUMENT_TREE")?;
@@ -240,10 +238,7 @@ fn launch_picker_jni(app: &AndroidApp, request_code: i32) -> Result<(), JniError
                     intent.as_ref(),
                     jni_str!("putExtra"),
                     jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;"),
-                    &[
-                        JValue::Object(&key_string),
-                        JValue::Object(&value_string),
-                    ],
+                    &[JValue::Object(&key_string), JValue::Object(&value_string)],
                 );
             }
             Ok(Some(_)) | Ok(None) => {}
@@ -306,10 +301,7 @@ fn read_persisted_root_jni(app: &AndroidApp) -> Result<Option<PersistedRoot>, Jn
                 prefs.as_ref(),
                 jni_str!("getString"),
                 jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"),
-                &[
-                    JValue::Object(&key_key),
-                    JValue::Object(&default_key),
-                ],
+                &[JValue::Object(&key_key), JValue::Object(&default_key)],
             )?;
             let value_obj = value.l()?;
             if value_obj.is_null() {
@@ -319,7 +311,8 @@ fn read_persisted_root_jni(app: &AndroidApp) -> Result<Option<PersistedRoot>, Jn
             // returned for our `getString` call. `JString::from_raw`
             // casts the raw `jstring` as a `JString<'_>` local
             // reference bound to the current `Env`.
-            let value_str = unsafe { JString::from_raw(env, value_obj.as_raw() as jni::sys::jstring) };
+            let value_str =
+                unsafe { JString::from_raw(env, value_obj.as_raw() as jni::sys::jstring) };
             jstring_to_string(env, value_str)
         };
 
@@ -357,10 +350,7 @@ fn read_persisted_root_jni(app: &AndroidApp) -> Result<Option<PersistedRoot>, Jn
             resolver.as_ref(),
             jni_str!("takePersistableUriPermission"),
             jni_sig!("(Landroid/net/Uri;I)V"),
-            &[
-                JValue::Object(parsed_uri.as_ref()),
-                JValue::Int(0x00000001),
-            ],
+            &[JValue::Object(parsed_uri.as_ref()), JValue::Int(0x00000001)],
         )?;
 
         let root = LibraryRoot::from_parts(
@@ -424,9 +414,7 @@ fn selected_tree_outcome<'local>(
         .call_static_method(
             jni_str!("android/provider/DocumentsContract"),
             jni_str!("buildDocumentUriUsingTree"),
-            jni_sig!(
-                "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"
-            ),
+            jni_sig!("(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"),
             &[
                 JValue::Object(&tree_uri_object),
                 JValue::Object(&document_id),
@@ -456,12 +444,7 @@ fn selected_tree_outcome<'local>(
 
     let display_name_result = (|| -> Result<String, JniError> {
         let has_row = env
-            .call_method(
-                &cursor,
-                jni_str!("moveToFirst"),
-                jni_sig!("()Z"),
-                &[],
-            )?
+            .call_method(&cursor, jni_str!("moveToFirst"), jni_sig!("()Z"), &[])?
             .z()?;
         if !has_row {
             return Err(JniError::NullPtr("tree document row"));
@@ -490,9 +473,8 @@ fn selected_tree_outcome<'local>(
             return Err(JniError::NullPtr("tree document display name"));
         }
         // SAFETY: Cursor.getString returned this local reference as a Java String.
-        let display_name = unsafe {
-            JString::from_raw(env, display_name.as_raw() as jni::sys::jstring)
-        };
+        let display_name =
+            unsafe { JString::from_raw(env, display_name.as_raw() as jni::sys::jstring) };
         jstring_to_string(env, display_name)
     })();
     let close_result = env
@@ -559,7 +541,8 @@ fn write_persisted_root(
     put(KEY_ROOT_ID, root_id.as_str())?;
 
     // Success is dispatched only after SharedPreferences confirms the write.
-    env.call_method(&editor, jni_str!("commit"), jni_sig!("()Z"), &[])?.z()
+    env.call_method(&editor, jni_str!("commit"), jni_sig!("()Z"), &[])?
+        .z()
 }
 
 #[unsafe(no_mangle)]
@@ -593,28 +576,22 @@ pub extern "system" fn Java_org_notae_android_NotaeActivity_nativeOnActivityResu
                 }
             };
 
-            let outcome = match decode_activity_result(
-                result_code,
-                tree_uri,
-                grant_flags,
-            ) {
+            let outcome = match decode_activity_result(result_code, tree_uri, grant_flags) {
                 Ok(None) => PickerOutcome::Cancelled,
                 Err(error) => PickerOutcome::Platform {
                     error: error.to_string(),
                 },
-                Ok(Some(tree_uri)) => {
-                    match selected_tree_outcome(env, &activity, tree_uri) {
-                        Ok(outcome) => outcome,
-                        Err(error) => {
-                            if env.exception_check() {
-                                env.exception_clear();
-                            }
-                            PickerOutcome::Platform {
-                                error: error.to_string(),
-                            }
+                Ok(Some(tree_uri)) => match selected_tree_outcome(env, &activity, tree_uri) {
+                    Ok(outcome) => outcome,
+                    Err(error) => {
+                        if env.exception_check() {
+                            env.exception_clear();
+                        }
+                        PickerOutcome::Platform {
+                            error: error.to_string(),
                         }
                     }
-                }
+                },
             };
             picker_state().dispatch(request_code, outcome);
             Ok(())
@@ -640,7 +617,6 @@ impl SafLibraryRootProvider {
     pub fn new(app: AndroidApp) -> Self {
         Self { app }
     }
-
 }
 
 impl LibraryRootProvider for SafLibraryRootProvider {
@@ -655,9 +631,7 @@ impl LibraryRootProvider for SafLibraryRootProvider {
                 return Err(StorageError::PermissionLost);
             }
             Err(error) => {
-                return Err(StorageError::Other(format!(
-                    "read_persisted_root: {error}"
-                )));
+                return Err(StorageError::Other(format!("read_persisted_root: {error}")));
             }
         };
 
@@ -782,9 +756,8 @@ impl SafPdfCatalog {
                 return Err(JniError::NullPtr("DocumentsContract.getTreeDocumentId"));
             }
             // SAFETY: DocumentsContract returned this local reference as a Java String.
-            let document_id = unsafe {
-                JString::from_raw(env, document_id.as_raw() as jni::sys::jstring)
-            };
+            let document_id =
+                unsafe { JString::from_raw(env, document_id.as_raw() as jni::sys::jstring) };
             jstring_to_string(env, document_id)
         })
     }
@@ -800,13 +773,8 @@ impl SafPdfCatalog {
                 .call_static_method(
                     jni_str!("android/provider/DocumentsContract"),
                     jni_str!("buildChildDocumentsUriUsingTree"),
-                    jni_sig!(
-                        "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"
-                    ),
-                    &[
-                        JValue::Object(&tree_uri),
-                        JValue::Object(&parent_id),
-                    ],
+                    jni_sig!("(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"),
+                    &[JValue::Object(&tree_uri), JValue::Object(&parent_id)],
                 )?
                 .l()?;
             let null = JObject::null();
@@ -887,13 +855,8 @@ impl SafPdfCatalog {
                 .call_static_method(
                     jni_str!("android/provider/DocumentsContract"),
                     jni_str!("buildDocumentUriUsingTree"),
-                    jni_sig!(
-                        "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"
-                    ),
-                    &[
-                        JValue::Object(&tree_uri),
-                        JValue::Object(&document_id),
-                    ],
+                    jni_sig!("(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"),
+                    &[JValue::Object(&tree_uri), JValue::Object(&document_id)],
                 )?
                 .l()?;
             let stream = env
@@ -921,6 +884,15 @@ impl PdfCatalog for SafPdfCatalog {
     }
 }
 
+impl LibraryCatalog for SafPdfCatalog {
+    fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
+        let root_id = self
+            .root_document_id()
+            .map_err(|error| CatalogError::Failed(format!("cannot identify SAF root: {error}")))?;
+        discover_sidecar_manifest(self, &root_id)
+    }
+}
+
 impl DocumentTreeReader for SafPdfCatalog {
     fn children(&self, parent_id: &str) -> Result<Vec<DocumentRow>, CatalogError> {
         self.children_jni(parent_id).map_err(|error| {
@@ -936,10 +908,7 @@ impl DocumentTreeReader for SafPdfCatalog {
     }
 }
 
-fn parse_uri<'local>(
-    env: &mut jni::Env<'local>,
-    uri: &str,
-) -> Result<JObject<'local>, JniError> {
+fn parse_uri<'local>(env: &mut jni::Env<'local>, uri: &str) -> Result<JObject<'local>, JniError> {
     let uri_string = env.new_string(uri)?;
     let parsed_uri = env
         .call_static_method(
@@ -992,10 +961,7 @@ fn cursor_string(
     jstring_to_string(env, value)
 }
 
-fn read_input_stream(
-    env: &mut jni::Env<'_>,
-    stream: &JObject<'_>,
-) -> Result<Vec<u8>, JniError> {
+fn read_input_stream(env: &mut jni::Env<'_>, stream: &JObject<'_>) -> Result<Vec<u8>, JniError> {
     let read_result = (|| -> Result<Vec<u8>, JniError> {
         let buffer = env.new_byte_array(INPUT_STREAM_BUFFER_SIZE)?;
         let mut chunk = vec![0_i8; INPUT_STREAM_BUFFER_SIZE];

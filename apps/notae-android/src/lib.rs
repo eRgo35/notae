@@ -24,9 +24,9 @@
 //! it off here keeps the per-module policies in control.
 
 pub mod picker_fut;
+pub mod saf_tree;
 pub mod state;
 pub mod storage;
-pub mod saf_tree;
 
 #[cfg(target_os = "android")]
 mod android;
@@ -34,6 +34,8 @@ mod android;
 mod android_main;
 
 pub mod ui;
+
+pub mod operations;
 
 // Pull in the Slint-generated bindings for `app.slint`. The build script
 // in `build.rs` writes this file as `$OUT_DIR/app.rs`; the path uses

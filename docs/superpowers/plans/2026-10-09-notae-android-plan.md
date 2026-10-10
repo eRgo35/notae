@@ -300,9 +300,17 @@
 - Create: `apps/notae-android/src/operations/rescan.rs`
 - Create: `apps/notae-android/src/operations/import.rs`
 - Create: `apps/notae-android/src/operations/events.rs`
-- Modify: `apps/notae-android/src/main.rs`
+- Modify: `apps/notae-android/src/android_main.rs`
+- Modify: `apps/notae-android/src/storage.rs`
+- Modify: `apps/notae-android/src/saf_tree.rs`
+- Modify: `apps/notae-android/src/android/saf.rs`
+- Modify: `apps/notae-android/src/ui.rs`
+- Modify: `apps/notae-android/src/state.rs`
+- Modify: `apps/notae-android/src/ui/search.rs`
 - Modify: `apps/notae-android/ui/app.slint`
+- Modify: `crates/notae-index/src/sidecar.rs`
 - Create: `apps/notae-android/tests/operation_state.rs`
+- Modify: `apps/notae-android/tests/saf_catalog.rs`
 
 **Interfaces:**
 - `OperationController::start_rescan()`
@@ -311,25 +319,27 @@
 - `ImportPreviewViewModel::load(preview: ImportPreview)`
 - `ImportPreviewViewModel::apply() -> Result<ImportReport, UiError>`
 
-- [ ] **Step 1: Write failing operation-state tests**
+- [x] **Step 1: Write failing operation-state tests**
 
   Cover explicit-only start, progress aggregation, cancellation, per-file failure, completion, sidecar preview, and confirmation-required apply.
 
-- [ ] **Step 2: Run the focused tests and verify they fail**
+- [x] **Step 2: Run the focused tests and verify they fail**
 
   Run: `cargo test -p notae-android --test operation_state`
 
   Expected: FAIL because operation orchestration is not implemented.
 
-- [ ] **Step 3: Implement background rescan and import preview**
+- [x] **Step 3: Implement background rescan and import preview**
 
-  Run core reconciliation through an injected catalog/index/OCR interface on worker threads. Use a deterministic fake OCR provider for this task; wire the Android provider in Task 8. Send non-blocking events to the UI. Keep preview generation read-only until the user confirms. Display new, changed, missing, hash-mismatch, duplicate-ID, OCR, and preserved-manual-metadata sections.
+  Run core reconciliation through an injected catalog/index interface on worker threads. Send non-blocking events to the UI. Keep preview generation read-only until the user confirms. Display new, changed, missing, hash-mismatch, duplicate-ID, OCR-availability, and preserved-manual-metadata sections. A rendered-page input is not available yet; wire the OCR provider in Task 8.
 
-- [ ] **Step 4: Run tests and the operation smoke scenario**
+- [x] **Step 4: Run tests and the operation smoke scenario**
 
-  Run: `cargo test -p notae-android --test operation_state`. Exercise a fixture folder containing a valid PDF, a corrupt PDF, and a sidecar with one hash mismatch using the fake provider.
+  Run: `cargo test -p notae-android --test operation_state`. Exercise the worker with a readable entry, an unreadable entry, and a root sidecar with one hash mismatch; keep OCR-provider execution for Task 8.
 
   Expected: valid files complete, the corrupt file is isolated, and import is not applied before confirmation.
+
+  Verified: `cargo test -p notae-android` (48 tests), Android-target `cargo apk2 check`, and signed/aligned release APK build. Worker smoke tests cover explicit start, unreadable-file isolation, cancellation before writes, automatic root-sidecar discovery, hash-mismatch preview, and no sidecar write before confirmation. No rendered-page input exists in this task, so OCR execution/provider injection is deferred to Task 8; sidecar OCR availability and metadata are shown in the preview.
 
 - [ ] **Step 5: Commit**
 

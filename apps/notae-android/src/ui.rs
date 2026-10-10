@@ -14,6 +14,9 @@ pub mod search;
 use std::rc::Rc;
 use std::sync::Mutex;
 
+use crate::operations::events::{
+    ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
+};
 use crate::state::{AppController, AppState, EventError, Transition, UiEvent};
 use crate::storage::StorageState;
 use crate::ui::search::SearchRow;
@@ -32,6 +35,7 @@ pub struct UiModel {
     controller: AppController,
     storage: Rc<Mutex<StorageState>>,
     search_rows: Vec<SearchRow>,
+    import_preview_summary: Option<ImportPreviewSummary>,
 }
 
 impl UiModel {
@@ -44,6 +48,7 @@ impl UiModel {
             controller,
             storage,
             search_rows: Vec::new(),
+            import_preview_summary: None,
         }
     }
 
@@ -93,6 +98,47 @@ impl UiModel {
         &self.search_rows
     }
 
+    /// The current read-only sidecar preview counts, when one is awaiting
+    /// confirmation.
+    #[must_use]
+    pub fn import_preview_summary(&self) -> Option<&ImportPreviewSummary> {
+        self.import_preview_summary.as_ref()
+    }
+
+    /// Hides a sidecar preview that the user declined to apply.
+    pub fn clear_import_preview(&mut self) {
+        self.import_preview_summary = None;
+    }
+
+    /// Applies a worker event to the UI-owned state and row projection.
+    pub fn apply_operation_event(&mut self, event: OperationEvent) -> Result<(), EventError> {
+        match event {
+            OperationEvent::Started => self.controller.update_rescan_progress(0, 0)?,
+            OperationEvent::Progress { completed, total } => {
+                self.controller.update_rescan_progress(completed, total)?;
+            }
+            OperationEvent::FileSucceeded { .. } | OperationEvent::FileFailed { .. } => {}
+            OperationEvent::Completed { summary, rows } => {
+                self.search_rows = rows;
+                self.controller.complete_operation(rescan_summary(&summary));
+            }
+            OperationEvent::Canceled => self.controller.cancel_operation()?,
+            OperationEvent::ImportPreviewReady { summary } => {
+                let candidate_count = summary.new + summary.changed;
+                self.import_preview_summary = Some(summary);
+                self.controller.import_preview_ready(candidate_count);
+            }
+            OperationEvent::ImportApplied { summary, rows } => {
+                self.import_preview_summary = None;
+                self.search_rows = rows;
+                self.controller.complete_operation(import_summary(&summary));
+            }
+            OperationEvent::SearchRows(rows) => self.search_rows = rows,
+            OperationEvent::Failed { reason } => self.controller.fail_operation(reason),
+        }
+        Ok(())
+    }
+
     /// Returns the current [`AppState`].
     #[must_use]
     pub fn state(&self) -> &AppState {
@@ -122,6 +168,42 @@ impl UiModel {
 impl Default for UiModel {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn rescan_summary(summary: &RescanSummary) -> String {
+    let mut parts = Vec::new();
+    add_count(&mut parts, summary.added, "added");
+    add_count(&mut parts, summary.updated, "updated");
+    add_count(&mut parts, summary.moved, "moved");
+    add_count(&mut parts, summary.deleted, "deleted");
+    add_count(&mut parts, summary.conflicts, "ID conflicts");
+    add_count(&mut parts, summary.failures, "failures");
+    if parts.is_empty() {
+        "No changes".to_owned()
+    } else {
+        parts.join(", ")
+    }
+}
+
+fn import_summary(summary: &ImportSummary) -> String {
+    let mut parts = Vec::new();
+    add_count(&mut parts, summary.imported, "imported");
+    add_count(&mut parts, summary.mismatches, "hash mismatches");
+    add_count(&mut parts, summary.missing, "missing");
+    add_count(&mut parts, summary.unreadable, "unreadable");
+    add_count(&mut parts, summary.conflicts, "ID conflicts");
+    add_count(&mut parts, summary.failures, "failures");
+    if parts.is_empty() {
+        "No import changes".to_owned()
+    } else {
+        parts.join(", ")
+    }
+}
+
+fn add_count(parts: &mut Vec<String>, count: usize, label: &str) {
+    if count != 0 {
+        parts.push(format!("{count} {label}"));
     }
 }
 

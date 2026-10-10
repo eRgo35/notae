@@ -15,9 +15,11 @@
 
 use std::fs;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use notae_android::storage::{
-    FilesystemLibraryRootProvider, LibraryRootProvider, LibrarySource, StorageError, StorageState,
+    FilesystemLibraryRootProvider, LibraryRootProvider, LibrarySource, SharedLibraryCatalog,
+    StorageError, StorageState,
 };
 use notae_index::{CatalogError, FileCondition, PdfCatalog};
 use sha2::{Digest, Sha256};
@@ -98,7 +100,10 @@ fn persisted_root_restoration_reopens_as_ready() {
     provider.queue_directory(dir.path().to_path_buf());
 
     let root = select_root_blocking(&provider).expect("selection succeeds");
-    assert_eq!(root.display_name(), dir.path().file_name().unwrap().to_str().unwrap());
+    assert_eq!(
+        root.display_name(),
+        dir.path().file_name().unwrap().to_str().unwrap()
+    );
 
     // The persisted map is internal to the provider — that is the
     // "persistence" the platform supplies on Android via
@@ -236,29 +241,28 @@ fn empty_queue_reports_cancelled() {
     assert!(matches!(outcome, Err(StorageError::Cancelled)));
 }
 
-// Bonus: `StorageState::Ready` carries the source through `LibrarySource`,
-// and the catalog is a real `PdfCatalog`, so the type's `Debug` impl
-// is exercised and `enumerate` returns a `Vec<PdfFile>` shaped the way
-// `Reconciler::plan` (Task 4) expects.
+// `StorageState::Ready` retains the shared source while the worker-side
+// adapter enumerates it without exposing the platform catalog to the UI.
 #[test]
-fn ready_state_enumerates_pdfs_through_library_source() {
+fn ready_state_enumerates_pdfs_through_shared_library_source() {
     let dir = tempfile::TempDir::new().expect("tempdir");
-    let (_, expected_sha) =
-        make_temp_library_with_pdf(&dir, "alpha.pdf", b"%PDF-1.4\n%alpha\n");
+    let (_, expected_sha) = make_temp_library_with_pdf(&dir, "alpha.pdf", b"%PDF-1.4\n%alpha\n");
     fs::write(dir.path().join("beta.pdf"), b"%PDF-1.4\n%beta\n").expect("write beta.pdf");
 
     let provider = FilesystemLibraryRootProvider::new();
     provider.queue_directory(dir.path().to_path_buf());
     let root = select_root_blocking(&provider).expect("selection");
     let source = LibraryRootProvider::reopen(&provider, &root).expect("reopen");
+    let source = Arc::new(Mutex::new(source));
 
-    let state = StorageState::Ready(source);
+    let state = StorageState::Ready(Arc::clone(&source));
     let source = match state {
         StorageState::Ready(source) => source,
         _ => unreachable!(),
     };
-
-    let files = source.enumerate().expect("catalog enumerates");
+    let files = SharedLibraryCatalog(source)
+        .enumerate()
+        .expect("catalog enumerates");
     assert_eq!(files.len(), 2, "the catalog saw both fixture pdfs");
 
     let alpha = files

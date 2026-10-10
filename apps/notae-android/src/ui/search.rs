@@ -62,9 +62,28 @@ fn status_label(status: IndexStatus) -> &'static str {
 }
 
 /// An error returned while projecting search results for the library UI.
+/// An error returned while projecting search results or applying a library operation.
 #[derive(Debug, thiserror::Error)]
 pub enum UiError {
     /// The local index could not produce the requested rows.
     #[error("library search failed: {0}")]
     Index(#[from] IndexError),
+    /// A sidecar preview could not be read or applied.
+    #[error(transparent)]
+    Import(#[from] notae_index::SidecarError),
+    /// The user has not confirmed the visible import preview.
+    #[error("sidecar import requires explicit confirmation")]
+    ConfirmationRequired,
+    /// No preview is available to apply.
+    #[error("there is no sidecar preview to apply")]
+    NoImportPreview,
+    /// Another index operation is already running.
+    #[error("a rescan or import is already in progress")]
+    OperationAlreadyInProgress,
+    /// Cancellation was requested while no operation was active.
+    #[error("no operation is in progress")]
+    NoOperationInProgress,
+    /// The background operation thread has stopped.
+    #[error("the index worker has stopped")]
+    WorkerStopped,
 }

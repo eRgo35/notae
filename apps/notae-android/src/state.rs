@@ -149,12 +149,19 @@ pub enum OperationState {
     /// Nothing is happening. A fresh app is in this state.
     Idle,
     /// A rescan is running against the configured library.
-    RescanInProgress,
+    RescanInProgress {
+        /// Files classified so far.
+        completed: usize,
+        /// Files found by the catalog.
+        total: usize,
+    },
     /// A sidecar import is ready for the user to confirm.
     ImportPreviewPending {
         /// How many records the importer wants the user to confirm.
         candidate_count: usize,
     },
+    /// A confirmed sidecar import is being written.
+    ImportApplying,
     /// A long-running operation just finished successfully. The
     /// controller moves this back to `Idle` once the user dismisses the
     /// banner.
@@ -237,7 +244,9 @@ pub struct AppController {
 impl AppController {
     /// Constructs a controller around a fresh `AppState`.
     pub fn new() -> Self {
-        Self { state: AppState::new() }
+        Self {
+            state: AppState::new(),
+        }
     }
 
     /// Constructs a controller around an existing `AppState`. Used by
@@ -276,14 +285,20 @@ impl AppController {
                 Ok(Transition::BeginRescan)
             }
             UiEvent::ConfirmImport => {
-                if !matches!(self.state.operation, OperationState::ImportPreviewPending { .. }) {
+                if !matches!(
+                    self.state.operation,
+                    OperationState::ImportPreviewPending { .. }
+                ) {
                     return Err(EventError::OperationAlreadyInProgress);
                 }
-                self.state.operation = OperationState::Idle;
+                self.state.operation = OperationState::ImportApplying;
                 Ok(Transition::NoOp)
             }
             UiEvent::CancelImport => {
-                if !matches!(self.state.operation, OperationState::ImportPreviewPending { .. }) {
+                if !matches!(
+                    self.state.operation,
+                    OperationState::ImportPreviewPending { .. }
+                ) {
                     return Err(EventError::OperationAlreadyInProgress);
                 }
                 self.state.operation = OperationState::Idle;
@@ -317,10 +332,68 @@ impl AppController {
         }
     }
 
+    /// Updates visible rescan progress.
+    pub fn update_rescan_progress(
+        &mut self,
+        completed: usize,
+        total: usize,
+    ) -> Result<(), EventError> {
+        if !matches!(
+            self.state.operation,
+            OperationState::RescanInProgress { .. }
+        ) {
+            return Err(EventError::OperationAlreadyInProgress);
+        }
+        self.state.operation = OperationState::RescanInProgress { completed, total };
+        Ok(())
+    }
+
+    /// Marks a worker operation as successfully completed.
+    pub fn complete_operation(&mut self, summary: String) {
+        self.state.operation = OperationState::Completed { summary };
+    }
+
+    /// Returns a canceled rescan to the idle state.
+    pub fn cancel_operation(&mut self) -> Result<(), EventError> {
+        if !matches!(
+            self.state.operation,
+            OperationState::RescanInProgress { .. }
+        ) {
+            return Err(EventError::OperationAlreadyInProgress);
+        }
+        self.state.operation = OperationState::Idle;
+        Ok(())
+    }
+
+    /// Records a user-visible failure from the background worker.
+    pub fn fail_operation(&mut self, reason: String) {
+        self.state.operation = OperationState::Failed { reason };
+    }
+
+    /// Marks the read-only import preview as awaiting confirmation.
+    pub fn import_preview_ready(&mut self, candidate_count: usize) {
+        self.state.operation = OperationState::ImportPreviewPending { candidate_count };
+    }
+
+    /// Marks a user-confirmed import as canceled.
+    pub fn cancel_import(&mut self) -> Result<(), EventError> {
+        if !matches!(
+            self.state.operation,
+            OperationState::ImportPreviewPending { .. }
+        ) {
+            return Err(EventError::OperationAlreadyInProgress);
+        }
+        self.state.operation = OperationState::Idle;
+        Ok(())
+    }
+
     fn start_rescan(&mut self) -> Result<Transition, EventError> {
         match self.state.operation {
             OperationState::Idle => {
-                self.state.operation = OperationState::RescanInProgress;
+                self.state.operation = OperationState::RescanInProgress {
+                    completed: 0,
+                    total: 0,
+                };
                 Ok(Transition::BeginRescan)
             }
             _ => Err(EventError::OperationAlreadyInProgress),
@@ -352,10 +425,7 @@ mod tests {
         let controller = AppController::new();
         // `AppController::new` does nothing beyond constructing the
         // initial `AppState`: no background work, no timers, no thread.
-        assert_eq!(
-            controller.state().operation(),
-            &OperationState::Idle
-        );
+        assert_eq!(controller.state().operation(), &OperationState::Idle);
         assert_eq!(
             controller.state().screen(),
             &Screen::Setup(Setup::Unconfigured)
@@ -375,7 +445,10 @@ mod tests {
         );
         assert_eq!(
             controller.state().operation(),
-            &OperationState::RescanInProgress
+            &OperationState::RescanInProgress {
+                completed: 0,
+                total: 0,
+            }
         );
         // A second rescan request must be rejected, not silently
         // overwritten.
