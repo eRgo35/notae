@@ -64,6 +64,50 @@ impl TesseractConfig {
         }
     }
 
+    /// Scans a tessdata directory and returns a configuration for the
+    /// installed packs found there.
+    ///
+    /// The scan reads the top level of `tessdata_dir` and treats every file
+    /// whose name matches `*.traineddata` as one installed pack, taking the
+    /// stem (e.g. `eng.traineddata` → `eng`). The order of the result is the
+    /// order the filesystem yields, which is what the [`Automatic`] policy
+    /// will hand to the engine.
+    ///
+    /// # Errors
+    /// Returns [`OcrError::TessdataDirectoryUnavailable`] when `tessdata_dir`
+    /// does not exist or is not a directory. A directory that exists but
+    /// contains no `*.traineddata` files is *not* an error here — an empty
+    /// [`InstalledLanguages`] is a valid configuration, and the deferred
+    /// validation in [`TesseractProvider::new`] will surface the empty
+    /// library on the first recognition.
+    ///
+    /// [`Automatic`]: crate::LanguagePolicy::Automatic
+    pub fn discover(
+        tessdata_dir: impl Into<PathBuf>,
+    ) -> Result<Self, OcrError> {
+        let tessdata_dir = tessdata_dir.into();
+        if !tessdata_dir.exists() || !tessdata_dir.is_dir() {
+            return Err(OcrError::TessdataDirectoryUnavailable { path: tessdata_dir });
+        }
+        let mut languages: Vec<String> = Vec::new();
+        let entries = match std::fs::read_dir(&tessdata_dir) {
+            Ok(entries) => entries,
+            Err(_error) => {
+                return Err(OcrError::TessdataDirectoryUnavailable { path: tessdata_dir });
+            }
+        };
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if let Some(stem) = name.strip_suffix(".traineddata")
+                && !languages.iter().any(|existing| existing == stem)
+            {
+                languages.push(stem.to_string());
+            }
+        }
+        Ok(Self::new(tessdata_dir, InstalledLanguages::new(languages)))
+    }
+
     /// The tessdata directory the provider will pass to Tesseract.
     pub fn tessdata_dir(&self) -> &Path {
         &self.tessdata_dir

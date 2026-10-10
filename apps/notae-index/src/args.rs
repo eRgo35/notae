@@ -31,6 +31,13 @@ pub struct Cli {
     /// printed either way.
     #[arg(short, long)]
     verbose: bool,
+
+    /// The directory that holds the Tesseract language packs
+    /// (`*.traineddata`). Defaults to `$TESSDATA_PREFIX` when set, otherwise
+    /// the system default (`/usr/share/tesseract/tessdata` on most Linux
+    /// systems).
+    #[arg(long, value_name = "TESSDATA_DIR", env = "TESSDATA_PREFIX")]
+    tessdata_dir: Option<PathBuf>,
 }
 
 impl Cli {
@@ -67,6 +74,13 @@ impl Cli {
     #[must_use]
     pub const fn is_verbose(&self) -> bool {
         self.verbose
+    }
+
+    /// The tessdata directory named on the command line, when one was given
+    /// (or inherited from `TESSDATA_PREFIX`).
+    #[must_use]
+    pub fn tessdata_dir(&self) -> Option<&Path> {
+        self.tessdata_dir.as_deref()
     }
 
     /// Checks that the library root exists and is a directory this run can
