@@ -1,0 +1,26 @@
+# `.cargo/config.toml` for the `notae-android` crate.
+#
+# `cargo-apk` invokes `cargo` under the appropriate NDK environment, but
+# the linker needs to be told explicitly per Android target. Each
+# `target.*` block points the linker at the NDK r26d clang binary; the
+# `ar` value is `llvm-ar` from the same directory.
+#
+# NDK r26d's prebuilt clang uses per-API bins
+# (`aarch64-linux-android24-clang`, etc.). API 24 is the minimum in our
+# `[package.metadata.android.sdk]` table.
+
+[target.aarch64-linux-android]
+linker = "/home/mike/Android/Sdk/ndk/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android24-clang"
+ar = "/home/mike/Android/Sdk/ndk/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+
+[target.armv7-linux-androideabi]
+linker = "/home/mike/Android/Sdk/ndk/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi24-clang"
+ar = "/home/mike/Android/Sdk/ndk/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+
+[target.i686-linux-android]
+linker = "/home/mike/Android/Sdk/ndk/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin/i686-linux-android24-clang"
+ar = "/home/mike/Android/Sdk/ndk/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"
+
+[target.x86_64-linux-android]
+linker = "/home/mike/Android/Sdk/ndk/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android24-clang"
+ar = "/home/mike/Android/Sdk/ndk/android-ndk-r26d/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-ar"

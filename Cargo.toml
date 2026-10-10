@@ -1,6 +1,15 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "apps/*"]
+# Each member is listed explicitly so a `cargo metadata` reader (and
+# `git grep 'apps/'`) sees exactly what the workspace pulls in. Adding
+# a new app means adding a line below.
+members = [
+    "crates/notae-domain",
+    "crates/notae-index",
+    "crates/notae-ocr",
+    "apps/notae-index",
+    "apps/notae-android",
+]
 
 [workspace.package]
 edition = "2024"
