@@ -175,7 +175,7 @@
 
   Status: pending; `adb devices` reported no connected device. Repeat this scenario in the Android-plan completion check below.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add apps/notae-android
