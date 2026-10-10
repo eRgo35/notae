@@ -1,9 +1,9 @@
 # Notae Local Music-Notes Library Design
 
-**Status:** Approved design
+**Status:** Approved base design; Android build/result bridge amendment pending user review
 **Target device:** Samsung Galaxy Tab S10 FE+
-**Implementation language:** Rust-first
-**Date:** 2026-10-09
+**Implementation language:** Rust-first with a thin Java NativeActivity result adapter
+**Original date:** 2026-10-09
 
 ## Goal
 
@@ -229,6 +229,35 @@ The UI is implemented in Slint and driven by Rust application state. A small And
 - Android lifecycle and platform-specific OCR integration if required by the selected backend.
 
 Domain logic, indexing, metadata validation, search, import reconciliation, and CLI behavior remain in Rust crates independent of the UI.
+
+#### Android activity-result bridge
+
+The Android APK is packaged with `cargo-apk2`, which compiles the
+small Java boundary class into the APK and allows the manifest to
+name it as the app's activity. The launcher activity is
+`NotaeActivity`, a Java subclass of `android.app.NativeActivity`;
+the inherited native startup continues to load `libnotae_android`
+and call Rust's `android_main` entrypoint.
+
+`NotaeActivity.onActivityResult` calls the superclass implementation,
+then forwards the SAF request code, result code, selected URI string,
+and granted read-permission flags (or cancellation) to a JNI
+entrypoint in Rust. Rust dispatches that outcome through the shared
+`PickerState`; the Android SAF adapter takes persistable read
+permission using the flags returned by the picker and stores the
+opaque tree URI before completing root selection. Java owns only
+Android Activity lifecycle/result delivery; indexing, storage state,
+and picker outcome handling remain Rust.
+
+Do not modify `ANativeActivityCallbacks` or infer an activity-result
+slot: the NDK ABI has no such callback. Keep this boundary narrow and
+validate the generated APK activity declaration and result delivery
+on the target tablet.
+
+References:
+- [`cargo-apk2` README](https://github.com/mzdk100/cargo-apk2) documents JVM source compilation and manifest-declared activities.
+- [Android `NativeActivity` API](https://developer.android.com/reference/android/app/NativeActivity) and [NDK callbacks reference](https://developer.android.com/ndk/reference/struct/a-native-activity-callbacks).
+- [Storage Access Framework guide](https://developer.android.com/training/data-storage/shared/documents-files).
 
 ### Storage
 
