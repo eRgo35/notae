@@ -25,7 +25,7 @@ pub mod pdf;
 pub mod pipeline;
 pub mod report;
 
-use notae_index::PdfCatalog;
+use notae_index::{PdfCatalog, PdfFile};
 
 use crate::args::{Cli, CliError};
 use crate::catalog::FilesystemCatalog;
@@ -76,7 +76,7 @@ impl PdfState {
     }
 }
 
-/// Runs the indexer for one parsed command line.
+/// Runs the indexer for one parsed command line, in catalog-only mode.
 ///
 /// A name the catalog skipped, an unreadable PDF, and a subdirectory it could
 /// not read are all reported through the returned [`RunReport`]. `Err` is
@@ -91,31 +91,36 @@ impl PdfState {
 /// before enumerating, so the boundary holds across the whole run rather
 /// than only at the instant of validation.
 ///
+/// Catalog-only mode is what the existing CLI-argument tests assert on:
+/// they construct unprocessed files (strings rather than real PDFs) and
+/// just want to see what the catalog observed. The production binary
+/// opens the catalog via [`open_catalog`] and feeds it to
+/// [`IndexPipeline::run`](crate::pipeline::IndexPipeline::run), so the
+/// tree is walked exactly once across a CLI run; this entry point keeps
+/// walking it a second time and so is for the tests and for any caller
+/// that wants the catalog-only report without running the pipeline.
+///
 /// # Errors
 /// Returns [`CliError`] when the library root is unusable — absent, not a
 /// directory, unreadable, or a symbolic link however it is spelled — or when
 /// the tree cannot be enumerated at all. A single unreadable PDF is reported
 /// through the returned [`RunReport`], never as an error.
 pub fn run(cli: Cli) -> Result<RunReport, CliError> {
-    let root = cli.validate()?;
-    let catalog = FilesystemCatalog::new(root);
+    let catalog = open_catalog(&cli)?;
     let verbose = cli.is_verbose();
 
-    let files: Vec<PdfState> = catalog
-        .enumerate()?
-        .into_iter()
-        .map(PdfState::from_file)
-        .collect();
+    let files: Vec<PdfFile> = catalog.enumerate()?;
+    let states: Vec<PdfState> = files.iter().cloned().map(PdfState::from_file).collect();
     if verbose {
-        for file in &files {
+        for state in &states {
             eprintln!(
                 "{} {}",
-                if file.is_readable() {
+                if state.is_readable() {
                     "found"
                 } else {
                     "unreadable"
                 },
-                file.path()
+                state.path()
             );
         }
     }
@@ -123,5 +128,23 @@ pub fn run(cli: Cli) -> Result<RunReport, CliError> {
         eprintln!("skipped {}: {}", failure.path(), failure.error());
     }
 
-    Ok(RunReport::from_catalog(&catalog, files))
+    Ok(RunReport::from_catalog(&catalog, states))
+}
+
+/// Validates the library root and builds a [`FilesystemCatalog`] over it.
+///
+/// This is the entry point the production binary uses: it resolves the
+/// arguments once, builds the catalog once, and hands it to
+/// [`IndexPipeline::run`](crate::pipeline::IndexPipeline::run). The
+/// pipeline walks the tree as part of its own setup, so the tree is read
+/// exactly once across a CLI run.
+///
+/// # Errors
+/// Returns [`CliError`] when the library root is unusable — absent, not a
+/// directory, unreadable, or a symbolic link however it is spelled. The
+/// pipeline will surface catalog- and traversal-level problems as its own
+/// errors and counters.
+pub fn open_catalog(cli: &Cli) -> Result<FilesystemCatalog, CliError> {
+    let root = cli.validate()?;
+    Ok(FilesystemCatalog::new(root))
 }
