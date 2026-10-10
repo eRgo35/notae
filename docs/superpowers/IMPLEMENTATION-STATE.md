@@ -1,8 +1,8 @@
 # Notae Implementation State
 
-**As of:** 2026-10-09
+**As of:** 2026-10-10
 **Branch:** `main`
-**Last committed commit:** `63ef8a7 docs: update implementation state after Task 2 fix`
+**Last committed commit:** `66d0cec test: cover the sidecar-write-failure exit code`
 **Remote:** `git@github.com:eRgo35/notae.git`
 
 This document records where the project actually stands so work can resume without re-deriving context. It is a status record, not a design document.
@@ -13,7 +13,7 @@ This document records where the project actually stands so work can resume witho
 |---|---|---|
 | Product and architecture spec | `docs/superpowers/specs/2026-10-09-notae-design.md` | Approved |
 | Core plan (Tasks 1-5) | `docs/superpowers/plans/2026-10-09-notae-core-index-plan.md` | Complete |
-| Linux indexer plan (Tasks 1-5) | `docs/superpowers/plans/2026-10-09-notae-linux-indexer-plan.md` | Task 1 complete, Task 2 in progress |
+| Linux indexer plan (Tasks 1-5) | `docs/superpowers/plans/2026-10-09-notae-linux-indexer-plan.md` | Complete |
 | Android app plan (Tasks 1-7) | `docs/superpowers/plans/2026-10-09-notae-android-plan.md` | Not started |
 
 ## Product decisions already settled
@@ -123,42 +123,84 @@ A review raised four issues. All four are fixed and covered by committed fixture
 
 ### Verification status
 
-`cargo test --workspace` passes 241 tests across 15 suites with zero failures. `cargo clippy --workspace --all-targets -- -D warnings` is clean. Task 2 passed its fixture review round and the four findings are fixed and covered by committed tests; it has not had a separate closeout review pass.
+`cargo test --workspace` passes 241 tests across 15 suites with zero failures. `cargo clippy --workspace --all-targets -- -D warnings` is clean. Task 2 passed its fixture review round and the four findings are fixed and covered by committed tests. A separate closeout review pass on 2026-10-10 returned no findings.
 
-## Stop point
+## Completed: Linux Task 3 - OCR provider (`74c7dd6`, `34a3684`, `1efadef`)
 
-Work was stopped deliberately by the user after Task 2 was committed and pushed. **The tree is clean and `main` matches `origin/main` at the state below.** Nothing is half-written, and no partial work needs salvaging.
+New crate `crates/notae-ocr` with the `OcrProvider` trait, `LanguagePolicy::Automatic` and `Fixed`, `InstalledLanguages`, `DetectedLanguage`, `LanguageDetector::detect`, `TesseractProvider::new`, and `OcrText { text, detected_languages, confidence, warnings }`. `OcrImage` is `pub type OcrImage = image::GrayImage`, identical to `RenderedPage`, so a rendered page flows in with zero conversion.
 
-Task 3 (`notae-ocr`) was dispatched and then cancelled before it produced any files. `crates/` contains only `notae-domain` and `notae-index`.
+The Rust Tesseract binding chosen is `tesseract = "0.15.2"`. Link is direct against `/usr/lib64/libtesseract.so.5.5.3`; a custom `build.rs` creates an `OUT_DIR/tesseract-link-shim/` with the unversioned `.so` symlinks the system lacks. The build script does NOT create `.pc` files or touch `PKG_CONFIG_PATH`; that part of the dev-env is user-side and is documented in `crates/notae-ocr/README.md`.
 
-To resume, start with Linux Task 2's closeout review, then Task 3.
+The `notae-ocr` crate depends on `notae-domain` (for `normalize_whitespace` — extracted as a shared helper after Task 3 review found four-way duplication) and `image = "0.25"`. Tests are committed against vendored `eng`/`pol`/`lat`/`osd` tessdata under `crates/notae-ocr/tests/tessdata/`. The 15 OCR tests verify: automatic mode selects available packs; Latin-script content is searchable; confidence and warnings are recorded; missing packs produce a typed warning; OCR errors do not panic; and the `pol` pack keeps `Zażółć gęślą jaźń` intact (the contrast against `eng` is what makes the multilingual backend non-decorative).
+
+Documented limitations that the Android adapter should expect:
+
+- `LanguageDetector::detect` runs Tesseract once per installed pack and picks by mean confidence, because `forbid(unsafe_code)` blocks the safe-bindings wrapper from calling `TessBaseAPIDetectOrientationScript`. For a 100-page PDF with `[eng, pol, lat]`, automatic detection performs 300 OCR invocations. A safe OSD story is a future work item.
+- `OcrWarning::UnsupportedScript` is reachable only through the OSD path and is not produced by the current provider. The variant is reserved for the future.
+
+## Completed: Linux Task 4 - pipeline (`4e13f08`, `12f63bf`, `e92e59a`, `32820d5`)
+
+`IndexPipeline::run(catalog, store, ocr, policy, output) -> Result<RunReport, PipelineError>`. `output` is `mpsc::Sender<ProgressEvent>`; the binary drains it on a worker thread so the UI thread is not blocked. `RunReport` carries the brief's seven counters (`processed`, `reused`, `moved`, `deleted`, `ocr_failed`, `pdf_failed`, `conflicts`) plus the catalog-shaped fields the existing CLI tests rely on.
+
+Per-file flow: catalog condition (`Unreadable`/`InvalidPdf`) emits a failure AND a status-correction write to the store, so a `Readable → Unreadable` flip updates the record's `IndexStatus` to `Inaccessible` rather than silently keeping the old status. Text-layer files skip OCR entirely; image-only files render and OCR page by page. The OCR text is bridged to `notae_index::OcrText::with_language(text, primary_language)` via `into_index_ocr` so the store and sidecar wire form both see the same shape. OCR errors increment both `pdf_failed` (per the brief's item 6 prose) and `ocr_failed` (per the brief's struct definition) so the two counters tell distinct stories.
+
+`ProgressEvent::{Started, FileStarted, PageProgress, FileCompleted, FileFailed, Finished}`. `FileCompleted` is gated on `apply_note`/`apply_with_ocr` returning success, so a `DuplicateNoteId` rejection produces a single `FileFailed` line, not a `FileFailed` followed by a `FileCompleted`. The test `a_file_that_becomes_unreadable_updates_its_stored_status` pins the Readable→Unreadable flip.
+
+## Completed: Linux Task 5 - sidecar output + docs (`29ccba3`, `4feed4b`, `ccd78d2`, `adf0e9e`, `66d0cec`)
+
+The binary's `NoOcr` stub is replaced with `TesseractProvider::new(TesseractConfig::discover(...)?)`. Tessdata resolution: `--tessdata-dir` flag → `TESSDATA_PREFIX` env var → `/usr/share/tesseract/tessdata` system default. The `clap` `env` feature is enabled so the env-var fallback is part of the typed CLI surface. A missing or empty tessdata directory yields a typed CLI error and exit code 1.
+
+After the pipeline runs, the binary calls `SidecarWriter::new(env!("CARGO_PKG_VERSION"), EpochTimestamp::now()).write(&store, manifest_path)`. Both `.notae/index.sqlite` (the live store, written by `IndexStore::open`) and `.notae/manifest.json` (the sidecar wire form) are produced. A sidecar-write failure (`EISDIR` on the manifest path, or any other `io::Error`) exits non-zero with a clear stderr message; the index.sqlite is preserved so a retry without the bad path can succeed.
+
+The 18 sidecar integration tests in `apps/notae-index/tests/sidecar_output.rs` drive the built binary as a subprocess. They cover: both sidecar files written; schema version = `SIDECAR_SCHEMA_VERSION`; root-relative forward-slash paths; SHA-256s re-hashed independently from the file bytes; OCR status present on entries that have OCR text; detected languages round-trip through `SidecarManifest::read`; tool version = `env!("CARGO_PKG_VERSION")`; stable output across two runs; missing root, regular-file root, missing tessdata, and empty tessdata all exit non-zero; the sidecar-write-failure path (`manifest.json` pre-created as a directory) exits non-zero while leaving `index.sqlite` on disk; same-hash rename moves the record; duplicate-ID keeps both records; and `SidecarImporter::preview` accepts the produced manifest against a fresh `IndexStore` (the Android import contract the next plan will exercise).
+
+READMEs:
+- `README.md` (repo root) — workspace orientation, build commands, target device, plan/spec pointers.
+- `apps/notae-index/README.md` — Linux indexer user guide: prerequisites, tessdata install, `notae-index <library-root>` invocation, rerun semantics, sidecar format, exit codes, Android import.
+- `crates/notae-ocr/README.md` — the dev-env shim recipe for Fedora 44 / RHEL; build-script contract; OCR-failure semantics.
+
+Final whole-branch review of the Linux plan (`1ff30e0..66d0cec`, 23 commits, 426 KB diff) approved for merge on 2026-10-10: all spec items the Linux plan owns are covered, no regressions in core invariants, no `unsafe`, no network at build or runtime, all five Review Focus items pinned by automated tests, the Android import smoke (`SidecarImporter::preview` against a fresh `IndexStore`) is in `apps/notae-index/tests/sidecar_output.rs`.
 
 ## Not started
 
-- Linux Task 3: `notae-ocr` crate, multilingual automatic OCR.
-- Linux Task 4: incremental sidecar pipeline.
-- Linux Task 5: sidecar output wiring and CLI documentation.
-- The entire Android plan, including the `notae-android` crate.
+- The entire Android plan, including the `notae-android` crate (Tasks 1–7).
 
-## Environment notes
+## Resumed work (2026-10-10)
 
-- Tesseract 5.5.3 is installed at `/data/data/com.termux/files/usr/bin/tesseract`.
-- Tessdata lives at `/data/data/com.termux/files/usr/share/tessdata` and now contains `eng`, `pol`, and `lat`. Termux ships no separate language packages, so `pol.traineddata` and `lat.traineddata` were fetched from the `tessdata_fast` repository into that system directory. They are deliberately **not** committed to this repository. A different machine will need them installed before multilingual OCR works.
-- The Polish pack is genuinely required, not decorative: a probe confirmed `pol` reads `Zażółć gęślą jaźń` and `Święty Jerzy` correctly, while `eng` alone degrades them to `Zaz6t¢ gesdla jazn` and `Swiety Jerzy`.
-- DejaVu fonts are at `/data/data/com.termux/files/usr/share/fonts/TTF/` and work for generating deterministic OCR test fixtures.
-- No `pdfium` binary and no `libpdfium` in the linker cache. `pdfium-render` cannot be used.
-- Workspace forbids `unsafe`. No crate in this repository uses it, and introducing it needs explicit agreement.
-- `rustc` and `cargo` are 1.99.0. The environment is aarch64 Android/Termux.
+Resumed the Linux plan from the stop point at `e888955`. Closed Linux Task 2 with a separate closeout review (no findings). Implemented Tasks 3, 4, 5 plus fix rounds. Final whole-branch review of the Linux plan approved for merge. Total work this session: 12 commits (`74c7dd6`..`66d0cec`), bringing the workspace to 296 passing tests across 21 binaries, clippy clean, binary runnable end-to-end.
+
+Deferred-minors that the next plan (Android) will need to know:
+
+- The image-only fixture PDF is a 64×32 RGB gradient; Tesseract does not produce text from it. The detected-language round-trip test exercises the `language: None` branch through a text-layer fixture. A real scanned fixture would let the next plan exercise the `language: Some(...)` branch.
+- `LanguageDetector::detect` runs Tesseract once per installed pack because `forbid(unsafe_code)` blocks the safe-bindings wrapper from calling `TessBaseAPIDetectOrientationScript`. Documented limitation; the safe workaround narrows candidates indirectly via per-pack confidence. The Android adapter should expect the same.
+- `PipelineError::Reconcile` is unreachable through the public pipeline path (`Reconciler::plan` cannot return `ReconcileError::Index` once its `?` coercion runs). Kept for completeness.
+- The dev-env shim `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` is host-specific. Other Linux distros may need different recipes; the `crates/notae-ocr/build.rs` candidate list covers Debian-style and macOS shapes but not every distribution.
+- `notae_ocr::OcrText` carries four fields (`text`, `detected_languages`, `confidence`, `warnings`); `notae_index::OcrText` carries two (`text`, `language: Option<String>`). The pipeline bridges via `into_index_ocr`. If the Android UI wants the richer shape, the sidecar wire form will need to grow or the UI will need to re-run OCR.
+
+## Environment notes (current host: Fedora 44 x86_64, 2026-10-10)
+
+This host is **not** the same as the one the original Task 1–2 work was committed on. The original Termux/Android environment (aarch64, tesseract at `/data/data/com.termux/files/usr/bin/tesseract`) is no longer reachable. The current host reconciles as follows:
+
+- Tesseract C library: `/usr/lib64/libtesseract.so.5.5.3`. No `.pc` file in the system pkgconfig path.
+- Tesseract 5.5.0 binary: `/usr/lib/naps2/_linux/tesseract` (not on `PATH`; useful for ad-hoc CLI probes only).
+- System tessdata: `/usr/share/tesseract/tessdata/eng.traineddata` (root-owned, read-only). No `pol` or `lat` system pack.
+- Vendored tessdata for tests: `crates/notae-ocr/tests/tessdata/{eng,pol,lat,osd}.traineddata` — committed, so the OCR test suite is self-contained. The `pol` and `lat` files were fetched from `tesseract-ocr/tessdata_fast`.
+- The dev-env shim for compiling `notae-ocr` against the system Tesseract on Fedora 44: `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` plus the `crates/notae-ocr/build.rs` shim. The recipe is in `crates/notae-ocr/README.md`. Without it, `cargo build -p notae-ocr` fails because `pkg-config` cannot find `tesseract` or `lept`.
+- No `libpdfium` on the host. `pdfium-render` cannot be used; the PDF adapter is built on `hayro` 0.8.
+- Workspace forbids `unsafe` (`workspace.lints.rust.unsafe_code = "forbid"` at the root `Cargo.toml`). No crate uses `unsafe`.
+- `rustc` 1.98.1, `cargo` 1.98.1, host x86_64 GNU/Linux Fedora 44. No sudo; system packages cannot be installed from this account.
 
 ## Verification commands
 
 ```bash
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
-cargo run -p notae-index-cli -- --help
+PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig cargo test --workspace
+PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig cargo clippy --workspace --all-targets -- -D warnings
+PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig cargo run -p notae-index-cli -- --help
 ```
 
-For Linux Task 1 behavior, the binary must be exercised directly against real fixture trees; several contracts are only observable through exit codes and filesystem conditions.
+The `PKG_CONFIG_PATH` is required on Fedora 44 / RHEL-family hosts because the system ships `libtesseract.so.5.5.3` and `libleptonica.so.6.0.0` without the unversioned `.so` symlinks that `pkg-config`-driven Rust bindings look up. `crates/notae-ocr/README.md` documents the recipe; the dev-env shim was deferred from Task 3 to Task 5. Without `PKG_CONFIG_PATH` set, `cargo test -p notae-ocr` fails before the linker step. Other crates (domain, index, index-cli) build without it.
+
+A real CLI smoke run against a fixture library of text-layer / multi-page / image-only / corrupt / duplicate-ID / same-hash-rename PDFs produces both `.notae/index.sqlite` and `.notae/manifest.json`, the manifest imports through `SidecarImporter::preview` against a fresh `IndexStore`, and the binary exits `0` for completed runs and non-zero only for an unusable root, a missing/empty tessdata directory, or a sidecar-write failure.
 
 ## Working method
 
