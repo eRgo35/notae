@@ -12,6 +12,8 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use notae_domain::normalize_whitespace;
+
 use crate::{OcrError, OcrImage, OcrWarning, PSM_AUTO_OSD};
 
 /// The language packs present at a tessdata directory.
@@ -308,6 +310,12 @@ impl LanguageDetector {
     /// result contributes no candidate, but its absence is not an error:
     /// a page covered by one of the remaining packs is still detected.
     ///
+    /// A pack that fails to initialize (for example, because of a
+    /// degenerate image or a tessdata path that Tesseract could not
+    /// open) is logged and skipped; the loop continues with the next
+    /// pack. The detector only fails when every pack produced no usable
+    /// outcome.
+    ///
     /// # Errors
     /// Returns [`OcrError::InvalidImage`] when the image is degenerate,
     /// and [`OcrError::EngineInitializationFailed`] when no installed
@@ -324,14 +332,14 @@ impl LanguageDetector {
             if pack == "osd" {
                 continue;
             }
-            let Some(outcome) =
-                recognize_with(&self.tessdata_dir, pack, image).map_err(|error| {
+            let outcome = recognize_with(&self.tessdata_dir, pack, image)
+                .unwrap_or_else(|error| {
                     tracing_warn(&format!(
                         "tesseract init failed for {pack:?}: {error}"
                     ));
-                    error
-                })?
-            else {
+                    None
+                });
+            let Some(outcome) = outcome else {
                 continue;
             };
             match outcome {
@@ -348,11 +356,18 @@ impl LanguageDetector {
             }
         }
 
-        let (primary, _confidence) = best.ok_or_else(|| OcrError::EngineInitializationFailed {
-            reason: "no installed language pack produced a result".to_string(),
-        })?;
+        let (primary, confidence) =
+            best.ok_or_else(|| OcrError::EngineInitializationFailed {
+                reason: "no installed language pack produced a result".to_string(),
+            })?;
 
-        Ok(DetectedLanguage::new(primary, None, None))
+        // The `-1` sentinel is used to remember "this pack was the
+        // best so far but did not actually recognize text"; only a
+        // real confidence (zero or positive) is forwarded as the
+        // detection confidence.
+        let confidence = (confidence >= 0).then(|| clamp_confidence(confidence));
+
+        Ok(DetectedLanguage::new(primary, None, confidence))
     }
 }
 
@@ -413,7 +428,7 @@ fn recognize_with(
     let Ok(text) = api.get_utf8_text() else {
         return Ok(Some(RecognizeOutcome::Failed));
     };
-    let normalized = normalize_ocr(&text.as_ref().to_string_lossy());
+    let normalized = normalize_whitespace(&text.as_ref().to_string_lossy());
     let confidence = api.mean_text_conf();
     if normalized.is_empty() {
         Ok(Some(RecognizeOutcome::Empty))
@@ -422,8 +437,16 @@ fn recognize_with(
     }
 }
 
-fn normalize_ocr(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+/// Clamps a mean confidence to the `0..=100` range exposed by
+/// [`DetectedLanguage::confidence`].
+fn clamp_confidence(value: i32) -> u8 {
+    if value <= 0 {
+        0
+    } else if value >= 100 {
+        100
+    } else {
+        value as u8
+    }
 }
 
 /// Logs a warning without depending on `tracing`.

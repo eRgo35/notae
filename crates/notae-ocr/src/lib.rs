@@ -15,11 +15,9 @@
 //! flows in with no conversion. The policy decides which language packs the
 //! engine runs against, and the result carries the recognized text, the
 //! language(s) Tesseract reported, a confidence, and any warnings
-//! ([`MissingLanguagePack`], [`UnsupportedScript`], [`EmptyResult`]) the run
-//! accumulated.
+//! ([`MissingLanguagePack`], [`EmptyResult`]) the run accumulated.
 //!
 //! [`MissingLanguagePack`]: OcrWarning::MissingLanguagePack
-//! [`UnsupportedScript`]: OcrWarning::UnsupportedScript
 //! [`EmptyResult`]: OcrWarning::EmptyResult
 
 mod image;
@@ -119,9 +117,8 @@ impl OcrText {
 /// The engine produced a result, but the result is incomplete or
 /// questionable. The warnings are carried alongside the text so the caller
 /// can decide what to do: an [`EmptyResult`] means the FTS index would gain
-/// nothing by storing the text; a [`MissingLanguagePack`] or
-/// [`UnsupportedScript`] tells the user why their library is unsearchable
-/// for that page.
+/// nothing by storing the text; a [`MissingLanguagePack`] tells the user
+/// why their library is unsearchable for that page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OcrWarning {
@@ -129,11 +126,6 @@ pub enum OcrWarning {
     MissingLanguagePack {
         /// The pack that was missing, e.g. `"pol"`.
         language: String,
-    },
-    /// The detected script has no installed pack that covers it.
-    UnsupportedScript {
-        /// The detected script, e.g. `"Cyrillic"` or `"Han"`.
-        script: String,
     },
     /// Tesseract recognized nothing on the page.
     EmptyResult,
@@ -144,9 +136,6 @@ impl fmt::Display for OcrWarning {
         match self {
             Self::MissingLanguagePack { language } => {
                 write!(formatter, "missing language pack: {language}")
-            }
-            Self::UnsupportedScript { script } => {
-                write!(formatter, "unsupported script: {script}")
             }
             Self::EmptyResult => formatter.write_str("OCR produced no text"),
         }
@@ -184,9 +173,6 @@ pub enum OcrError {
         /// What is wrong with the image.
         reason: String,
     },
-    /// An I/O failure reading tessdata files.
-    #[error("I/O error: {0}")]
-    IoError(#[from] std::io::Error),
 }
 
 /// The contract every OCR engine implements.

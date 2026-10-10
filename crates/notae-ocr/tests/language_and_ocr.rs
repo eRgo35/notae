@@ -247,6 +247,11 @@ fn detector_picks_polish_for_polish_fixture() {
         "pol",
         "Polish fixture should pick the Polish pack",
     );
+    let confidence = detected
+        .confidence()
+        .expect("detector should pass through the winning pack's confidence");
+    assert!(confidence > 0, "expected non-zero detection confidence");
+    assert!(confidence <= 100);
 }
 
 #[test]
