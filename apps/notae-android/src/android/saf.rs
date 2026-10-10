@@ -56,7 +56,7 @@
 #![allow(deprecated)]
 
 use std::future::Future;
-use std::io::Read;
+use std::io;
 use std::pin::Pin;
 use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll};
@@ -66,10 +66,10 @@ use atomic_waker::AtomicWaker;
 use jni::errors::Error as JniError;
 use jni::objects::{JObject, JString};
 use jni::{jni_sig, jni_str, EnvUnowned, JValue};
-use sha2::{Digest, Sha256};
 
-use notae_domain::{PdfFingerprint, RelativePdfPath, Sha256Digest};
-use notae_index::{CatalogError, FileCondition, PdfCatalog, PdfFile};
+use notae_index::{CatalogError, PdfCatalog, PdfFile};
+
+use crate::saf_tree::{DocumentRow, DocumentTreeReader, enumerate_document_tree};
 
 use crate::picker_fut::{
     decode_activity_result, new_picker_state, poll_outcome, PickerOutcome, PickerState,
@@ -661,13 +661,7 @@ impl LibraryRootProvider for SafLibraryRootProvider {
             }
         };
 
-        // Build the catalog over the persisted tree URI. The walker
-        // is the device-side enumeration; on this round we hand
-        // back a stub catalog so the rescan reports "no PDFs"
-        // rather than fabricating one. The full
-        // `ContentResolver.query` walk is the device-side follow-up.
-        let walker = TreeWalkHandle::new(self.app.clone(), persisted.tree_uri.clone());
-        let catalog = SafPdfCatalog::new(self.app.clone(), persisted.tree_uri, walker);
+        let catalog = SafPdfCatalog::new(self.app.clone(), persisted.tree_uri);
         Ok(LibrarySource::new(persisted.root, Box::new(catalog)))
     }
 }
@@ -753,125 +747,302 @@ impl Future for SelectRootFuture {
 }
 
 // ---------------------------------------------------------------------------
-// Tree walker (placeholder).
-//
-// The full implementation queries `ContentResolver` for the tree's
-// children, recurses into sub-directories, opens each PDF, and
-// hashes its bytes through the `fingerprint_through_reader` /
-// `readable_pdf` helpers. The bridge from the future to the walker
-// is laid in; the JNI body is intentionally minimal until a
-// device-side run validates the cursor iteration against the
-// on-device `DocumentsContract` schema.
+// SAF document-tree catalog.
 // ---------------------------------------------------------------------------
 
-/// Opaque handle for a `tree:` URI walk. Holds the `tree:` URI and
-/// the `AndroidApp` so the walker can re-attach to the JVM when it
-/// opens each PDF.
-#[allow(dead_code)]
-pub struct TreeWalkHandle {
-    app: AndroidApp,
-    tree_uri: String,
-}
+const DOCUMENT_ID: &str = "document_id";
+const DOCUMENT_MIME_TYPE: &str = "mime_type";
+const INPUT_STREAM_BUFFER_SIZE: usize = 64 * 1024;
 
-impl TreeWalkHandle {
-    #[must_use]
-    #[allow(dead_code)]
-    fn new(app: AndroidApp, tree_uri: String) -> Self {
-        Self { app, tree_uri }
-    }
-}
-
-/// The Android [`PdfCatalog`]. Built by `SafLibraryRootProvider::reopen`
-/// once the persisted tree URI has been verified.
-#[allow(dead_code)]
+/// The Android [`PdfCatalog`] over a persisted SAF tree URI.
 pub struct SafPdfCatalog {
     app: AndroidApp,
     tree_uri: String,
-    _walk: TreeWalkHandle,
 }
 
 impl SafPdfCatalog {
-    /// Builds a catalog over a tree URI. The URI is opaque to the
-    /// rest of the app and is not converted to a `Path`.
+    /// Builds a catalog over an opaque tree URI.
     #[must_use]
-    #[allow(dead_code)]
-    pub fn new(app: AndroidApp, tree_uri: String, walk: TreeWalkHandle) -> Self {
-        Self {
-            app,
-            tree_uri,
-            _walk: walk,
-        }
+    pub fn new(app: AndroidApp, tree_uri: String) -> Self {
+        Self { app, tree_uri }
+    }
+
+    fn root_document_id(&self) -> Result<String, JniError> {
+        with_env(&self.app, |env| {
+            let tree_uri = parse_uri(env, &self.tree_uri)?;
+            let document_id = env
+                .call_static_method(
+                    jni_str!("android/provider/DocumentsContract"),
+                    jni_str!("getTreeDocumentId"),
+                    jni_sig!("(Landroid/net/Uri;)Ljava/lang/String;"),
+                    &[JValue::Object(&tree_uri)],
+                )?
+                .l()?;
+            if document_id.is_null() {
+                return Err(JniError::NullPtr("DocumentsContract.getTreeDocumentId"));
+            }
+            // SAFETY: DocumentsContract returned this local reference as a Java String.
+            let document_id = unsafe {
+                JString::from_raw(env, document_id.as_raw() as jni::sys::jstring)
+            };
+            jstring_to_string(env, document_id)
+        })
+    }
+
+    fn children_jni(&self, parent_id: &str) -> Result<Vec<DocumentRow>, JniError> {
+        let activity_ptr = self.app.activity_as_ptr();
+        with_env(&self.app, move |env| {
+            let activity = activity_as_jobject(env, activity_ptr)?;
+            let resolver = content_resolver(env, &activity)?;
+            let tree_uri = parse_uri(env, &self.tree_uri)?;
+            let parent_id = env.new_string(parent_id)?;
+            let children_uri = env
+                .call_static_method(
+                    jni_str!("android/provider/DocumentsContract"),
+                    jni_str!("buildChildDocumentsUriUsingTree"),
+                    jni_sig!(
+                        "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"
+                    ),
+                    &[
+                        JValue::Object(&tree_uri),
+                        JValue::Object(&parent_id),
+                    ],
+                )?
+                .l()?;
+            let null = JObject::null();
+            let cursor = env
+                .call_method(
+                    resolver.as_ref(),
+                    jni_str!("query"),
+                    jni_sig!(
+                        "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;"
+                    ),
+                    &[
+                        JValue::Object(&children_uri),
+                        JValue::Object(&null),
+                        JValue::Object(&null),
+                        JValue::Object(&null),
+                        JValue::Object(&null),
+                    ],
+                )?
+                .l()?;
+            if cursor.is_null() {
+                return Err(JniError::NullPtr("ContentResolver.query children cursor"));
+            }
+
+            let rows = (|| -> Result<Vec<DocumentRow>, JniError> {
+                let mut rows = Vec::new();
+                loop {
+                    // SAF cursor values and column-name strings are local
+                    // references. Bound them to one row so large directories
+                    // cannot exhaust the attachment's local-reference frame.
+                    let row =
+                        env.with_local_frame(16, |env| -> Result<Option<DocumentRow>, JniError> {
+                            let has_row = env
+                                .call_method(&cursor, jni_str!("moveToNext"), jni_sig!("()Z"), &[])?
+                                .z()?;
+                            if !has_row {
+                                return Ok(None);
+                            }
+                            Ok(Some(DocumentRow {
+                                document_id: cursor_string(env, &cursor, DOCUMENT_ID)?,
+                                display_name: cursor_string(env, &cursor, DOCUMENT_DISPLAY_NAME)?,
+                                mime_type: cursor_string(env, &cursor, DOCUMENT_MIME_TYPE)?,
+                            }))
+                        })?;
+                    match row {
+                        Some(row) => rows.push(row),
+                        None => break,
+                    }
+                }
+                Ok(rows)
+            })();
+            if rows.is_err() && env.exception_check() {
+                env.exception_clear();
+            }
+            let close_result = env
+                .call_method(&cursor, jni_str!("close"), jni_sig!("()V"), &[])
+                .map(|_| ());
+            if close_result.is_err() && env.exception_check() {
+                env.exception_clear();
+            }
+            match rows {
+                Err(error) => Err(error),
+                Ok(rows) => {
+                    close_result?;
+                    Ok(rows)
+                }
+            }
+        })
+    }
+
+    fn read_pdf_jni(&self, document_id: &str) -> Result<Vec<u8>, JniError> {
+        let activity_ptr = self.app.activity_as_ptr();
+        with_env(&self.app, move |env| {
+            let activity = activity_as_jobject(env, activity_ptr)?;
+            let resolver = content_resolver(env, &activity)?;
+            let tree_uri = parse_uri(env, &self.tree_uri)?;
+            let document_id = env.new_string(document_id)?;
+            let document_uri = env
+                .call_static_method(
+                    jni_str!("android/provider/DocumentsContract"),
+                    jni_str!("buildDocumentUriUsingTree"),
+                    jni_sig!(
+                        "(Landroid/net/Uri;Ljava/lang/String;)Landroid/net/Uri;"
+                    ),
+                    &[
+                        JValue::Object(&tree_uri),
+                        JValue::Object(&document_id),
+                    ],
+                )?
+                .l()?;
+            let stream = env
+                .call_method(
+                    resolver.as_ref(),
+                    jni_str!("openInputStream"),
+                    jni_sig!("(Landroid/net/Uri;)Ljava/io/InputStream;"),
+                    &[JValue::Object(&document_uri)],
+                )?
+                .l()?;
+            if stream.is_null() {
+                return Err(JniError::NullPtr("ContentResolver.openInputStream"));
+            }
+            read_input_stream(env, &stream)
+        })
     }
 }
 
 impl PdfCatalog for SafPdfCatalog {
     fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
-        // Walk the tree through the `ContentResolver`. The walk
-        // root is `DocumentsContract.buildChildDocumentsUriUsingTree(
-        //     tree_uri, DocumentsContract.getTreeDocumentId(tree_uri))`.
-        // Each row of the cursor is read for its display name,
-        // mime type, document id, and last-modified timestamp:
-        // PDFs are opened via `openInputStream`, hashed with
-        // `fingerprint_through_reader`, and yielded as
-        // `PdfFile::Readable`; directories are recursed into via
-        // `buildChildDocumentsUriUsingTree`.
-        //
-        // The host tests do not exercise this path (they use
-        // `FilesystemLibraryRootProvider`); the device-side
-        // validation lands with the first run on the Galaxy Tab
-        // S10 FE+. Until then, the catalog returns an empty list so
-        // the rescan reports "no PDFs" rather than fabricating one.
-        Ok(Vec::new())
+        let root_id = self
+            .root_document_id()
+            .map_err(|error| CatalogError::Failed(format!("cannot identify SAF root: {error}")))?;
+        enumerate_document_tree(self, &root_id)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Fingerprint helpers.
-//
-// The Android catalog uses the same `sha2::Sha256` based fingerprint
-// the host catalog does — see `notae-index-cli`'s `catalog::fingerprint`.
-// A host test re-hashes the same bytes via these helpers to assert
-// the catalog's fingerprints are not fabricated.
-// ---------------------------------------------------------------------------
+impl DocumentTreeReader for SafPdfCatalog {
+    fn children(&self, parent_id: &str) -> Result<Vec<DocumentRow>, CatalogError> {
+        self.children_jni(parent_id).map_err(|error| {
+            CatalogError::Failed(format!(
+                "cannot list SAF children of document {parent_id}: {error}"
+            ))
+        })
+    }
 
-/// Reads a PDF's bytes end-to-end and produces a fingerprint. The
-/// `read` closure must return the bytes the `ContentResolver` (or any
-/// other source) yields for the PDF.
-#[allow(dead_code)]
-pub(crate) fn fingerprint_through_reader<R>(reader: R) -> Option<PdfFingerprint>
-where
-    R: FnOnce() -> std::io::Result<Vec<u8>>,
-{
-    let bytes = reader().ok()?;
-    PdfFingerprint::from_system_time(
-        Sha256Digest::from_bytes(Sha256::digest(&bytes).into()),
-        u64::try_from(bytes.len()).ok()?,
-        None,
-    )
+    fn read_pdf(&self, document_id: &str) -> io::Result<Vec<u8>> {
+        self.read_pdf_jni(document_id)
+            .map_err(|error| io::Error::other(error.to_string()))
+    }
 }
 
-/// Builds a `PdfFile::Readable` from the bytes the catalog read for
-/// one path.
-#[allow(dead_code)]
-pub(crate) fn readable_pdf(relative: &str, bytes: &[u8]) -> Option<PdfFile> {
-    let path = RelativePdfPath::new(relative).ok()?;
-    let fingerprint = fingerprint_through_reader(|| Ok(bytes.to_vec()))?;
-    let filename = relative.rsplit('/').next().unwrap_or(relative).to_owned();
-    Some(PdfFile::with_condition(
-        path,
-        filename,
-        FileCondition::Readable(fingerprint),
-    ))
+fn parse_uri<'local>(
+    env: &mut jni::Env<'local>,
+    uri: &str,
+) -> Result<JObject<'local>, JniError> {
+    let uri_string = env.new_string(uri)?;
+    let parsed_uri = env
+        .call_static_method(
+            jni_str!("android/net/Uri"),
+            jni_str!("parse"),
+            jni_sig!("(Ljava/lang/String;)Landroid/net/Uri;"),
+            &[JValue::Object(&uri_string)],
+        )?
+        .l()?;
+    if parsed_uri.is_null() {
+        return Err(JniError::NullPtr("Uri.parse"));
+    }
+    Ok(parsed_uri)
 }
 
-/// Helper for `fingerprint_through_reader` to consume a `Read` source
-/// end-to-end. Exposed so a future `ContentResolver.openInputStream`
-/// wrapper can hand the bytes to the fingerprint helper.
-#[allow(dead_code)]
-pub(crate) fn read_into_vec<R: Read>(mut reader: R) -> std::io::Result<Vec<u8>> {
-    let mut bytes = Vec::new();
-    reader.read_to_end(&mut bytes)?;
-    Ok(bytes)
+fn cursor_string(
+    env: &mut jni::Env<'_>,
+    cursor: &JObject<'_>,
+    column_name: &str,
+) -> Result<String, JniError> {
+    let column_name_java = env.new_string(column_name)?;
+    let column_index = env
+        .call_method(
+            cursor,
+            jni_str!("getColumnIndex"),
+            jni_sig!("(Ljava/lang/String;)I"),
+            &[JValue::Object(&column_name_java)],
+        )?
+        .i()?;
+    if column_index < 0 {
+        return Err(JniError::ParseFailed(format!(
+            "SAF cursor is missing column {column_name}"
+        )));
+    }
+    let value = env
+        .call_method(
+            cursor,
+            jni_str!("getString"),
+            jni_sig!("(I)Ljava/lang/String;"),
+            &[JValue::Int(column_index)],
+        )?
+        .l()?;
+    if value.is_null() {
+        return Err(JniError::ParseFailed(format!(
+            "SAF cursor returned null for column {column_name}"
+        )));
+    }
+    // SAFETY: Cursor.getString returned this local reference as a Java String.
+    let value = unsafe { JString::from_raw(env, value.as_raw() as jni::sys::jstring) };
+    jstring_to_string(env, value)
+}
+
+fn read_input_stream(
+    env: &mut jni::Env<'_>,
+    stream: &JObject<'_>,
+) -> Result<Vec<u8>, JniError> {
+    let read_result = (|| -> Result<Vec<u8>, JniError> {
+        let buffer = env.new_byte_array(INPUT_STREAM_BUFFER_SIZE)?;
+        let mut chunk = vec![0_i8; INPUT_STREAM_BUFFER_SIZE];
+        let mut bytes = Vec::new();
+        loop {
+            let count = env
+                .call_method(
+                    stream,
+                    jni_str!("read"),
+                    jni_sig!("([B)I"),
+                    &[JValue::Object(buffer.as_ref())],
+                )?
+                .i()?;
+            if count == -1 {
+                break;
+            }
+            if count <= 0 {
+                return Err(JniError::ParseFailed(
+                    "InputStream.read returned zero before EOF".to_owned(),
+                ));
+            }
+            let count = usize::try_from(count)
+                .map_err(|_| JniError::ParseFailed("invalid InputStream byte count".to_owned()))?;
+            if count > chunk.len() {
+                return Err(JniError::IndexOutOfBounds);
+            }
+            buffer.get_region(env, 0, &mut chunk[..count])?;
+            bytes.extend(chunk[..count].iter().map(|byte| *byte as u8));
+        }
+        Ok(bytes)
+    })();
+    if read_result.is_err() && env.exception_check() {
+        env.exception_clear();
+    }
+    let close_result = env
+        .call_method(stream, jni_str!("close"), jni_sig!("()V"), &[])
+        .map(|_| ());
+    if close_result.is_err() && env.exception_check() {
+        env.exception_clear();
+    }
+    match read_result {
+        Err(error) => Err(error),
+        Ok(bytes) => {
+            close_result?;
+            Ok(bytes)
+        }
+    }
 }
 
 /// Shared handles for the Android storage layer. Held by the UI so a
