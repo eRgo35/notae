@@ -26,14 +26,13 @@
 //! PDFs were unreadable"; per-file problems are reported on standard error
 //! and counted in the summary line.
 
-use std::path::Path;
 use std::process::ExitCode;
 use std::sync::mpsc;
 use std::thread;
 
 use notae_index::IndexStore;
 use notae_index_cli::args::{Cli, CliError};
-use notae_index_cli::catalog::{FilesystemCatalog, RootRejection, ValidatedRoot};
+use notae_index_cli::catalog::FilesystemCatalog;
 use notae_index_cli::pipeline::{IndexPipeline, PipelineError, ProgressEvent};
 use notae_index_cli::report::RunReport;
 
@@ -50,33 +49,28 @@ fn main() -> ExitCode {
         Err(error) => return report_cli_error(error),
     };
 
-    match notae_index_cli::run(cli) {
-        Ok(report) => run_pipeline(report),
-        Err(error) => report_cli_error(error),
-    }
+    let verbose = cli.is_verbose();
+    let catalog = match notae_index_cli::open_catalog(&cli) {
+        Ok(catalog) => catalog,
+        Err(error) => return report_cli_error(error),
+    };
+
+    run_pipeline(catalog, verbose)
 }
 
-/// Runs the indexing pipeline against the catalog described by `report`.
+/// Runs the indexing pipeline against `catalog`.
 ///
 /// Opens the index store at the library root, spawns a progress-drain thread,
 /// and runs the pipeline. The thread prints progress events to standard
 /// error; the main thread waits for the pipeline to finish and emits the
-/// final summary line.
-fn run_pipeline(report: RunReport) -> ExitCode {
-    let library_root = report.library_root().to_path_buf();
-
-    let validated = match ValidatedRoot::open(&library_root) {
-        Ok(root) => root,
-        Err(rejection) => {
-            let error = match rejection {
-                RootRejection::Symlink(path) => CliError::RootSymlinked(path),
-                RootRejection::Unusable { path, .. } => CliError::RootUnreadable(path),
-            };
-            return report_cli_error(error);
-        }
-    };
-    let catalog = FilesystemCatalog::new(validated);
-
+/// final summary line along with the catalog-phase diagnostics.
+///
+/// The catalog is walked exactly once across a CLI run: validation builds
+/// it, and the pipeline enumerates it. Catalog-phase diagnostics that
+/// previously came from the catalog-only path are read off the report
+/// after the pipeline runs, so the tree is not re-listed for printing.
+fn run_pipeline(catalog: FilesystemCatalog, verbose: bool) -> ExitCode {
+    let library_root = catalog.root().to_path_buf();
     let index_path = library_root.join(DEFAULT_INDEX_PATH);
     if let Some(parent) = index_path.parent()
         && let Err(error) = std::fs::create_dir_all(parent)
@@ -132,8 +126,38 @@ fn run_pipeline(report: RunReport) -> ExitCode {
     let outcome = pipeline.run(&catalog, &mut store, &ocr, &policy, sender);
     let _ = printer.join();
     match outcome {
-        Ok(report) => print_summary(&report),
+        Ok(report) => {
+            print_catalog_diagnostics(&report, verbose);
+            print_summary(&report)
+        }
         Err(error) => report_pipeline_error(error),
+    }
+}
+
+/// Emits the catalog-phase diagnostics the run observed.
+///
+/// These lines previously came from the catalog-only path that
+/// `notae_index_cli::run` printed while it built the report. They are now
+/// sourced from the [`RunReport`] the pipeline returned — the same
+/// observable numbers, no second walk. The verbose flag is honoured so a
+/// quiet run still gets the catalog-phase skips (every run reports them)
+/// but a quiet user does not get the per-file enumeration.
+fn print_catalog_diagnostics(report: &RunReport, verbose: bool) {
+    if verbose {
+        for file in report.files() {
+            eprintln!(
+                "{} {}",
+                if file.is_readable() {
+                    "found"
+                } else {
+                    "unreadable"
+                },
+                file.path()
+            );
+        }
+    }
+    for failure in report.failures() {
+        eprintln!("skipped {}: {}", failure.path(), failure.error());
     }
 }
 
@@ -185,14 +209,6 @@ fn print_summary(report: &RunReport) -> ExitCode {
         println!("{baseline} ({})", extras.join(", "));
     }
     ExitCode::SUCCESS
-}
-
-/// Suppresses an unused-import warning so future readers know the helper is
-/// kept for future integration work even though the current binary does not
-/// exercise it.
-#[allow(dead_code)]
-fn _path(p: &Path) -> &Path {
-    p
 }
 
 /// Reports a CLI-level error to standard error.
