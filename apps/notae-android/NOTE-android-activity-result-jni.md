@@ -1,15 +1,31 @@
 # Wiring Android Activity Results back to Rust
 
-## Status (round 4)
+## Status (round 5; design approved 2026-10-10)
 
-**The seam this note used to describe is closed.** `cargo-apk` 0.10
-does not compile Java sources (it runs neither `javac` nor
-`gradle`), and it hard-codes the shipped manifest's
-`android:name` to `android.app.NativeActivity` (the
-`ndk-build` `default_activity_name` in
-`/tmp/ndk-build-0.10.0/src/manifest.rs:330` is
-`"android.app.NativeActivity"`, with no `[package.metadata.android]`
-field to override it). As a result:
+The selected implementation path is `cargo-apk2` 1.4.0 with a thin
+Java `NotaeActivity extends NativeActivity`. The Java class forwards
+`onActivityResult` to Rust; the approved design is recorded in
+`docs/superpowers/specs/2026-10-09-notae-design.md` and the steps are
+in `docs/superpowers/plans/2026-10-09-notae-android-plan.md`. This is
+planned, not implemented: until Task 2 lands, the picker future still
+cannot complete on-device.
+
+Task 2 also must replace `pollster::block_on` in
+`android_main.rs::handle_picker_response`. That callback runs on the
+Slint/Android main thread, while `onActivityResult` is delivered on
+that same main thread. Blocking while awaiting the result prevents
+the callback that completes the future from running. The approved
+implementation uses `slint::spawn_local` and returns to the event
+loop while the picker is open.
+
+## Why `cargo-apk` 0.10 could not close the result-delivery seam
+
+In round 4, the implementation used `cargo-apk` 0.10. That packager
+does not compile Java sources (it runs neither `javac` nor `gradle`)
+and hard-codes the shipped manifest's `android:name` to
+`android.app.NativeActivity` (the `ndk-build` `default_activity_name`
+in `/tmp/ndk-build-0.10.0/src/manifest.rs:330`, with no
+`[package.metadata.android]` override field). As a result:
 
 * The `NotaeActivity` subclass and its JNI bridge
   (`Java_org_notae_android_NotaeActivity_nativeOnActivityResult`)
@@ -23,11 +39,8 @@ field to override it). As a result:
 * `apps/notae-android/android/AndroidManifest.xml` now references
   `android.app.NativeActivity` (matches what cargo-apk 0.10 actually
   ships) instead of the deleted subclass.
-* `select_root` still launches `ACTION_OPEN_DOCUMENT_TREE` and the
-  picker will open on the user's device. The activity result is
-  delivered to `NativeActivity` — Rust has no hook into that
-  path. **The picker future will hang** on the device until one of
-  the two follow-on options below is taken.
+* At that revision, `select_root` opened the picker but Rust had no
+  result callback, so the picker future remained pending.
 
 The `notae-android` *contract* — `LibraryRootProvider` /
 `LibrarySource` / `StorageState` — is host-testable today
@@ -36,9 +49,9 @@ round 3 is fixed: `SelectRootFuture` now registers through
 `PickerState::register_waker`, the same map `dispatch` walks
 (see `apps/notae-android/src/picker_fut.rs::poll_outcome` and
 `tests/picker_fut.rs::poll_outcome_registers_waker_into_dispatchers_map_and_completes`).
-The architecture is sound. The on-device bridge from "user picked
-a folder" to "the picker future completes" is the missing seam,
-and it cannot be closed on this host with `cargo-apk` 0.10.
+The bridge was missing for the `cargo-apk` 0.10 packaging path. The
+approved `cargo-apk2` migration described above replaces that path;
+it remains pending implementation.
 
 ## Why the previous Java subclass was deleted
 
@@ -60,67 +73,37 @@ and it cannot be closed on this host with `cargo-apk` 0.10.
   JNI symbol was the bridge, and with the Java caller gone it has
   no caller. It is removed.
 
-## Two follow-on options (not implemented)
+## Result-delivery constraint
 
-These are the two paths forward. Round 4 records them so the user
-can pick; this round does not implement either.
+The proposed pure-Rust `ANativeActivityCallbacks` hook is not
+available. The NDK header
+`$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include/android/native_activity.h`
+defines callbacks for lifecycle, window, input, configuration, and
+memory events; it defines no `onActivityResult` member. The
+`ndk-sys` bindings used by this crate confirm the same ABI. Writing
+or indexing a nonexistent callback slot would corrupt the callback
+table, not intercept the picker result.
 
-### Option 1 — pure-Rust `ANativeActivity_callbacks` hook
+The round-4 callback proposal relied on the incorrect assumption that
+this NDK callback exists. It cannot be implemented safely. At that
+revision, the `cargo-apk` 0.10 build had no Java subclass in the APK
+and no Rust activity-result callback, so the picker future remained
+pending after a user selection.
 
-`android-activity` 0.6 hands `AndroidApp::activity_as_ptr()` to
-the Rust side; the returned pointer is an `ANativeActivity*`
-whose `callbacks` field carries the `onActivityResult` function
-pointer. The plan:
+The supported implementation path is `cargo-apk2`, which compiles
+Java sources and packages a custom `NativeActivity` subclass without
+introducing Gradle. The user approved this path on 2026-10-10. Do not
+fake the callback by extending or casting the NDK struct.
 
-1. Read the `ANativeActivity_callbacks` struct from
-   `AndroidApp::activity_as_ptr()`, obtain the `onActivityResult`
-   slot, and the `callbacks` pointer we read it from.
-2. Replace `onActivityResult` with a Rust trampoline that calls
-   `PickerState::dispatch` with the bridged (requestCode,
-   resultCode, data) tuple, then chains to the original
-   `onActivityResult` so the rest of the platform lifecycle stays
-   intact.
-3. The trampoline is `unsafe` (it crosses a C-ABI function
-   pointer table). The `apps/notae-android/NOTE-unsafe-android-main.md`
-   exception currently covers `android_main.rs` and `saf.rs`;
-   `saf.rs` is the natural home for the trampoline, so no
-   additional user agreement is needed.
-4. Build the `trampoline` signature against the `jni` 0.22
-   `Env<'_>` shape (same one the round-3
-   `activity_as_jobject` fix uses), thread the `JNIEnv*` the
-   platform hands the trampoline through to a `PickerState::dispatch`
-   call.
+The SAF state machine, URI persistence, and picker-future host
+contract remain testable on Linux. They do not prove on-device
+result delivery. Recursive SAF enumeration is also not implemented.
 
-This closes the seam without a Gradle migration. Cost: a few
-hundred lines of FFI against the `ANativeActivity_callbacks` v1
-struct layout (Documented in `android/native_activity.h` from the
-NDK headers) and a memory model decision (do we restore the
-original `onActivityResult` on app shutdown, or leave the
-trampoline installed for the process lifetime?).
+The project is no longer blocked on an architecture decision.
+End-to-end SAF root selection is planned with `cargo-apk2` and the
+Java Activity bridge; implementation remains pending in Task 2.
 
-### Option 2 — Gradle migration
-
-Stop using `cargo-apk`. Move to a Gradle-based Android project
-that:
-
-1. Compiles Java sources through the standard Android Gradle
-   plugin.
-2. Calls into the Rust `cdylib` via the standard Android NDK
-   mechanism (`externalNativeBuild` block in `build.gradle`).
-3. Provides the `NotaeActivity` subclass properly (the seam closes
-   exactly like the round-2 design intended).
-
-Cost: a significantly larger refactor. We lose the
-single-`Cargo.toml` build description; the `notae-android`
-crate becomes a thin Rust library called into from a Gradle
-project. `cargo-apk` would not be involved in the build any more.
-The host tests still run on Linux (the storage-state, picker-fut,
-and smoke suites are platform-independent); only the APK build
-moves to Gradle.
-
-The user has to pick one of these. Round 4 does not.
-
-## What currently works on the host
+## Last recorded host verification (round 4)
 
 * `cargo test -p notae-android` passes (29 tests: 5 lib + 9
   picker-fut + 7 smoke + 8 storage-state).
@@ -136,11 +119,15 @@ The user has to pick one of these. Round 4 does not.
   Android-only future) calls the same helper, so the contract it
   enforces on Linux is the contract that ships on the device.
 
-What does **not** work on the device: the picker future hangs
-after the user picks a folder, because the OS's onActivityResult
-has no Rust hook. Fixing that is Options 1 or 2.
+What does **not** work on the device yet: after a user selects a
+folder, the picker future cannot complete because the shipped APK has
+no custom Java result bridge. A custom Java Activity in a build that
+compiles Java sources is required for this design. The existing
+`pollster::block_on` call also blocks the UI thread that must deliver
+the result; Task 2 replaces it with Slint's asynchronous event-loop
+executor.
 
-## Files touched this round
+## Files touched in round 4
 
 | File | Change |
 |------|--------|

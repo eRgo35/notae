@@ -1,6 +1,6 @@
 # Notae Local Music-Notes Library Design
 
-**Status:** Approved base design; Android build/result bridge amendment pending user review
+**Status:** Approved design; cargo-apk2 bridge approved 2026-10-10; nonblocking picker execution clarification pending review
 **Target device:** Samsung Galaxy Tab S10 FE+
 **Implementation language:** Rust-first with a thin Java NativeActivity result adapter
 **Original date:** 2026-10-09
@@ -241,13 +241,18 @@ and call Rust's `android_main` entrypoint.
 
 `NotaeActivity.onActivityResult` calls the superclass implementation,
 then forwards the SAF request code, result code, selected URI string,
-and granted read-permission flags (or cancellation) to a JNI
-entrypoint in Rust. Rust dispatches that outcome through the shared
-`PickerState`; the Android SAF adapter takes persistable read
-permission using the flags returned by the picker and stores the
-opaque tree URI before completing root selection. Java owns only
-Android Activity lifecycle/result delivery; indexing, storage state,
-and picker outcome handling remain Rust.
+and granted read-permission flags (or cancellation) to an instance
+JNI entrypoint in Rust; the Activity receiver supplies the context
+needed for `ContentResolver` calls. Rust dispatches that outcome
+through the shared `PickerState`; the Android SAF adapter takes
+persistable read permission using the flags returned by the picker
+and stores the opaque tree URI before completing root selection.
+The UI MUST keep the Slint/Android main event loop responsive while
+the picker future is pending. It MUST schedule completion
+asynchronously (for example, with `slint::spawn_local`) rather than
+blocking the thread that must deliver `onActivityResult`.
+Java owns only Android Activity lifecycle/result delivery; indexing,
+storage state, and picker outcome handling remain Rust.
 
 Do not modify `ANativeActivityCallbacks` or infer an activity-result
 slot: the NDK ABI has no such callback. Keep this boundary narrow and

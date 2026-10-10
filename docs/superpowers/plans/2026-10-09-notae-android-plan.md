@@ -6,9 +6,11 @@
 
 **Architecture:** `notae-android` consumes the shared domain/index crates and owns only UI state, Android lifecycle, Storage Access Framework integration, external intents, and Android OCR/PDF adapters. Slint renders the search-first interface; long-running work runs off the UI thread and reports typed progress events.
 
-**Tech Stack:** Rust 2024, Slint, `android-activity`, `cargo-apk`, Android Storage Access Framework, Android PDF intents, shared `notae-domain`/`notae-index` crates, and the shared `notae-ocr` provider contract.
+**Tech Stack:** Rust 2024, Slint, `android-activity`, `cargo-apk2`, Android Storage Access Framework, Android PDF intents, shared `notae-domain`/`notae-index` crates, and the shared `notae-ocr` provider contract. A thin Java `NativeActivity` subclass forwards SAF results to Rust.
 
 **Spec:** `docs/superpowers/specs/2026-10-09-notae-design.md`
+
+**Revision:** 2026-10-10 — Task 2 migrates packaging to cargo-apk2, adds the Java result bridge, and keeps the picker future off the blocked UI thread; recursive SAF enumeration is Task 3. Review this revision before implementation.
 
 ## Global Constraints
 
@@ -17,14 +19,16 @@
 - No automatic launch rescan and no background watcher.
 - PDFs are never copied, renamed, moved, or rendered by the app.
 - Samsung Notes is preferred; Android chooser is the fallback.
-- UI work MUST remain responsive while scanning, hashing, importing, or OCR runs.
+- UI work MUST remain responsive while the picker is pending, scanning, hashing, importing, or running OCR.
 - No network calls, telemetry, cloud OCR, or remote model downloads at runtime.
 - Metadata edits update the local index and preserve manual provenance.
+- Java is limited to the `NativeActivity` result bridge; no Gradle migration or business logic.
 - The first smoke run must use the target tablet.
 
 ## Review Focus
 
-- SAF permission loss produces recovery UI rather than an empty library.
+- SAF result delivery reaches Rust through the Java `NativeActivity` subclass; the Slint event loop remains responsive while the picker is open; selected tree permissions survive relaunch and revocation is actionable.
+- Recursive SAF enumeration returns nested PDFs and isolates per-file read failures.
 - A rescan can be canceled or fail per file without freezing the UI.
 - Search result ordering and exact-match ranking match the core contract.
 - Metadata edits survive later rescans and sidecar imports.
@@ -33,6 +37,8 @@
 ---
 
 ### Task 1: Create the Android/Slint application shell
+
+**Status:** Shell, host startup tests, and APK build completed in commits `dc6b794`–`a7aef74` with `cargo-apk` 0.10. Task 2 replaces the packager; the device launch check remains pending.
 
 **Files:**
 - Create: `apps/notae-android/Cargo.toml`
@@ -48,21 +54,21 @@
 - `UiEvent` carries user actions into Rust.
 - `UiModel` exposes observable values and callbacks to Slint.
 
-- [ ] **Step 1: Write a smoke test for app startup state**
+- [x] **Step 1: Write a smoke test for app startup state**
 
   Assert that a fresh app exposes the setup state and does not start a rescan automatically.
 
-- [ ] **Step 2: Run the host smoke test and verify it fails**
+- [x] **Step 2: Run the host smoke test and verify it fails**
 
   Run: `cargo test -p notae-android --test smoke`
 
   Expected: FAIL because the app crate and state model do not exist.
 
-- [ ] **Step 3: Implement the Slint shell and Android activity entrypoint**
+- [x] **Step 3: Implement the Slint shell and Android activity entrypoint**
 
   Configure the Android backend, target the target device ABI, and provide host-testable state transitions. Keep Android calls behind a platform module so core state tests run on Linux.
 
-- [ ] **Step 4: Run host tests and build the APK**
+- [x] **Step 4: Run host tests and build the APK**
 
   Run: `cargo test -p notae-android --test smoke` and `cargo apk build --release -p notae-android`.
 
@@ -70,57 +76,165 @@
 
 - [ ] **Step 5: Install and launch on the Galaxy Tab S10 FE+**
 
-  Run the project’s `cargo apk run` deployment command. Expected: setup screen renders without a crash and remains responsive.
+  After Task 2 migrates packaging, run `cargo apk2 run -p notae-android`. Expected: setup screen renders without a crash and remains responsive.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
   ```bash
   git add apps/notae-android Cargo.toml
   git commit -m "feat: add Slint Android app shell"
   ```
 
-### Task 2: Implement SAF root selection and document access
+### Task 2: Replace cargo-apk with cargo-apk2 and bridge SAF results
 
 **Files:**
-- Create: `apps/notae-android/src/android/saf.rs`
-- Create: `apps/notae-android/src/storage.rs`
-- Modify: `apps/notae-android/src/main.rs`
-- Modify: `apps/notae-android/ui/app.slint`
-- Create: `apps/notae-android/tests/storage_state.rs`
+- Modify: `apps/notae-android/Cargo.toml`
+- Create: `apps/notae-android/android/src/main/java/org/notae/android/NotaeActivity.java`
+- Modify: `apps/notae-android/android/AndroidManifest.xml`
+- Modify: `apps/notae-android/src/android_main.rs`
+- Modify: `apps/notae-android/NOTE-android-activity-result-jni.md`
+- Modify: `apps/notae-android/NOTE-unsafe-android-main.md`
 
 **Interfaces:**
-- `trait LibraryRootProvider { async fn select_root(&self) -> Result<LibraryRoot, StorageError>; fn reopen(&self, root: &LibraryRoot) -> Result<LibrarySource, StorageError>; }`
-- `LibrarySource` implements the `PdfCatalog` interface required by `notae-index`.
-- `StorageState::{Unconfigured, Ready, PermissionLost, Error}`.
+- `NotaeActivity extends NativeActivity`; its instance-native method is `nativeOnActivityResult(int requestCode, int resultCode, String treeUri, int readGrantFlags)`.
+- `decode_activity_result(result_code: i32, tree_uri: Option<String>, grant_flags: i32) -> Result<Option<String>, StorageError>` returns a selected tree URI only for `RESULT_OK` with a URI and read grant, `Ok(None)` for cancellation, and an error for malformed or denied results.
+- The Rust JNI symbol `Java_org_notae_android_NotaeActivity_nativeOnActivityResult` uses the Activity receiver to access `ContentResolver`, persists the URI permission and root metadata before dispatching `PickerOutcome` through `PickerState::dispatch(request_code, outcome)`.
+- `LibraryRootProvider::select_root()` completes only after the matching result has been validated and persisted. `handle_picker_response` schedules its future with `slint::spawn_local`; it MUST NOT block the Slint/Android main event loop while awaiting the picker.
 
-- [ ] **Step 1: Write failing storage-state tests**
+- [ ] **Step 1: Write failing result-contract tests**
 
-  Cover setup, persisted root restoration, permission loss, explicit reauthorization, and rejecting a non-directory selection.
+  Add host tests for a successful result with read permission, cancellation, `RESULT_OK` without a URI, and `RESULT_OK` without the read grant. Assert the accepted URI; reuse the existing request-code dispatch tests rather than duplicating them.
 
-- [ ] **Step 2: Run the focused tests and verify they fail**
+  ```rust
+  const RESULT_OK: i32 = -1;
+  const RESULT_CANCELED: i32 = 0;
+  const FLAG_GRANT_READ_URI_PERMISSION: i32 = 1;
+  let uri = "content://provider/tree/music".to_owned();
 
-  Run: `cargo test -p notae-android --test storage_state`
+  assert!(matches!(
+      decode_activity_result(RESULT_OK, Some(uri.clone()), FLAG_GRANT_READ_URI_PERMISSION),
+      Ok(Some(selected)) if selected == uri
+  ));
+  assert!(matches!(
+      decode_activity_result(RESULT_CANCELED, None, 0),
+      Ok(None)
+  ));
+  assert!(decode_activity_result(RESULT_OK, None, FLAG_GRANT_READ_URI_PERMISSION).is_err());
+  assert!(decode_activity_result(RESULT_OK, Some(uri), 0).is_err());
+  ```
 
-  Expected: FAIL because SAF state handling is not implemented.
+- [ ] **Step 2: Run focused tests and verify they fail**
 
-- [ ] **Step 3: Implement SAF selection and persisted permission**
+  Run: `cargo test -p notae-android --test picker_fut`
 
-  Launch `ACTION_OPEN_DOCUMENT_TREE`, persist read permission, wrap tree/document URIs, enumerate PDFs recursively, and expose readable URIs for the external viewer. Never convert the selected root into an assumed filesystem path.
+  Expected: FAIL because Activity-result validation and the new boundary tests are not implemented.
 
-- [ ] **Step 4: Run tests and perform the device permission scenario**
+- [ ] **Step 3: Configure cargo-apk2 and implement the result bridge**
 
-  Run: `cargo test -p notae-android --test storage_state`. On the tablet, select a test folder, revoke permission in Android Settings, relaunch, and verify the recovery screen.
+  Install the documented CLI version with `cargo install cargo-apk2 --version 1.4.0`. In `Cargo.toml`, set `java_sources = "android/src/main/java"` and `apk_name = "notae-android"`, declare `.NotaeActivity` as the launcher activity, set `application.has_code = true`, add the `MAIN`/`LAUNCHER` filter, and add activity metadata `android.app.lib_name = "notae_android"`. Keep the existing min/target SDK values.
 
-  Expected: tests pass and permission loss is actionable.
+  Implement the Java activity as a thin subclass. Its result override must call `super`, pass the URI string (or null) and only the read grant bit to Rust, and must not own root state:
+
+  ```java
+  package org.notae.android;
+
+  import android.app.NativeActivity;
+  import android.content.Intent;
+
+  public final class NotaeActivity extends NativeActivity {
+      private native void nativeOnActivityResult(
+          int requestCode, int resultCode, String treeUri, int readGrantFlags);
+
+      @Override
+      protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+          super.onActivityResult(requestCode, resultCode, data);
+          String uri = data == null || data.getData() == null
+              ? null : data.getData().toString();
+          int readFlags = data == null ? 0
+              : data.getFlags() & Intent.FLAG_GRANT_READ_URI_PERMISSION;
+          nativeOnActivityResult(requestCode, resultCode, uri, readFlags);
+      }
+  }
+  ```
+
+  Implement the JNI entrypoint in `saf.rs`. Validate the result with the tested helper, take persistable read permission through the Activity's `ContentResolver`, query the display name, write the root URI/name/ID to `SharedPreferences`, then dispatch success. Dispatch cancellation as `PickerOutcome::Cancelled`; dispatch platform and permission failures as `PickerOutcome::Platform`. Keep raw JNI/unsafe operations inside `saf.rs`; do not alter `ANativeActivityCallbacks`.
+ 
+ In `android_main.rs`, remove `pollster::block_on` from `handle_picker_response`. Schedule the future with `slint::spawn_local(async move { ... })`, then call `apply_picker_result` when it resolves. The callback must return immediately so Slint and Android can process events, including the Activity result that wakes the future. Remove the now-unused Android app dependency on `pollster`; retain its host-test uses if still needed elsewhere.
+
+- [ ] **Step 4: Verify host behavior and packaged APK**
+
+  Run: `cargo test -p notae-android --test picker_fut`, `cargo test -p notae-android --test storage_state`, and `cargo apk2 build --release -p notae-android`.
+
+  Inspect `target/release/apk/notae-android.apk` with `$HOME/Android/Sdk/build-tools/36.0.0/aapt dump xmltree target/release/apk/notae-android.apk AndroidManifest.xml` and `unzip -l target/release/apk/notae-android.apk`. Expected: launcher is `org.notae.android.NotaeActivity`, its `android.app.lib_name` is `notae_android`, the APK contains `classes.dex` and `libnotae_android.so`, and host tests pass.
+ 
+  Install with `cargo apk2 run -p notae-android` on the Galaxy Tab S10 FE+. Open the folder picker and confirm Notae's UI remains event-responsive while DocumentsUI is active; select a folder, cancel a second selection, relaunch and reopen the saved root, then revoke the permission in Android Settings and verify recovery UI. This hardware gate cannot be marked complete without the target tablet.
 
 - [ ] **Step 5: Commit**
 
   ```bash
   git add apps/notae-android
-  git commit -m "feat: select and persist SAF library root"
+  git commit -m "feat(android): package Java SAF result bridge"
   ```
 
-### Task 3: Build the search-first library UI
+### Task 3: Enumerate PDFs recursively through the SAF tree
+
+**Files:**
+- Create: `apps/notae-android/src/saf_tree.rs`
+- Modify: `apps/notae-android/src/lib.rs`
+- Modify: `apps/notae-android/src/android/saf.rs`
+- Create: `apps/notae-android/tests/saf_catalog.rs`
+- Modify: `apps/notae-android/NOTE-android-activity-result-jni.md`
+
+**Interfaces:**
+- `DocumentRow { document_id: String, display_name: String, mime_type: String }` describes one SAF child.
+- `DocumentTreeReader::children(parent_id: &str) -> Result<Vec<DocumentRow>, CatalogError>` lists one directory; `read_pdf(document_id: &str) -> std::io::Result<Vec<u8>>` reads one PDF.
+- `enumerate_document_tree(reader: &impl DocumentTreeReader, root_id: &str) -> Result<Vec<PdfFile>, CatalogError>` is the host-testable recursive walk.
+- `SafPdfCatalog::enumerate() -> Result<Vec<PdfFile>, CatalogError>` implements `notae_index::PdfCatalog` by adapting `ContentResolver` to `DocumentTreeReader`.
+
+- [ ] **Step 1: Write failing recursive-catalog tests**
+
+  In `tests/saf_catalog.rs`, implement a fake `DocumentTreeReader` with a root PDF, a nested directory containing another PDF, a non-PDF, and one unreadable PDF. Assert the two readable PDFs have stable root-relative paths and fingerprints, the non-PDF is omitted, the unreadable entry has `FileCondition::Unreadable`, and a child-query failure returns `CatalogError` rather than a partial list.
+
+  ```rust
+  let files = enumerate_document_tree(&fake_tree, "root").unwrap();
+  let paths: Vec<_> = files.iter().map(|file| file.path().as_str()).collect();
+  assert_eq!(paths, ["root.pdf", "nested/practice.pdf", "locked.pdf"]);
+  assert!(files.iter().filter(|file| file.path().as_str() != "locked.pdf").all(|file| file.fingerprint().is_some()));
+  assert!(files.iter().find(|file| file.path().as_str() == "locked.pdf").is_some_and(|file| matches!(file.condition(), FileCondition::Unreadable)));
+  assert!(files.iter().all(|file| file.filename() != "notes.txt"));
+  ```
+
+- [ ] **Step 2: Run focused tests and verify they fail**
+
+  Run: `cargo test -p notae-android --test saf_catalog`
+
+  Expected: FAIL because `enumerate_document_tree` and the SAF adapter are not implemented.
+
+- [ ] **Step 3: Implement the SAF document-tree walk**
+
+  Implement `DocumentTreeReader` for an Android adapter in `saf.rs`. Use `DocumentsContract.buildChildDocumentsUriUsingTree` with each parent document ID, read each query cursor into `DocumentRow` values, recurse into directory MIME types, and construct document URIs with `DocumentsContract.buildDocumentUriUsingTree`. Open PDF streams through `ContentResolver.openInputStream`, read them with `read_into_vec`, and use the existing fingerprint helpers. Convert individual PDF read failures to `FileCondition::Unreadable`; return `CatalogError` on any directory-query failure so reconciliation cannot mistake an inaccessible subtree for deleted files. Close every cursor on success and error paths. Never convert a SAF URI into a filesystem path.
+
+  ```java
+  Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId);
+  Cursor cursor = resolver.query(children, projection, null, null, null);
+  Uri document = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId);
+  InputStream pdf = resolver.openInputStream(document);
+  ```
+
+- [ ] **Step 4: Run host and device catalog scenarios**
+
+  Run: `cargo test -p notae-android --test saf_catalog` and `cargo test -p notae-android --test storage_state`. On the tablet, choose a test tree containing PDFs at multiple depths and a non-PDF file, then rescan and verify the nested PDFs are indexed while the non-PDF is ignored.
+
+  Expected: host traversal tests pass; on-device enumeration yields the same tree-relative PDF set and isolates per-file read failures.
+
+- [ ] **Step 5: Commit**
+
+  ```bash
+  git add apps/notae-android
+  git commit -m "feat(android): enumerate SAF PDF trees"
+  ```
+
+### Task 4: Build the search-first library UI
 
 **Files:**
 - Modify: `apps/notae-android/ui/app.slint`
@@ -161,7 +275,7 @@
   git commit -m "feat: add search-first tablet library"
   ```
 
-### Task 4: Add manual rescan, progress, and sidecar import preview
+### Task 5: Add manual rescan, progress, and sidecar import preview
 
 **Files:**
 - Create: `apps/notae-android/src/operations/rescan.rs`
@@ -190,7 +304,7 @@
 
 - [ ] **Step 3: Implement background rescan and import preview**
 
-  Run core reconciliation through an injected catalog/index/OCR interface on worker threads. Use a deterministic fake OCR provider for this task; wire the Android provider in Task 7. Send non-blocking events to the UI. Keep preview generation read-only until the user confirms. Display new, changed, missing, hash-mismatch, duplicate-ID, OCR, and preserved-manual-metadata sections.
+  Run core reconciliation through an injected catalog/index/OCR interface on worker threads. Use a deterministic fake OCR provider for this task; wire the Android provider in Task 8. Send non-blocking events to the UI. Keep preview generation read-only until the user confirms. Display new, changed, missing, hash-mismatch, duplicate-ID, OCR, and preserved-manual-metadata sections.
 
 - [ ] **Step 4: Run tests and the operation smoke scenario**
 
@@ -205,7 +319,7 @@
   git commit -m "feat: add manual rescan and sidecar preview"
   ```
 
-### Task 5: Implement metadata editing
+### Task 6: Implement metadata editing
 
 **Files:**
 - Create: `apps/notae-android/src/ui/metadata_editor.rs`
@@ -245,7 +359,7 @@
   git commit -m "feat: edit indexed note metadata"
   ```
 
-### Task 6: Implement Samsung Notes handoff and chooser fallback
+### Task 7: Implement Samsung Notes handoff and chooser fallback
 
 **Files:**
 - Create: `apps/notae-android/src/android/pdf_intent.rs`
@@ -283,7 +397,7 @@
   git commit -m "feat: open PDFs in Samsung Notes with fallback"
   ```
 
-### Task 7: Add the Android OCR and PDF-page adapter
+### Task 8: Add the Android OCR and PDF-page adapter
 
 **Files:**
 - Create: `apps/notae-android/src/android/pdf_pages.rs`
@@ -330,7 +444,7 @@ Run:
 ```bash
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
-cargo apk build --release -p notae-android
+cargo apk2 build --release -p notae-android
 ```
 
 Install the APK on the Samsung Galaxy Tab S10 FE+ and smoke-test folder selection, manual rescan, OCR progress, search, metadata editing, sidecar preview, and PDF handoff.
