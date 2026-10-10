@@ -1,3 +1,4 @@
+use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
 
 /// Events emitted by background library operations.
@@ -27,6 +28,12 @@ pub enum OperationEvent {
     },
     /// A worker-side search completed.
     SearchRows(Vec<SearchRow>),
+    /// The worker loaded one note into the metadata editor.
+    MetadataLoaded(EditableMetadata),
+    /// A metadata edit committed and the library rows were refreshed.
+    MetadataSaved { rows: Vec<SearchRow> },
+    /// A metadata load or save was rejected without changing the index.
+    MetadataFailed { reason: String },
     /// An operation failed before it could complete.
     Failed { reason: String },
 }

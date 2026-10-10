@@ -266,6 +266,78 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
 
     {
         let model = Rc::clone(&model);
+        let operations = Rc::clone(&operations);
+        let window_weak = window.as_weak();
+        window.on_edit_metadata_requested(move |note_key| {
+            let note_key = note_key.to_string();
+            model.borrow_mut().begin_metadata_edit(note_key.clone());
+            let result = operations
+                .borrow()
+                .as_ref()
+                .ok_or(crate::ui::search::UiError::WorkerStopped)
+                .and_then(|controller| controller.load_metadata(note_key));
+            if let Err(error) = result {
+                let _ = model.borrow_mut().apply_operation_event(
+                    crate::operations::events::OperationEvent::MetadataFailed {
+                        reason: error.to_string(),
+                    },
+                );
+            }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let operations = Rc::clone(&operations);
+        let window_weak = window.as_weak();
+        window.on_metadata_save_requested(move |note_key, id, title, composer, tags| {
+            let metadata = crate::ui::metadata_editor::EditableMetadata {
+                note_key: note_key.to_string(),
+                id: id.to_string(),
+                title: title.to_string(),
+                composer_or_artist: composer.to_string(),
+                tags: tags
+                    .to_string()
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|tag| !tag.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+            };
+            let result = operations
+                .borrow()
+                .as_ref()
+                .ok_or(crate::ui::search::UiError::WorkerStopped)
+                .and_then(|controller| controller.save_metadata(metadata));
+            if let Err(error) = result {
+                let _ = model.borrow_mut().apply_operation_event(
+                    crate::operations::events::OperationEvent::MetadataFailed {
+                        reason: error.to_string(),
+                    },
+                );
+            }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_metadata_cancelled(move || {
+            model.borrow_mut().close_metadata_editor();
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
         let window_weak = window.as_weak();
         window.on_settings_clicked(move || {
             report_transition(model.borrow_mut().dispatch(UiEvent::OpenSettings));
@@ -367,6 +439,30 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         .map(crate::LibraryRow::from)
         .collect();
     window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+    let metadata = model.metadata_editor();
+    window.set_show_metadata_editor(metadata.is_some());
+    window.set_metadata_note_key(
+        metadata
+            .map_or("", |metadata| metadata.note_key.as_str())
+            .into(),
+    );
+    window.set_metadata_id(metadata.map_or("", |metadata| metadata.id.as_str()).into());
+    window.set_metadata_title(
+        metadata
+            .map_or("", |metadata| metadata.title.as_str())
+            .into(),
+    );
+    window.set_metadata_composer_or_artist(
+        metadata
+            .map_or("", |metadata| metadata.composer_or_artist.as_str())
+            .into(),
+    );
+    window.set_metadata_tags(
+        metadata
+            .map_or_else(String::new, |metadata| metadata.tags.join(", "))
+            .into(),
+    );
+    window.set_metadata_error_text(model.metadata_error().unwrap_or_default().into());
     let preview = model.import_preview_summary();
     window.set_show_import_preview(preview.is_some());
     window.set_import_preview_text(preview.map_or_else(String::new, import_preview_text).into());
