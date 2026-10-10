@@ -23,6 +23,7 @@
 //! override — `forbid` cannot be locally downgraded later, so leaving
 //! it off here keeps the per-module policies in control.
 
+pub mod picker_fut;
 pub mod state;
 pub mod storage;
 
