@@ -57,20 +57,19 @@ itself is installed but the `-devel` package (which provides the
 
 ### What this crate's `build.rs` does
 
-The build script in this crate runs in front of `tesseract-sys` and:
+The build script in this crate runs in front of `tesseract-sys` and
+materialises an `OUT_DIR/tesseract-link-shim/` directory with
+`libtesseract.so` and `libleptonica.so` symlinks pointing at the
+actual versioned shared objects, then emits a `rustc-link-search`
+directive so the linker can find them. When
+`/usr/lib64/libtesseract.so` and `/usr/lib64/libleptonica.so` are
+present unversioned, the script does nothing — a clean distribution
+just works.
 
-1. **Materialises a `pkg-config` search directory** at
-   `$PKG_CONFIG_PATH` (when it is set) with the `.pc` files the
-   upstream build script needs. See "Reproducing the dev-env shim"
-   below.
-2. **Materialises an `OUT_DIR/tesseract-link-shim/` directory** with
-   `libtesseract.so` and `libleptonica.so` symlinks pointing at the
-   actual versioned shared objects, and emits a `rustc-link-search`
-   directive so the linker can find them.
-
-When `/usr/lib64/libtesseract.so` and `/usr/lib64/libleptonica.so`
-are present unversioned, the script does nothing — a clean
-distribution just works.
+The build script does **not** create `.pc` files or touch
+`PKG_CONFIG_PATH`; the search directory the upstream build script
+needs is something the user has to supply themselves, as described
+in "Reproducing the dev-env shim" below.
 
 ### Reproducing the dev-env shim
 
