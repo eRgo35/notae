@@ -16,17 +16,53 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 slint = { version = "1.18", features = ["backend-android-activity-06"] }
 thiserror = { workspace = true }
+notae-domain = { path = "../../crates/notae-domain" }
+notae-index = { path = "../../crates/notae-index" }
+sha2 = "0.10"
+# `pollster` is the `block_on` helper the Android entry uses to await
+# the async `select_root` future from inside the synchronous Slint
+# callback. The picker is round-tripped through the OS, so the future
+# completes before the callback returns in normal use; `pollster` is
+# what makes that awaitable without pulling in a full async runtime.
+pollster = "0.4"
 
-# `notae-index` (rusqlite + SQLite bundled) and `notae-ocr` (Tesseract C++
-# bindings) are intentionally NOT listed here yet. They cross-compile
-# poorly to Android without a per-task NDK configuration; later tasks add
-# them when the corresponding feature (rescan, OCR) is wired in.
+# `notae-index-cli` is the Linux indexer binary crate. It pulls in C/C++
+# deps (hayro, image, Tesseract via `notae-ocr`) that don't cross-compile,
+# so it is wired in only when the target is *not* Android. On host builds
+# we re-use its `FilesystemCatalog` as the host-side `PdfCatalog` for the
+# storage-state tests; on Android the SAF adapter in
+# `src/android/saf.rs` plays the same role.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+notae-index-cli = { path = "../notae-index" }
+
+# `jni` and `android-activity` are direct deps only on Android.
+# `android-activity` is the runtime the `android_main` FFI shim already
+# pulls in transitively; we list it explicitly so `saf.rs` can use the
+# `AndroidApp` type directly. `jni` is what `saf.rs` uses for the
+# `ContentResolver` and `SharedPreferences` calls the high-level
+# `android-activity` API does not (yet) cover.
+[target.'cfg(target_os = "android")'.dependencies]
+android-activity = "0.6"
+jni = "0.22"
+
+# `notae-index` adds the [`PdfCatalog`](notae_index::PdfCatalog) trait and the
+# [`PdfFile`] / [`CatalogError`] types that `LibrarySource` must implement.
+# `notae-ocr` itself remains unused until Task 7.
+#
+# Cross-compiling `notae-index` to Android is non-trivial because it bundles
+# SQLite via `cc-rs`. The build expects the NDK clang in the PATH for
+# `aarch64-linux-android`; `cargo apk build` sets that up. The host test
+# link only the trait types — see `apps/notae-android/tests/storage_state.rs`.
 
 [build-dependencies]
 # `slint-build` parses the .slint file at build time, emits a Rust module
 # into $OUT_DIR, and is compiled into the lib on every target — Android
 # included — without dragging in the heavy renderer at test time.
 slint-build = "1.18"
+
+[dev-dependencies]
+# `tempfile` is what the host tests build a temporary library root out of.
+tempfile = "3"
 
 # `cargo-apk` reads `[package.metadata.android]` to assemble the APK
 # manifest, signing config, and per-ABI filter. The defaults it picks

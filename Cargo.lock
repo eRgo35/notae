@@ -3499,8 +3499,16 @@ checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 name = "notae-android"
 version = "0.1.0"
 dependencies = [
+ "android-activity 0.6.1",
+ "jni 0.22.4",
+ "notae-domain",
+ "notae-index",
+ "notae-index-cli",
+ "pollster",
+ "sha2",
  "slint",
  "slint-build",
+ "tempfile",
  "thiserror 2.0.21",
 ]
 
@@ -4285,6 +4293,12 @@ dependencies = [
  "rustix 1.1.5",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "pollster"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 
 [[package]]
 name = "polycool"

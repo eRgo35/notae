@@ -24,7 +24,10 @@
 //! it off here keeps the per-module policies in control.
 
 pub mod state;
+pub mod storage;
 
+#[cfg(target_os = "android")]
+mod android;
 #[cfg(target_os = "android")]
 mod android_main;
 
