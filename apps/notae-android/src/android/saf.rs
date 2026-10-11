@@ -891,6 +891,15 @@ impl LibraryCatalog for SafPdfCatalog {
             .map_err(|error| CatalogError::Failed(format!("cannot identify SAF root: {error}")))?;
         discover_sidecar_manifest(self, &root_id)
     }
+    fn extract_text_layer(
+        &self,
+        path: &notae_domain::RelativePdfPath,
+    ) -> Result<Option<String>, crate::pdf_pages::PdfError> {
+        let uri = document_content_uri(self.app.clone(), &self.tree_uri, path.as_str())
+            .map_err(|error| crate::pdf_pages::PdfError::Platform(error.to_string()))?;
+        let document = crate::pdf_pages::AndroidPdfDocument::open(self.app.clone(), uri)?;
+        Ok(document.extract_text().map(str::to_owned))
+    }
 }
 
 impl DocumentTreeReader for SafPdfCatalog {

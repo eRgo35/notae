@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the Rust/Slint tablet app for Samsung Galaxy Tab S10 FE+, including folder selection, manual rescans, search, metadata editing, sidecar preview, OCR orchestration, and Samsung Notes handoff.
+**Goal:** Build the Rust/Slint tablet app for Samsung Galaxy Tab S10 FE+, including folder selection, manual rescans, search, metadata editing, sidecar OCR import, and Samsung Notes handoff.
 
-**Architecture:** `notae-android` consumes the shared domain/index crates and owns only UI state, Android lifecycle, Storage Access Framework integration, external intents, and Android OCR/PDF adapters. Slint renders the search-first interface; long-running work runs off the UI thread and reports typed progress events.
+**Architecture:** `notae-android` consumes the shared domain/index crates and owns UI state, Android lifecycle, Storage Access Framework integration, PDF text-layer extraction, and external intents. Slint renders the search-first interface; long-running work runs off the UI thread and reports typed progress events. Linux OCR output enters Android through the portable sidecar.
 
-**Tech Stack:** Rust 2024, Slint, `android-activity`, `cargo-apk2`, Android Storage Access Framework, Android PDF intents, shared `notae-domain`/`notae-index` crates, and the shared `notae-ocr` provider contract. A thin Java `NativeActivity` subclass forwards SAF results to Rust.
+**Tech Stack:** Rust 2024, Slint, `android-activity`, `cargo-apk2`, Android Storage Access Framework and PDF APIs, shared `notae-domain`/`notae-index` crates, and the Linux `notae-ocr` provider for sidecar generation. A thin Java `NativeActivity` subclass forwards SAF results to Rust.
 
 **Spec:** `docs/superpowers/specs/2026-10-09-notae-design.md`
 
@@ -390,90 +390,105 @@
 
   Verified on host and Android build; device scenario remains pending because no tablet is attached. `cargo test -p notae-android` (54 tests), Android-target `cargo apk2 check`, and signed/aligned release APK build pass. Tests verify normalized edits, unique-ID rejection without partial writes, preserved file identity/status/OCR, manual provenance across rescan, sidecar preservation preview, and worker/UI event flow.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
   git add apps/notae-android
   git commit -m "feat: edit indexed note metadata"
   ```
 
+  Commit: `1b35aaa feat: edit indexed note metadata`.
+
 ### Task 7: Implement Samsung Notes handoff and chooser fallback
 
-**Files:**
+- Create: `apps/notae-android/src/pdf_intent.rs`
 - Create: `apps/notae-android/src/android/pdf_intent.rs`
-- Modify: `apps/notae-android/src/main.rs`
+- Modify: `apps/notae-android/src/android/saf.rs`
+- Modify: `apps/notae-android/src/android_main.rs`
+- Modify: `apps/notae-android/src/ui.rs`
+- Modify: `apps/notae-android/src/ui/search.rs`
+- Modify: `apps/notae-android/ui/app.slint`
+- Modify: `apps/notae-android/Cargo.toml`
+- Modify: `apps/notae-android/android/AndroidManifest.xml`
 - Create: `apps/notae-android/tests/pdf_intent.rs`
+- Modify: `apps/notae-android/tests/saf_catalog.rs`
+- Modify: `apps/notae-android/tests/operation_state.rs`
 
 **Interfaces:**
 - `PdfLauncher::open(uri: ContentUri) -> Result<LaunchResult, ViewerError>`
 - `LaunchResult::{SamsungNotes, SystemChooser}`
 
-- [ ] **Step 1: Write failing intent tests**
+- [x] **Step 1: Write failing intent tests**
 
-  Cover Samsung Notes available, Samsung Notes unavailable, no compatible viewer, read-grant flags, and return-to-app state.
+  Cover Samsung Notes preference, chooser fallback, no compatible viewer, read-only URI grant behavior, and rejection of filesystem paths. Return-to-app behavior is verified on-device when hardware is available.
 
-- [ ] **Step 2: Run the focused tests and verify they fail**
+- [x] **Step 2: Run the focused tests and verify they fail**
 
-  Run: `cargo test -p notae-android --test pdf_intent`
+  Run: `cargo test -p notae-android --test pdf_intent`.
 
-  Expected: FAIL because intent dispatch is not implemented.
+  Expected: FAIL because PDF intent policy and dispatch are not implemented. Observed unresolved module and later unresolved intent-spec API before implementation.
 
-- [ ] **Step 3: Implement the external PDF intent**
+- [x] **Step 3: Implement the external PDF intent**
 
-  Prefer Samsung Notes only when the installed package resolves the PDF intent; otherwise launch the system chooser. Grant temporary read permission and never expose a private filesystem path.
+  Resolve each library-relative PDF through the SAF tree to a `content://` document URI. Prefer Samsung Notes only when its package resolves the `application/pdf` view intent; otherwise query compatible viewers and launch Android's chooser. Declare package visibility queries, grant temporary read-only access, and display launch failures without changing the library screen.
 
 - [ ] **Step 4: Run tests and perform device smoke scenarios**
 
-  Run: `cargo test -p notae-android --test pdf_intent`. Open a valid PDF with Samsung Notes installed, then disable Samsung Notes and verify chooser fallback.
+  Host and build checks pass: `cargo test -p notae-android` (59 tests), Android-target `cargo apk2 check`, signed/aligned release APK build, and packaged-manifest inspection for Samsung Notes and PDF VIEW queries. Device launch/return scenarios remain pending because `adb devices` reports no attached device.
 
-  Expected: both paths work and Notae remains usable after returning.
-
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
   git add apps/notae-android
   git commit -m "feat: open PDFs in Samsung Notes with fallback"
   ```
 
-### Task 8: Add the Android OCR and PDF-page adapter
+  Commit: `feaa356 feat: open PDFs in Samsung Notes with fallback`.
+
+### Task 8: Add Android PDF text-layer extraction
+
+**Decision:** Android performs no OCR and never renders PDFs. It extracts embedded PDF text with `PdfRenderer.Page.getTextContents()` on Android API 35 and later. On older APIs, and for image-only PDFs, records remain OCR-pending unless OCR text is imported from the Linux-generated sidecar. Android does not link `notae-ocr` or Tesseract.
 
 **Files:**
+- Create: `apps/notae-android/src/pdf_pages.rs`
 - Create: `apps/notae-android/src/android/pdf_pages.rs`
-- Create: `apps/notae-android/src/android/ocr.rs`
-- Modify: `apps/notae-android/src/main.rs`
+- Modify: `apps/notae-android/src/android/saf.rs`
+- Modify: `apps/notae-android/src/storage.rs`
+- Modify: `apps/notae-android/src/operations/rescan.rs`
+- Modify: `apps/notae-android/src/lib.rs`
+- Modify: `apps/notae-android/src/android/mod.rs`
+- Modify: `apps/notae-android/Cargo.toml`
 - Create: `apps/notae-android/tests/ocr_adapter.rs`
 
 **Interfaces:**
-- `AndroidPdfDocument::open(uri: ContentUri) -> Result<Self, PdfError>`
-- `AndroidPdfDocument::render_page(page: u32, dpi: u32) -> Result<GrayImage, PdfError>`
-- `AndroidOcrProvider` implements the shared `OcrProvider` trait.
+- `AndroidPdfDocument::open(app: AndroidApp, uri: ContentUri) -> Result<Self, PdfError>`
+- Host tests use `AndroidPdfDocument::open_with_backend` and `PdfPageBackend`.
+- `LibraryCatalog::extract_text_layer(path)` feeds text-layer extraction into rescan status and indexing.
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
-  Cover text-layer detection, page rendering failure, OCR progress, missing local language data, and per-page OCR errors. Use host-side fake Android services for deterministic state tests.
+  Cover text normalization, blank/unavailable text, empty documents, image-only OCR-pending status, sidecar OCR preservation, and extraction failures reflected in per-file events and status.
 
-- [ ] **Step 2: Run the focused tests and verify they fail**
+- [x] **Step 2: Run the focused tests and verify they fail**
 
-  Run: `cargo test -p notae-android --test ocr_adapter`
+  Run: `cargo test -p notae-android --test ocr_adapter`. The initial integration tests failed because rescan did not extract text or update OCR status.
 
-  Expected: FAIL because the Android adapters are not implemented.
+- [x] **Step 3: Implement the Android PDF text-layer adapter**
 
-- [ ] **Step 3: Implement the Android PDF/OCR adapter**
+  Use `PdfRenderer` behind the JNI adapter. Read text only on API 35+, close each page and renderer on completion and error, and attach extraction failures to the affected PDF. Do not render pages or run Tesseract on Android. Preserve imported sidecar OCR when the platform exposes no text layer; otherwise mark the record OCR-pending.
 
-  Use Android's local PDF/page APIs behind the bridge, convert page bitmaps into the shared image type, and reuse the shared `TesseractProvider` and local language assets through the Android build. If native binding glue is required, keep it inside the `notae-ocr` Android module. Keep page processing off the UI thread and preserve per-page status.
+- [x] **Step 4: Run host tests and build the APK**
 
-- [ ] **Step 4: Run tests and the device OCR scenario**
-
-  Run: `cargo test -p notae-android --test ocr_adapter`. On the tablet, index a text-layer PDF and an image-only PDF containing English and Polish printed text.
-
-  Expected: existing text avoids OCR, image-only pages produce searchable text or a visible typed failure, and the UI remains responsive.
+  Verified: `cargo test -p notae-android` (68 tests), Android-target `cargo apk2 check`, and signed/aligned release APK build. Packaged APK contains the launcher activity, classes dex, and `libnotae_android.so`. Device verification remains pending because no tablet is attached.
 
 - [ ] **Step 5: Commit**
 
   ```bash
-  git add apps/notae-android
-  git commit -m "feat: add Android PDF and OCR adapters"
+  git add apps/notae-android docs/superpowers/specs/2026-10-09-notae-design.md
+  git commit -m "feat(android): extract embedded PDF text"
   ```
+
+  Commit: pending.
 
 ## Android-plan completion check
 
@@ -485,4 +500,4 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo apk2 build --release -p notae-android
 ```
 
-Install the APK on the Samsung Galaxy Tab S10 FE+ and smoke-test folder selection, manual rescan, OCR progress, search, metadata editing, sidecar preview, and PDF handoff.
+Install the APK on the Samsung Galaxy Tab S10 FE+ and smoke-test folder selection, manual rescan progress and OCR-pending status, search, metadata editing, sidecar preview/import, and PDF handoff.

@@ -109,10 +109,7 @@ fn rescan_starts_only_on_request_and_reports_success_and_per_file_failure() {
         .start_rescan()
         .expect("explicit request starts scan");
 
-    assert!(matches!(
-        next_event(&controller),
-        OperationEvent::Started { .. }
-    ));
+    assert!(matches!(next_event(&controller), OperationEvent::Started));
     let mut completed_files = Vec::new();
     let mut failures = Vec::new();
     let mut terminal = None;
@@ -121,7 +118,7 @@ fn rescan_starts_only_on_request_and_reports_success_and_per_file_failure() {
             OperationEvent::FileSucceeded { path } => completed_files.push(path),
             OperationEvent::FileFailed { path, .. } => failures.push(path),
             event @ OperationEvent::Completed { .. } => terminal = Some(event),
-            other => {}
+            _ => {}
         }
     }
 
@@ -149,10 +146,7 @@ fn cancellation_during_catalog_enumeration_does_not_apply_a_partial_scan() {
     controller
         .start_rescan()
         .expect("explicit request starts scan");
-    assert!(matches!(
-        next_event(&controller),
-        OperationEvent::Started { .. }
-    ));
+    assert!(matches!(next_event(&controller), OperationEvent::Started));
     entered_rx
         .recv_timeout(Duration::from_secs(2))
         .expect("worker entered catalog");

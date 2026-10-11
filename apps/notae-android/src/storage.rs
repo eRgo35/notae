@@ -60,7 +60,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use notae_domain::RelativePdfPath;
 use notae_index::{CatalogError, PdfCatalog, PdfFile, SidecarManifest};
+
+use crate::pdf_pages::PdfError;
 
 /// A monotonic counter used to disambiguate [`LibraryRootId`] values
 /// created in the same nanosecond. Wall-clock nanoseconds give us a
@@ -291,6 +294,11 @@ pub trait LibraryCatalog: PdfCatalog + Send {
     fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
         Ok(None)
     }
+
+    /// Extracts searchable PDF text available without local OCR execution.
+    fn extract_text_layer(&self, _path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
+        Ok(None)
+    }
 }
 
 impl LibrarySource {
@@ -330,6 +338,9 @@ impl LibraryCatalog for LibrarySource {
     fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
         self.catalog.sidecar_manifest()
     }
+    fn extract_text_layer(&self, path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
+        self.catalog.extract_text_layer(path)
+    }
 }
 
 /// A `PdfCatalog` adapter for the UI-owned shared library source.
@@ -354,6 +365,12 @@ impl LibraryCatalog for SharedLibraryCatalog {
             .lock()
             .map_err(|_| CatalogError::Failed("library source lock poisoned".to_owned()))?
             .sidecar_manifest()
+    }
+    fn extract_text_layer(&self, path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
+        self.0
+            .lock()
+            .map_err(|_| PdfError::Platform("library source lock poisoned".to_owned()))?
+            .extract_text_layer(path)
     }
 }
 
