@@ -175,6 +175,9 @@ impl UiModel {
     pub fn apply_operation_event(&mut self, event: OperationEvent) -> Result<(), EventError> {
         match event {
             OperationEvent::Started => self.controller.update_rescan_progress(0, 0)?,
+            OperationEvent::RescanFinalizing { total } => {
+                self.controller.begin_rescan_finalization(total)?;
+            }
             OperationEvent::Progress { completed, total } => {
                 self.controller.update_rescan_progress(completed, total)?;
             }

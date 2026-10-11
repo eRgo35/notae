@@ -92,6 +92,9 @@ pub enum UiError {
     /// Cancellation was requested while no operation was active.
     #[error("no operation is in progress")]
     NoOperationInProgress,
+    /// Reconciliation has committed and the remaining text extraction cannot be canceled.
+    #[error("the rescan has already committed and can no longer be canceled")]
+    RescanNotCancellable,
     /// The background operation thread has stopped.
     #[error("the index worker has stopped")]
     WorkerStopped,

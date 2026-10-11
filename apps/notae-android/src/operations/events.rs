@@ -6,8 +6,10 @@ use crate::ui::search::SearchRow;
 pub enum OperationEvent {
     /// A rescan has started; the total is unknown until the catalog finishes enumerating.
     Started,
-    /// One catalogued PDF has been classified by the reconciliation plan.
+    /// One catalogued PDF has finished reconciliation and text extraction.
     Progress { completed: usize, total: usize },
+    /// Reconciliation is committed; text extraction is finishing and cannot be canceled.
+    RescanFinalizing { total: usize },
     /// One PDF was reconciled successfully.
     FileSucceeded { path: String },
     /// One PDF could not be reconciled; other files continue independently.
