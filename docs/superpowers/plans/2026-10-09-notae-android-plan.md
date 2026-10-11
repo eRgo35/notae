@@ -490,7 +490,7 @@
 
   Commit: `2b51095 feat(android): extract embedded PDF text`.
 
-  Review follow-up: pending.
+  Review follow-up: `153aabb fix(android): bound PDF extraction and cancellation`.
 
 ## Android-plan completion check
 
