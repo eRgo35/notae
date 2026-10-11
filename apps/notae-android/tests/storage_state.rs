@@ -322,3 +322,23 @@ fn revoked_root_short_circuits_before_filesystem_check() {
     let outcome = LibraryRootProvider::reopen(&provider, &root);
     assert!(matches!(outcome, Err(StorageError::PermissionLost)));
 }
+
+#[test]
+fn chosen_storage_enables_settings_without_starting_a_scan() {
+    use notae_android::state::{OperationState, Screen, UiEvent};
+    use notae_android::ui::UiModel;
+
+    let directory = tempfile::TempDir::new().expect("library directory");
+    let provider = FilesystemLibraryRootProvider::new();
+    provider.queue_directory(directory.path().to_path_buf());
+    let root = select_root_blocking(&provider).expect("choose library");
+    let source = provider.reopen(&root).expect("open library");
+    let mut model = UiModel::new();
+    model.set_storage(StorageState::Ready(Arc::new(Mutex::new(source))));
+
+    model.dispatch(UiEvent::OpenSettings).expect("settings available after choosing a library");
+    assert_eq!(model.state().screen(), &Screen::Settings);
+    assert_eq!(model.state().operation(), &OperationState::Idle);
+    model.dispatch(UiEvent::CloseSettings).expect("return to library");
+    assert_eq!(model.state().screen(), &Screen::Library);
+}

@@ -26,10 +26,11 @@
         </intent>
     </queries>
 
-    <application android:label="Notae" android:hasCode="true">
+    <application android:label="Notae" android:hasCode="true"
+                 android:icon="@mipmap/ic_launcher">
         <activity android:name=".NotaeActivity"
                   android:exported="true"
-                  android:configChanges="orientation|keyboardHidden|screenSize">
+                  android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

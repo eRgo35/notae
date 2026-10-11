@@ -13,3 +13,4 @@
 pub mod saf;
 pub mod pdf_intent;
 pub mod pdf_pages;
+pub mod theme;

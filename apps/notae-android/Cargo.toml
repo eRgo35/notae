@@ -72,6 +72,8 @@ pollster = "0.4"
 package = "org.notae.android"
 apk_name = "notae-android"
 java_sources = "android/src/main/java"
+resources = "android/res"
+use_aapt2 = true
 
 [[package.metadata.android.queries.package]]
 name = "com.samsung.android.app.notes"
@@ -85,10 +87,11 @@ mime_type = "application/pdf"
 [package.metadata.android.application]
 label = "Notae"
 has_code = true
+icon = "@mipmap/ic_launcher"
 
 [[package.metadata.android.application.activity]]
 name = ".NotaeActivity"
-config_changes = "orientation|keyboardHidden|screenSize"
+config_changes = "orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
 exported = true
 
 [[package.metadata.android.application.activity.meta_data]]
