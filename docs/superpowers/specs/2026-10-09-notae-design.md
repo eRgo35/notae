@@ -21,7 +21,7 @@ Build a tablet-first Android application for a fully local library of music-note
 - Globally unique optional numeric IDs.
 - Numeric-ID-first browsing order.
 - Full-text search over indexed metadata and printed OCR text.
-- On-device OCR for image-only PDFs.
+- Android extracts embedded PDF text when the platform API supports it. Image-only PDFs remain OCR-pending until OCR text is imported from the Linux sidecar.
 - Linux PC indexing with a portable sidecar index.
 - Sidecar import preview and explicit confirmation.
 - Samsung Notes handoff with Android PDF chooser fallback.
@@ -149,7 +149,7 @@ A rescan:
 3. detects additions, deletions, path moves, and changed content;
 4. parses filename metadata for new files;
 5. reads existing PDF text when available;
-6. queues OCR for image-only or otherwise unsearchable pages;
+6. marks image-only or otherwise unsearchable PDFs OCR-pending for Linux OCR and sidecar import;
 7. reports duplicate IDs and per-file failures;
 8. detects `.notae/index.sqlite` for optional PC-index import.
 
@@ -303,9 +303,9 @@ pub trait OcrProvider {
 }
 ```
 
-The initial backend direction is a Tesseract/Leptonica-backed adapter controlled through Rust because the product requires multilingual language data, including English, Polish, and Latin, plus extensibility to additional installed language packs. Automatic language/script detection is the default behavior; it should select among locally available packs and record uncertainty or failure instead of silently returning no text.
+The Linux OCR backend uses Tesseract/Leptonica through Rust because the product requires multilingual language data, including English, Polish, and Latin, plus extensibility to additional installed language packs. Automatic language/script detection is the default behavior; it should select among locally available packs and record uncertainty or failure instead of silently returning no text.
 
-OCR models and language data are local assets. Runtime indexing MUST NOT require a network connection. The exact packaging and Android performance of the multilingual backend are implementation-spike concerns, but the provider contract and stored OCR output are fixed by this design.
+The Android app does not run OCR or render PDFs. On Android API 35 and later, it reads an existing PDF text layer through `PdfRenderer.Page.getTextContents`; on older APIs or image-only documents it preserves imported sidecar OCR or leaves the record OCR-pending. Linux OCR models and language data are local assets, and runtime indexing MUST NOT require a network connection.
 
 ### Linux CLI
 

@@ -87,7 +87,6 @@ pub fn pdf_intent_spec(uri: ContentUri) -> PdfIntentSpec {
 }
 
 /// Chooses Samsung Notes when it resolves the PDF intent, otherwise the system chooser.
-#[must_use]
 pub const fn launch_result(
     samsung_notes_resolves: bool,
     compatible_viewers: usize,

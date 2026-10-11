@@ -1,10 +1,11 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use notae_index::{IndexStore, Reconciler, SidecarImporter, SidecarManifest};
+use notae_domain::IndexStatus;
+use notae_index::{IndexStore, OcrText, PdfFile, Reconciler, SidecarImporter, SidecarManifest};
 
 use crate::operations::events::{ImportSummary, OperationEvent, RescanSummary};
 use crate::operations::import::ImportPreviewViewModel;
@@ -145,10 +146,7 @@ impl OperationController {
     /// Receives one event with a bounded wait; useful to exercise the worker
     /// contract from host tests without polling or sleeping.
     pub fn recv_event_timeout(&self, timeout: Duration) -> Option<OperationEvent> {
-        match self.events.recv_timeout(timeout) {
-            Ok(event) => Some(event),
-            Err(RecvTimeoutError::Timeout | RecvTimeoutError::Disconnected) => None,
-        }
+        self.events.recv_timeout(timeout).ok()
     }
 
     fn begin_operation(&self) -> Result<(), UiError> {
@@ -341,35 +339,9 @@ fn run_rescan(
         .iter()
         .map(|failure| (failure.path().as_str().to_owned(), failure.to_string()))
         .collect();
-    for (index, file) in files.iter().enumerate() {
-        let path = file.path().as_str().to_owned();
-        match failures.get(&path) {
-            Some(reason) => send(
-                events,
-                OperationEvent::FileFailed {
-                    path,
-                    reason: reason.clone(),
-                },
-            ),
-            None => send(events, OperationEvent::FileSucceeded { path }),
-        }
-        send(
-            events,
-            OperationEvent::Progress {
-                completed: index + 1,
-                total: files.len(),
-            },
-        );
-    }
-
-    if canceled.load(Ordering::Acquire) {
-        send(events, OperationEvent::Canceled);
-        busy.store(false, Ordering::Release);
-        return;
-    }
     match Reconciler::apply(plan, local) {
         Ok(report) => {
-            let summary = RescanSummary {
+            let mut summary = RescanSummary {
                 added: report.additions().len(),
                 updated: report.updates().len(),
                 moved: report.moves().len(),
@@ -377,6 +349,31 @@ fn run_rescan(
                 conflicts: report.conflicts().len(),
                 failures: report.failures().len(),
             };
+            for (index, file) in files.iter().enumerate() {
+                let path = file.path().as_str().to_owned();
+                let plan_failure = failures.get(&path).cloned();
+                let failure = plan_failure.clone().or_else(|| {
+                    match apply_pdf_text_layer(local, catalog, file) {
+                        Ok(failure) => failure,
+                        Err(error) => Some(error.to_string()),
+                    }
+                });
+                if let Some(reason) = failure {
+                    if plan_failure.is_none() {
+                        summary.failures += 1;
+                    }
+                    send(events, OperationEvent::FileFailed { path, reason });
+                } else {
+                    send(events, OperationEvent::FileSucceeded { path });
+                }
+                send(
+                    events,
+                    OperationEvent::Progress {
+                        completed: index + 1,
+                        total: files.len(),
+                    },
+                );
+            }
             match project_rows(local, query) {
                 Ok(rows) => {
                     send(events, OperationEvent::Completed { summary, rows });
@@ -425,6 +422,39 @@ fn run_rescan(
         ),
     }
     busy.store(false, Ordering::Release);
+}
+
+fn apply_pdf_text_layer(
+    local: &IndexStore,
+    catalog: &dyn LibraryCatalog,
+    file: &PdfFile,
+) -> Result<Option<String>, UiError> {
+    let Some(fingerprint) = file.fingerprint() else {
+        return Ok(None);
+    };
+    let hash = fingerprint.sha256();
+    let Some(note) = local.get_by_hash(&hash)? else {
+        return Ok(None);
+    };
+    if note.status() == IndexStatus::DuplicateIdConflict {
+        return Ok(None);
+    }
+
+    let existing_text = local.ocr_text(&hash)?;
+    let has_existing_searchable_text = existing_text
+        .as_ref()
+        .is_some_and(|text| !text.text().is_empty());
+    let outcome = crate::pdf_pages::classify_text_layer(
+        catalog.extract_text_layer(file.path()),
+        has_existing_searchable_text,
+    );
+    let updated = note.with_status(outcome.status);
+    if let Some(text) = outcome.text {
+        local.reindex_note_with_ocr(&updated, Some(&OcrText::new(text)))?;
+    } else {
+        local.reindex_note(&updated)?;
+    }
+    Ok(outcome.failure.map(|error| error.to_string()))
 }
 
 fn project_rows(local: &IndexStore, query: &str) -> Result<Vec<SearchRow>, UiError> {

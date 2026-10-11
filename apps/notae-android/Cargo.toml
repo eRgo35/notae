@@ -47,9 +47,10 @@ notae-index-cli = { path = "../notae-index" }
 android-activity = "0.6"
 jni = "0.22"
 
-# `notae-index` adds the [`PdfCatalog`](notae_index::PdfCatalog) trait and the
-# `PdfFile` / `CatalogError` types that `LibrarySource` must implement.
-# `notae-ocr` remains unused until Task 8 adds Android PDF-page and OCR adapters.
+# `notae-ocr` remains host/Linux-only: its current Tesseract and Leptonica
+# bindings do not support Android cross-compilation. Android uses PdfRenderer
+# for text-layer extraction only; image-only PDFs remain OCR-pending. PDFs
+# are never rendered by the app.
 # Cross-compiling `notae-index` to Android is non-trivial because it bundles
 # SQLite via `cc-rs`. The build expects the NDK clang in the PATH for
 # `aarch64-linux-android`; `cargo apk2` sets that up. The host test

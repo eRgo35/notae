@@ -182,7 +182,7 @@ fn manual_edits_survive_rescan_and_sidecar_preview() {
         original.fingerprint().clone(),
         path.to_owned(),
     );
-    let plan = Reconciler::plan(&store, &[pdf.clone()]).expect("plan unchanged rescan");
+    let plan = Reconciler::plan(&store, std::slice::from_ref(&pdf)).expect("plan unchanged rescan");
     Reconciler::apply(plan, &mut store).expect("apply unchanged rescan");
     let rescanned = store.list_all().expect("read rescanned record").remove(0);
     assert_eq!(rescanned.id(), Some(NoteId::new(42)));

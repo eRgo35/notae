@@ -1,9 +1,8 @@
 //! Android-specific implementations behind `cfg(target_os = "android")`.
 //!
-//! The Storage Access Framework provider lives in [`saf`]. It is the
-//! only place that talks to the Android platform: `ContentResolver`,
-//! tree URIs, persisted read permission, and the `ACTION_OPEN_DOCUMENT_TREE`
-//! intent that opens the system file picker.
+//! Storage and external PDF handoff live in [`saf`] and [`pdf_intent`].
+//! [`pdf_pages`] uses the platform's local `PdfRenderer` API for page access
+//! and API-35 text-layer extraction.
 //!
 //! This module does *not* apply a crate-wide lint override:
 //! [`saf`] opts back into `unsafe` locally with its own
@@ -13,3 +12,4 @@
 
 pub mod saf;
 pub mod pdf_intent;
+pub mod pdf_pages;
