@@ -481,14 +481,14 @@
 
   Verified: `cargo test -p notae-android` (68 tests), Android-target `cargo apk2 check`, and signed/aligned release APK build. Packaged APK contains the launcher activity, classes dex, and `libnotae_android.so`. Device verification remains pending because no tablet is attached.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
   ```bash
-  git add apps/notae-android docs/superpowers/specs/2026-10-09-notae-design.md
+  git add apps/notae-android docs/superpowers/specs/2026-10-09-notae-design.md docs/superpowers/plans/2026-10-09-notae-android-plan.md
   git commit -m "feat(android): extract embedded PDF text"
   ```
 
-  Commit: pending.
+  Commit: `2b51095 feat(android): extract embedded PDF text`.
 
 ## Android-plan completion check
 
