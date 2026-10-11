@@ -198,35 +198,40 @@ fn extract_text_layer(
                 .i()?;
             let mut page_text = String::new();
             for index in 0..count {
-                let item = env
-                    .call_method(
-                        &contents,
-                        jni_str!("get"),
-                        jni_sig!("(I)Ljava/lang/Object;"),
-                        &[JValue::Int(index)],
-                    )?
-                    .l()?;
-                if item.is_null() {
-                    continue;
+                let value = env.with_local_frame(8, |env| -> Result<Option<String>, JniError> {
+                    let item = env
+                        .call_method(
+                            &contents,
+                            jni_str!("get"),
+                            jni_sig!("(I)Ljava/lang/Object;"),
+                            &[JValue::Int(index)],
+                        )?
+                        .l()?;
+                    if item.is_null() {
+                        return Ok(None);
+                    }
+                    let value = env
+                        .call_method(
+                            &item,
+                            jni_str!("getText"),
+                            jni_sig!("()Ljava/lang/String;"),
+                            &[],
+                        )?
+                        .l()?;
+                    if value.is_null() {
+                        return Ok(None);
+                    }
+                    // SAFETY: PdfPageTextContent.getText() returns a local Java String reference.
+                    let value =
+                        unsafe { JString::from_raw(env, value.as_raw() as jni::sys::jstring) };
+                    value.try_to_string(env).map(Some)
+                })?;
+                if let Some(value) = value {
+                    if !page_text.is_empty() && !value.is_empty() {
+                        page_text.push(' ');
+                    }
+                    page_text.push_str(&value);
                 }
-                let value = env
-                    .call_method(
-                        &item,
-                        jni_str!("getText"),
-                        jni_sig!("()Ljava/lang/String;"),
-                        &[],
-                    )?
-                    .l()?;
-                if value.is_null() {
-                    continue;
-                }
-                // SAFETY: PdfPageTextContent.getText() returns a local Java String reference.
-                let value = unsafe { JString::from_raw(env, value.as_raw() as jni::sys::jstring) };
-                let value = value.try_to_string(env)?;
-                if !page_text.is_empty() && !value.is_empty() {
-                    page_text.push(' ');
-                }
-                page_text.push_str(&value);
             }
             Ok(page_text)
         })?;

@@ -538,6 +538,9 @@ fn operation_progress_text(operation: &OperationState) -> String {
         OperationState::RescanInProgress { completed, total } => {
             format!("Scanning PDFs: {completed} of {total}")
         }
+        OperationState::RescanFinalizing { completed, total } => {
+            format!("Extracting PDF text: {completed} of {total}")
+        }
         OperationState::ImportPreviewPending { candidate_count } => {
             format!("Review {candidate_count} proposed sidecar changes")
         }

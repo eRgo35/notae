@@ -475,11 +475,11 @@
 
 - [x] **Step 3: Implement the Android PDF text-layer adapter**
 
-  Use `PdfRenderer` behind the JNI adapter. Read text only on API 35+, close each page and renderer on completion and error, and attach extraction failures to the affected PDF. Do not render pages or run Tesseract on Android. Preserve imported sidecar OCR when the platform exposes no text layer; otherwise mark the record OCR-pending.
+  Use `PdfRenderer` behind the JNI adapter. Read text only on API 35+, bound JNI local references per text item, close each page and renderer on completion and error, and attach extraction failures to the affected PDF. Do not render pages or run Tesseract on Android. Preserve imported sidecar OCR when the platform exposes no text layer; otherwise mark the record OCR-pending. Cancellation is atomically closed before reconciliation commits; the UI shows an uncancellable finalization phase while text extraction finishes.
 
 - [x] **Step 4: Run host tests and build the APK**
 
-  Verified: `cargo test -p notae-android` (68 tests), Android-target `cargo apk2 check`, and signed/aligned release APK build. Packaged APK contains the launcher activity, classes dex, and `libnotae_android.so`. Device verification remains pending because no tablet is attached.
+  Verified: `cargo test -p notae-android` (70 tests), `cargo test --workspace` (366 tests), `cargo clippy --workspace --all-targets -- -D warnings`, Android-target `cargo apk2 check`, and signed/aligned release APK build. Packaged APK contains the launcher activity, classes dex, and `libnotae_android.so`. Device verification remains pending because no tablet is attached.
 
 - [x] **Step 5: Commit**
 
@@ -489,6 +489,8 @@
   ```
 
   Commit: `2b51095 feat(android): extract embedded PDF text`.
+
+  Review follow-up: pending.
 
 ## Android-plan completion check
 

@@ -470,3 +470,38 @@ fn metadata_events_keep_errors_visible_and_close_after_success() {
     assert!(model.metadata_error().is_none());
     assert_eq!(model.search_rows()[0].title, "Edited Leaves");
 }
+
+#[test]
+fn rescan_finalization_has_progress_state_after_cancel_is_closed() {
+    use notae_android::state::{OperationState, Transition, UiEvent};
+    use notae_android::ui::UiModel;
+
+    let mut model = UiModel::new();
+    assert_eq!(
+        model.dispatch(UiEvent::PickLibraryRoot {
+            root: std::path::PathBuf::from("/library"),
+        }),
+        Ok(Transition::BeginRescan)
+    );
+    model.start_rescan().expect("request scan");
+    model
+        .apply_operation_event(OperationEvent::Started)
+        .expect("start event");
+    model
+        .apply_operation_event(OperationEvent::RescanFinalizing { total: 3 })
+        .expect("finalization event");
+    model
+        .apply_operation_event(OperationEvent::Progress {
+            completed: 2,
+            total: 3,
+        })
+        .expect("finalization progress");
+
+    assert_eq!(
+        model.state().operation(),
+        &OperationState::RescanFinalizing {
+            completed: 2,
+            total: 3,
+        }
+    );
+}

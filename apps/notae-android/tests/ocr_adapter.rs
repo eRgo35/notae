@@ -1,3 +1,4 @@
+use std::sync::{Arc, Condvar, Mutex, mpsc};
 use std::time::Duration;
 
 use notae_android::operations::events::OperationEvent;
@@ -25,6 +26,30 @@ impl PdfCatalog for TextCatalog {
 impl LibraryCatalog for TextCatalog {
     fn extract_text_layer(&self, _path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         self.extracted.clone()
+    }
+}
+
+struct BlockingTextCatalog {
+    file: PdfFile,
+    entered: mpsc::Sender<()>,
+    release: Arc<(Mutex<bool>, Condvar)>,
+}
+
+impl PdfCatalog for BlockingTextCatalog {
+    fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
+        Ok(vec![self.file.clone()])
+    }
+}
+
+impl LibraryCatalog for BlockingTextCatalog {
+    fn extract_text_layer(&self, _path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
+        self.entered.send(()).expect("test receiver is alive");
+        let (lock, ready) = &*self.release;
+        let mut released = lock.lock().expect("release lock is healthy");
+        while !*released {
+            released = ready.wait(released).expect("release lock is healthy");
+        }
+        Ok(None)
     }
 }
 
@@ -248,6 +273,49 @@ fn rescan_reports_pdf_text_extraction_failure_and_marks_record_incomplete() {
                 assert_eq!(rows[0].status, "OCR incomplete");
                 break;
             }
+            Some(OperationEvent::Failed { reason }) => panic!("rescan failed: {reason}"),
+            Some(_) => {}
+            None => panic!("rescan did not finish"),
+        }
+    }
+}
+
+#[test]
+fn rescan_cannot_be_canceled_after_reconciliation_commits() {
+    let directory = tempfile::tempdir().expect("temporary database directory");
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let release = Arc::new((Mutex::new(false), Condvar::new()));
+    let controller = OperationController::new(
+        IndexStore::open(directory.path().join("index.sqlite")).expect("open index"),
+        Box::new(BlockingTextCatalog {
+            file: readable_pdf("14 - Finalizing.pdf", b"%PDF-1.4\ntext extraction"),
+            entered: entered_tx,
+            release: Arc::clone(&release),
+        }),
+    );
+    controller.start_rescan().expect("start explicit rescan");
+
+    let mut saw_finalizing = false;
+    loop {
+        match controller.recv_event_timeout(Duration::from_secs(2)) {
+            Some(OperationEvent::RescanFinalizing { total }) => {
+                assert_eq!(total, 1);
+                entered_rx
+                    .recv_timeout(Duration::from_secs(2))
+                    .expect("text extraction is running");
+                assert!(controller.cancel().is_err());
+                saw_finalizing = true;
+                let (lock, ready) = &*release;
+                *lock.lock().expect("release lock is healthy") = true;
+                ready.notify_all();
+            }
+            Some(OperationEvent::Completed { rows, .. }) => {
+                assert!(saw_finalizing);
+                assert_eq!(rows.len(), 1);
+                assert_eq!(rows[0].status, "OCR pending");
+                break;
+            }
+            Some(OperationEvent::Canceled) => panic!("committed rescan cannot be canceled"),
             Some(OperationEvent::Failed { reason }) => panic!("rescan failed: {reason}"),
             Some(_) => {}
             None => panic!("rescan did not finish"),

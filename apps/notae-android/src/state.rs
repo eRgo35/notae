@@ -155,6 +155,13 @@ pub enum OperationState {
         /// Files found by the catalog.
         total: usize,
     },
+    /// A committed rescan is extracting PDF text; cancellation is no longer available.
+    RescanFinalizing {
+        /// Files classified so far.
+        completed: usize,
+        /// Files found by the catalog.
+        total: usize,
+    },
     /// A sidecar import is ready for the user to confirm.
     ImportPreviewPending {
         /// How many records the importer wants the user to confirm.
@@ -338,13 +345,30 @@ impl AppController {
         completed: usize,
         total: usize,
     ) -> Result<(), EventError> {
+        match &self.state.operation {
+            OperationState::RescanInProgress { .. } => {
+                self.state.operation = OperationState::RescanInProgress { completed, total };
+            }
+            OperationState::RescanFinalizing { .. } => {
+                self.state.operation = OperationState::RescanFinalizing { completed, total };
+            }
+            _ => return Err(EventError::OperationAlreadyInProgress),
+        }
+        Ok(())
+    }
+
+    /// Marks reconciliation committed and makes the rescan non-cancellable.
+    pub fn begin_rescan_finalization(&mut self, total: usize) -> Result<(), EventError> {
         if !matches!(
             self.state.operation,
             OperationState::RescanInProgress { .. }
         ) {
             return Err(EventError::OperationAlreadyInProgress);
         }
-        self.state.operation = OperationState::RescanInProgress { completed, total };
+        self.state.operation = OperationState::RescanFinalizing {
+            completed: 0,
+            total,
+        };
         Ok(())
     }
 

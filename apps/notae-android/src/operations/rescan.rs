@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -14,12 +14,16 @@ use crate::ui::library::LibraryViewModel;
 use crate::ui::metadata_editor::{EditableMetadata, MetadataEditor};
 use crate::ui::search::{SearchRow, UiError};
 
+const CANCEL_OPEN: u8 = 0;
+const CANCEL_REQUESTED: u8 = 1;
+const CANCEL_CLOSED: u8 = 2;
+
 /// Owns the worker that serializes all index access away from the UI thread.
 pub struct OperationController {
     commands: Sender<WorkerCommand>,
     events: Receiver<OperationEvent>,
     busy: Arc<AtomicBool>,
-    canceled: Arc<AtomicBool>,
+    cancellation: Arc<AtomicU8>,
     worker: Option<JoinHandle<()>>,
 }
 
@@ -44,9 +48,9 @@ impl OperationController {
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
         let busy = Arc::new(AtomicBool::new(false));
-        let canceled = Arc::new(AtomicBool::new(false));
+        let cancellation = Arc::new(AtomicU8::new(CANCEL_CLOSED));
         let worker_busy = Arc::clone(&busy);
-        let worker_canceled = Arc::clone(&canceled);
+        let worker_cancellation = Arc::clone(&cancellation);
         let worker = thread::Builder::new()
             .name("notae-index-worker".to_owned())
             .spawn(move || {
@@ -56,7 +60,7 @@ impl OperationController {
                     command_rx,
                     event_tx,
                     worker_busy,
-                    worker_canceled,
+                    worker_cancellation,
                 );
             })
             .expect("start Notae index worker");
@@ -64,7 +68,7 @@ impl OperationController {
             commands: command_tx,
             events: event_rx,
             busy,
-            canceled,
+            cancellation,
             worker: Some(worker),
         }
     }
@@ -72,9 +76,10 @@ impl OperationController {
     /// Requests a manual rescan. A second active operation is rejected.
     pub fn start_rescan(&self) -> Result<(), UiError> {
         self.begin_operation()?;
-        self.canceled.store(false, Ordering::Release);
+        self.cancellation.store(CANCEL_OPEN, Ordering::Release);
         self.commands.send(WorkerCommand::Rescan).map_err(|_| {
             self.busy.store(false, Ordering::Release);
+            self.cancellation.store(CANCEL_CLOSED, Ordering::Release);
             UiError::WorkerStopped
         })
     }
@@ -108,13 +113,20 @@ impl OperationController {
             .map_err(|_| UiError::WorkerStopped)
     }
 
-    /// Stops a running scan before it writes its reconciliation plan.
+    /// Stops a running scan before reconciliation commits its plan.
     pub fn cancel(&self) -> Result<(), UiError> {
         if !self.busy.load(Ordering::Acquire) {
             return Err(UiError::NoOperationInProgress);
         }
-        self.canceled.store(true, Ordering::Release);
-        Ok(())
+        match self.cancellation.compare_exchange(
+            CANCEL_OPEN,
+            CANCEL_REQUESTED,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        ) {
+            Ok(_) | Err(CANCEL_REQUESTED) => Ok(()),
+            Err(_) => Err(UiError::RescanNotCancellable),
+        }
     }
 
     /// Re-runs the core-ranked search on the worker-owned index.
@@ -172,7 +184,7 @@ fn run_worker(
     commands: Receiver<WorkerCommand>,
     events: Sender<OperationEvent>,
     busy: Arc<AtomicBool>,
-    canceled: Arc<AtomicBool>,
+    cancellation: Arc<AtomicU8>,
 ) {
     let mut query = String::new();
     let mut preview = ImportPreviewViewModel::default();
@@ -183,7 +195,7 @@ fn run_worker(
                 catalog.as_ref(),
                 &events,
                 &busy,
-                &canceled,
+                &cancellation,
                 &query,
                 &mut preview,
             ),
@@ -291,14 +303,18 @@ fn run_rescan(
     catalog: &dyn LibraryCatalog,
     events: &Sender<OperationEvent>,
     busy: &AtomicBool,
-    canceled: &AtomicBool,
+    cancellation: &AtomicU8,
     query: &str,
     preview: &mut ImportPreviewViewModel,
 ) {
     send(events, OperationEvent::Started);
+    if stop_if_cancelled(cancellation, events, busy) {
+        return;
+    }
     let files = match catalog.enumerate() {
         Ok(files) => files,
         Err(error) => {
+            cancellation.store(CANCEL_CLOSED, Ordering::Release);
             send(
                 events,
                 OperationEvent::Failed {
@@ -309,15 +325,14 @@ fn run_rescan(
             return;
         }
     };
-    if canceled.load(Ordering::Acquire) {
-        send(events, OperationEvent::Canceled);
-        busy.store(false, Ordering::Release);
+    if stop_if_cancelled(cancellation, events, busy) {
         return;
     }
 
     let plan = match Reconciler::plan(local, &files) {
         Ok(plan) => plan,
         Err(error) => {
+            cancellation.store(CANCEL_CLOSED, Ordering::Release);
             send(
                 events,
                 OperationEvent::Failed {
@@ -328,9 +343,7 @@ fn run_rescan(
             return;
         }
     };
-    if canceled.load(Ordering::Acquire) {
-        send(events, OperationEvent::Canceled);
-        busy.store(false, Ordering::Release);
+    if stop_if_cancelled(cancellation, events, busy) {
         return;
     }
 
@@ -339,8 +352,32 @@ fn run_rescan(
         .iter()
         .map(|failure| (failure.path().as_str().to_owned(), failure.to_string()))
         .collect();
+    if cancellation
+        .compare_exchange(
+            CANCEL_OPEN,
+            CANCEL_CLOSED,
+            Ordering::AcqRel,
+            Ordering::Acquire,
+        )
+        .is_err()
+    {
+        if !stop_if_cancelled(cancellation, events, busy) {
+            send(
+                events,
+                OperationEvent::Failed {
+                    reason: "rescan cancellation state closed unexpectedly".to_owned(),
+                },
+            );
+            busy.store(false, Ordering::Release);
+        }
+        return;
+    }
     match Reconciler::apply(plan, local) {
         Ok(report) => {
+            send(
+                events,
+                OperationEvent::RescanFinalizing { total: files.len() },
+            );
             let mut summary = RescanSummary {
                 added: report.additions().len(),
                 updated: report.updates().len(),
@@ -422,6 +459,20 @@ fn run_rescan(
         ),
     }
     busy.store(false, Ordering::Release);
+}
+
+fn stop_if_cancelled(
+    cancellation: &AtomicU8,
+    events: &Sender<OperationEvent>,
+    busy: &AtomicBool,
+) -> bool {
+    if cancellation.load(Ordering::Acquire) != CANCEL_REQUESTED {
+        return false;
+    }
+    cancellation.store(CANCEL_CLOSED, Ordering::Release);
+    send(events, OperationEvent::Canceled);
+    busy.store(false, Ordering::Release);
+    true
 }
 
 fn apply_pdf_text_layer(
