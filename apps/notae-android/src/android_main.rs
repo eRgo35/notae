@@ -121,6 +121,7 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
     // all share the same `model` so every state change goes through
     // `UiModel::dispatch`.
     let window = AppWindow::new().expect("failed to construct Slint AppWindow");
+    crate::android::theme::configure(&app, &window);
 
     sync_window(&window, &model.borrow());
 
@@ -463,6 +464,19 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         OperationState::Completed { .. } | OperationState::Failed { .. }
     ));
     window.set_operation_progress_text(operation_progress_text(operation).into());
+    window.set_operation_busy(matches!(
+        operation,
+        OperationState::RescanInProgress { .. }
+            | OperationState::RescanFinalizing { .. }
+            | OperationState::ImportApplying
+    ));
+    window.set_operation_fraction(match operation {
+        OperationState::RescanInProgress { completed, total }
+        | OperationState::RescanFinalizing { completed, total } if *total > 0 => {
+            (*completed as f32 / *total as f32).clamp(0.0, 1.0)
+        }
+        _ => 0.0,
+    });
     window.set_search_text(state.search().query.as_str().into());
     window.set_show_settings(matches!(state.screen(), Screen::Settings));
     let rows: Vec<crate::LibraryRow> = model

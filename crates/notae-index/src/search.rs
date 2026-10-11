@@ -133,10 +133,10 @@ pub(crate) fn search(
 
 /// Turns free-form user input into an FTS5 match expression.
 ///
-/// Only runs of alphanumeric characters become terms, and every term is
-/// double-quoted, so FTS5 operators a user types cannot change the query's
-/// meaning or make it invalid. Terms are combined with the implicit `AND`, so
-/// a hit matches the whole query.
+/// Only runs of alphanumeric characters become terms, and each term is quoted
+/// before adding FTS5's prefix operator. This keeps user input literal while
+/// matching incomplete words as they are typed. Terms are combined with the
+/// implicit `AND`, so a hit matches every query term.
 fn match_expression(query: &str) -> String {
     let mut terms = Vec::new();
     let mut current = String::new();
@@ -152,7 +152,7 @@ fn match_expression(query: &str) -> String {
     }
     terms
         .into_iter()
-        .map(|term| format!("\"{term}\""))
+        .map(|term| format!("\"{term}\"*"))
         .collect::<Vec<_>>()
         .join(" ")
 }

@@ -89,6 +89,15 @@ impl UiModel {
 
     /// Updates the storage state in place.
     pub fn set_storage(&mut self, state: StorageState) {
+        if matches!(
+            self.controller.state().screen(),
+            crate::state::Screen::Setup(_)
+        ) && matches!(&state, StorageState::Ready(_))
+        {
+            // SAF readiness must also enable controller navigation. Worker
+            // scheduling remains explicit: choosing a folder does not scan it.
+            self.controller.library_ready();
+        }
         *self.storage.lock().expect("storage mutex poisoned") = state;
     }
 

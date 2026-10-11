@@ -269,6 +269,12 @@ impl AppController {
         &self.state
     }
 
+    /// Enables library navigation after storage becomes available, without scanning.
+    pub(crate) fn library_ready(&mut self) {
+        self.state.screen = Screen::Library;
+        self.state.library = LibraryState::default();
+    }
+
     /// Applies a `UiEvent`, returning the side-effect instruction the
     /// worker should run.
     ///
@@ -283,11 +289,7 @@ impl AppController {
             }
             UiEvent::RequestRescan => self.start_rescan(),
             UiEvent::PickLibraryRoot { root } => {
-                self.state.screen = Screen::Library;
-                // The chosen root takes effect immediately; the actual
-                // sidecar import (Task 5) is what produces an import
-                // preview. For Task 1 we just move off the setup screen.
-                self.state.library = LibraryState::default();
+                self.library_ready();
                 let _ = root;
                 Ok(Transition::BeginRescan)
             }

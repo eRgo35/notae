@@ -1,0 +1,318 @@
+// Shared dark Material palette and touch-first controls. No native widget styling.
+export global Theme {
+    in-out property <color> background: #141318;
+    in-out property <color> surface: #1c1b20;
+    in-out property <color> container: #25242a;
+    in-out property <color> high: #302e36;
+    in-out property <color> foreground: #e6e1e9;
+    in-out property <color> muted: #cac4d0;
+    in-out property <color> primary: #d0bcff;
+    in-out property <color> on-primary: #381e72;
+    in-out property <color> primary-container: #4f378b;
+    in-out property <color> on-container: #eaddff;
+    in-out property <color> outline: #49454f;
+    in-out property <color> error: #f2b8b5;
+    in-out property <color> success: #a6d5ae;
+    in-out property <bool> reduced-motion: false;
+    in-out property <bool> modal-open: false;
+}
+
+export component Glyph inherits Image {
+    in property <string> kind;
+    width: 24px;
+    height: 24px;
+    image-fit: contain;
+    colorize: Theme.muted;
+    accessible-role: none;
+    source: root.kind == "search" ? @image-url("material-icons/search.svg")
+        : root.kind == "folder" ? @image-url("material-icons/folder.svg")
+        : root.kind == "library" ? @image-url("material-icons/library.svg")
+        : root.kind == "settings" ? @image-url("material-icons/settings.svg")
+        : root.kind == "scan" ? @image-url("material-icons/scan.svg")
+        : root.kind == "edit" ? @image-url("material-icons/edit.svg")
+        : root.kind == "arrow-back" ? @image-url("material-icons/arrow-back.svg")
+        : root.kind == "close" ? @image-url("material-icons/close.svg")
+        : root.kind == "document" ? @image-url("material-icons/document.svg")
+        : root.kind == "chevron-right" ? @image-url("material-icons/chevron-right.svg")
+        : root.kind == "check" ? @image-url("material-icons/check.svg")
+        : root.kind == "warning" ? @image-url("material-icons/warning.svg")
+        : @image-url("material-icons/document.svg");
+}
+
+// Keep keyboard and pointer activation identical without introducing a native button.
+component ActionInput inherits TouchArea {
+    out property <bool> has-focus <=> keyboard.has-focus;
+    out property <bool> keyboard-pressed: keyboard.down;
+    forward-focus: keyboard;
+    mouse-cursor: root.enabled ? pointer : default;
+    accessible-role: none;
+
+    keyboard := FocusScope {
+        property <bool> down: false;
+        width: 0px;
+        height: 0px;
+        enabled: root.enabled;
+        changed has-focus => {
+            if !self.has-focus { self.down = false; }
+        }
+        key-pressed(event) => {
+            if root.enabled && (event.text == Key.Return || event.text == Key.Space) {
+                if !self.down {
+                    self.down = true;
+                    root.clicked();
+                }
+                return accept;
+            }
+            return reject;
+        }
+        key-released(event) => {
+            if event.text == Key.Return || event.text == Key.Space {
+                self.down = false;
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
+
+export component MaterialButton inherits Rectangle {
+    in property <string> text;
+    in property <image> icon;
+    in property <bool> primary: false;
+    in property <bool> tonal: false;
+    in property <bool> enabled: true;
+    in property <bool> in-dialog: false;
+    private property <bool> effective-enabled: root.enabled && (!Theme.modal-open || root.in-dialog);
+    callback clicked();
+    private property <color> ink: !root.enabled ? Theme.muted
+        : root.primary ? Theme.on-primary
+        : root.tonal ? Theme.on-container : Theme.primary;
+
+    min-width: max(48px, content.min-width);
+    preferred-width: self.min-width;
+    min-height: max(48px, content.min-height);
+    preferred-height: self.min-height;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: self.height / 2;
+    background: !root.enabled ? Theme.high
+        : root.primary ? Theme.primary
+        : root.tonal ? Theme.primary-container : transparent;
+    border-width: !root.primary && !root.tonal ? 1px : 0px;
+    border-color: Theme.outline;
+    forward-focus: input;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.effective-enabled;
+    accessible-action-default => {
+        if root.effective-enabled { root.clicked(); }
+    }
+
+    Rectangle {
+        border-radius: root.border-radius;
+        background: root.ink;
+        opacity: !root.enabled ? 0 : input.pressed || input.keyboard-pressed ? 0.12
+            : input.has-hover ? 0.08 : 0;
+        animate opacity { duration: Theme.reduced-motion ? 0ms : 120ms; easing: ease-out; }
+    }
+    content := HorizontalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 8px;
+        alignment: center;
+        if root.icon.width > 0 && root.icon.height > 0: Image {
+            source: root.icon;
+            width: 20px;
+            height: 20px;
+            image-fit: contain;
+            colorize: root.ink;
+            opacity: root.enabled ? 1 : 0.6;
+            accessible-role: none;
+        }
+        Text {
+            text: root.text;
+            color: root.ink;
+            opacity: root.enabled ? 1 : 0.6;
+            font-size: 14px;
+            font-weight: 600;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+    Rectangle {
+        x: 3px;
+        y: 3px;
+        width: parent.width - 6px;
+        height: parent.height - 6px;
+        border-radius: self.height / 2;
+        border-width: input.has-focus && root.enabled ? 2px : 0px;
+        border-color: root.primary ? Theme.on-primary : Theme.primary;
+    }
+    input := ActionInput {
+        enabled: root.effective-enabled;
+        clicked => {
+            if root.effective-enabled {
+                self.focus();
+                root.clicked();
+            }
+        }
+    }
+}
+
+export component IconButton inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    in property <bool> selected: false;
+    in property <bool> enabled: true;
+    in property <bool> in-dialog: false;
+    private property <bool> effective-enabled: root.enabled && (!Theme.modal-open || root.in-dialog);
+    callback clicked();
+    private property <color> ink: root.selected ? Theme.on-container : Theme.muted;
+
+    width: 48px;
+    height: 48px;
+    horizontal-stretch: 0;
+    vertical-stretch: 0;
+    border-radius: 24px;
+    background: root.selected && root.enabled ? Theme.primary-container : transparent;
+    border-width: input.has-focus && root.enabled ? 2px : 0px;
+    border-color: Theme.primary;
+    forward-focus: input;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.effective-enabled;
+    accessible-action-default => {
+        if root.effective-enabled { root.clicked(); }
+    }
+
+    Rectangle {
+        border-radius: 24px;
+        background: root.ink;
+        opacity: !root.enabled ? 0 : input.pressed || input.keyboard-pressed ? 0.12
+            : input.has-hover ? 0.08 : 0;
+        animate opacity { duration: Theme.reduced-motion ? 0ms : 120ms; easing: ease-out; }
+    }
+    Image {
+        x: 12px;
+        y: 12px;
+        width: 24px;
+        height: 24px;
+        source: root.icon;
+        image-fit: contain;
+        colorize: root.ink;
+        opacity: root.enabled ? 1 : 0.38;
+        accessible-role: none;
+    }
+    input := ActionInput {
+        enabled: root.effective-enabled;
+        clicked => {
+            if root.effective-enabled {
+                self.focus();
+                root.clicked();
+            }
+        }
+    }
+}
+
+export component MaterialField inherits Rectangle {
+    in-out property <string> text <=> editor.text;
+    in property <string> placeholder;
+    in property <bool> search: false;
+    in property <bool> enabled: true;
+    in property <bool> in-dialog: false;
+    private property <bool> effective-enabled: root.enabled && (!Theme.modal-open || root.in-dialog);
+    callback edited(string);
+
+    min-width: 160px;
+    min-height: 56px;
+    preferred-height: 56px;
+    vertical-stretch: 0;
+    border-radius: root.search ? 28px : 12px;
+    background: Theme.container;
+    border-width: editor.has-focus ? 2px : 1px;
+    border-color: editor.has-focus ? Theme.primary : Theme.outline;
+    clip: true;
+    forward-focus: editor;
+    accessible-role: text-input;
+    accessible-label: root.placeholder;
+    accessible-placeholder-text: root.placeholder;
+    accessible-enabled: root.effective-enabled;
+    accessible-value <=> root.text;
+    accessible-action-set-value(value) => {
+        if root.effective-enabled {
+            root.text = value;
+            root.edited(value);
+        }
+    }
+    accessible-action-set-selection-offsets(anchor, focus) => {
+        if root.effective-enabled { editor.set-selection-offsets(anchor, focus); }
+    }
+    animate border-color { duration: Theme.reduced-motion ? 0ms : 120ms; }
+
+    if root.search: Glyph {
+        kind: "search";
+        x: 16px;
+        y: (parent.height - self.height) / 2;
+    }
+    viewport := Rectangle {
+        x: root.search ? 52px : 16px;
+        y: 4px;
+        width: max(1px, parent.width - self.x - (root.search && root.text != "" ? 56px : 16px));
+        height: parent.height - 8px;
+        clip: true;
+        Text {
+            x: 0px;
+            y: 0px;
+            width: parent.width;
+            height: parent.height;
+            text: root.text == "" && editor.preedit-text == "" ? root.placeholder : "";
+            color: Theme.muted;
+            font-size: 16px;
+            vertical-alignment: center;
+            horizontal-alignment: left;
+            overflow: elide;
+            accessible-role: none;
+        }
+        editor := TextInput {
+            private property <length> scroll-x: 0px;
+            x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.scroll-x));
+            width: max(parent.width - self.text-cursor-width, self.preferred-width);
+            height: parent.height;
+            enabled: root.effective-enabled;
+            single-line: true;
+            font-size: 16px;
+            color: Theme.foreground;
+            selection-background-color: Theme.primary;
+            selection-foreground-color: Theme.on-primary;
+            vertical-alignment: center;
+            horizontal-alignment: left;
+            accessible-role: none;
+            cursor-position-changed(position) => {
+                if position.x + self.scroll-x < 0px {
+                    self.scroll-x = -position.x;
+                } else if position.x + self.scroll-x > parent.width - self.text-cursor-width {
+                    self.scroll-x = parent.width - position.x - self.text-cursor-width;
+                }
+            }
+            edited => { root.edited(self.text); }
+        }
+    }
+    if root.search && root.text != "": IconButton {
+        x: parent.width - 52px;
+        y: (parent.height - self.height) / 2;
+        label: "Clear search";
+        icon: @image-url("material-icons/close.svg");
+        enabled: root.enabled;
+        in-dialog: root.in-dialog;
+        clicked => {
+            if root.effective-enabled {
+                root.text = "";
+                root.edited("");
+                editor.focus();
+            }
+        }
+    }
+}

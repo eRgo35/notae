@@ -309,12 +309,12 @@ fn search_matches_title_tags_filename_and_ocr_text() {
         )
         .expect("insert with ocr");
 
-    for query in ["Autumn", "jazz", "Sonatina", "Sonatina.pdf", "chromatic", "sharp"] {
+    for query in ["Autumn", "Autu", "jazz", "Sonatina", "Sonatina.pdf", "chromatic", "sharp"] {
         let hits = store.search(query, 10).expect("search");
         assert!(!hits.is_empty(), "expected a match for {query}");
         assert!(
             hits.iter().any(|hit| match query {
-                "Autumn" => hit.note.id() == Some(NoteId::new(12)),
+                "Autumn" | "Autu" => hit.note.id() == Some(NoteId::new(12)),
                 "jazz" => hit.note.id() == Some(NoteId::new(12)),
                 "Sonatina" | "Sonatina.pdf" => hit.note.id() == Some(NoteId::new(31)),
                 _ => hit.note.id() == Some(NoteId::new(44)),

@@ -125,7 +125,8 @@ const KEY_DISPLAY_NAME: &str = "display_name";
 /// Key the library-root id is stored under.
 const KEY_ROOT_ID: &str = "root_id";
 
-const DOCUMENT_DISPLAY_NAME: &str = "document_display_name";
+/// Android's `DocumentsContract.Document.COLUMN_DISPLAY_NAME`.
+const DOCUMENT_DISPLAY_NAME: &str = "_display_name";
 
 // ---------------------------------------------------------------------------
 // JNI helpers.
