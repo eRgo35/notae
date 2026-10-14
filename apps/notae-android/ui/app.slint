@@ -1,6 +1,6 @@
 // Notae's adaptive score library. Rust remains authoritative for library operations.
 import { ListView, ScrollView, CheckBox } from "std-widgets.slint";
-import { Theme, MaterialButton, MaterialField, IconButton, Glyph } from "material.slint";
+import { Theme, PillButton, SearchField, TextField, IconButton, Glyph } from "components.slint";
 export { Theme }
 
 export struct LibraryRow {
@@ -178,7 +178,7 @@ component WelcomePanel inherits Rectangle {
                 spacing: 12px;
                 Label { text: root.recovery ? "Your files stay where they are" : "Start with your score folder"; font-weight: 600; horizontal-alignment: center; }
                 Text { text: "Choose a folder on your device or SD card. Notae indexes your PDFs without moving them."; color: Theme.muted; font-size: 14px; wrap: word-wrap; horizontal-alignment: center; }
-                MaterialButton { text: root.recovery ? "Reconnect folder" : "Choose library folder"; primary: true; clicked => { root.accepted(); } }
+                PillButton { text: root.recovery ? "Reconnect folder" : "Choose library folder"; primary: true; clicked => { root.accepted(); } }
             }
         }
         if root.error_text != "" : Text { text: root.error_text; color: Theme.error; wrap: word-wrap; horizontal-alignment: center; }
@@ -315,17 +315,16 @@ export component AppWindow inherits Window {
                     Label { text: root.show_settings ? "Settings" : "Your library"; font-size: root.expanded ? 32px : 26px; font-weight: 600; }
                     SupportingText { text: root.show_settings ? "Make room for your music" : root.expanded ? "Sheet music, together in one place" : "Your sheet music"; }
                 }
-                if !root.show_settings : MaterialButton { text: "Scan library"; primary: true; enabled: root.rescan_enabled; clicked => { root.rescan_clicked(); } }
+                if !root.show_settings : PillButton { text: "Scan library"; primary: true; enabled: root.rescan_enabled; clicked => { root.rescan_clicked(); } }
                 if !root.expanded : IconButton {
                     label: root.show_settings ? "Back to library" : "Settings";
                     icon: root.show_settings ? @image-url("material-icons/arrow-back.svg") : @image-url("material-icons/settings.svg");
                     clicked => { if root.show_settings { root.settings_closed(); } else { root.settings_clicked(); } }
                 }
             }
-            if root.configured && !root.show_settings : MaterialField {
+            if root.configured && !root.show_settings : SearchField {
                 text: root.search_text;
                 placeholder: "Search scores, composers, tags or lyrics";
-                search: true;
                 edited(value) => { root.search_text = value; root.search_changed(value); }
             }
             if root.configured && root.operation_progress_text != "" : Rectangle {
@@ -338,8 +337,8 @@ export component AppWindow inherits Window {
                         spacing: 12px;
                         Glyph { kind: root.operation_busy ? "scan" : "check"; width: 24px; height: 24px; }
                         Text { text: root.operation_progress_text; color: Theme.foreground; font-size: 14px; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
-                        if root.cancel_enabled : MaterialButton { text: "Cancel"; clicked => { root.cancel_rescan_clicked(); } }
-                        if root.acknowledge_enabled : MaterialButton { text: "Dismiss"; clicked => { root.acknowledge_clicked(); } }
+                        if root.cancel_enabled : PillButton { text: "Cancel"; clicked => { root.cancel_rescan_clicked(); } }
+                        if root.acknowledge_enabled : PillButton { text: "Dismiss"; clicked => { root.acknowledge_clicked(); } }
                     }
                     if root.operation_busy : Rectangle {
                         height: 4px;
@@ -406,7 +405,7 @@ export component AppWindow inherits Window {
                         Glyph { kind: root.search_text == "" ? "folder" : "search"; width: 56px; height: 56px; }
                         Label { text: root.search_text == "" ? "A little space for your scores" : "No scores found"; font-size: 24px; horizontal-alignment: center; wrap: word-wrap; }
                         Text { text: root.search_text == "" ? "Scan your library to bring your PDF sheet music into Notae." : "Try another title, composer, tag or phrase from the music."; color: Theme.muted; font-size: 14px; wrap: word-wrap; horizontal-alignment: center; }
-                        MaterialButton {
+                        PillButton {
                             text: root.search_text == "" ? "Scan library" : "Clear search";
                             tonal: true;
                             enabled: root.search_text != "" || root.rescan_enabled;
@@ -427,7 +426,7 @@ export component AppWindow inherits Window {
                             spacing: 16px;
                             HorizontalLayout { spacing: 12px; Glyph { kind: "library"; width: 24px; height: 24px; } Label { text: "Library"; font-size: 20px; font-weight: 500; } }
                             Text { text: "Your PDFs stay in the folder you selected. Scanning refreshes the local index and checks for a desktop sidecar import."; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
-                            MaterialButton { text: "Scan library"; tonal: true; enabled: root.rescan_enabled; clicked => { root.rescan_clicked(); } }
+                            PillButton { text: "Scan library"; tonal: true; enabled: root.rescan_enabled; clicked => { root.rescan_clicked(); } }
                         }
                     }
                     Rectangle {
@@ -522,8 +521,8 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     alignment: end;
                     spacing: 12px;
-                    MaterialButton { in-dialog: true; text: "Keep local"; clicked => { root.import_cancelled(); } }
-                    MaterialButton { in-dialog: true; text: "Apply import"; primary: true; clicked => { root.import_confirmed(); } }
+                    PillButton { in-dialog: true; text: "Keep local"; clicked => { root.import_cancelled(); } }
+                    PillButton { in-dialog: true; text: "Apply import"; primary: true; clicked => { root.import_confirmed(); } }
                 }
             }
             if !root.show_import_preview : VerticalLayout {
@@ -532,21 +531,21 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         spacing: 8px;
                         Label { text: "Title"; font-size: 12px; font-weight: 600; }
-                        MaterialField { in-dialog: true; text <=> root.metadata_title; placeholder: "Score title"; }
+                        TextField { in-dialog: true; text <=> root.metadata_title; placeholder: "Score title"; }
                         Label { text: "Composer or artist"; font-size: 12px; font-weight: 600; }
-                        MaterialField { in-dialog: true; text <=> root.metadata_composer_or_artist; placeholder: "Composer or artist (optional)"; }
+                        TextField { in-dialog: true; text <=> root.metadata_composer_or_artist; placeholder: "Composer or artist (optional)"; }
                         Label { text: "Score number"; font-size: 12px; font-weight: 600; }
-                        MaterialField { in-dialog: true; text <=> root.metadata_id; placeholder: "Score number (optional)"; }
+                        TextField { in-dialog: true; text <=> root.metadata_id; placeholder: "Score number (optional)"; }
                         Label { text: "Tags"; font-size: 12px; font-weight: 600; }
-                        MaterialField { in-dialog: true; text <=> root.metadata_tags; placeholder: "Tags, separated by commas"; }
+                        TextField { in-dialog: true; text <=> root.metadata_tags; placeholder: "Tags, separated by commas"; }
                         if root.metadata_error_text != "" : Text { text: root.metadata_error_text; color: Theme.error; wrap: word-wrap; font-size: 14px; }
                         Rectangle { background: transparent; vertical-stretch: 1; }
                     }
                 HorizontalLayout {
                     alignment: end;
                     spacing: 12px;
-                    MaterialButton { in-dialog: true; text: "Cancel"; clicked => { root.metadata_cancelled(); } }
-                    MaterialButton { in-dialog: true; text: "Save details"; primary: true; clicked => { root.metadata_save_requested(root.metadata_note_key, root.metadata_id, root.metadata_title, root.metadata_composer_or_artist, root.metadata_tags); } }
+                    PillButton { in-dialog: true; text: "Cancel"; clicked => { root.metadata_cancelled(); } }
+                    PillButton { in-dialog: true; text: "Save details"; primary: true; clicked => { root.metadata_save_requested(root.metadata_note_key, root.metadata_id, root.metadata_title, root.metadata_composer_or_artist, root.metadata_tags); } }
                 }
             }
         }
