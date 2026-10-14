@@ -128,3 +128,21 @@ pub enum UiError {
     #[error("the index worker has stopped")]
     WorkerStopped,
 }
+
+/// Splits an FTS5 snippet into (before, match, after) around its first marked match.
+#[must_use]
+pub fn split_snippet(snippet: &str) -> (String, String, String) {
+    let clean = |text: &str| text.replace(['\u{2}', '\u{3}'], "");
+    let Some((before, rest)) = snippet.split_once('\u{2}') else {
+        return (clean(snippet), String::new(), String::new());
+    };
+    let (hit, after) = rest.split_once('\u{3}').unwrap_or((rest, ""));
+    let before = clean(before);
+    let count = before.chars().count();
+    let before = if count > 48 {
+        format!("…{}", before.chars().skip(count - 47).collect::<String>())
+    } else {
+        before
+    };
+    (before, hit.to_owned(), clean(after))
+}

@@ -5,7 +5,9 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use notae_domain::IndexStatus;
-use notae_index::{IndexStore, OcrText, PdfFile, Reconciler, SidecarImporter, SidecarManifest};
+use notae_index::{
+    IndexStore, OcrText, PdfFile, Reconciler, SearchScope, SidecarImporter, SidecarManifest,
+};
 
 use crate::operations::events::{ImportSummary, OperationEvent, RescanSummary};
 use crate::operations::import::ImportPreviewViewModel;
@@ -29,7 +31,7 @@ pub struct OperationController {
 
 enum WorkerCommand {
     Rescan,
-    Search(String),
+    Search(String, SearchScope),
     PreviewImport(SidecarManifest),
     ConfirmImport,
     DiscardImport,
@@ -129,11 +131,16 @@ impl OperationController {
         }
     }
 
-    /// Re-runs the core-ranked search on the worker-owned index.
-    pub fn set_query(&self, query: String) -> Result<(), UiError> {
+    /// Re-runs the search with `scope` on the worker-owned index.
+    pub fn set_search(&self, query: String, scope: SearchScope) -> Result<(), UiError> {
         self.commands
-            .send(WorkerCommand::Search(query))
+            .send(WorkerCommand::Search(query, scope))
             .map_err(|_| UiError::WorkerStopped)
+    }
+
+    /// Re-runs the search across every field.
+    pub fn set_query(&self, query: String) -> Result<(), UiError> {
+        self.set_search(query, SearchScope::Everything)
     }
 
     /// Loads an indexed note into the editor on the index-owning worker.
@@ -187,6 +194,7 @@ fn run_worker(
     cancellation: Arc<AtomicU8>,
 ) {
     let mut query = String::new();
+    let mut scope = SearchScope::default();
     let mut preview = ImportPreviewViewModel::default();
     while let Ok(command) = commands.recv() {
         match command {
@@ -197,11 +205,13 @@ fn run_worker(
                 &busy,
                 &cancellation,
                 &query,
+                scope,
                 &mut preview,
             ),
-            WorkerCommand::Search(next_query) => {
+            WorkerCommand::Search(next_query, next_scope) => {
                 query = next_query;
-                match project_rows(&local, &query) {
+                scope = next_scope;
+                match project_rows(&local, &query, scope) {
                     Ok(rows) => send(&events, OperationEvent::SearchRows(rows)),
                     Err(error) => send(
                         &events,
@@ -224,7 +234,7 @@ fn run_worker(
             }
             WorkerCommand::SaveMetadata(metadata) => {
                 match MetadataEditor::new(&local).save(metadata) {
-                    Ok(()) => match project_rows(&local, &query) {
+                    Ok(()) => match project_rows(&local, &query, scope) {
                         Ok(rows) => send(&events, OperationEvent::MetadataSaved { rows }),
                         Err(error) => send(
                             &events,
@@ -271,7 +281,7 @@ fn run_worker(
                             conflicts: report.conflicts().len(),
                             failures: report.failures().len(),
                         };
-                        match project_rows(&local, &query) {
+                        match project_rows(&local, &query, scope) {
                             Ok(rows) => {
                                 send(&events, OperationEvent::ImportApplied { summary, rows })
                             }
@@ -298,6 +308,7 @@ fn run_worker(
     }
 }
 
+#[allow(clippy::too_many_arguments, reason = "worker state is passed explicitly")]
 fn run_rescan(
     local: &mut IndexStore,
     catalog: &dyn LibraryCatalog,
@@ -305,6 +316,7 @@ fn run_rescan(
     busy: &AtomicBool,
     cancellation: &AtomicU8,
     query: &str,
+    scope: SearchScope,
     preview: &mut ImportPreviewViewModel,
 ) {
     send(events, OperationEvent::Started);
@@ -411,7 +423,7 @@ fn run_rescan(
                     },
                 );
             }
-            match project_rows(local, query) {
+            match project_rows(local, query, scope) {
                 Ok(rows) => {
                     send(events, OperationEvent::Completed { summary, rows });
                     match catalog.sidecar_manifest() {
@@ -508,9 +520,10 @@ fn apply_pdf_text_layer(
     Ok(outcome.failure.map(|error| error.to_string()))
 }
 
-fn project_rows(local: &IndexStore, query: &str) -> Result<Vec<SearchRow>, UiError> {
+fn project_rows(local: &IndexStore, query: &str, scope: SearchScope) -> Result<Vec<SearchRow>, UiError> {
     let mut view_model = LibraryViewModel::new(local);
     view_model.set_query(query.to_owned());
+    view_model.set_scope(scope);
     view_model.search()
 }
 
