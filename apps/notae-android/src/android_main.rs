@@ -52,6 +52,7 @@ use slint::ComponentHandle;
 use crate::android::saf::{SafHandles, SafLibraryRootProvider};
 use crate::operations::rescan::OperationController;
 use crate::state::{EventError, OperationState, Screen, Setup, Transition, UiEvent};
+use crate::thumbnails::ThumbnailCache;
 use crate::storage::{LibraryRootProvider, SharedLibraryCatalog, StorageError, StorageState};
 use crate::ui::UiModel;
 use notae_index::IndexStore;
@@ -90,6 +91,10 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
         .join("notae");
     std::fs::create_dir_all(&index_dir).expect("create private Notae index directory");
     let index_path = index_dir.join("index.sqlite");
+    let thumbnails = ThumbnailCache::new(index_dir.join("thumbnails"))
+        .expect("create private thumbnail directory");
+    model.borrow_mut().set_thumbnail_cache(thumbnails.clone());
+    model.borrow_mut().set_recent_path(index_dir.join("recent.txt"));
     let operations = Rc::new(RefCell::new(None::<OperationController>));
 
     // Sanity-check the contract on a fresh install. If the smoke test
@@ -137,8 +142,16 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
         let provider = provider.clone();
         let operations = Rc::clone(&operations);
         let index_path = index_path.clone();
+        let thumbnails = thumbnails.clone();
         window.on_setup_chosen(move || {
-            handle_picker_response(&model, &window_weak, &provider, &operations, &index_path);
+            handle_picker_response(
+                &model,
+                &window_weak,
+                &provider,
+                &operations,
+                &index_path,
+                &thumbnails,
+            );
         });
     }
 
@@ -617,11 +630,13 @@ fn handle_picker_response(
     provider: &SafLibraryRootProvider,
     operations: &Rc<RefCell<Option<OperationController>>>,
     index_path: &PathBuf,
+    thumbnails: &ThumbnailCache,
 ) {
     let provider = provider.clone();
     let model = Rc::clone(model);
     let operations = Rc::clone(operations);
     let index_path = index_path.clone();
+    let thumbnails = thumbnails.clone();
     let window_weak = window_weak.clone();
     slint::spawn_local(async move {
         let result = provider.select_root().await;
@@ -631,6 +646,7 @@ fn handle_picker_response(
             &provider,
             &operations,
             &index_path,
+            &thumbnails,
             result,
         );
     })
@@ -643,6 +659,7 @@ fn apply_picker_result(
     provider: &SafLibraryRootProvider,
     operations: &Rc<RefCell<Option<OperationController>>>,
     index_path: &PathBuf,
+    thumbnails: &ThumbnailCache,
     result: Result<crate::storage::LibraryRoot, StorageError>,
 ) {
     let next_state = match result {
@@ -650,9 +667,10 @@ fn apply_picker_result(
             Ok(source) => match IndexStore::open(index_path) {
                 Ok(local) => {
                     let source = Arc::new(Mutex::new(source));
-                    let controller = OperationController::new(
+                    let controller = OperationController::with_thumbnails(
                         local,
                         Box::new(SharedLibraryCatalog(Arc::clone(&source))),
+                        thumbnails.clone(),
                     );
                     *operations.borrow_mut() = Some(controller);
                     let query = model.borrow().state().search().query.clone();

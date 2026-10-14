@@ -56,6 +56,7 @@
 #![forbid(unsafe_code)]
 
 use std::fmt;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -299,6 +300,11 @@ pub trait LibraryCatalog: PdfCatalog + Send {
     fn extract_text_layer(&self, _path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         Ok(None)
     }
+
+    /// Renders the first page as a PNG at `out`; `Ok(false)` when the platform cannot.
+    fn render_thumbnail(&self, _path: &RelativePdfPath, _out: &Path) -> Result<bool, PdfError> {
+        Ok(false)
+    }
 }
 
 impl LibrarySource {
@@ -341,6 +347,9 @@ impl LibraryCatalog for LibrarySource {
     fn extract_text_layer(&self, path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         self.catalog.extract_text_layer(path)
     }
+    fn render_thumbnail(&self, path: &RelativePdfPath, out: &Path) -> Result<bool, PdfError> {
+        self.catalog.render_thumbnail(path, out)
+    }
 }
 
 /// A `PdfCatalog` adapter for the UI-owned shared library source.
@@ -371,6 +380,12 @@ impl LibraryCatalog for SharedLibraryCatalog {
             .lock()
             .map_err(|_| PdfError::Platform("library source lock poisoned".to_owned()))?
             .extract_text_layer(path)
+    }
+    fn render_thumbnail(&self, path: &RelativePdfPath, out: &Path) -> Result<bool, PdfError> {
+        self.0
+            .lock()
+            .map_err(|_| PdfError::Platform("library source lock poisoned".to_owned()))?
+            .render_thumbnail(path, out)
     }
 }
 

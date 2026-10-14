@@ -23,6 +23,7 @@ use crate::operations::events::{
 use crate::recent::RecentScores;
 use crate::state::{AppController, AppState, EventError, Transition, UiEvent};
 use crate::storage::StorageState;
+use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::{LibrarySection, section_rows};
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
@@ -49,6 +50,7 @@ pub struct UiModel {
     recent: RecentScores,
     recent_path: Option<PathBuf>,
     selected_note: Option<String>,
+    thumbnails: Option<ThumbnailCache>,
 }
 
 impl UiModel {
@@ -69,6 +71,7 @@ impl UiModel {
             recent: RecentScores::default(),
             recent_path: None,
             selected_note: None,
+            thumbnails: None,
         }
     }
 
@@ -157,6 +160,17 @@ impl UiModel {
     pub fn set_recent_path(&mut self, path: PathBuf) {
         self.recent = RecentScores::load(&path);
         self.recent_path = Some(path);
+    }
+
+    /// Uses `cache` to look up row thumbnails.
+    pub fn set_thumbnail_cache(&mut self, cache: ThumbnailCache) {
+        self.thumbnails = Some(cache);
+    }
+
+    /// The thumbnail cache, once the Android entry point has created it.
+    #[must_use]
+    pub fn thumbnail_cache(&self) -> Option<&ThumbnailCache> {
+        self.thumbnails.as_ref()
     }
 
     /// Records that the score with `note_key` was opened.
