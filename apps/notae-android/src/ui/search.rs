@@ -1,4 +1,4 @@
-use notae_domain::{IndexStatus, IndexedNote};
+use notae_domain::{IndexStatus, IndexedNote, MetadataField, MetadataOrigin};
 use notae_index::IndexError;
 
 /// One library record projected for search and display.
@@ -18,19 +18,39 @@ pub struct SearchRow {
     pub relative_path: String,
     /// Stable content key used by open and edit actions.
     pub note_key: String,
+    /// Whether searchable text is still missing (OCR pending or incomplete).
+    pub text_pending: bool,
+    /// Where the title came from, as a short label ("From filename", "From desktop", "Edited").
+    pub title_origin: String,
+    /// Where the composer came from; empty when there is no composer.
+    pub composer_origin: String,
+    /// FTS5 snippet of matching lyrics/page text, with `\u{2}`/`\u{3}` around the match.
+    pub text_snippet: Option<String>,
 }
 
 impl SearchRow {
     pub(crate) fn from_note(note: IndexedNote) -> Self {
         let metadata = note.metadata();
+        let composer = metadata.composer_or_artist().map(str::to_owned);
         Self {
             id: note.id().map(|id| id.to_string()),
             title: note.title().to_owned(),
-            composer_or_artist: metadata.composer_or_artist().map(str::to_owned),
+            composer_origin: if composer.is_some() {
+                origin_label(metadata.origin_of(MetadataField::ComposerOrArtist)).to_owned()
+            } else {
+                String::new()
+            },
+            composer_or_artist: composer,
             tags: metadata.tags().iter().cloned().collect(),
             status: status_label(note.status()).to_owned(),
+            text_pending: matches!(
+                note.status(),
+                IndexStatus::OcrPending | IndexStatus::OcrIncomplete
+            ),
+            title_origin: origin_label(metadata.origin_of(MetadataField::Title)).to_owned(),
             note_key: note.fingerprint().sha256().to_string(),
             relative_path: note.path().as_str().to_owned(),
+            text_snippet: None,
         }
     }
 }
@@ -47,6 +67,15 @@ impl From<SearchRow> for crate::LibraryRow {
             note_key: row.note_key.into(),
             relative_path: row.relative_path.into(),
         }
+    }
+}
+
+fn origin_label(origin: MetadataOrigin) -> &'static str {
+    match origin {
+        MetadataOrigin::FilenameDerived => "From filename",
+        MetadataOrigin::PcImported => "From desktop",
+        MetadataOrigin::Manual => "Edited",
+        _ => "",
     }
 }
 
