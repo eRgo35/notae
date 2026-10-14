@@ -12,6 +12,7 @@ use notae_index::{
 use crate::operations::events::{ImportSummary, OperationEvent, RescanSummary};
 use crate::operations::import::ImportPreviewViewModel;
 use crate::storage::LibraryCatalog;
+use crate::thumbnails::ThumbnailCache;
 use crate::ui::library::LibraryViewModel;
 use crate::ui::metadata_editor::{EditableMetadata, MetadataEditor};
 use crate::ui::search::{SearchRow, UiError};
@@ -47,6 +48,24 @@ impl OperationController {
     /// each rescan explicitly.
     #[must_use]
     pub fn new(local: IndexStore, catalog: Box<dyn LibraryCatalog + Send>) -> Self {
+        Self::start(local, catalog, None)
+    }
+
+    /// Like [`OperationController::new`], also rendering first-page thumbnails into `cache`.
+    #[must_use]
+    pub fn with_thumbnails(
+        local: IndexStore,
+        catalog: Box<dyn LibraryCatalog + Send>,
+        cache: ThumbnailCache,
+    ) -> Self {
+        Self::start(local, catalog, Some(cache))
+    }
+
+    fn start(
+        local: IndexStore,
+        catalog: Box<dyn LibraryCatalog + Send>,
+        thumbnails: Option<ThumbnailCache>,
+    ) -> Self {
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
         let busy = Arc::new(AtomicBool::new(false));
@@ -63,6 +82,7 @@ impl OperationController {
                     event_tx,
                     worker_busy,
                     worker_cancellation,
+                    thumbnails,
                 );
             })
             .expect("start Notae index worker");
@@ -192,6 +212,7 @@ fn run_worker(
     events: Sender<OperationEvent>,
     busy: Arc<AtomicBool>,
     cancellation: Arc<AtomicU8>,
+    thumbnails: Option<ThumbnailCache>,
 ) {
     let mut query = String::new();
     let mut scope = SearchScope::default();
@@ -207,6 +228,7 @@ fn run_worker(
                 &query,
                 scope,
                 &mut preview,
+                thumbnails.as_ref(),
             ),
             WorkerCommand::Search(next_query, next_scope) => {
                 query = next_query;
@@ -318,6 +340,7 @@ fn run_rescan(
     query: &str,
     scope: SearchScope,
     preview: &mut ImportPreviewViewModel,
+    thumbnails: Option<&ThumbnailCache>,
 ) {
     send(events, OperationEvent::Started);
     if stop_if_cancelled(cancellation, events, busy) {
@@ -407,6 +430,12 @@ fn run_rescan(
                         Err(error) => Some(error.to_string()),
                     }
                 });
+                if let (Some(cache), Some(fingerprint)) = (thumbnails, file.fingerprint()) {
+                    let key = fingerprint.sha256().to_string();
+                    if let Err(error) = cache.ensure(&key, |out| catalog.render_thumbnail(file.path(), out)) {
+                        eprintln!("notae: no thumbnail for {path}: {error}");
+                    }
+                }
                 if let Some(reason) = failure {
                     if plan_failure.is_none() {
                         summary.failures += 1;
@@ -422,6 +451,17 @@ fn run_rescan(
                         total: files.len(),
                     },
                 );
+            }
+            if let Some(cache) = thumbnails
+                && let Ok(notes) = local.list_all()
+            {
+                let keep = notes
+                    .iter()
+                    .map(|note| note.fingerprint().sha256().to_string())
+                    .collect();
+                if let Err(error) = cache.prune(&keep) {
+                    eprintln!("notae: cannot prune thumbnails: {error}");
+                }
             }
             match project_rows(local, query, scope) {
                 Ok(rows) => {
