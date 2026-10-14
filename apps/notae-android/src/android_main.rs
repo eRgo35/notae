@@ -282,11 +282,68 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
             report_transition(model.borrow_mut().dispatch(UiEvent::UpdateSearchQuery {
                 query: query.clone(),
             }));
+            let scope = model.borrow().state().search().scope;
             if let Some(controller) = operations.borrow().as_ref() {
-                if let Err(error) = controller.set_query(query) {
+                if let Err(error) = controller.set_search(query, scope) {
                     eprintln!("notae: search failed: {error}");
                 }
             }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_search_opened(move || {
+            if let Err(error) = model.borrow_mut().dispatch(UiEvent::OpenSearch) {
+                eprintln!("notae: cannot open search: {error}");
+            }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let operations = Rc::clone(&operations);
+        let window_weak = window.as_weak();
+        window.on_search_scope_changed(move |key| {
+            let scope = notae_index::SearchScope::from_key(key.as_str());
+            let _ = model.borrow_mut().dispatch(UiEvent::UpdateSearchScope { scope });
+            let query = model.borrow().state().search().query.clone();
+            if let Some(controller) = operations.borrow().as_ref() {
+                if let Err(error) = controller.set_search(query, scope) {
+                    eprintln!("notae: search failed: {error}");
+                }
+            }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let operations = Rc::clone(&operations);
+        let window_weak = window.as_weak();
+        window.on_search_closed(move || {
+            close_search(&model, &operations, None);
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let operations = Rc::clone(&operations);
+        let window_weak = window.as_weak();
+        window.on_search_result_chosen(move |key| {
+            close_search(&model, &operations, Some(key.to_string()));
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
             }
@@ -534,6 +591,23 @@ impl LibraryRowsCache {
     }
 }
 
+fn close_search(
+    model: &Rc<RefCell<UiModel>>,
+    operations: &Rc<RefCell<Option<OperationController>>>,
+    selected: Option<String>,
+) {
+    let scope = model.borrow().state().search().scope;
+    if let Err(error) = model.borrow_mut().dispatch(UiEvent::CloseSearch) {
+        eprintln!("notae: cannot close search: {error}");
+    }
+    model.borrow_mut().select_note(selected);
+    if let Some(controller) = operations.borrow().as_ref() {
+        if let Err(error) = controller.set_search(String::new(), scope) {
+            eprintln!("notae: library refresh failed: {error}");
+        }
+    }
+}
+
 /// Pushes the currently visible fields of `UiModel` into the Slint
 /// window's properties.
 ///
@@ -588,6 +662,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         _ => 0.0,
     });
     window.set_search_text(state.search().query.as_str().into());
+    window.set_search_scope(state.search().scope.key().into());
     window.set_show_settings(matches!(state.screen(), Screen::Settings));
     let visible = model.visible_rows();
     let row_count = visible.len();

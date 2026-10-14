@@ -20,3 +20,20 @@ fn score_list_stays_hidden_until_details_have_room_for_both_panes() {
     assert!(app.contains("root.width >= 1024px"));
     assert!(app.contains("root.width < 1024px"));
 }
+
+#[test]
+fn search_screen_owns_search_and_keyboard_interactions() {
+    let search_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("ui/search.slint");
+    let search = std::fs::read_to_string(search_path).expect("search.slint exists");
+    let app = include_str!("../ui/app.slint");
+
+    assert!(search.contains("export component SearchScreen"));
+    assert!(search.contains("query-edited(value)"));
+    assert!(search.contains("scope-changed(\"text\")"));
+    assert!(!search.contains("property <LibraryRow> row"));
+    assert!(app.contains("callback search_closed();"));
+    assert!(app.contains("callback search_scope_changed(string);"));
+    assert!(app.contains("callback search_result_chosen(string);"));
+    assert!(app.contains("event.modifiers.control"));
+    assert!(app.contains("Key.Escape"));
+}
