@@ -1,0 +1,129 @@
+// List-detail pane: the current section on the left, one score's details on the right.
+import { ListView } from "std-widgets.slint";
+import { Theme, IconButton, PillButton, Card, StatusBadge, ActionInput } from "components.slint";
+import { LibraryRow, PagePreview } from "library.slint";
+
+component ScoreListItem inherits Rectangle {
+    in property <LibraryRow> score;
+    in property <bool> selected;
+    callback clicked();
+    height: 76px;
+    border-radius: 18px;
+    background: root.selected ? Theme.accent-soft : input.pressed ? Theme.field : transparent;
+    border-width: input.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
+    accessible-role: button;
+    accessible-label: root.score.title;
+    accessible-action-default => { if !Theme.modal-open { root.clicked(); } }
+    forward-focus: input;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 14px;
+        VerticalLayout { alignment: center; PagePreview { score: root.score; width: 40px; height: 52px; border-radius: 6px; } }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            Text { text: root.score.title; font-size: 16px; font-weight: 600; overflow: elide; color: root.selected ? Theme.on-accent-soft : Theme.foreground; }
+            Text { text: (root.score.id != "" ? root.score.id + " · " : "") + root.score.tags; font-size: 14px; color: Theme.muted; overflow: elide; }
+        }
+    }
+    input := ActionInput {
+        enabled: !Theme.modal-open;
+        clicked => { self.focus(); root.clicked(); }
+    }
+}
+
+export component ScoreList inherits Card {
+    in property <[LibraryRow]> rows;
+    in property <string> selected-key;
+    callback select(string);
+    ListView {
+        x: 8px;
+        y: 8px;
+        width: parent.width - 16px;
+        height: parent.height - 16px;
+        for score in root.rows : ScoreListItem {
+            score: score;
+            selected: score.note_key == root.selected-key;
+            clicked => { root.select(score.note_key); }
+        }
+    }
+}
+
+component InfoRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <string> origin;
+    in property <bool> last;
+    min-height: 60px;
+    spacing: 16px;
+    Text { text: root.label; width: 110px; color: Theme.muted; font-size: 15px; vertical-alignment: center; }
+    Text { text: root.value == "" ? "—" : root.value; horizontal-stretch: 1; color: Theme.foreground; font-size: 16px; vertical-alignment: center; wrap: word-wrap; }
+    Text { text: root.origin; color: Theme.muted; font-size: 13px; vertical-alignment: center; }
+}
+
+export component ScoreDetails inherits Card {
+    in property <LibraryRow> score;
+    in property <bool> show-back;
+    callback close();
+    callback open();
+    callback edit();
+    VerticalLayout {
+        padding: 8px;
+        padding-bottom: 24px;
+        HorizontalLayout {
+            alignment: space-between;
+            IconButton {
+                label: root.show-back ? "Back to list" : "Close details";
+                icon: root.show-back ? @image-url("material-icons/arrow-back.svg") : @image-url("material-icons/close.svg");
+                clicked => { root.close(); }
+            }
+        }
+        HorizontalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            spacing: 28px;
+            PagePreview { score: root.score; width: 172px; height: 228px; border-radius: 16px; }
+            VerticalLayout {
+                spacing: 6px;
+                padding-top: 12px;
+                alignment: start;
+                if root.score.id != "" : Text { text: "No. " + root.score.id; color: Theme.accent; font-size: 14px; font-weight: 600; }
+                Text { text: root.score.title; color: Theme.foreground; font-size: 32px; font-weight: 600; wrap: word-wrap; }
+                Text { text: root.score.composer_or_artist; color: Theme.muted; font-size: 17px; }
+                if root.score.text_pending : StatusBadge { text: "Lyrics text pending"; }
+                HorizontalLayout {
+                    padding-top: 18px;
+                    spacing: 10px;
+                    alignment: start;
+                    PillButton { text: "Open score"; primary: true; clicked => { root.open(); } }
+                    PillButton { text: "Edit details"; tonal: true; clicked => { root.edit(); } }
+                }
+            }
+        }
+        Rectangle { height: 24px; }
+        HorizontalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            Rectangle {
+                border-radius: 20px;
+                background: Theme.background;
+                VerticalLayout {
+                    padding-left: 20px;
+                    padding-right: 20px;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
+                    InfoRow { label: "Title"; value: root.score.title; origin: root.score.title_origin; }
+                    Rectangle { height: 1px; background: Theme.divider; }
+                    InfoRow { label: "Composer"; value: root.score.composer_or_artist; origin: root.score.composer_origin; }
+                    Rectangle { height: 1px; background: Theme.divider; }
+                    InfoRow { label: "Tags"; value: root.score.tags; origin: ""; }
+                    Rectangle { height: 1px; background: Theme.divider; }
+                    InfoRow { label: "File"; value: root.score.relative_path; origin: root.score.status; }
+                }
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+    }
+}
