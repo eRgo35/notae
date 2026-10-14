@@ -17,6 +17,16 @@ Commit: pending
 - `ANDROID_NDK_ROOT=/home/mike/Android/Sdk/ndk/android-ndk-r26d JAVA_HOME=/usr/lib/jvm/java-25-openjdk JDK_JAVAC_OPTIONS="-source 17 -target 17" JAVA_SOURCE_VERSION=17 JAVA_TARGET_VERSION=17 cargo apk2 check -p notae-android --target aarch64-linux-android` — passed.
 - `cargo clippy -p notae-android -p notae-index --all-targets -- -D warnings` — passed cleanly.
 
+
+## Fix round 1: responsive details breakpoint
+- Review finding: at widths just above the 840px expanded threshold, the 400px list left too little width for the fixed-width preview and details content.
+- Updated `app.slint` to show the list only at `root.width >= 1024px`; below that, the selected details pane uses the available width and its back button is shown. This retains narrow-window back-to-list behavior while keeping the two panes only when there is enough width.
+- TDD RED: `cargo test -p notae-android --test details_ui score_list_stays_hidden_until_details_have_room_for_both_panes` failed because the 1024px threshold was absent.
+- GREEN: `cargo test -p notae-android --test details_ui` — 2 passed.
+- `cargo build -p notae-android` — Finished successfully.
+- Android check: `ANDROID_NDK_ROOT=/home/mike/Android/Sdk/ndk/android-ndk-r26d JAVA_HOME=/usr/lib/jvm/java-25-openjdk JDK_JAVAC_OPTIONS="-source 17 -target 17" JAVA_SOURCE_VERSION=17 JAVA_TARGET_VERSION=17 cargo apk2 check -p notae-android --target aarch64-linux-android` — Finished successfully.
+- Clippy: `cargo clippy -p notae-android -p notae-index --all-targets -- -D warnings` — Finished successfully.
+- Device verification remains deferred; no emulator/tablet actions were taken.
 ## Corrections and integration notes
 - Renamed the brief's reserved Slint component property `row` to `score` in `ScoreListItem` and `ScoreDetails`, including every `PagePreview` call (`score:`), consistent with Task 8's Slint 1.18 correction.
 - Imported `ListView` from `std-widgets.slint`; otherwise Slint reports an unknown element.

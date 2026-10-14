@@ -217,7 +217,7 @@ export component AppWindow inherits Window {
                 selected-key: root.selected_key;
                 HorizontalLayout {
                     spacing: 16px;
-                    if root.expanded : ScoreList {
+                    if root.width >= 1024px : ScoreList {
                         width: 400px;
                         rows: root.library_rows;
                         selected-key: root.selected_key;
@@ -226,7 +226,7 @@ export component AppWindow inherits Window {
                     ScoreDetails {
                         horizontal-stretch: 1;
                         score: root.selected;
-                        show-back: !root.expanded;
+                        show-back: root.width < 1024px;
                         close => { root.selection_cleared(); }
                         open => { root.open_pdf_requested(root.selected.relative_path, root.selected.note_key); }
                         edit => { root.edit_metadata_requested(root.selected.note_key); }
