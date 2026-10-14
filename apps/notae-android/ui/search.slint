@@ -1,5 +1,5 @@
 // The single search screen, opened by the library's search icon or Ctrl K.
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, IconButton, SearchField, Card, Chip, ActionInput } from "components.slint";
 import { LibraryRow, PagePreview } from "library.slint";
 
@@ -65,15 +65,21 @@ export component SearchScreen inherits Rectangle {
                 edited(value) => { root.query-edited(value); }
             }
         }
-        HorizontalLayout {
-            padding-left: 56px;
-            spacing: 8px;
-            alignment: start;
-            Chip { label: "All"; selected: root.scope == "everything"; clicked => { root.scope-changed("everything"); } }
-            Chip { label: "Titles"; selected: root.scope == "titles"; clicked => { root.scope-changed("titles"); } }
-            Chip { label: "Composers"; selected: root.scope == "composers"; clicked => { root.scope-changed("composers"); } }
-            Chip { label: "Lyrics"; selected: root.scope == "text"; clicked => { root.scope-changed("text"); } }
-            Chip { label: "Tags"; selected: root.scope == "tags"; clicked => { root.scope-changed("tags"); } }
+        ScrollView {
+            height: 48px;
+            horizontal-scrollbar-policy: always-off;
+            vertical-scrollbar-policy: always-off;
+            mouse-drag-pan-enabled: true;
+            HorizontalLayout {
+                padding-left: 56px;
+                spacing: 8px;
+                alignment: start;
+                Chip { label: "All"; selected: root.scope == "everything"; clicked => { root.scope-changed("everything"); } }
+                Chip { label: "Titles"; selected: root.scope == "titles"; clicked => { root.scope-changed("titles"); } }
+                Chip { label: "Composers"; selected: root.scope == "composers"; clicked => { root.scope-changed("composers"); } }
+                Chip { label: "Lyrics"; selected: root.scope == "text"; clicked => { root.scope-changed("text"); } }
+                Chip { label: "Tags"; selected: root.scope == "tags"; clicked => { root.scope-changed("tags"); } }
+            }
         }
         if root.query != "" && root.rows.length > 0 : Card {
             vertical-stretch: 1;

@@ -27,6 +27,7 @@ component FeatureRow inherits HorizontalLayout {
 }
 
 export component WelcomeScreen inherits Rectangle {
+    in property <length> available-width;
     in property <bool> recovery;
     in property <string> folder;
     in property <string> error-text;
@@ -45,7 +46,7 @@ export component WelcomeScreen inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             Text {
-                width: 560px;
+                width: min(560px, max(1px, root.available-width - 32px));
                 text: root.recovery
                     ? "Notae no longer has access to “" + root.folder + "”. Choose it again to reconnect your scores."
                     : "Your sheet music, in good order. Notae reads your PDFs where they are and opens them in the PDF app you already use.";
@@ -55,7 +56,7 @@ export component WelcomeScreen inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             Card {
-                width: 560px;
+                width: min(560px, max(1px, root.available-width - 32px));
                 VerticalLayout {
                     padding-left: 24px;
                     padding-right: 24px;
@@ -80,6 +81,7 @@ export component WelcomeScreen inherits Rectangle {
 export component SettingsScreen inherits Rectangle {
     in property <bool> rescan-enabled;
     in-out property <bool> reduced-motion;
+    in property <length> available-width;
     callback back();
     callback rescan();
     background: Theme.background;
@@ -95,8 +97,7 @@ export component SettingsScreen inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             VerticalLayout {
-                width: 720px;
-                spacing: 16px;
+                width: min(720px, max(1px, root.available-width - 48px));
                 Card {
                     VerticalLayout {
                         padding: 24px;
