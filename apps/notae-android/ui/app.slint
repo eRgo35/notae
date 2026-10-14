@@ -1,7 +1,8 @@
 // Notae's adaptive score library. Rust remains authoritative for library operations.
 import { ListView, ScrollView, CheckBox } from "std-widgets.slint";
-import { Theme, PillButton, SearchField, TextField, IconButton, Glyph } from "components.slint";
+import { Theme, PillButton, TextField, IconButton, Glyph } from "components.slint";
 import { LibraryScreen, LibraryRow, SectionItem, OperationBanner } from "library.slint";
+import { SearchScreen } from "search.slint";
 import { ScoreList, ScoreDetails } from "details.slint";
 export { Theme, LibraryRow, SectionItem }
 
@@ -126,6 +127,7 @@ export component AppWindow inherits Window {
     in property <string> selected_key: "";
     in property <bool> details_open: false;
     in property <bool> show_search: false;
+    in property <string> search_scope: "everything";
     in-out property <bool> reduced_motion <=> Theme.reduced-motion;
     callback settings_clicked();
     callback settings_closed();
@@ -143,6 +145,9 @@ export component AppWindow inherits Window {
     callback open_pdf_requested(string, string);
     callback section_selected(string);
     callback search_opened();
+    callback search_closed();
+    callback search_scope_changed(string);
+    callback search_result_chosen(string);
     callback score_selected(string);
     private property <bool> configured: !root.show_setup && !root.show_recovery;
     private property <bool> expanded: root.width >= 840px;
@@ -155,6 +160,22 @@ export component AppWindow inherits Window {
         if root.modal-open { dialog-scope.focus(); }
     }
 
+    forward-focus: shortcuts;
+    shortcuts := FocusScope {
+        width: root.width;
+        height: root.height;
+        key-pressed(event) => {
+            if root.modal-open || !root.configured { return reject; }
+            if event.modifiers.control && (event.text == "k" || event.text == "K") {
+                if !root.show_search { root.search_opened(); }
+                return accept;
+            }
+            if event.text == Key.Escape {
+                if root.show_search { root.search_closed(); return accept; }
+                if root.details_open { root.selection_cleared(); return accept; }
+            }
+            return reject;
+        }
     HorizontalLayout {
         // The viewport fills the window; adaptive children must not determine its intrinsic size.
         x: 0px;
@@ -248,6 +269,17 @@ export component AppWindow inherits Window {
                 acknowledge-clicked => { root.acknowledge_clicked(); }
                 score-selected(key) => { root.score_selected(key); }
             }
+            if root.configured && root.show_search : SearchScreen {
+                vertical-stretch: 1;
+                query: root.search_text;
+                scope: root.search_scope;
+                rows: root.library_rows;
+                query-edited(value) => { root.search_text = value; root.search_changed(value); }
+                scope-changed(key) => { root.search_scope_changed(key); }
+                close => { root.search_closed(); }
+                chosen(key) => { root.search_result_chosen(key); }
+                init => { self.focus-field(); }
+            }
             if root.configured && root.show_settings : ScrollView {
                 vertical-stretch: 1;
                 VerticalLayout {
@@ -292,6 +324,7 @@ export component AppWindow inherits Window {
                 }
             }
         }
+    }
     }
 
     // Modal sheets overlay rather than compressing the document list.
