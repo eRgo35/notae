@@ -18,16 +18,6 @@ export global Theme {
     out property <color> error: root.dark ? #FF8A80 : #C62828;
     out property <color> paper: root.dark ? #E4E4E8 : #FFFFFF;
     out property <color> paper-edge: root.dark ? #2A2A2E : #E3E3E8;
-    // Legacy aliases, removed in Task 11 once every screen uses the names above.
-    out property <color> surface: root.card;
-    out property <color> container: root.card;
-    out property <color> high: root.field;
-    out property <color> primary: root.accent;
-    out property <color> on-primary: root.on-accent;
-    out property <color> primary-container: root.accent-soft;
-    out property <color> on-container: root.on-accent-soft;
-    out property <color> outline: root.dark ? #3A3A40 : #C7C7CC;
-    out property <color> success: root.dark ? #8FD19E : #2E7D32;
     in-out property <bool> reduced-motion: false;
     in-out property <bool> modal-open: false;
 }
@@ -488,24 +478,40 @@ export component Chip inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
     callback clicked();
-    height: 40px;
-    width: text.preferred-width + 36px;
-    border-radius: 20px;
-    background: root.selected ? Theme.accent : Theme.card;
-    border-width: input.has-focus ? 2px : 0px;
-    border-color: root.selected ? Theme.on-accent : Theme.accent;
+    height: 48px;
+    width: label-text.preferred-width + 36px;
+    border-radius: 0px;
+    background: transparent;
+    border-width: 0px;
     accessible-role: button;
     accessible-label: root.label;
     accessible-description: root.selected ? "Selected" : "";
     accessible-action-default => { if !Theme.modal-open { root.clicked(); } }
     forward-focus: input;
-    text := Text {
-        text: root.label;
-        font-size: 15px;
-        font-weight: root.selected ? 600 : 500;
-        color: root.selected ? Theme.on-accent : Theme.foreground;
-        vertical-alignment: center;
-        horizontal-alignment: center;
+    Rectangle {
+        y: 4px;
+        width: parent.width;
+        height: 40px;
+        border-radius: 20px;
+        background: root.selected ? Theme.accent : Theme.card;
+        border-width: input.has-focus ? 2px : 0px;
+        border-color: root.selected ? Theme.on-accent : Theme.accent;
+        Text {
+            text: root.label;
+            font-size: 15px;
+            font-weight: root.selected ? 600 : 500;
+            color: root.selected ? Theme.on-accent : Theme.foreground;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+        label-text := Text {
+            text: root.label;
+            font-size: 15px;
+            font-weight: root.selected ? 600 : 500;
+            color: root.selected ? Theme.on-accent : Theme.foreground;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
     }
     input := ActionInput {
         enabled: !Theme.modal-open;
