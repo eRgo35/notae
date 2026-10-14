@@ -12,7 +12,7 @@
 
 ## Progress
 
-_Last updated: 2026-10-14. Branch `feat/one-ui-redesign`. Device and emulator checks are deferred to one final pass on the tablet._
+_Last updated: 2026-10-14. Branch `feat/one-ui-redesign`. Emulator/tablet visual checks were not performed; tablet installation remains deferred pending user go-ahead._
 
 | Task | Status | Commits |
 |---|---|---|
@@ -23,11 +23,11 @@ _Last updated: 2026-10-14. Branch `feat/one-ui-redesign`. Device and emulator ch
 | 5 · Search scopes and lyrics snippets | ✅ Done, reviewed | `a2509ab` |
 | 6 · Search screen navigation | ✅ Done, reviewed | `2dffa6e` |
 | 7 · First-page thumbnails | ✅ Done, reviewed | `57bcc65` |
-| 8 · Library screen | 🔄 Fix round 1 in re-review (thumbnail decode cache) | `1c79d4a`, `b3b9691` |
-| 9 · Score details pane | ⏳ Not started | |
-| 10 · Search screen and Ctrl K | ⏳ Not started | |
-| 11 · First run, settings and dialogs | ⏳ Not started | |
-| 12 · Spec, runbook and device verification | ⏳ Not started | |
+| 8 · Library screen | ✅ Done, reviewed (device check deferred) | `1c79d4a`, `b3b9691` |
+| 9 · Score details pane | ✅ Done, reviewed (device check deferred) | `acd269b`, `1513f44` |
+| 10 · Search screen and Ctrl K | ✅ Done, reviewed (device check deferred) | `4632cec` |
+| 11 · First run, settings and dialogs | ✅ Done, reviewed (device check deferred) | `8d3a470`, `4fe85be` |
+| 12 · Spec, runbook and device verification | ✅ Docs/host verification reviewed (device check deferred) | `0b7842b` |
 
 Deviations so far: Slint reserves `row`, so `PagePreview`/`ScoreCard` take `score:`; the details slot is an always-present element with `visible: details-open` (Slint rejects `@children` inside `if`); Settings keeps an interim back button until Task 11; thumbnails are decoded once and cached on the Android side (Slint's own image cache holds only ~5 thumbnails).
 
