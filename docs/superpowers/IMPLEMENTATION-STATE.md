@@ -1,8 +1,8 @@
 # Notae Implementation State
 
-**As of:** 2026-10-10
-**Branch:** `main`
-**Last committed commit:** `66d0cec test: cover the sidecar-write-failure exit code`
+**As of:** 2026-10-14
+**Branch:** `feat/one-ui-redesign`
+**Last committed commit:** `4fe85be feat(android): remove duplicate chip label`
 **Remote:** `git@github.com:eRgo35/notae.git`
 
 This document records where the project actually stands so work can resume without re-deriving context. It is a status record, not a design document.
@@ -14,7 +14,7 @@ This document records where the project actually stands so work can resume witho
 | Product and architecture spec | `docs/superpowers/specs/2026-10-09-notae-design.md` | Approved |
 | Core plan (Tasks 1-5) | `docs/superpowers/plans/2026-10-09-notae-core-index-plan.md` | Complete |
 | Linux indexer plan (Tasks 1-5) | `docs/superpowers/plans/2026-10-09-notae-linux-indexer-plan.md` | Complete |
-| Android app plan (Tasks 1-7) | `docs/superpowers/plans/2026-10-09-notae-android-plan.md` | Not started |
+| Android app plan (Tasks 1-7) | `docs/superpowers/plans/2026-10-09-notae-android-plan.md` | Complete |
 
 ## Product decisions already settled
 
@@ -41,7 +41,7 @@ These came from user decisions during brainstorming. Do not reopen them without 
 crates/notae-domain    # pure domain model, no I/O dependencies
 crates/notae-index     # SQLite + FTS5 store, reconciliation, sidecar import
 apps/notae-index-cli   # Linux CLI (package name notae-index-cli)
-apps/notae-android     # NOT CREATED YET
+apps/notae-android     # Rust + Slint Android app; implementation present, visual verification pending
 ```
 
 ## Completed: core plan
@@ -160,22 +160,25 @@ READMEs:
 - `crates/notae-ocr/README.md` — the dev-env shim recipe for Fedora 44 / RHEL; build-script contract; OCR-failure semantics.
 
 Final whole-branch review of the Linux plan (`1ff30e0..66d0cec`, 23 commits, 426 KB diff) approved for merge on 2026-10-10: all spec items the Linux plan owns are covered, no regressions in core invariants, no `unsafe`, no network at build or runtime, all five Review Focus items pinned by automated tests, the Android import smoke (`SidecarImporter::preview` against a fresh `IndexStore`) is in `apps/notae-index/tests/sidecar_output.rs`.
+The Android plan and implementation are no longer unstarted; the One UI redesign record below is the current Android status.
+## One UI redesign (2026-10-14)
 
-## Not started
+Tasks 1–11 are implemented and reviewed. Commits by task:
+- Task 1: `dc02b67` — One UI palette and system light/dark.
+- Task 2: `7e09e31` — shared UI components.
+- Task 3: `5800fb8` — library sections and composer counts.
+- Task 4: `e52c0f2` — remember recently opened scores.
+- Task 5: `a2509ab` — details/import refinements.
+- Task 6: `2dffa6e` — search screen navigation.
+- Task 7: `57bcc65` — render first-page thumbnails during rescan.
+- Task 8: `b3b9691` — cache decoded thumbnails and skip unchanged library rows.
+- Task 9: `1513f44` — responsive score details pane.
+- Task 10: `4632cec` — search screen with scopes and Ctrl K.
+- Task 11: `4fe85be` — first run, settings, and dialogs, including duplicate-chip-label fix.
 
-- The entire Android plan, including the `notae-android` crate (Tasks 1–7).
+Verification recorded in the task reports: host tests/build/lint and the aarch64 `cargo apk2 check` were exercised during implementation, with reports documenting per-task outcomes. No emulator or tablet visual checks were performed in this work session; both are unverified and deferred under the ledger ruling pending user go-ahead for device installation. Page numbers for lyrics matches remain deferred.
 
-## Resumed work (2026-10-10)
 
-Resumed the Linux plan from the stop point at `e888955`. Closed Linux Task 2 with a separate closeout review (no findings). Implemented Tasks 3, 4, 5 plus fix rounds. Final whole-branch review of the Linux plan approved for merge. Total work this session: 12 commits (`74c7dd6`..`66d0cec`), bringing the workspace to 296 passing tests across 21 binaries, clippy clean, binary runnable end-to-end.
-
-Deferred-minors that the next plan (Android) will need to know:
-
-- The image-only fixture PDF is a 64×32 RGB gradient; Tesseract does not produce text from it. The detected-language round-trip test exercises the `language: None` branch through a text-layer fixture. A real scanned fixture would let the next plan exercise the `language: Some(...)` branch.
-- `LanguageDetector::detect` runs Tesseract once per installed pack because `forbid(unsafe_code)` blocks the safe-bindings wrapper from calling `TessBaseAPIDetectOrientationScript`. Documented limitation; the safe workaround narrows candidates indirectly via per-pack confidence. The Android adapter should expect the same.
-- `PipelineError::Reconcile` is unreachable through the public pipeline path (`Reconciler::plan` cannot return `ReconcileError::Index` once its `?` coercion runs). Kept for completeness.
-- The dev-env shim `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` is host-specific. Other Linux distros may need different recipes; the `crates/notae-ocr/build.rs` candidate list covers Debian-style and macOS shapes but not every distribution.
-- `notae_ocr::OcrText` carries four fields (`text`, `detected_languages`, `confidence`, `warnings`); `notae_index::OcrText` carries two (`text`, `language: Option<String>`). The pipeline bridges via `into_index_ocr`. If the Android UI wants the richer shape, the sidecar wire form will need to grow or the UI will need to re-run OCR.
 
 ## Environment notes (current host: Fedora 44 x86_64, 2026-10-10)
 
