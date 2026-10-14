@@ -7,7 +7,7 @@ Implemented and committed as `feat(android): restyle first run, settings and dia
 - Added `ui/setup.slint` with the required `WelcomeScreen` and `SettingsScreen` interfaces, first-run/recovery copy, feature card, library rescan control, reduced-motion setting, and app information card.
 - Replaced the old welcome panel and settings view with the new screens in `AppWindow`; the existing operation banner remains visible while settings are open.
 - Restyled metadata/import modal sheets and import entries to the One UI card/field palette, and migrated all remaining UI token uses before deleting the nine legacy `Theme` aliases.
-- Updated `Chip` to have a 48px component and `ActionInput` hit/accessibility area with a centered visual pill at y=4px and height=40px. Keyboard, pointer, and accessibility activation remain attached to the outer target; the visible pill remains 40px tall.
+- Updated `Chip` to have a 48px component and `ActionInput` hit/accessibility area with a centered visual pill at y=4px and height=40px. A duplicate visual `Text` element was removed so each chip renders its label once; the `label-text` element remains the single text source for preferred-width sizing. Keyboard, pointer, and accessibility activation remain attached to the outer target; the visible pill remains 40px tall.
 
 ## TDD evidence
 No behavioral Rust or model logic changed, and the brief does not specify tests. Host build compiles the Slint UI. Full requested test suites were run after implementation; no test-first UI test was added.
@@ -24,6 +24,8 @@ No behavioral Rust or model logic changed, and the brief does not specify tests.
 - `ANDROID_NDK_ROOT=/home/mike/Android/Sdk/ndk/android-ndk-r26d JAVA_HOME=/usr/lib/jvm/java-25-openjdk JDK_JAVAC_OPTIONS="-source 17 -target 17" JAVA_SOURCE_VERSION=17 JAVA_TARGET_VERSION=17 cargo apk2 check -p notae-android --target aarch64-linux-android` — passed.
 - `cargo clippy -p notae-android -p notae-index --all-targets -- -D warnings` — passed.
 - `cargo test -p notae-android -p notae-index` — passed, 187 tests across 20 suites.
+- Review round 1: removed the duplicate chip text node; the single remaining `label-text` renders once and still determines preferred width.
+- Round 1 checks: `cargo build -p notae-android` — passed (Finished dev profile); Android check with the exact environment above — passed (Finished dev profile); `cargo clippy -p notae-android -p notae-index --all-targets -- -D warnings` — passed; `cargo test -p notae-android -p notae-index` — passed, 187 tests across 20 suites.
 - No device/emulator checks were run. Task 11 Step 6 is deferred to device check per the constraints ruling.
 
 ## Changed files
