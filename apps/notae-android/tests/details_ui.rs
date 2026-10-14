@@ -17,8 +17,8 @@ fn app_exposes_score_details_and_two_argument_open_callback() {
 #[test]
 fn score_list_stays_hidden_until_details_have_room_for_both_panes() {
     let app = include_str!("../ui/app.slint");
-    assert!(app.contains("root.width >= 1024px"));
-    assert!(app.contains("root.width < 1024px"));
+    assert!(app.contains("root.width >= 1280px"));
+    assert!(app.contains("root.width < 1280px"));
 }
 
 #[test]
