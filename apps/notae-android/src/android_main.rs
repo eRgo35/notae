@@ -42,6 +42,7 @@
 #![allow(improper_ctypes_definitions)]
 
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -55,6 +56,7 @@ use crate::state::{EventError, OperationState, Screen, Setup, Transition, UiEven
 use crate::thumbnails::ThumbnailCache;
 use crate::storage::{LibraryRootProvider, SharedLibraryCatalog, StorageError, StorageState};
 use crate::ui::UiModel;
+use crate::ui::search::SearchRow;
 use notae_index::IndexStore;
 
 // `AppWindow` and `set_*` callbacks are emitted by
@@ -450,6 +452,61 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
     window.run().expect("Slint UI loop exited with an error");
 }
 
+thread_local! {
+    /// Decoded thumbnails and the last rows pushed to the window. `sync_window` runs only on the
+    /// UI thread, so a thread-local avoids threading this through every caller.
+    static LIBRARY_ROWS: RefCell<LibraryRowsCache> = RefCell::default();
+}
+
+/// Keeps `sync_window` from re-decoding thumbnail PNGs and from replacing an unchanged
+/// `library_rows` model (which would rebuild every card and drop keyboard focus).
+#[derive(Default)]
+struct LibraryRowsCache {
+    /// Decoded thumbnails by content key. A key's thumbnail is written once and never
+    /// rewritten, so entries only need dropping when the key leaves the library.
+    images: HashMap<String, slint::Image>,
+    /// The rows and per-row thumbnail availability last pushed to the window.
+    pushed: Option<(Vec<SearchRow>, Vec<bool>)>,
+}
+
+impl LibraryRowsCache {
+    fn push(&mut self, window: &AppWindow, model: &UiModel, visible: Vec<SearchRow>) {
+        let keys: HashSet<&str> = model.search_rows().iter().map(|row| row.note_key.as_str()).collect();
+        self.images.retain(|key, _| keys.contains(key.as_str()));
+        let thumbnails: Vec<Option<slint::Image>> = visible
+            .iter()
+            .map(|row| self.thumbnail(model.thumbnail_cache(), &row.note_key))
+            .collect();
+        let available: Vec<bool> = thumbnails.iter().map(Option::is_some).collect();
+        if self
+            .pushed
+            .as_ref()
+            .is_some_and(|(rows, flags)| *rows == visible && *flags == available)
+        {
+            return;
+        }
+        let rows: Vec<crate::LibraryRow> = visible
+            .iter()
+            .cloned()
+            .zip(thumbnails)
+            .map(|(row, thumbnail)| crate::ui::search::library_row(row, thumbnail))
+            .collect();
+        window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+        self.pushed = Some((visible, available));
+    }
+
+    /// The decoded thumbnail for `note_key`, loading it once the file exists. A file that fails
+    /// to decode yields `None` (the placeholder) and is retried on a later sync.
+    fn thumbnail(&mut self, files: Option<&ThumbnailCache>, note_key: &str) -> Option<slint::Image> {
+        if let Some(image) = self.images.get(note_key) {
+            return Some(image.clone());
+        }
+        let image = slint::Image::load_from_path(&files?.existing(note_key)?).ok()?;
+        self.images.insert(note_key.to_owned(), image.clone());
+        Some(image)
+    }
+}
+
 /// Pushes the currently visible fields of `UiModel` into the Slint
 /// window's properties.
 ///
@@ -505,14 +562,9 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     });
     window.set_search_text(state.search().query.as_str().into());
     window.set_show_settings(matches!(state.screen(), Screen::Settings));
-    let thumbnails = model.thumbnail_cache();
-    let rows: Vec<crate::LibraryRow> = model
-        .visible_rows()
-        .into_iter()
-        .map(|row| crate::ui::search::library_row(row, thumbnails))
-        .collect();
-    let row_count = rows.len();
-    window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+    let visible = model.visible_rows();
+    let row_count = visible.len();
+    LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible));
 
     let all_rows = model.search_rows();
     let sections: Vec<crate::SectionItem> = crate::ui::browse::sections(all_rows, model.recent())
