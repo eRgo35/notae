@@ -2,7 +2,7 @@
 
 ## Status
 
-All three findings from the final whole-branch review (`6d4c0f5..5db2d83`) are addressed. Changes are local-only; no dependencies were added. Commit: pending.
+All three findings from the final whole-branch review (`6d4c0f5..5db2d83`) are addressed. Changes are local-only; no dependencies were added. Commit: `a306d31` (`fix(android): address responsive layout review findings`).
 
 ## Findings addressed
 

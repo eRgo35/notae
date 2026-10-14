@@ -23,7 +23,7 @@ Implemented and committed as `feat(android): add search screen with scopes and C
 ## Checks
 - `cargo test -p notae-android`: passed (99 tests, 15 suites).
 - `cargo build -p notae-android`: passed.
-- `cargo apk2 check -p notae-android --target aarch64-linux-android`: could not run because Android NDK is unavailable (`Android NDK is not found. Please set the path to the Android NDK with $ANDROID_NDK_ROOT environment variable.`).
+- `cargo apk2 check -p notae-android --target aarch64-linux-android`: passed after setting the known NDK/JDK environment (`ANDROID_NDK_ROOT=/home/mike/Android/Sdk/ndk/android-ndk-r26d`, `JAVA_HOME=/usr/lib/jvm/java-25-openjdk`, Java source/target 17); the initial attempt omitted `ANDROID_NDK_ROOT`.
 - `cargo clippy -p notae-android --all-targets -- -D warnings`: passed.
 - Device/emulator check was deliberately deferred per the ledger ruling; no device actions were run.
 
