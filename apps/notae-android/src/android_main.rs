@@ -593,6 +593,9 @@ fn report_transition(outcome: Result<Transition, EventError>) {
         Err(EventError::SettingsUnavailable) => {
             eprintln!("notae: settings are unavailable until a library is open");
         }
+        Err(EventError::SearchUnavailable) => {
+            eprintln!("notae: search is unavailable from the current screen");
+        }
     }
 }
 

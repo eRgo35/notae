@@ -7,7 +7,7 @@ use notae_domain::{
     IndexStatus, IndexedNote, MetadataOrigin, NoteId, NoteMetadata, PdfFingerprint,
     RelativePdfPath, Sha256Digest,
 };
-use notae_index::{IndexStore, OcrText};
+use notae_index::{IndexStore, OcrText, SearchScope};
 
 fn store() -> IndexStore {
     IndexStore::open(":memory:").expect("open in-memory index")
@@ -215,4 +215,49 @@ fn library_view_model_applies_scope_and_fills_snippets() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].title, "Antiphons");
     assert!(rows[0].text_snippet.is_some());
+}
+
+fn library_controller() -> AppController {
+    let mut controller = AppController::new();
+    controller
+        .dispatch(UiEvent::PickLibraryRoot { root: PathBuf::from("/library") })
+        .expect("pick root");
+    controller
+}
+
+#[test]
+fn search_opens_from_library_and_closing_clears_query_and_scope() {
+    let mut controller = library_controller();
+    controller.dispatch(UiEvent::OpenSearch).expect("open search");
+    assert_eq!(controller.state().screen(), &Screen::Search);
+
+    controller
+        .dispatch(UiEvent::UpdateSearchQuery { query: "ave".to_owned() })
+        .expect("type");
+    controller
+        .dispatch(UiEvent::UpdateSearchScope { scope: SearchScope::Text })
+        .expect("scope");
+    controller.dispatch(UiEvent::CloseSearch).expect("close search");
+
+    assert_eq!(controller.state().screen(), &Screen::Library);
+    assert_eq!(controller.state().search().query, "");
+    assert_eq!(controller.state().search().scope, SearchScope::Everything);
+}
+
+#[test]
+fn search_is_unavailable_before_a_library_is_open() {
+    let mut controller = AppController::new();
+    assert_eq!(
+        controller.dispatch(UiEvent::OpenSearch),
+        Err(EventError::SearchUnavailable)
+    );
+}
+
+#[test]
+fn closing_search_when_not_searching_is_rejected() {
+    let mut controller = library_controller();
+    assert_eq!(
+        controller.dispatch(UiEvent::CloseSearch),
+        Err(EventError::SearchUnavailable)
+    );
 }
