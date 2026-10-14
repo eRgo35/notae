@@ -10,6 +10,27 @@
 
 **Spec:** Approved design canvas https://claude.ai/artifact/3bQ38pa1r5L3hVXF1M8N6Z (boards 1 · Library, 2 · Score details, 3 · Search (also Ctrl K), 4 · First run) plus the decisions below. The product spec `docs/superpowers/specs/2026-10-09-notae-design.md` is updated in Task 12 where these decisions change it.
 
+## Progress
+
+_Last updated: 2026-10-14. Branch `feat/one-ui-redesign`. Device and emulator checks are deferred to one final pass on the tablet._
+
+| Task | Status | Commits |
+|---|---|---|
+| 1 · One UI palette with system light/dark | ✅ Done, reviewed | `dc02b67` |
+| 2 · One UI controls | ✅ Done, reviewed | `7e09e31` |
+| 3 · Library sections and composer counts | ✅ Done, reviewed | `5800fb8` |
+| 4 · Recent scores | ✅ Done, reviewed | `e52c0f2` |
+| 5 · Search scopes and lyrics snippets | ✅ Done, reviewed | `a2509ab` |
+| 6 · Search screen navigation | ✅ Done, reviewed | `2dffa6e` |
+| 7 · First-page thumbnails | ✅ Done, reviewed | `57bcc65` |
+| 8 · Library screen | 🔄 Fix round 1 in re-review (thumbnail decode cache) | `1c79d4a`, `b3b9691` |
+| 9 · Score details pane | ⏳ Not started | |
+| 10 · Search screen and Ctrl K | ⏳ Not started | |
+| 11 · First run, settings and dialogs | ⏳ Not started | |
+| 12 · Spec, runbook and device verification | ⏳ Not started | |
+
+Deviations so far: Slint reserves `row`, so `PagePreview`/`ScoreCard` take `score:`; the details slot is an always-present element with `visible: details-open` (Slint rejects `@children` inside `if`); Settings keeps an interim back button until Task 11; thumbnails are decoded once and cached on the Android side (Slint's own image cache holds only ~5 thumbnails).
+
 ## Design decisions (2026-10-14 review with the user)
 
 - Scope: style **and** the new features shown in the canvas.
@@ -103,7 +124,7 @@ Note: Slint UI types (`AppWindow`, `LibraryRow`) are generated only for Android 
 **Interfaces:**
 - Produces: `Theme` tokens `dark, background, card, field, foreground, muted, divider, accent, on-accent, accent-soft, on-accent-soft, warn-soft, on-warn-soft, error, paper, paper-edge, reduced-motion, modal-open`. Legacy names `surface, container, high, primary, on-primary, primary-container, on-container, outline, success` stay as aliases until Task 11 removes them.
 
-- [ ] **Step 1: Replace the `Theme` global**
+- [x] **Step 1: Replace the `Theme` global**
 
 Replace lines 1–18 of `ui/material.slint` with:
 
@@ -143,7 +164,7 @@ export global Theme {
 }
 ```
 
-- [ ] **Step 2: Let Slint's own widgets follow the color scheme**
+- [x] **Step 2: Let Slint's own widgets follow the color scheme**
 
 In `build.rs`, change the style so `ScrollView`, `ListView` and `CheckBox` switch with the system:
 
@@ -152,7 +173,7 @@ In `build.rs`, change the style so `ScrollView`, `ListView` and `CheckBox` switc
         .with_style("material".into());
 ```
 
-- [ ] **Step 3: Remove wallpaper colors from Rust**
+- [x] **Step 3: Remove wallpaper colors from Rust**
 
 Replace `src/android/theme.rs` with:
 
@@ -176,21 +197,21 @@ pub fn configure(app: &AndroidApp, window: &AppWindow) {
 }
 ```
 
-- [ ] **Step 4: Remove the Java color bridge**
+- [x] **Step 4: Remove the Java color bridge**
 
 In `NotaeActivity.java` delete the `getNotaeColor` method, its comment, and the `mix` helper. Remove the now-unused `import android.os.Build;`.
 
-- [ ] **Step 5: Build on the host**
+- [x] **Step 5: Build on the host**
 
 Run: `cargo build -p notae-android`
 Expected: builds. A Slint error naming `Palette` or `ColorScheme` means the import line is wrong; fix it before going on.
 
-- [ ] **Step 6: Check the Android build**
+- [x] **Step 6: Check the Android build**
 
 Run: `cargo apk2 check -p notae-android --target aarch64-linux-android` (with the environment from "Commands used throughout").
 Expected: no errors and no unused-import warnings in `theme.rs`.
 
-- [ ] **Step 7: Emulator check — Review Focus 1**
+- [ ] *(deferred to device check)* **Step 7: Emulator check — Review Focus 1**
 
 Build and install the x86_64 APK, launch it, then run:
 
@@ -227,7 +248,7 @@ And in `theme.rs` `configure`, after the motion preference:
 
 (add `use slint::ComponentHandle;`). Record in `docs/android-debugging.md` (Task 12) that the theme then switches on the next launch.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add apps/notae-android/ui/material.slint apps/notae-android/build.rs apps/notae-android/src/android/theme.rs apps/notae-android/android/src/main/java/org/notae/android/NotaeActivity.java
@@ -247,13 +268,13 @@ git commit -m "feat(android): adopt One UI palette with system light/dark"
 - Consumes: `Theme` from Task 1.
 - Produces (all exported from `components.slint`): `ActionInput`, `Glyph { kind, ink }` with kinds `search folder library settings scan edit arrow-back close document chevron-right check warning schedule subject`; `PillButton { text, icon, primary, tonal, enabled, in-dialog; callback clicked() }`; `IconButton { label, icon, selected, enabled, in-dialog; callback clicked() }`; `SearchField { text, placeholder, enabled, in-dialog; callback edited(string) }` (always a search field) and `TextField { text, placeholder, enabled, in-dialog; callback edited(string) }`; `Card`; `NavRow { label, kind, count, selected; callback clicked() }`; `Chip { label, selected; callback clicked() }`; `StatusBadge { text }`.
 
-- [ ] **Step 1: Rename the file**
+- [x] **Step 1: Rename the file**
 
 ```bash
 git mv apps/notae-android/ui/material.slint apps/notae-android/ui/components.slint
 ```
 
-- [ ] **Step 2: Add two icons**
+- [x] **Step 2: Add two icons**
 
 `ui/material-icons/schedule.svg`:
 
@@ -267,7 +288,7 @@ git mv apps/notae-android/ui/material.slint apps/notae-android/ui/components.sli
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z"/></svg>
 ```
 
-- [ ] **Step 3: Export `ActionInput` and extend `Glyph`**
+- [x] **Step 3: Export `ActionInput` and extend `Glyph`**
 
 In `components.slint` change `component ActionInput inherits TouchArea {` to `export component ActionInput inherits TouchArea {`. In `Glyph`, add `in property <color> ink: Theme.muted;`, change `colorize: Theme.muted;` to `colorize: root.ink;`, and add these two branches before the final fallback:
 
@@ -276,7 +297,7 @@ In `components.slint` change `component ActionInput inherits TouchArea {` to `ex
         : root.kind == "subject" ? @image-url("material-icons/subject.svg")
 ```
 
-- [ ] **Step 4: Restyle `MaterialButton` as `PillButton`**
+- [x] **Step 4: Restyle `MaterialButton` as `PillButton`**
 
 Rename `export component MaterialButton` to `export component PillButton` and change only these properties (keep focus, accessibility and `ActionInput` as they are):
 
@@ -296,7 +317,7 @@ Rename `export component MaterialButton` to `export component PillButton` and ch
 
 and in `content := HorizontalLayout` use `padding-left: 28px; padding-right: 28px; padding-top: 14px; padding-bottom: 14px;`, and in its `Text` use `font-size: 16px; font-weight: 600;`. Change the focus ring's `border-color` to `root.primary ? Theme.on-accent : Theme.accent`.
 
-- [ ] **Step 5: Restyle `IconButton`**
+- [x] **Step 5: Restyle `IconButton`**
 
 ```slint
     private property <color> ink: root.selected ? Theme.on-accent-soft : Theme.foreground;
@@ -304,7 +325,7 @@ and in `content := HorizontalLayout` use `padding-left: 28px; padding-right: 28p
     border-color: Theme.accent;
 ```
 
-- [ ] **Step 6: Split `MaterialField` into `SearchField` and `TextField`**
+- [x] **Step 6: Split `MaterialField` into `SearchField` and `TextField`**
 
 Rename `MaterialField` to `SearchField`, delete its `in property <bool> search` and replace every `root.search` condition with the search branch. Then set:
 
@@ -321,7 +342,7 @@ and in the inner `TextInput` use `color: Theme.foreground; selection-background-
 
 Copy the whole component as `TextField`, delete the search glyph and the clear button, set `viewport.x` to `16px`, its width to `max(1px, parent.width - 32px)`, and `border-radius: 16px;`.
 
-- [ ] **Step 7: Add the new shared components**
+- [x] **Step 7: Add the new shared components**
 
 Append to `components.slint`:
 
@@ -429,7 +450,7 @@ export component Chip inherits Rectangle {
 }
 ```
 
-- [ ] **Step 8: Update `app.slint` to the new names**
+- [x] **Step 8: Update `app.slint` to the new names**
 
 In `app.slint`, change the import to:
 
@@ -439,12 +460,12 @@ import { Theme, PillButton, SearchField, TextField, IconButton, Glyph } from "co
 
 Replace every `MaterialButton` with `PillButton`. Replace the library search `MaterialField { … search: true; … }` with `SearchField { … }` (drop `search: true;`). Replace the four metadata-editor `MaterialField { in-dialog: true; … }` with `TextField { in-dialog: true; … }`.
 
-- [ ] **Step 9: Build and lint**
+- [x] **Step 9: Build and lint**
 
 Run: `cargo build -p notae-android && cargo clippy -p notae-android --all-targets -- -D warnings`
 Expected: both succeed.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add -A apps/notae-android/ui
@@ -470,7 +491,7 @@ git commit -m "feat(android): add One UI controls"
   - `fn section_rows(rows: &[SearchRow], section: &LibrarySection, recent: &[String]) -> Vec<SearchRow>`.
   - `struct SectionView { key: String, label: String, count: usize, kind: &'static str }`; `fn sections(rows: &[SearchRow], recent: &[String]) -> Vec<SectionView>` (the four fixed sections).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/browse.rs`:
 
@@ -588,12 +609,12 @@ fn fixed_sections_report_counts() {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cargo test -p notae-android --test browse`
 Expected: FAIL to compile — `notae_android::ui::browse` does not exist and `SearchRow` has no `text_pending`.
 
-- [ ] **Step 3: Extend `SearchRow`**
+- [x] **Step 3: Extend `SearchRow`**
 
 In `src/ui/search.rs` add the fields after `note_key`:
 
@@ -652,7 +673,7 @@ fn origin_label(origin: MetadataOrigin) -> &'static str {
 
 In the Android `From<SearchRow> for crate::LibraryRow` impl nothing changes yet (the new fields are unused until Task 8).
 
-- [ ] **Step 4: Update the two test literals**
+- [x] **Step 4: Update the two test literals**
 
 In `tests/operation_state.rs` at both `SearchRow { … }` literals (lines ~261 and ~458) add:
 
@@ -663,7 +684,7 @@ In `tests/operation_state.rs` at both `SearchRow { … }` literals (lines ~261 a
         text_snippet: None,
 ```
 
-- [ ] **Step 5: Write `browse.rs`**
+- [x] **Step 5: Write `browse.rs`**
 
 Create `src/ui/browse.rs`:
 
@@ -819,12 +840,12 @@ pub fn sections(rows: &[SearchRow], recent: &[String]) -> Vec<SectionView> {
 
 Add `pub mod browse;` next to `pub mod library;` in `src/ui.rs`.
 
-- [ ] **Step 6: Run the tests**
+- [x] **Step 6: Run the tests**
 
 Run: `cargo test -p notae-android`
 Expected: all tests pass, including the seven in `tests/browse.rs`.
 
-- [ ] **Step 7: Lint and commit**
+- [x] **Step 7: Lint and commit**
 
 ```bash
 cargo clippy -p notae-android --all-targets -- -D warnings
@@ -846,7 +867,7 @@ git commit -m "feat(android): add library sections and composer counts"
 - Produces `notae_android::recent::RecentScores` with `RECENT_LIMIT = 30`, `from_text(&str) -> Self`, `to_text(&self) -> String`, `load(&Path) -> Self`, `save(&self, &Path) -> io::Result<()>`, `record(&mut self, key: &str)`, `keys(&self) -> &[String]`.
 - Produces on `UiModel`: `set_recent_path(PathBuf)`, `record_opened(&mut self, note_key: &str) -> io::Result<()>`, `recent(&self) -> &[String]`, `section(&self) -> &LibrarySection`, `select_section(&mut self, LibrarySection)`, `visible_rows(&self) -> Vec<SearchRow>`, `select_note(&mut self, Option<String>)`, `selected_row(&self) -> Option<SearchRow>`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/recent.rs`:
 
@@ -942,12 +963,12 @@ fn selection_is_dropped_when_the_row_disappears() {
 }
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `cargo test -p notae-android --test recent`
 Expected: FAIL to compile — `notae_android::recent` is missing.
 
-- [ ] **Step 3: Write `recent.rs`**
+- [x] **Step 3: Write `recent.rs`**
 
 ```rust
 //! The most recently opened scores, stored as content keys in a private text file.
@@ -1029,7 +1050,7 @@ Note the test `record_keeps_at_most_the_limit` uses `{index:064x}`, which is val
 
 Add `pub mod recent;` to `src/lib.rs` next to `pub mod state;`.
 
-- [ ] **Step 4: Extend `UiModel`**
+- [x] **Step 4: Extend `UiModel`**
 
 In `src/ui.rs` add imports:
 
@@ -1108,12 +1129,12 @@ initialize them in `from_parts` with `LibrarySection::All`, `RecentScores::defau
     }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cargo test -p notae-android`
 Expected: all pass, including the six in `tests/recent.rs`.
 
-- [ ] **Step 6: Lint and commit**
+- [x] **Step 6: Lint and commit**
 
 ```bash
 cargo clippy -p notae-android --all-targets -- -D warnings
@@ -1135,7 +1156,7 @@ git commit -m "feat(android): remember recently opened scores"
 - Produces in `notae_android::ui::search`: `fn split_snippet(snippet: &str) -> (String, String, String)` returning (before, match, after), with `before` trimmed to its last 48 characters.
 - Produces: `LibraryViewModel::set_scope(SearchScope)`; `OperationController::set_search(query: String, scope: SearchScope)`.
 
-- [ ] **Step 1: Write the failing index tests**
+- [x] **Step 1: Write the failing index tests**
 
 Append to `crates/notae-index/tests/store_and_search.rs` (add `SearchScope` to the `notae_index` import):
 
@@ -1205,12 +1226,12 @@ fn scope_keys_round_trip() {
 }
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `cargo test -p notae-index --test store_and_search`
 Expected: FAIL to compile — `SearchScope` not found.
 
-- [ ] **Step 3: Implement scopes and snippets in `notae-index`**
+- [x] **Step 3: Implement scopes and snippets in `notae-index`**
 
 In `crates/notae-index/src/search.rs` add:
 
@@ -1349,12 +1370,12 @@ In `store.rs`:
 
 with `use crate::search::{SearchHit, SearchScope};`. In `lib.rs` change the re-export to `pub use crate::search::{SearchHit, SearchScope};`.
 
-- [ ] **Step 4: Run the index tests**
+- [x] **Step 4: Run the index tests**
 
 Run: `cargo test -p notae-index`
 Expected: all pass, including the six new tests and every existing search test.
 
-- [ ] **Step 5: Write the failing Android tests**
+- [x] **Step 5: Write the failing Android tests**
 
 Append to `apps/notae-android/tests/search_state.rs` (add `use notae_android::ui::search::split_snippet;`):
 
@@ -1391,7 +1412,7 @@ fn library_view_model_applies_scope_and_fills_snippets() {
 }
 ```
 
-- [ ] **Step 6: Implement the Android side**
+- [x] **Step 6: Implement the Android side**
 
 In `src/ui/search.rs`:
 
@@ -1469,12 +1490,12 @@ On `OperationController`:
     }
 ```
 
-- [ ] **Step 7: Run all tests and lint**
+- [x] **Step 7: Run all tests and lint**
 
 Run: `cargo test -p notae-android -p notae-index && cargo clippy -p notae-android -p notae-index --all-targets -- -D warnings`
 Expected: all pass, no warnings.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add crates/notae-index apps/notae-android/src apps/notae-android/tests
@@ -1494,7 +1515,7 @@ git commit -m "feat(search): add search scopes and page-text snippets"
 - Consumes: `notae_index::SearchScope` and `SearchScope::default() == Everything` from Task 5.
 - Produces: `Screen::Search`; `UiEvent::OpenSearch`, `UiEvent::CloseSearch`, `UiEvent::UpdateSearchScope { scope: SearchScope }`; `SearchState { query: String, scope: SearchScope }`; `EventError::SearchUnavailable`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `tests/search_state.rs` (add `use notae_index::SearchScope;`):
 
@@ -1545,12 +1566,12 @@ fn closing_search_when_not_searching_is_rejected() {
 }
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `cargo test -p notae-android --test search_state`
 Expected: FAIL to compile — no `UiEvent::OpenSearch`.
 
-- [ ] **Step 3: Implement the state changes**
+- [x] **Step 3: Implement the state changes**
 
 In `src/state.rs`:
 
@@ -1626,7 +1647,7 @@ Add the match arms in `dispatch`:
 
 Any other exhaustive `match` on `Screen` in the crate (`cargo build` lists them) gets a `Screen::Search` arm that behaves like `Screen::Library`.
 
-- [ ] **Step 4: Make `visible_rows` screen-aware**
+- [x] **Step 4: Make `visible_rows` screen-aware**
 
 In `src/ui.rs` replace `visible_rows` with:
 
@@ -1642,12 +1663,12 @@ In `src/ui.rs` replace `visible_rows` with:
     }
 ```
 
-- [ ] **Step 5: Run the tests**
+- [x] **Step 5: Run the tests**
 
 Run: `cargo test -p notae-android`
 Expected: all pass.
 
-- [ ] **Step 6: Lint and commit**
+- [x] **Step 6: Lint and commit**
 
 ```bash
 cargo clippy -p notae-android --all-targets -- -D warnings
@@ -1670,7 +1691,7 @@ git commit -m "feat(android): add search screen navigation"
 - Produces `OperationController::with_thumbnails(local, catalog, cache: ThumbnailCache) -> Self`.
 - Produces `UiModel::set_thumbnail_cache(ThumbnailCache)` and `UiModel::thumbnail_cache(&self) -> Option<&ThumbnailCache>`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `tests/thumbnails.rs`:
 
@@ -1790,12 +1811,12 @@ fn rescan_writes_a_thumbnail_for_each_indexed_score() {
 }
 ```
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 Run: `cargo test -p notae-android --test thumbnails`
 Expected: FAIL to compile — `notae_android::thumbnails` is missing.
 
-- [ ] **Step 3: Write `thumbnails.rs`**
+- [x] **Step 3: Write `thumbnails.rs`**
 
 ```rust
 //! Private cache of first-page thumbnails, one PNG per content key.
@@ -1903,7 +1924,7 @@ impl ThumbnailCache {
 
 Add `pub mod thumbnails;` to `src/lib.rs`.
 
-- [ ] **Step 4: Add `render_thumbnail` to the catalog trait**
+- [x] **Step 4: Add `render_thumbnail` to the catalog trait**
 
 In `src/storage.rs`, inside `trait LibraryCatalog`:
 
@@ -1935,7 +1956,7 @@ and in `impl LibraryCatalog for SharedLibraryCatalog`:
 
 (add `use std::path::Path;` if missing).
 
-- [ ] **Step 5: Generate thumbnails during rescan**
+- [x] **Step 5: Generate thumbnails during rescan**
 
 In `src/operations/rescan.rs`:
 - Add a `thumbnails: Option<ThumbnailCache>` parameter to `run_worker` and a `thumbnails: Option<&ThumbnailCache>` parameter to `run_rescan`; `run_worker` passes `thumbnails.as_ref()`. Import `crate::thumbnails::ThumbnailCache`.
@@ -1986,7 +2007,7 @@ In `src/operations/rescan.rs`:
             }
 ```
 
-- [ ] **Step 6: Keep the cache on `UiModel`**
+- [x] **Step 6: Keep the cache on `UiModel`**
 
 In `src/ui.rs` add a field `thumbnails: Option<ThumbnailCache>` (initialized `None`) and:
 
@@ -2003,12 +2024,12 @@ In `src/ui.rs` add a field `thumbnails: Option<ThumbnailCache>` (initialized `No
     }
 ```
 
-- [ ] **Step 7: Run the host tests**
+- [x] **Step 7: Run the host tests**
 
 Run: `cargo test -p notae-android`
 Expected: all pass, including the six in `tests/thumbnails.rs`.
 
-- [ ] **Step 8: Render on Android**
+- [x] **Step 8: Render on Android**
 
 Add to `NotaeActivity.java` (imports `android.graphics.Bitmap`, `android.graphics.Color`, `android.graphics.pdf.PdfRenderer`, `android.net.Uri`, `android.os.ParcelFileDescriptor`, `java.io.FileOutputStream`):
 
@@ -2093,12 +2114,12 @@ In `src/android_main.rs`, right after `index_path` is computed:
                     );
 ```
 
-- [ ] **Step 9: Check the Android build and lint**
+- [x] **Step 9: Check the Android build and lint**
 
 Run: `cargo apk2 check -p notae-android --target aarch64-linux-android && cargo clippy -p notae-android --all-targets -- -D warnings`
 Expected: no errors.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add apps/notae-android
