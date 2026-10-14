@@ -22,6 +22,8 @@
 
 use std::path::PathBuf;
 
+use notae_index::SearchScope;
+
 /// A user action received from the Slint layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiEvent {
@@ -49,6 +51,15 @@ pub enum UiEvent {
     /// The user closed the settings screen, returning to whatever screen
     /// was below it (the library in normal flow).
     CloseSettings,
+    /// The user opened the search screen (search icon or Ctrl K).
+    OpenSearch,
+    /// The user left the search screen; the query and scope reset.
+    CloseSearch,
+    /// The user picked a search scope chip.
+    UpdateSearchScope {
+        /// The chosen scope.
+        scope: SearchScope,
+    },
 }
 
 /// The instruction the controller hands back after a transition.
@@ -80,6 +91,9 @@ pub enum EventError {
     /// Settings are only available while a configured library is open.
     #[error("settings are unavailable until a library is open")]
     SettingsUnavailable,
+    /// Search opens only from the library and closes only from search.
+    #[error("search is unavailable from the current screen")]
+    SearchUnavailable,
 }
 
 /// What top-level view the user is on.
@@ -93,6 +107,8 @@ pub enum Screen {
     Library,
     /// The settings screen.
     Settings,
+    /// The search screen over the configured library.
+    Search,
 }
 
 /// Why the app is on the setup screen.
@@ -141,6 +157,8 @@ pub struct LibraryRow {
 pub struct SearchState {
     /// The current text in the search box. Empty by default.
     pub query: String,
+    /// Which fields the query searches.
+    pub scope: SearchScope,
 }
 
 /// What long-running operation, if any, is in flight.
@@ -336,6 +354,25 @@ impl AppController {
                     return Err(EventError::SettingsUnavailable);
                 }
                 self.state.screen = Screen::Library;
+                Ok(Transition::NoOp)
+            }
+            UiEvent::OpenSearch => {
+                if !matches!(&self.state.screen, Screen::Library) {
+                    return Err(EventError::SearchUnavailable);
+                }
+                self.state.screen = Screen::Search;
+                Ok(Transition::NoOp)
+            }
+            UiEvent::CloseSearch => {
+                if !matches!(&self.state.screen, Screen::Search) {
+                    return Err(EventError::SearchUnavailable);
+                }
+                self.state.screen = Screen::Library;
+                self.state.search = SearchState::default();
+                Ok(Transition::NoOp)
+            }
+            UiEvent::UpdateSearchScope { scope } => {
+                self.state.search.scope = scope;
                 Ok(Transition::NoOp)
             }
         }

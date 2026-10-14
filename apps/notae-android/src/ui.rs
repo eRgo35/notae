@@ -190,10 +190,14 @@ impl UiModel {
         self.selected_note = None;
     }
 
-    /// Rows of the current section. Task 6 makes this screen-aware.
+    /// Rows for the current screen: search hits on the Search screen, the section otherwise.
     #[must_use]
     pub fn visible_rows(&self) -> Vec<SearchRow> {
-        section_rows(&self.search_rows, &self.section, self.recent.keys())
+        if matches!(self.state().screen(), crate::state::Screen::Search) {
+            self.search_rows.clone()
+        } else {
+            section_rows(&self.search_rows, &self.section, self.recent.keys())
+        }
     }
 
     /// Opens (`Some`) or closes (`None`) the details pane.
