@@ -368,8 +368,29 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
     {
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
+        window.on_score_selected(move |key| {
+            model.borrow_mut().select_note(Some(key.to_string()));
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_selection_cleared(move || {
+            model.borrow_mut().select_note(None);
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
         let app = app.clone();
-        window.on_open_pdf_requested(move |relative_path| {
+        window.on_open_pdf_requested(move |relative_path, note_key| {
             let relative_path = relative_path.to_string();
             let result = model
                 .borrow()
@@ -389,9 +410,15 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
                 .and_then(|uri| {
                     crate::android::pdf_intent::PdfLauncher::new(app.clone()).open(uri)
                 });
+            let opened = result.is_ok();
             model
                 .borrow_mut()
                 .set_pdf_launch_error(result.err().map(|error| error.to_string()));
+            if opened {
+                if let Err(error) = model.borrow_mut().record_opened(note_key.as_str()) {
+                    eprintln!("notae: cannot save recent scores: {error}");
+                }
+            }
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
             }
@@ -564,6 +591,16 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_show_settings(matches!(state.screen(), Screen::Settings));
     let visible = model.visible_rows();
     let row_count = visible.len();
+
+    let selected = model.selected_row();
+    window.set_details_open(selected.is_some());
+    window.set_selected_key(selected.as_ref().map(|row| row.note_key.clone()).unwrap_or_default().into());
+    if let Some(row) = selected {
+        let thumbnail = LIBRARY_ROWS.with_borrow_mut(|cache| {
+            cache.thumbnail(model.thumbnail_cache(), &row.note_key)
+        });
+        window.set_selected(crate::ui::search::library_row(row, thumbnail));
+    }
     LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible));
 
     let all_rows = model.search_rows();

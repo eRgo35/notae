@@ -2,6 +2,7 @@
 import { ListView, ScrollView, CheckBox } from "std-widgets.slint";
 import { Theme, PillButton, SearchField, TextField, IconButton, Glyph } from "components.slint";
 import { LibraryScreen, LibraryRow, SectionItem, OperationBanner } from "library.slint";
+import { ScoreList, ScoreDetails } from "details.slint";
 export { Theme, LibraryRow, SectionItem }
 
 export struct ImportRow {
@@ -121,6 +122,7 @@ export component AppWindow inherits Window {
     in property <string> selected_section: "all";
     in property <string> library_title: "All scores";
     in property <string> library_subtitle: "";
+    in property <LibraryRow> selected;
     in property <string> selected_key: "";
     in property <bool> details_open: false;
     in property <bool> show_search: false;
@@ -137,7 +139,8 @@ export component AppWindow inherits Window {
     callback edit_metadata_requested(string);
     callback metadata_save_requested(string, string, string, string, string);
     callback metadata_cancelled();
-    callback open_pdf_requested(string);
+    callback selection_cleared();
+    callback open_pdf_requested(string, string);
     callback section_selected(string);
     callback search_opened();
     callback score_selected(string);
@@ -212,6 +215,23 @@ export component AppWindow inherits Window {
                 subtitle: root.library_subtitle;
                 rows: root.library_rows;
                 selected-key: root.selected_key;
+                HorizontalLayout {
+                    spacing: 16px;
+                    if root.expanded : ScoreList {
+                        width: 400px;
+                        rows: root.library_rows;
+                        selected-key: root.selected_key;
+                        select(key) => { root.score_selected(key); }
+                    }
+                    ScoreDetails {
+                        horizontal-stretch: 1;
+                        score: root.selected;
+                        show-back: !root.expanded;
+                        close => { root.selection_cleared(); }
+                        open => { root.open_pdf_requested(root.selected.relative_path, root.selected.note_key); }
+                        edit => { root.edit_metadata_requested(root.selected.note_key); }
+                    }
+                }
                 details-open: root.details_open;
                 rescan-enabled: root.rescan_enabled;
                 progress-text: root.operation_progress_text;
