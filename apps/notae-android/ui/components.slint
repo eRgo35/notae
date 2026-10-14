@@ -496,14 +496,6 @@ export component Chip inherits Rectangle {
         background: root.selected ? Theme.accent : Theme.card;
         border-width: input.has-focus ? 2px : 0px;
         border-color: root.selected ? Theme.on-accent : Theme.accent;
-        Text {
-            text: root.label;
-            font-size: 15px;
-            font-weight: root.selected ? 600 : 500;
-            color: root.selected ? Theme.on-accent : Theme.foreground;
-            vertical-alignment: center;
-            horizontal-alignment: center;
-        }
         label-text := Text {
             text: root.label;
             font-size: 15px;
