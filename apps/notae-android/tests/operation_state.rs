@@ -266,6 +266,10 @@ fn worker_progress_and_completion_are_reflected_in_ui_state_and_rows() {
         status: "Ready".to_owned(),
         note_key: "stable-key".to_owned(),
         relative_path: "12 - Autumn Leaves.pdf".to_owned(),
+        text_pending: false,
+        title_origin: String::new(),
+        composer_origin: String::new(),
+        text_snippet: None,
     }];
     model
         .apply_operation_event(OperationEvent::Completed {
@@ -463,6 +467,10 @@ fn metadata_events_keep_errors_visible_and_close_after_success() {
                 status: "Ready".to_owned(),
                 note_key: "content-key".to_owned(),
                 relative_path: "12 - Autumn Leaves.pdf".to_owned(),
+                text_pending: false,
+                title_origin: String::new(),
+                composer_origin: String::new(),
+                text_snippet: None,
             }],
         })
         .expect("apply saved row projection");

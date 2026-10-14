@@ -50,7 +50,7 @@ jni = "0.22"
 # `notae-ocr` remains host/Linux-only: its current Tesseract and Leptonica
 # bindings do not support Android cross-compilation. Android uses PdfRenderer
 # for text-layer extraction only; image-only PDFs remain OCR-pending. PDFs
-# are never rendered by the app.
+# are rendered only to first-page thumbnails.
 # Cross-compiling `notae-index` to Android is non-trivial because it bundles
 # SQLite via `cc-rs`. The build expects the NDK clang in the PATH for
 # `aarch64-linux-android`; `cargo apk2` sets that up. The host test

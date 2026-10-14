@@ -8,18 +8,23 @@
 //! [`state`]: crate::state
 
 #![forbid(unsafe_code)]
+pub mod browse;
 pub mod library;
 pub mod metadata_editor;
 pub mod search;
 
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Mutex;
 
 use crate::operations::events::{
     ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
 };
+use crate::recent::RecentScores;
 use crate::state::{AppController, AppState, EventError, Transition, UiEvent};
 use crate::storage::StorageState;
+use crate::thumbnails::ThumbnailCache;
+use crate::ui::browse::{LibrarySection, section_rows};
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
 
@@ -41,6 +46,11 @@ pub struct UiModel {
     metadata_editor: Option<EditableMetadata>,
     metadata_error: Option<String>,
     pdf_launch_error: Option<String>,
+    section: LibrarySection,
+    recent: RecentScores,
+    recent_path: Option<PathBuf>,
+    selected_note: Option<String>,
+    thumbnails: Option<ThumbnailCache>,
 }
 
 impl UiModel {
@@ -57,6 +67,11 @@ impl UiModel {
             metadata_editor: None,
             metadata_error: None,
             pdf_launch_error: None,
+            section: LibrarySection::All,
+            recent: RecentScores::default(),
+            recent_path: None,
+            selected_note: None,
+            thumbnails: None,
         }
     }
 
@@ -139,6 +154,76 @@ impl UiModel {
     #[must_use]
     pub fn search_rows(&self) -> &[SearchRow] {
         &self.search_rows
+    }
+
+    /// Loads the recent list from, and later saves it to, `path`.
+    pub fn set_recent_path(&mut self, path: PathBuf) {
+        self.recent = RecentScores::load(&path);
+        self.recent_path = Some(path);
+    }
+
+    /// Uses `cache` to look up row thumbnails.
+    pub fn set_thumbnail_cache(&mut self, cache: ThumbnailCache) {
+        self.thumbnails = Some(cache);
+    }
+
+    /// The thumbnail cache, once the Android entry point has created it.
+    #[must_use]
+    pub fn thumbnail_cache(&self) -> Option<&ThumbnailCache> {
+        self.thumbnails.as_ref()
+    }
+
+    /// Records that the score with `note_key` was opened.
+    ///
+    /// # Errors
+    ///
+    /// Returns the I/O error when the list cannot be saved; the in-memory list is still updated.
+    pub fn record_opened(&mut self, note_key: &str) -> std::io::Result<()> {
+        self.recent.record(note_key);
+        match &self.recent_path {
+            Some(path) => self.recent.save(path),
+            None => Ok(()),
+        }
+    }
+
+    /// Content keys of recently opened scores, newest first.
+    #[must_use]
+    pub fn recent(&self) -> &[String] {
+        self.recent.keys()
+    }
+
+    /// The side-panel section on display.
+    #[must_use]
+    pub fn section(&self) -> &LibrarySection {
+        &self.section
+    }
+
+    /// Switches section and closes the details pane.
+    pub fn select_section(&mut self, section: LibrarySection) {
+        self.section = section;
+        self.selected_note = None;
+    }
+
+    /// Rows for the current screen: search hits on the Search screen, the section otherwise.
+    #[must_use]
+    pub fn visible_rows(&self) -> Vec<SearchRow> {
+        if matches!(self.state().screen(), crate::state::Screen::Search) {
+            self.search_rows.clone()
+        } else {
+            section_rows(&self.search_rows, &self.section, self.recent.keys())
+        }
+    }
+
+    /// Opens (`Some`) or closes (`None`) the details pane.
+    pub fn select_note(&mut self, note_key: Option<String>) {
+        self.selected_note = note_key;
+    }
+
+    /// The row shown in the details pane, if it is still in the library.
+    #[must_use]
+    pub fn selected_row(&self) -> Option<SearchRow> {
+        let key = self.selected_note.as_deref()?;
+        self.search_rows.iter().find(|row| row.note_key == key).cloned()
     }
 
     /// The current read-only sidecar preview counts, when one is awaiting

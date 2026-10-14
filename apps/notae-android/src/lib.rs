@@ -25,6 +25,7 @@
 
 pub mod picker_fut;
 pub mod saf_tree;
+pub mod recent;
 pub mod state;
 pub mod storage;
 
@@ -38,6 +39,7 @@ pub mod ui;
 pub mod operations;
 pub mod pdf_intent;
 pub mod pdf_pages;
+pub mod thumbnails;
 
 // Pull in the Slint-generated bindings for `app.slint`. The build script
 // in `build.rs` writes this file as `$OUT_DIR/app.rs`; the path uses

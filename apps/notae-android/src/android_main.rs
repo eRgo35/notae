@@ -42,6 +42,7 @@
 #![allow(improper_ctypes_definitions)]
 
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -52,8 +53,10 @@ use slint::ComponentHandle;
 use crate::android::saf::{SafHandles, SafLibraryRootProvider};
 use crate::operations::rescan::OperationController;
 use crate::state::{EventError, OperationState, Screen, Setup, Transition, UiEvent};
+use crate::thumbnails::ThumbnailCache;
 use crate::storage::{LibraryRootProvider, SharedLibraryCatalog, StorageError, StorageState};
 use crate::ui::UiModel;
+use crate::ui::search::SearchRow;
 use notae_index::IndexStore;
 
 // `AppWindow` and `set_*` callbacks are emitted by
@@ -90,6 +93,10 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
         .join("notae");
     std::fs::create_dir_all(&index_dir).expect("create private Notae index directory");
     let index_path = index_dir.join("index.sqlite");
+    let thumbnails = ThumbnailCache::new(index_dir.join("thumbnails"))
+        .expect("create private thumbnail directory");
+    model.borrow_mut().set_thumbnail_cache(thumbnails.clone());
+    model.borrow_mut().set_recent_path(index_dir.join("recent.txt"));
     let operations = Rc::new(RefCell::new(None::<OperationController>));
 
     // Sanity-check the contract on a fresh install. If the smoke test
@@ -137,8 +144,16 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
         let provider = provider.clone();
         let operations = Rc::clone(&operations);
         let index_path = index_path.clone();
+        let thumbnails = thumbnails.clone();
         window.on_setup_chosen(move || {
-            handle_picker_response(&model, &window_weak, &provider, &operations, &index_path);
+            handle_picker_response(
+                &model,
+                &window_weak,
+                &provider,
+                &operations,
+                &index_path,
+                &thumbnails,
+            );
         });
     }
 
@@ -247,6 +262,19 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
 
     {
         let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_section_selected(move |key| {
+            model
+                .borrow_mut()
+                .select_section(crate::ui::browse::LibrarySection::from_key(key.as_str()));
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
         let operations = Rc::clone(&operations);
         let window_weak = window.as_weak();
         window.on_search_changed(move |text| {
@@ -254,11 +282,68 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
             report_transition(model.borrow_mut().dispatch(UiEvent::UpdateSearchQuery {
                 query: query.clone(),
             }));
+            let scope = model.borrow().state().search().scope;
             if let Some(controller) = operations.borrow().as_ref() {
-                if let Err(error) = controller.set_query(query) {
+                if let Err(error) = controller.set_search(query, scope) {
                     eprintln!("notae: search failed: {error}");
                 }
             }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_search_opened(move || {
+            if let Err(error) = model.borrow_mut().dispatch(UiEvent::OpenSearch) {
+                eprintln!("notae: cannot open search: {error}");
+            }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let operations = Rc::clone(&operations);
+        let window_weak = window.as_weak();
+        window.on_search_scope_changed(move |key| {
+            let scope = notae_index::SearchScope::from_key(key.as_str());
+            let _ = model.borrow_mut().dispatch(UiEvent::UpdateSearchScope { scope });
+            let query = model.borrow().state().search().query.clone();
+            if let Some(controller) = operations.borrow().as_ref() {
+                if let Err(error) = controller.set_search(query, scope) {
+                    eprintln!("notae: search failed: {error}");
+                }
+            }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let operations = Rc::clone(&operations);
+        let window_weak = window.as_weak();
+        window.on_search_closed(move || {
+            close_search(&model, &operations, None);
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let operations = Rc::clone(&operations);
+        let window_weak = window.as_weak();
+        window.on_search_result_chosen(move |key| {
+            close_search(&model, &operations, Some(key.to_string()));
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
             }
@@ -340,8 +425,29 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
     {
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
+        window.on_score_selected(move |key| {
+            model.borrow_mut().select_note(Some(key.to_string()));
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_selection_cleared(move || {
+            model.borrow_mut().select_note(None);
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
         let app = app.clone();
-        window.on_open_pdf_requested(move |relative_path| {
+        window.on_open_pdf_requested(move |relative_path, note_key| {
             let relative_path = relative_path.to_string();
             let result = model
                 .borrow()
@@ -361,9 +467,15 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
                 .and_then(|uri| {
                     crate::android::pdf_intent::PdfLauncher::new(app.clone()).open(uri)
                 });
+            let opened = result.is_ok();
             model
                 .borrow_mut()
                 .set_pdf_launch_error(result.err().map(|error| error.to_string()));
+            if opened {
+                if let Err(error) = model.borrow_mut().record_opened(note_key.as_str()) {
+                    eprintln!("notae: cannot save recent scores: {error}");
+                }
+            }
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
             }
@@ -424,6 +536,78 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
     window.run().expect("Slint UI loop exited with an error");
 }
 
+thread_local! {
+    /// Decoded thumbnails and the last rows pushed to the window. `sync_window` runs only on the
+    /// UI thread, so a thread-local avoids threading this through every caller.
+    static LIBRARY_ROWS: RefCell<LibraryRowsCache> = RefCell::default();
+}
+
+/// Keeps `sync_window` from re-decoding thumbnail PNGs and from replacing an unchanged
+/// `library_rows` model (which would rebuild every card and drop keyboard focus).
+#[derive(Default)]
+struct LibraryRowsCache {
+    /// Decoded thumbnails by content key. A key's thumbnail is written once and never
+    /// rewritten, so entries only need dropping when the key leaves the library.
+    images: HashMap<String, slint::Image>,
+    /// The rows and per-row thumbnail availability last pushed to the window.
+    pushed: Option<(Vec<SearchRow>, Vec<bool>)>,
+}
+
+impl LibraryRowsCache {
+    fn push(&mut self, window: &AppWindow, model: &UiModel, visible: Vec<SearchRow>) {
+        let keys: HashSet<&str> = model.search_rows().iter().map(|row| row.note_key.as_str()).collect();
+        self.images.retain(|key, _| keys.contains(key.as_str()));
+        let thumbnails: Vec<Option<slint::Image>> = visible
+            .iter()
+            .map(|row| self.thumbnail(model.thumbnail_cache(), &row.note_key))
+            .collect();
+        let available: Vec<bool> = thumbnails.iter().map(Option::is_some).collect();
+        if self
+            .pushed
+            .as_ref()
+            .is_some_and(|(rows, flags)| *rows == visible && *flags == available)
+        {
+            return;
+        }
+        let rows: Vec<crate::LibraryRow> = visible
+            .iter()
+            .cloned()
+            .zip(thumbnails)
+            .map(|(row, thumbnail)| crate::ui::search::library_row(row, thumbnail))
+            .collect();
+        window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+        self.pushed = Some((visible, available));
+    }
+
+    /// The decoded thumbnail for `note_key`, loading it once the file exists. A file that fails
+    /// to decode yields `None` (the placeholder) and is retried on a later sync.
+    fn thumbnail(&mut self, files: Option<&ThumbnailCache>, note_key: &str) -> Option<slint::Image> {
+        if let Some(image) = self.images.get(note_key) {
+            return Some(image.clone());
+        }
+        let image = slint::Image::load_from_path(&files?.existing(note_key)?).ok()?;
+        self.images.insert(note_key.to_owned(), image.clone());
+        Some(image)
+    }
+}
+
+fn close_search(
+    model: &Rc<RefCell<UiModel>>,
+    operations: &Rc<RefCell<Option<OperationController>>>,
+    selected: Option<String>,
+) {
+    let scope = model.borrow().state().search().scope;
+    if let Err(error) = model.borrow_mut().dispatch(UiEvent::CloseSearch) {
+        eprintln!("notae: cannot close search: {error}");
+    }
+    model.borrow_mut().select_note(selected);
+    if let Some(controller) = operations.borrow().as_ref() {
+        if let Err(error) = controller.set_search(String::new(), scope) {
+            eprintln!("notae: library refresh failed: {error}");
+        }
+    }
+}
+
 /// Pushes the currently visible fields of `UiModel` into the Slint
 /// window's properties.
 ///
@@ -478,14 +662,49 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         _ => 0.0,
     });
     window.set_search_text(state.search().query.as_str().into());
+    window.set_search_scope(state.search().scope.key().into());
     window.set_show_settings(matches!(state.screen(), Screen::Settings));
-    let rows: Vec<crate::LibraryRow> = model
-        .search_rows()
-        .iter()
-        .cloned()
-        .map(crate::LibraryRow::from)
+    let visible = model.visible_rows();
+    let row_count = visible.len();
+
+    let selected = model.selected_row();
+    window.set_details_open(selected.is_some());
+    window.set_selected_key(selected.as_ref().map(|row| row.note_key.clone()).unwrap_or_default().into());
+    if let Some(row) = selected {
+        let thumbnail = LIBRARY_ROWS.with_borrow_mut(|cache| {
+            cache.thumbnail(model.thumbnail_cache(), &row.note_key)
+        });
+        window.set_selected(crate::ui::search::library_row(row, thumbnail));
+    }
+    LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible));
+
+    let all_rows = model.search_rows();
+    let sections: Vec<crate::SectionItem> = crate::ui::browse::sections(all_rows, model.recent())
+        .into_iter()
+        .map(|view| crate::SectionItem {
+            key: view.key.into(),
+            label: view.label.into(),
+            count: i32::try_from(view.count).unwrap_or(i32::MAX),
+            kind: view.kind.into(),
+        })
         .collect();
-    window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+    window.set_sections(slint::ModelRc::new(slint::VecModel::from(sections)));
+    let composers: Vec<crate::SectionItem> = crate::ui::browse::composers(all_rows)
+        .into_iter()
+        .map(|composer| crate::SectionItem {
+            key: crate::ui::browse::LibrarySection::Composer(composer.name.clone()).key().into(),
+            label: composer.name.into(),
+            count: i32::try_from(composer.count).unwrap_or(i32::MAX),
+            kind: "".into(),
+        })
+        .collect();
+    window.set_composers(slint::ModelRc::new(slint::VecModel::from(composers)));
+    window.set_selected_section(model.section().key().into());
+    window.set_library_title(model.section().title().into());
+    window.set_library_subtitle(
+        format!("{row_count} {}", if row_count == 1 { "score" } else { "scores" }).into(),
+    );
+    window.set_show_search(matches!(state.screen(), Screen::Search));
     let metadata = model.metadata_editor();
     window.set_show_metadata_editor(metadata.is_some());
     window.set_metadata_note_key(
@@ -593,6 +812,9 @@ fn report_transition(outcome: Result<Transition, EventError>) {
         Err(EventError::SettingsUnavailable) => {
             eprintln!("notae: settings are unavailable until a library is open");
         }
+        Err(EventError::SearchUnavailable) => {
+            eprintln!("notae: search is unavailable from the current screen");
+        }
     }
 }
 
@@ -614,11 +836,13 @@ fn handle_picker_response(
     provider: &SafLibraryRootProvider,
     operations: &Rc<RefCell<Option<OperationController>>>,
     index_path: &PathBuf,
+    thumbnails: &ThumbnailCache,
 ) {
     let provider = provider.clone();
     let model = Rc::clone(model);
     let operations = Rc::clone(operations);
     let index_path = index_path.clone();
+    let thumbnails = thumbnails.clone();
     let window_weak = window_weak.clone();
     slint::spawn_local(async move {
         let result = provider.select_root().await;
@@ -628,6 +852,7 @@ fn handle_picker_response(
             &provider,
             &operations,
             &index_path,
+            &thumbnails,
             result,
         );
     })
@@ -640,6 +865,7 @@ fn apply_picker_result(
     provider: &SafLibraryRootProvider,
     operations: &Rc<RefCell<Option<OperationController>>>,
     index_path: &PathBuf,
+    thumbnails: &ThumbnailCache,
     result: Result<crate::storage::LibraryRoot, StorageError>,
 ) {
     let next_state = match result {
@@ -647,9 +873,10 @@ fn apply_picker_result(
             Ok(source) => match IndexStore::open(index_path) {
                 Ok(local) => {
                     let source = Arc::new(Mutex::new(source));
-                    let controller = OperationController::new(
+                    let controller = OperationController::with_thumbnails(
                         local,
                         Box::new(SharedLibraryCatalog(Arc::clone(&source))),
+                        thumbnails.clone(),
                     );
                     *operations.borrow_mut() = Some(controller);
                     let query = model.borrow().state().search().query.clone();

@@ -7,7 +7,7 @@ use notae_domain::{
     EpochTimestamp, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId,
     NoteMetadata, PdfFingerprint, RelativePdfPath, Sha256Digest,
 };
-use notae_index::{IndexError, IndexStore, OcrText, ReindexOutcome, SCHEMA_VERSION};
+use notae_index::{IndexError, IndexStore, OcrText, ReindexOutcome, SCHEMA_VERSION, SearchScope};
 
 fn digest(seed: u8) -> Sha256Digest {
     Sha256Digest::from_bytes([seed; 32])
@@ -822,4 +822,68 @@ fn get_by_id_returns_none_for_unknown_ids() {
         .expect("insert");
     assert!(store.get_by_id(NoteId::new(2)).expect("lookup").is_none());
     assert!(store.get_by_hash(&digest(42)).expect("lookup").is_none());
+}
+
+fn scoped_store() -> IndexStore {
+    let store = IndexStore::open(":memory:").expect("open");
+    let schubert = note("ave.pdf", 1, Some(NoteId::new(13)), "Ave Maria", Some("Schubert"), &["solo"]);
+    let antiphons = note("antiphons.pdf", 2, Some(NoteId::new(77)), "Marian antiphons", Some("Traditional"), &["choir"]);
+    store.upsert_note(&schubert).expect("insert");
+    store
+        .upsert_note_with_ocr(
+            &antiphons,
+            Some(&OcrText::new("Regina caeli laetare alleluia. Ave Maria gratia plena Dominus tecum")),
+        )
+        .expect("insert");
+    store
+}
+
+#[test]
+fn text_scope_matches_only_page_text_and_returns_a_marked_snippet() {
+    let hits = scoped_store().search_in("ave maria", SearchScope::Text, 10).expect("search");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].note.title(), "Marian antiphons");
+    let snippet = hits[0].text_snippet.as_deref().expect("snippet");
+    assert!(snippet.contains("\u{2}Ave\u{3}"), "{snippet:?}");
+}
+
+#[test]
+fn titles_scope_ignores_page_text() {
+    let hits = scoped_store().search_in("ave", SearchScope::Titles, 10).expect("search");
+    let titles: Vec<&str> = hits.iter().map(|hit| hit.note.title()).collect();
+    assert_eq!(titles, ["Ave Maria"]);
+    assert!(hits[0].text_snippet.is_none());
+}
+
+#[test]
+fn composers_and_tags_scopes_use_their_columns() {
+    let store = scoped_store();
+    assert_eq!(store.search_in("traditional", SearchScope::Composers, 10).expect("search").len(), 1);
+    assert_eq!(store.search_in("choir", SearchScope::Tags, 10).expect("search").len(), 1);
+    assert!(store.search_in("choir", SearchScope::Composers, 10).expect("search").is_empty());
+}
+
+#[test]
+fn everything_scope_matches_search() {
+    let store = scoped_store();
+    let scoped = store.search_in("ave", SearchScope::Everything, 10).expect("search");
+    let plain = store.search("ave", 10).expect("search");
+    let titles = |hits: &[notae_index::SearchHit]| hits.iter().map(|hit| hit.note.title().to_owned()).collect::<Vec<_>>();
+    assert_eq!(titles(&scoped), titles(&plain));
+}
+
+#[test]
+fn punctuation_only_query_in_any_scope_returns_nothing() {
+    let store = scoped_store();
+    for scope in [SearchScope::Everything, SearchScope::Titles, SearchScope::Composers, SearchScope::Tags, SearchScope::Text] {
+        assert!(store.search_in("?!…", scope, 10).expect("search").is_empty());
+    }
+}
+
+#[test]
+fn scope_keys_round_trip() {
+    for scope in [SearchScope::Everything, SearchScope::Titles, SearchScope::Composers, SearchScope::Tags, SearchScope::Text] {
+        assert_eq!(SearchScope::from_key(scope.key()), scope);
+    }
+    assert_eq!(SearchScope::from_key("bogus"), SearchScope::Everything);
 }

@@ -128,7 +128,7 @@ The visual language is minimal and Material-3-inspired: clear hierarchy, generou
 
 ### Opening PDFs
 
-Notae does not render PDF pages.
+Notae renders only the first page of each PDF, once, into a private thumbnail cache for the library grid. Viewing a score is still delegated to an installed PDF app.
 
 When the user opens a result, the Android bridge:
 
@@ -305,7 +305,9 @@ pub trait OcrProvider {
 
 The Linux OCR backend uses Tesseract/Leptonica through Rust because the product requires multilingual language data, including English, Polish, and Latin, plus extensibility to additional installed language packs. Automatic language/script detection is the default behavior; it should select among locally available packs and record uncertainty or failure instead of silently returning no text.
 
-The Android app does not run OCR or render PDFs. On Android API 35 and later, it reads an existing PDF text layer through `PdfRenderer.Page.getTextContents`; on older APIs or image-only documents it preserves imported sidecar OCR or leaves the record OCR-pending. Linux OCR models and language data are local assets, and runtime indexing MUST NOT require a network connection.
+The Android app does not run OCR. It renders first-page thumbnails with `PdfRenderer` during a rescan. On Android API 35 and later, it reads an existing PDF text layer through `PdfRenderer.Page.getTextContents`; on older APIs or image-only documents it preserves imported sidecar OCR or leaves the record OCR-pending. Linux OCR models and language data are local assets, and runtime indexing MUST NOT require a network connection.
+
+Android visual design follows the [approved One UI canvas](https://claude.ai/artifact/3bQ38pa1r5L3hVXF1M8N6Z) and the fixed light/dark palette in the One UI redesign plan's Global Constraints.
 
 ### Linux CLI
 
