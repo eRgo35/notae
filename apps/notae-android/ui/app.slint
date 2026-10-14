@@ -1,11 +1,11 @@
 // Notae's adaptive score library. Rust remains authoritative for library operations.
-import { ListView, ScrollView, CheckBox } from "std-widgets.slint";
-import { Theme, PillButton, TextField, IconButton, Glyph } from "components.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
+import { WelcomeScreen, SettingsScreen } from "setup.slint";
+import { Theme, PillButton, TextField, IconButton } from "components.slint";
 import { LibraryScreen, LibraryRow, SectionItem, OperationBanner } from "library.slint";
 import { SearchScreen } from "search.slint";
 import { ScoreList, ScoreDetails } from "details.slint";
 export { Theme, LibraryRow, SectionItem }
-
 export struct ImportRow {
     path: string,
     change: string,
@@ -27,56 +27,17 @@ component SupportingText inherits Label {
     color: Theme.muted;
     font-size: 14px;
 }
-
-component WelcomePanel inherits Rectangle {
-    in property <bool> recovery;
-    in property <string> folder;
-    in property <string> error_text;
-    callback accepted();
-    background: Theme.background;
-    ScrollView {
-    VerticalLayout {
-        height: max(self.min-height, root.height);
-        alignment: center;
-        padding: 24px;
-        spacing: 24px;
-        HorizontalLayout { alignment: center; Image { source: @image-url("assets/notae.svg"); width: 96px; height: 96px; image-fit: contain; } }
-        Label { text: root.recovery ? "Reconnect your library" : "Your music. In good order."; font-size: 32px; font-weight: 600; horizontal-alignment: center; wrap: word-wrap; }
-        Text {
-            text: root.recovery ? "Notae no longer has access to “" + root.folder + "”. Select it again to reconnect your scores." : "A quiet home for your sheet music. Find a score, keep its details tidy, and open it in your favorite PDF app.";
-            color: Theme.muted;
-            font-size: 16px;
-            horizontal-alignment: center;
-            wrap: word-wrap;
-        }
-        Rectangle {
-            background: Theme.container;
-            border-radius: 24px;
-            VerticalLayout {
-                padding: 24px;
-                spacing: 12px;
-                Label { text: root.recovery ? "Your files stay where they are" : "Start with your score folder"; font-weight: 600; horizontal-alignment: center; }
-                Text { text: "Choose a folder on your device or SD card. Notae indexes your PDFs without moving them."; color: Theme.muted; font-size: 14px; wrap: word-wrap; horizontal-alignment: center; }
-                PillButton { text: root.recovery ? "Reconnect folder" : "Choose library folder"; primary: true; clicked => { root.accepted(); } }
-            }
-        }
-        if root.error_text != "" : Text { text: root.error_text; color: Theme.error; wrap: word-wrap; horizontal-alignment: center; }
-        SupportingText { text: "Local files · Your library stays on your device"; horizontal-alignment: center; }
-    }
-    }
-}
-
 component ImportEntry inherits Rectangle {
     in property <ImportRow> item;
-    background: Theme.container;
-    border-radius: 16px;
+    background: Theme.background;
+    border-radius: 20px;
     VerticalLayout {
         padding: 16px;
         spacing: 8px;
         HorizontalLayout {
             spacing: 8px;
             Label { text: root.item.path; font-weight: 500; horizontal-stretch: 1; }
-            SupportingText { text: root.item.change; color: Theme.primary; }
+            SupportingText { text: root.item.change; color: Theme.accent; }
         }
         Text { text: "On device: " + root.item.local_metadata; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
         Text { text: "From desktop: " + root.item.proposed_metadata; color: Theme.foreground; font-size: 14px; wrap: word-wrap; }
@@ -190,32 +151,12 @@ export component AppWindow inherits Window {
         VerticalLayout {
             padding: root.configured && !root.show_settings ? 0px : root.expanded ? 28px : 16px;
             spacing: 20px;
-            if !root.configured : Rectangle {
+            if !root.configured : WelcomeScreen {
                 vertical-stretch: 1;
-                background: Theme.background;
-                WelcomePanel {
-                    width: min(parent.width, 560px);
-                    height: parent.height;
-                    x: (parent.width - self.width) / 2;
-                    recovery: root.show_recovery;
-                    folder: root.recovery_folder_name;
-                    error_text: root.setup_error_text;
-                    accepted => { root.setup_chosen(); }
-                }
-            }
-            if root.configured && root.show_settings : HorizontalLayout {
-                spacing: 16px;
-                VerticalLayout {
-                    spacing: 4px;
-                    horizontal-stretch: 1;
-                    Label { text: "Settings"; font-size: root.expanded ? 32px : 26px; font-weight: 600; }
-                    SupportingText { text: "Make room for your music"; }
-                }
-                IconButton {
-                    label: "Back to library";
-                    icon: @image-url("material-icons/arrow-back.svg");
-                    clicked => { root.settings_closed(); }
-                }
+                recovery: root.show_recovery;
+                folder: root.recovery_folder_name;
+                error-text: root.setup_error_text;
+                accepted => { root.setup_chosen(); }
             }
             if root.configured && root.show_settings && root.operation_progress_text != "" : OperationBanner {
                 text: root.operation_progress_text;
@@ -280,48 +221,12 @@ export component AppWindow inherits Window {
                 chosen(key) => { root.search_result_chosen(key); }
                 init => { self.focus-field(); }
             }
-            if root.configured && root.show_settings : ScrollView {
+            if root.configured && root.show_settings : SettingsScreen {
                 vertical-stretch: 1;
-                VerticalLayout {
-                    spacing: 20px;
-                    Rectangle {
-                        background: Theme.container;
-                        border-radius: 24px;
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 16px;
-                            HorizontalLayout { spacing: 12px; Glyph { kind: "library"; width: 24px; height: 24px; } Label { text: "Library"; font-size: 20px; font-weight: 500; } }
-                            Text { text: "Your PDFs stay in the folder you selected. Scanning refreshes the local index and checks for a desktop sidecar import."; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
-                            PillButton { text: "Scan library"; tonal: true; enabled: root.rescan_enabled; clicked => { root.rescan_clicked(); } }
-                        }
-                    }
-                    Rectangle {
-                        background: Theme.container;
-                        border-radius: 24px;
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 12px;
-                            Label { text: "Motion"; font-size: 20px; font-weight: 500; }
-                            CheckBox { text: "Reduce animations"; enabled: !root.modal-open; checked <=> root.reduced_motion; }
-                            Text { text: "Use instant transitions instead of animated controls and sheets. Applies for this session; Android’s disabled animation setting is respected at launch."; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
-                        }
-                    }
-                    Rectangle {
-                        background: Theme.surface;
-                        border-radius: 24px;
-                        VerticalLayout {
-                            padding: 24px;
-                            spacing: 12px;
-                            HorizontalLayout {
-                                spacing: 16px;
-                                Image { source: @image-url("assets/notae.svg"); width: 48px; height: 48px; }
-                                VerticalLayout { spacing: 4px; Label { text: "Notae"; font-size: 20px; font-weight: 500; } SupportingText { text: "A personal home for sheet music"; } }
-                            }
-                            Text { text: "Search your collection, edit score details, and open PDFs in an installed viewer. Image-only scores are marked OCR pending."; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
-                        }
-                    }
-                    Rectangle { background: transparent; vertical-stretch: 1; }
-                }
+                rescan-enabled: root.rescan_enabled;
+                reduced-motion <=> root.reduced_motion;
+                back => { root.settings_closed(); }
+                rescan => { root.rescan_clicked(); }
             }
         }
     }
@@ -335,7 +240,7 @@ export component AppWindow inherits Window {
         width: parent.width;
         height: parent.height;
         background: #000000;
-        opacity: root.sheet-progress * 0.55;
+        opacity: root.sheet-progress * 0.4;
         TouchArea { }
     }
     sheet := Rectangle {
@@ -345,8 +250,8 @@ export component AppWindow inherits Window {
         x: (root.width - self.width) / 2;
         y: root.safe-area-insets.top + (root.available-height - self.height) / 2 + (1 - root.sheet-progress) * 32px;
         opacity: root.sheet-progress;
-        background: Theme.surface;
-        border-radius: 28px;
+        background: Theme.card;
+        border-radius: 26px;
         clip: true;
         accessible-role: form;
         accessible-label: root.show_import_preview ? "Review desktop import dialog" : "Score details dialog";
@@ -369,10 +274,9 @@ export component AppWindow inherits Window {
             spacing: 16px;
             HorizontalLayout {
                 spacing: 12px;
-                Label { text: root.show_import_preview ? "Review desktop import" : "Score details"; font-size: 24px; font-weight: 600; horizontal-stretch: 1; }
+                Label { text: root.show_import_preview ? "Review desktop import" : "Score details"; font-size: 24px; font-weight: 600; color: Theme.foreground; horizontal-stretch: 1; }
                 dialog-close := IconButton {
                     in-dialog: true;
-                    label: root.show_import_preview ? "Keep local metadata" : "Close score details";
                     icon: @image-url("material-icons/close.svg");
                     clicked => { if root.show_import_preview { root.import_cancelled(); } else { root.metadata_cancelled(); } }
                 }
@@ -397,13 +301,13 @@ export component AppWindow inherits Window {
                 SupportingText { text: "Update the details without renaming your PDF."; }
                     VerticalLayout {
                         spacing: 8px;
-                        Label { text: "Title"; font-size: 12px; font-weight: 600; }
+                        Label { text: "Title"; font-size: 13px; font-weight: 600; color: Theme.muted; }
                         TextField { in-dialog: true; text <=> root.metadata_title; placeholder: "Score title"; }
-                        Label { text: "Composer or artist"; font-size: 12px; font-weight: 600; }
+                        Label { text: "Composer or artist"; font-size: 13px; font-weight: 600; color: Theme.muted; }
                         TextField { in-dialog: true; text <=> root.metadata_composer_or_artist; placeholder: "Composer or artist (optional)"; }
-                        Label { text: "Score number"; font-size: 12px; font-weight: 600; }
+                        Label { text: "Score number"; font-size: 13px; font-weight: 600; color: Theme.muted; }
                         TextField { in-dialog: true; text <=> root.metadata_id; placeholder: "Score number (optional)"; }
-                        Label { text: "Tags"; font-size: 12px; font-weight: 600; }
+                        Label { text: "Tags"; font-size: 13px; font-weight: 600; color: Theme.muted; }
                         TextField { in-dialog: true; text <=> root.metadata_tags; placeholder: "Tags, separated by commas"; }
                         if root.metadata_error_text != "" : Text { text: root.metadata_error_text; color: Theme.error; wrap: word-wrap; font-size: 14px; }
                         Rectangle { background: transparent; vertical-stretch: 1; }
