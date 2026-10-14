@@ -901,6 +901,34 @@ impl LibraryCatalog for SafPdfCatalog {
         let document = crate::pdf_pages::AndroidPdfDocument::open(self.app.clone(), uri)?;
         Ok(document.extract_text().map(str::to_owned))
     }
+    fn render_thumbnail(
+        &self,
+        path: &notae_domain::RelativePdfPath,
+        out: &std::path::Path,
+    ) -> Result<bool, crate::pdf_pages::PdfError> {
+        let uri = document_content_uri(self.app.clone(), &self.tree_uri, path.as_str())
+            .map_err(|error| crate::pdf_pages::PdfError::Platform(error.to_string()))?;
+        let uri = uri.as_str().to_owned();
+        let out = out.to_string_lossy().into_owned();
+        let activity_ptr = self.app.activity_as_ptr();
+        with_env(&self.app, move |env| {
+            let activity = activity_as_jobject(env, activity_ptr)?;
+            let uri = env.new_string(&uri)?;
+            let out = env.new_string(&out)?;
+            env.call_method(
+                &activity,
+                jni_str!("renderNotaeThumbnail"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;I)Z"),
+                &[
+                    JValue::Object(&uri),
+                    JValue::Object(&out),
+                    JValue::Int(crate::thumbnails::THUMBNAIL_WIDTH_PX),
+                ],
+            )?
+            .z()
+        })
+        .map_err(|error| crate::pdf_pages::PdfError::Platform(error.to_string()))
+    }
 }
 
 impl DocumentTreeReader for SafPdfCatalog {

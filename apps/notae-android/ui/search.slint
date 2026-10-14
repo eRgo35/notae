@@ -1,0 +1,109 @@
+// The single search screen, opened by the library's search icon or Ctrl K.
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, IconButton, SearchField, Card, Chip, ActionInput } from "components.slint";
+import { LibraryRow, PagePreview } from "library.slint";
+
+component ResultRow inherits Rectangle {
+    in property <LibraryRow> score;
+    callback clicked();
+    height: root.score.snippet_match != "" ? 88px : 76px;
+    border-radius: 18px;
+    background: input.pressed ? Theme.field : transparent;
+    border-width: input.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
+    accessible-role: button;
+    accessible-label: root.score.title;
+    accessible-description: root.score.snippet_before + root.score.snippet_match + root.score.snippet_after;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: input;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 16px;
+        VerticalLayout { alignment: center; PagePreview { score: root.score; width: 40px; height: 52px; border-radius: 6px; } }
+        VerticalLayout {
+            alignment: center;
+            spacing: 4px;
+            Text { text: root.score.title; color: Theme.foreground; font-size: 16px; font-weight: 600; overflow: elide; }
+            if root.score.snippet_match == "" : Text {
+                text: (root.score.id != "" ? root.score.id + " · " : "") + root.score.composer_or_artist;
+                color: Theme.muted; font-size: 14px; overflow: elide;
+            }
+            if root.score.snippet_match != "" : HorizontalLayout {
+                Text { text: root.score.snippet_before; color: Theme.muted; font-size: 14px; }
+                Text { text: root.score.snippet_match; color: Theme.accent; font-size: 14px; font-weight: 700; }
+                Text { text: root.score.snippet_after; color: Theme.muted; font-size: 14px; overflow: elide; horizontal-stretch: 1; }
+            }
+        }
+    }
+    input := ActionInput { clicked => { self.focus(); root.clicked(); } }
+}
+
+export component SearchScreen inherits Rectangle {
+    in-out property <string> query;
+    in property <string> scope;
+    in property <[LibraryRow]> rows;
+    callback query-edited(string);
+    callback scope-changed(string);
+    callback close();
+    callback chosen(string);
+    public function focus-field() { field.focus(); }
+    background: Theme.background;
+
+    VerticalLayout {
+        padding: 24px;
+        padding-bottom: 0px;
+        spacing: 16px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 8px;
+            VerticalLayout { alignment: center; IconButton { label: "Back to library"; icon: @image-url("material-icons/arrow-back.svg"); clicked => { root.close(); } } }
+            field := SearchField {
+                horizontal-stretch: 1;
+                text <=> root.query;
+                placeholder: "Search titles, composers, tags or lyrics";
+                edited(value) => { root.query-edited(value); }
+            }
+        }
+        ScrollView {
+            height: 48px;
+            horizontal-scrollbar-policy: always-off;
+            vertical-scrollbar-policy: always-off;
+            mouse-drag-pan-enabled: true;
+            HorizontalLayout {
+                padding-left: 56px;
+                spacing: 8px;
+                alignment: start;
+                Chip { label: "All"; selected: root.scope == "everything"; clicked => { root.scope-changed("everything"); } }
+                Chip { label: "Titles"; selected: root.scope == "titles"; clicked => { root.scope-changed("titles"); } }
+                Chip { label: "Composers"; selected: root.scope == "composers"; clicked => { root.scope-changed("composers"); } }
+                Chip { label: "Lyrics"; selected: root.scope == "text"; clicked => { root.scope-changed("text"); } }
+                Chip { label: "Tags"; selected: root.scope == "tags"; clicked => { root.scope-changed("tags"); } }
+            }
+        }
+        if root.query != "" && root.rows.length > 0 : Card {
+            vertical-stretch: 1;
+            ListView {
+                x: 8px;
+                y: 8px;
+                width: parent.width - 16px;
+                height: parent.height - 16px;
+                for score in root.rows : ResultRow { score: score; clicked => { root.chosen(score.note_key); } }
+            }
+        }
+        if root.query != "" && root.rows.length == 0 : Text {
+            text: "No scores found";
+            color: Theme.muted;
+            font-size: 18px;
+            horizontal-alignment: center;
+        }
+        Rectangle { vertical-stretch: 1; }
+        Text {
+            text: "Press Ctrl K to search from anywhere";
+            color: Theme.muted;
+            font-size: 13px;
+            horizontal-alignment: center;
+            height: 48px;
+        }
+    }
+}

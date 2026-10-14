@@ -86,7 +86,7 @@ pub use crate::reconcile::{
     Reconciler, RescanPlan, RescanReport, UnchangedFile,
 };
 pub use crate::schema::{MIGRATIONS, Migration, SCHEMA_VERSION};
-pub use crate::search::SearchHit;
+pub use crate::search::{SearchHit, SearchScope};
 pub use crate::sidecar::{
     SIDECAR_SCHEMA_VERSION, SidecarEntry, SidecarError, SidecarManifest, SidecarOcr, SidecarWriter,
 };

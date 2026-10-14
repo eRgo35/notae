@@ -18,7 +18,7 @@ use rusqlite::{Connection, OptionalExtension, Row, ToSql, params, params_from_it
 use thiserror::Error;
 
 use crate::schema;
-use crate::search::SearchHit;
+use crate::search::{SearchHit, SearchScope};
 
 /// Failures produced by the index repository.
 #[derive(Debug, Error)]
@@ -375,7 +375,21 @@ impl IndexStore {
     /// Fails when the database cannot be read or holds a value that no longer
     /// parses.
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchHit>, IndexError> {
-        crate::search::search(&self.conn, query, limit)
+        self.search_in(query, SearchScope::Everything, limit)
+    }
+
+    /// Like [`IndexStore::search`], restricted to the columns of `scope`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database cannot be read or holds a value that no longer parses.
+    pub fn search_in(
+        &self,
+        query: &str,
+        scope: SearchScope,
+        limit: usize,
+    ) -> Result<Vec<SearchHit>, IndexError> {
+        crate::search::search(&self.conn, query, scope, limit)
     }
 
     /// Returns the record with the given content hash.

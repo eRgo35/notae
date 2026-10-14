@@ -5,11 +5,14 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use notae_domain::IndexStatus;
-use notae_index::{IndexStore, OcrText, PdfFile, Reconciler, SidecarImporter, SidecarManifest};
+use notae_index::{
+    IndexStore, OcrText, PdfFile, Reconciler, SearchScope, SidecarImporter, SidecarManifest,
+};
 
 use crate::operations::events::{ImportSummary, OperationEvent, RescanSummary};
 use crate::operations::import::ImportPreviewViewModel;
 use crate::storage::LibraryCatalog;
+use crate::thumbnails::ThumbnailCache;
 use crate::ui::library::LibraryViewModel;
 use crate::ui::metadata_editor::{EditableMetadata, MetadataEditor};
 use crate::ui::search::{SearchRow, UiError};
@@ -29,7 +32,7 @@ pub struct OperationController {
 
 enum WorkerCommand {
     Rescan,
-    Search(String),
+    Search(String, SearchScope),
     PreviewImport(SidecarManifest),
     ConfirmImport,
     DiscardImport,
@@ -45,6 +48,24 @@ impl OperationController {
     /// each rescan explicitly.
     #[must_use]
     pub fn new(local: IndexStore, catalog: Box<dyn LibraryCatalog + Send>) -> Self {
+        Self::start(local, catalog, None)
+    }
+
+    /// Like [`OperationController::new`], also rendering first-page thumbnails into `cache`.
+    #[must_use]
+    pub fn with_thumbnails(
+        local: IndexStore,
+        catalog: Box<dyn LibraryCatalog + Send>,
+        cache: ThumbnailCache,
+    ) -> Self {
+        Self::start(local, catalog, Some(cache))
+    }
+
+    fn start(
+        local: IndexStore,
+        catalog: Box<dyn LibraryCatalog + Send>,
+        thumbnails: Option<ThumbnailCache>,
+    ) -> Self {
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
         let busy = Arc::new(AtomicBool::new(false));
@@ -61,6 +82,7 @@ impl OperationController {
                     event_tx,
                     worker_busy,
                     worker_cancellation,
+                    thumbnails,
                 );
             })
             .expect("start Notae index worker");
@@ -129,11 +151,16 @@ impl OperationController {
         }
     }
 
-    /// Re-runs the core-ranked search on the worker-owned index.
-    pub fn set_query(&self, query: String) -> Result<(), UiError> {
+    /// Re-runs the search with `scope` on the worker-owned index.
+    pub fn set_search(&self, query: String, scope: SearchScope) -> Result<(), UiError> {
         self.commands
-            .send(WorkerCommand::Search(query))
+            .send(WorkerCommand::Search(query, scope))
             .map_err(|_| UiError::WorkerStopped)
+    }
+
+    /// Re-runs the search across every field.
+    pub fn set_query(&self, query: String) -> Result<(), UiError> {
+        self.set_search(query, SearchScope::Everything)
     }
 
     /// Loads an indexed note into the editor on the index-owning worker.
@@ -185,8 +212,10 @@ fn run_worker(
     events: Sender<OperationEvent>,
     busy: Arc<AtomicBool>,
     cancellation: Arc<AtomicU8>,
+    thumbnails: Option<ThumbnailCache>,
 ) {
     let mut query = String::new();
+    let mut scope = SearchScope::default();
     let mut preview = ImportPreviewViewModel::default();
     while let Ok(command) = commands.recv() {
         match command {
@@ -197,11 +226,14 @@ fn run_worker(
                 &busy,
                 &cancellation,
                 &query,
+                scope,
                 &mut preview,
+                thumbnails.as_ref(),
             ),
-            WorkerCommand::Search(next_query) => {
+            WorkerCommand::Search(next_query, next_scope) => {
                 query = next_query;
-                match project_rows(&local, &query) {
+                scope = next_scope;
+                match project_rows(&local, &query, scope) {
                     Ok(rows) => send(&events, OperationEvent::SearchRows(rows)),
                     Err(error) => send(
                         &events,
@@ -224,7 +256,7 @@ fn run_worker(
             }
             WorkerCommand::SaveMetadata(metadata) => {
                 match MetadataEditor::new(&local).save(metadata) {
-                    Ok(()) => match project_rows(&local, &query) {
+                    Ok(()) => match project_rows(&local, &query, scope) {
                         Ok(rows) => send(&events, OperationEvent::MetadataSaved { rows }),
                         Err(error) => send(
                             &events,
@@ -271,7 +303,7 @@ fn run_worker(
                             conflicts: report.conflicts().len(),
                             failures: report.failures().len(),
                         };
-                        match project_rows(&local, &query) {
+                        match project_rows(&local, &query, scope) {
                             Ok(rows) => {
                                 send(&events, OperationEvent::ImportApplied { summary, rows })
                             }
@@ -298,6 +330,7 @@ fn run_worker(
     }
 }
 
+#[allow(clippy::too_many_arguments, reason = "worker state is passed explicitly")]
 fn run_rescan(
     local: &mut IndexStore,
     catalog: &dyn LibraryCatalog,
@@ -305,7 +338,9 @@ fn run_rescan(
     busy: &AtomicBool,
     cancellation: &AtomicU8,
     query: &str,
+    scope: SearchScope,
     preview: &mut ImportPreviewViewModel,
+    thumbnails: Option<&ThumbnailCache>,
 ) {
     send(events, OperationEvent::Started);
     if stop_if_cancelled(cancellation, events, busy) {
@@ -395,6 +430,12 @@ fn run_rescan(
                         Err(error) => Some(error.to_string()),
                     }
                 });
+                if let (Some(cache), Some(fingerprint)) = (thumbnails, file.fingerprint()) {
+                    let key = fingerprint.sha256().to_string();
+                    if let Err(error) = cache.ensure(&key, |out| catalog.render_thumbnail(file.path(), out)) {
+                        eprintln!("notae: no thumbnail for {path}: {error}");
+                    }
+                }
                 if let Some(reason) = failure {
                     if plan_failure.is_none() {
                         summary.failures += 1;
@@ -411,7 +452,18 @@ fn run_rescan(
                     },
                 );
             }
-            match project_rows(local, query) {
+            if let Some(cache) = thumbnails
+                && let Ok(notes) = local.list_all()
+            {
+                let keep = notes
+                    .iter()
+                    .map(|note| note.fingerprint().sha256().to_string())
+                    .collect();
+                if let Err(error) = cache.prune(&keep) {
+                    eprintln!("notae: cannot prune thumbnails: {error}");
+                }
+            }
+            match project_rows(local, query, scope) {
                 Ok(rows) => {
                     send(events, OperationEvent::Completed { summary, rows });
                     match catalog.sidecar_manifest() {
@@ -508,9 +560,10 @@ fn apply_pdf_text_layer(
     Ok(outcome.failure.map(|error| error.to_string()))
 }
 
-fn project_rows(local: &IndexStore, query: &str) -> Result<Vec<SearchRow>, UiError> {
+fn project_rows(local: &IndexStore, query: &str, scope: SearchScope) -> Result<Vec<SearchRow>, UiError> {
     let mut view_model = LibraryViewModel::new(local);
     view_model.set_query(query.to_owned());
+    view_model.set_scope(scope);
     view_model.search()
 }
 
