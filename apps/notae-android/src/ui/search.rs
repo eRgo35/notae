@@ -56,14 +56,7 @@ impl SearchRow {
 }
 
 #[cfg(target_os = "android")]
-pub(crate) fn library_row(
-    row: SearchRow,
-    thumbnails: Option<&crate::thumbnails::ThumbnailCache>,
-) -> crate::LibraryRow {
-    // Slint caches images loaded from a path, so repeated syncs do not re-decode them.
-    let thumbnail = thumbnails
-        .and_then(|cache| cache.existing(&row.note_key))
-        .and_then(|path| slint::Image::load_from_path(&path).ok());
+pub(crate) fn library_row(row: SearchRow, thumbnail: Option<slint::Image>) -> crate::LibraryRow {
     let (before, hit, after) = row.text_snippet.as_deref().map(split_snippet).unwrap_or_default();
     crate::LibraryRow {
         id: row.id.unwrap_or_default().into(),
