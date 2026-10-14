@@ -1,18 +1,33 @@
-// Shared dark Material palette and touch-first controls. No native widget styling.
+// One UI–style palette. `dark` follows the Android system setting through Slint's Palette.
+import { Palette } from "std-widgets.slint";
+
 export global Theme {
-    in-out property <color> background: #141318;
-    in-out property <color> surface: #1c1b20;
-    in-out property <color> container: #25242a;
-    in-out property <color> high: #302e36;
-    in-out property <color> foreground: #e6e1e9;
-    in-out property <color> muted: #cac4d0;
-    in-out property <color> primary: #d0bcff;
-    in-out property <color> on-primary: #381e72;
-    in-out property <color> primary-container: #4f378b;
-    in-out property <color> on-container: #eaddff;
-    in-out property <color> outline: #49454f;
-    in-out property <color> error: #f2b8b5;
-    in-out property <color> success: #a6d5ae;
+    in-out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <color> background: root.dark ? #000000 : #F3F3F5;
+    out property <color> card: root.dark ? #17171A : #FFFFFF;
+    out property <color> field: root.dark ? #26262B : #EBEBEF;
+    out property <color> foreground: root.dark ? #F2F2F4 : #111114;
+    out property <color> muted: root.dark ? #A1A1A8 : #6E6E73;
+    out property <color> divider: root.dark ? #2A2A2E : #E6E6EA;
+    out property <color> accent: root.dark ? #5B9BFF : #2F6FEB;
+    out property <color> on-accent: root.dark ? #06142E : #FFFFFF;
+    out property <color> accent-soft: root.dark ? #1C2C4A : #E6EEFE;
+    out property <color> on-accent-soft: root.dark ? #B9D2FF : #1A4FB8;
+    out property <color> warn-soft: root.dark ? #3A2610 : #FFF0E0;
+    out property <color> on-warn-soft: root.dark ? #FFB870 : #A14D00;
+    out property <color> error: root.dark ? #FF8A80 : #C62828;
+    out property <color> paper: root.dark ? #E4E4E8 : #FFFFFF;
+    out property <color> paper-edge: root.dark ? #2A2A2E : #E3E3E8;
+    // Legacy aliases, removed in Task 11 once every screen uses the names above.
+    out property <color> surface: root.card;
+    out property <color> container: root.card;
+    out property <color> high: root.field;
+    out property <color> primary: root.accent;
+    out property <color> on-primary: root.on-accent;
+    out property <color> primary-container: root.accent-soft;
+    out property <color> on-container: root.on-accent-soft;
+    out property <color> outline: root.dark ? #3A3A40 : #C7C7CC;
+    out property <color> success: root.dark ? #8FD19E : #2E7D32;
     in-out property <bool> reduced-motion: false;
     in-out property <bool> modal-open: false;
 }
