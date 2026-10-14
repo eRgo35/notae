@@ -1,17 +1,8 @@
 // Notae's adaptive score library. Rust remains authoritative for library operations.
 import { ListView, ScrollView, CheckBox } from "std-widgets.slint";
 import { Theme, PillButton, SearchField, TextField, IconButton, Glyph } from "components.slint";
-export { Theme }
-
-export struct LibraryRow {
-    id: string,
-    title: string,
-    composer_or_artist: string,
-    tags: string,
-    status: string,
-    note_key: string,
-    relative_path: string,
-}
+import { LibraryScreen, LibraryRow, SectionItem, OperationBanner } from "library.slint";
+export { Theme, LibraryRow, SectionItem }
 
 export struct ImportRow {
     path: string,
@@ -33,120 +24,6 @@ component Label inherits Text {
 component SupportingText inherits Label {
     color: Theme.muted;
     font-size: 14px;
-}
-
-component NavigationItem inherits Rectangle {
-    in property <string> label;
-    in property <string> kind;
-    in property <bool> selected;
-    callback clicked();
-    height: 80px;
-    background: Theme.surface;
-    VerticalLayout {
-        alignment: center;
-        spacing: 4px;
-        Rectangle {
-            width: 64px;
-            height: 32px;
-            border-radius: 16px;
-            background: root.selected ? Theme.primary-container : transparent;
-            animate background { duration: Theme.reduced-motion ? 0ms : 180ms; }
-            Glyph { kind: root.kind; width: 24px; height: 24px; x: (parent.width - self.width) / 2; y: 4px; }
-        }
-        Label { text: root.label; font-size: 12px; font-weight: root.selected ? 600 : 400; horizontal-alignment: center; }
-    }
-    focus := FocusScope {
-        enabled: !Theme.modal-open;
-        accessible-role: button;
-        accessible-enabled: !Theme.modal-open;
-        accessible-label: root.label;
-        accessible-description: root.selected ? "Current destination" : "Navigate to " + root.label;
-        accessible-action-default => { if !Theme.modal-open { root.clicked(); } }
-        key-pressed(event) => {
-            if !Theme.modal-open && (event.text == Key.Return || event.text == Key.Space) { root.clicked(); return accept; }
-            return reject;
-        }
-    }
-    TouchArea { enabled: !Theme.modal-open; clicked => { focus.focus(); root.clicked(); } }
-    border-width: focus.has-focus ? 2px : 0px;
-    border-color: Theme.primary;
-    border-radius: 16px;
-}
-
-component ScoreRow inherits Rectangle {
-    in property <LibraryRow> note;
-    in property <bool> wide;
-    callback edit_requested(string);
-    callback open_requested(string);
-    height: root.wide ? 92px : 108px;
-    background: hit.pressed ? Theme.primary-container : hit.has-hover || focus.has-focus ? Theme.high : Theme.container;
-    animate background { duration: Theme.reduced-motion ? 0ms : 150ms; }
-    border-radius: 12px;
-    border-width: focus.has-focus ? 2px : 0px;
-    border-color: Theme.primary;
-    // The whole document is the primary open target; editing is the only trailing action.
-    focus := FocusScope {
-        enabled: !Theme.modal-open;
-        accessible-role: button;
-        accessible-enabled: !Theme.modal-open;
-        accessible-label: "Open " + root.note.title;
-        accessible-description: root.note.relative_path + ". " + root.note.status;
-        accessible-action-default => { if !Theme.modal-open { root.open_requested(root.note.relative_path); } }
-        key-pressed(event) => {
-            if !Theme.modal-open && (event.text == Key.Return || event.text == Key.Space) { root.open_requested(root.note.relative_path); return accept; }
-            return reject;
-        }
-    }
-    hit := TouchArea { enabled: !Theme.modal-open; clicked => { focus.focus(); root.open_requested(root.note.relative_path); } }
-    HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 8px;
-        spacing: 16px;
-        VerticalLayout {
-            alignment: center;
-            Rectangle {
-                width: 44px;
-                height: 52px;
-                border-radius: 12px;
-                background: Theme.primary-container;
-                Glyph { kind: "document"; width: 24px; height: 24px; x: 10px; y: 14px; }
-            }
-        }
-        VerticalLayout {
-            horizontal-stretch: 1;
-            alignment: center;
-            spacing: 4px;
-            Label { text: root.note.title; font-size: 18px; font-weight: 500; }
-            SupportingText { text: root.note.relative_path; font-size: 12px; }
-            if !root.wide : SupportingText { text: (root.note.composer_or_artist != "" ? root.note.composer_or_artist + " · " : "") + root.note.status + (root.note.id != "" ? " · No. " + root.note.id : ""); font-size: 12px; }
-            if root.note.tags != "" : SupportingText { text: root.note.tags; font-size: 12px; color: Theme.primary; }
-        }
-        if root.wide : VerticalLayout {
-            width: 180px;
-            alignment: center;
-            spacing: 4px;
-            Label { text: root.note.composer_or_artist == "" ? "—" : root.note.composer_or_artist; font-size: 14px; }
-            SupportingText { text: root.note.id == "" ? "PDF score" : "No. " + root.note.id; font-size: 12px; }
-        }
-        if root.wide : VerticalLayout {
-            width: 112px;
-            alignment: center;
-            Rectangle {
-                height: 28px;
-                border-radius: 8px;
-                background: root.note.status == "Ready" ? Theme.surface : Theme.high;
-                Label { text: root.note.status; font-size: 11px; color: root.note.status == "Ready" ? Theme.muted : Theme.primary; horizontal-alignment: center; }
-            }
-        }
-        VerticalLayout {
-            alignment: center;
-            IconButton {
-                label: "Edit " + root.note.title;
-                icon: @image-url("material-icons/edit.svg");
-                clicked => { root.edit_requested(root.note.note_key); }
-            }
-        }
-    }
 }
 
 component WelcomePanel inherits Rectangle {
@@ -239,6 +116,14 @@ export component AppWindow inherits Window {
     in-out property <string> metadata_tags: "";
     in property <string> metadata_error_text: "";
     in property <string> pdf_launch_error_text: "";
+    in property <[SectionItem]> sections: [];
+    in property <[SectionItem]> composers: [];
+    in property <string> selected_section: "all";
+    in property <string> library_title: "All scores";
+    in property <string> library_subtitle: "";
+    in property <string> selected_key: "";
+    in property <bool> details_open: false;
+    in property <bool> show_search: false;
     in-out property <bool> reduced_motion <=> Theme.reduced-motion;
     callback settings_clicked();
     callback settings_closed();
@@ -253,6 +138,9 @@ export component AppWindow inherits Window {
     callback metadata_save_requested(string, string, string, string, string);
     callback metadata_cancelled();
     callback open_pdf_requested(string);
+    callback section_selected(string);
+    callback search_opened();
+    callback score_selected(string);
     private property <bool> configured: !root.show_setup && !root.show_recovery;
     private property <bool> expanded: root.width >= 840px;
     private property <length> available-height: (root.virtual-keyboard-size.height > 0px ? root.virtual-keyboard-position.y : root.height - root.safe-area-insets.bottom) - root.safe-area-insets.top;
@@ -275,24 +163,8 @@ export component AppWindow inherits Window {
         padding-left: root.safe-area-insets.left;
         padding-right: root.safe-area-insets.right;
         spacing: 0px;
-        if root.configured && root.expanded : Rectangle {
-            width: 96px;
-            background: Theme.surface;
-            VerticalLayout {
-                padding-top: 24px;
-                padding-bottom: 24px;
-                padding-left: 8px;
-                padding-right: 8px;
-                spacing: 16px;
-                HorizontalLayout { alignment: center; Image { source: @image-url("assets/notae.svg"); height: 48px; width: 48px; image-fit: contain; } }
-                NavigationItem { label: "Library"; kind: "library"; selected: !root.show_settings; clicked => { root.settings_closed(); } }
-                NavigationItem { label: "Settings"; kind: "settings"; selected: root.show_settings; clicked => { root.settings_clicked(); } }
-                Rectangle { vertical-stretch: 1; background: transparent; }
-                SupportingText { text: "NOTAE"; font-size: 10px; horizontal-alignment: center; }
-            }
-        }
         VerticalLayout {
-            padding: root.expanded ? 28px : 16px;
+            padding: root.configured && !root.show_settings ? 0px : root.expanded ? 28px : 16px;
             spacing: 20px;
             if !root.configured : Rectangle {
                 vertical-stretch: 1;
@@ -307,112 +179,54 @@ export component AppWindow inherits Window {
                     accepted => { root.setup_chosen(); }
                 }
             }
-            if root.configured : HorizontalLayout {
+            if root.configured && root.show_settings : HorizontalLayout {
                 spacing: 16px;
                 VerticalLayout {
                     spacing: 4px;
                     horizontal-stretch: 1;
-                    Label { text: root.show_settings ? "Settings" : "Your library"; font-size: root.expanded ? 32px : 26px; font-weight: 600; }
-                    SupportingText { text: root.show_settings ? "Make room for your music" : root.expanded ? "Sheet music, together in one place" : "Your sheet music"; }
+                    Label { text: "Settings"; font-size: root.expanded ? 32px : 26px; font-weight: 600; }
+                    SupportingText { text: "Make room for your music"; }
                 }
-                if !root.show_settings : PillButton { text: "Scan library"; primary: true; enabled: root.rescan_enabled; clicked => { root.rescan_clicked(); } }
-                if !root.expanded : IconButton {
-                    label: root.show_settings ? "Back to library" : "Settings";
-                    icon: root.show_settings ? @image-url("material-icons/arrow-back.svg") : @image-url("material-icons/settings.svg");
-                    clicked => { if root.show_settings { root.settings_closed(); } else { root.settings_clicked(); } }
-                }
-            }
-            if root.configured && !root.show_settings : SearchField {
-                text: root.search_text;
-                placeholder: "Search scores, composers, tags or lyrics";
-                edited(value) => { root.search_text = value; root.search_changed(value); }
-            }
-            if root.configured && root.operation_progress_text != "" : Rectangle {
-                background: Theme.container;
-                border-radius: 16px;
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 12px;
-                    HorizontalLayout {
-                        spacing: 12px;
-                        Glyph { kind: root.operation_busy ? "scan" : "check"; width: 24px; height: 24px; }
-                        Text { text: root.operation_progress_text; color: Theme.foreground; font-size: 14px; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
-                        if root.cancel_enabled : PillButton { text: "Cancel"; clicked => { root.cancel_rescan_clicked(); } }
-                        if root.acknowledge_enabled : PillButton { text: "Dismiss"; clicked => { root.acknowledge_clicked(); } }
-                    }
-                    if root.operation_busy : Rectangle {
-                        height: 4px;
-                        border-radius: 2px;
-                        background: Theme.high;
-                        clip: true;
-                        accessible-role: progress-indicator;
-                        accessible-label: root.operation_progress_text;
-                        accessible-value: root.operation_fraction > 0 ? root.operation_fraction : "";
-                        accessible-value-minimum: 0;
-                        accessible-value-maximum: 1;
-                        Rectangle {
-                            width: parent.width * (root.operation_fraction > 0 ? root.operation_fraction : 0.3);
-                            x: root.operation_fraction > 0 || Theme.reduced-motion ? 0px : -self.width + (parent.width + self.width) * mod(animation-tick(), 1600ms) / 1600ms;
-                            height: 4px;
-                            border-radius: 2px;
-                            background: Theme.primary;
-                            animate width { duration: Theme.reduced-motion ? 0ms : 200ms; }
-                        }
-                    }
+                IconButton {
+                    label: "Back to library";
+                    icon: @image-url("material-icons/arrow-back.svg");
+                    clicked => { root.settings_closed(); }
                 }
             }
-            if root.pdf_launch_error_text != "" && !root.show_settings : Text { text: root.pdf_launch_error_text; color: Theme.error; wrap: word-wrap; }
-            if root.configured && !root.show_settings : VerticalLayout {
-                spacing: 12px;
+            if root.configured && root.show_settings && root.operation_progress_text != "" : OperationBanner {
+                text: root.operation_progress_text;
+                busy: root.operation_busy;
+                fraction: root.operation_fraction;
+                cancel-enabled: root.cancel_enabled;
+                acknowledge-enabled: root.acknowledge_enabled;
+                cancel => { root.cancel_rescan_clicked(); }
+                acknowledge => { root.acknowledge_clicked(); }
+            }
+            if root.configured && !root.show_settings && !root.show_search : LibraryScreen {
                 vertical-stretch: 1;
-                HorizontalLayout {
-                    spacing: 12px;
-                    Glyph { kind: "folder"; width: 20px; height: 20px; }
-                    Label { text: root.search_text == "" ? "All scores" : "Search results"; font-size: 16px; font-weight: 600; horizontal-stretch: 1; }
-                    SupportingText { text: root.library_rows.length + (root.library_rows.length == 1 ? " score" : " scores"); }
-                }
-                if root.library_rows.length > 0 && root.expanded : HorizontalLayout {
-                    padding-left: 76px;
-                    padding-right: 56px;
-                    spacing: 16px;
-                    SupportingText { text: "SCORE / FILE"; font-size: 11px; horizontal-stretch: 1; }
-                    SupportingText { text: "COMPOSER / NUMBER"; font-size: 11px; width: 180px; }
-                    SupportingText { text: "INDEX STATUS"; font-size: 11px; width: 112px; horizontal-alignment: center; }
-                }
-                if root.library_rows.length > 0 : ListView {
-                    vertical-stretch: 1;
-                    for note in root.library_rows : Rectangle {
-                        height: root.expanded ? 100px : 116px;
-                        background: transparent;
-                        ScoreRow {
-                            height: parent.height - 8px;
-                            width: parent.width;
-                            note: note;
-                            wide: root.expanded;
-                            edit_requested(key) => { root.edit_metadata_requested(key); }
-                            open_requested(path) => { root.open_pdf_requested(path); }
-                        }
-                    }
-                }
-                if root.library_rows.length == 0 : Rectangle {
-                    vertical-stretch: 1;
-                    background: Theme.surface;
-                    border-radius: 24px;
-                    VerticalLayout {
-                        alignment: center;
-                        padding: 24px;
-                        spacing: 16px;
-                        Glyph { kind: root.search_text == "" ? "folder" : "search"; width: 56px; height: 56px; }
-                        Label { text: root.search_text == "" ? "A little space for your scores" : "No scores found"; font-size: 24px; horizontal-alignment: center; wrap: word-wrap; }
-                        Text { text: root.search_text == "" ? "Scan your library to bring your PDF sheet music into Notae." : "Try another title, composer, tag or phrase from the music."; color: Theme.muted; font-size: 14px; wrap: word-wrap; horizontal-alignment: center; }
-                        PillButton {
-                            text: root.search_text == "" ? "Scan library" : "Clear search";
-                            tonal: true;
-                            enabled: root.search_text != "" || root.rescan_enabled;
-                            clicked => { if root.search_text == "" { root.rescan_clicked(); } else { root.search_text = ""; root.search_changed(""); } }
-                        }
-                    }
-                }
+                expanded: root.expanded;
+                sections: root.sections;
+                composers: root.composers;
+                selected-section: root.selected_section;
+                title: root.library_title;
+                subtitle: root.library_subtitle;
+                rows: root.library_rows;
+                selected-key: root.selected_key;
+                details-open: root.details_open;
+                rescan-enabled: root.rescan_enabled;
+                progress-text: root.operation_progress_text;
+                busy: root.operation_busy;
+                fraction: root.operation_fraction;
+                cancel-enabled: root.cancel_enabled;
+                acknowledge-enabled: root.acknowledge_enabled;
+                pdf-error: root.pdf_launch_error_text;
+                section-selected(key) => { root.section_selected(key); }
+                settings-clicked => { root.settings_clicked(); }
+                search-clicked => { root.search_opened(); }
+                rescan-clicked => { root.rescan_clicked(); }
+                cancel-clicked => { root.cancel_rescan_clicked(); }
+                acknowledge-clicked => { root.acknowledge_clicked(); }
+                score-selected(key) => { root.score_selected(key); }
             }
             if root.configured && root.show_settings : ScrollView {
                 vertical-stretch: 1;

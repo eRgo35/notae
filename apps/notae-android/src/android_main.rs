@@ -260,6 +260,19 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
 
     {
         let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_section_selected(move |key| {
+            model
+                .borrow_mut()
+                .select_section(crate::ui::browse::LibrarySection::from_key(key.as_str()));
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
         let operations = Rc::clone(&operations);
         let window_weak = window.as_weak();
         window.on_search_changed(move |text| {
@@ -492,13 +505,42 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     });
     window.set_search_text(state.search().query.as_str().into());
     window.set_show_settings(matches!(state.screen(), Screen::Settings));
+    let thumbnails = model.thumbnail_cache();
     let rows: Vec<crate::LibraryRow> = model
-        .search_rows()
-        .iter()
-        .cloned()
-        .map(crate::LibraryRow::from)
+        .visible_rows()
+        .into_iter()
+        .map(|row| crate::ui::search::library_row(row, thumbnails))
         .collect();
+    let row_count = rows.len();
     window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
+
+    let all_rows = model.search_rows();
+    let sections: Vec<crate::SectionItem> = crate::ui::browse::sections(all_rows, model.recent())
+        .into_iter()
+        .map(|view| crate::SectionItem {
+            key: view.key.into(),
+            label: view.label.into(),
+            count: i32::try_from(view.count).unwrap_or(i32::MAX),
+            kind: view.kind.into(),
+        })
+        .collect();
+    window.set_sections(slint::ModelRc::new(slint::VecModel::from(sections)));
+    let composers: Vec<crate::SectionItem> = crate::ui::browse::composers(all_rows)
+        .into_iter()
+        .map(|composer| crate::SectionItem {
+            key: crate::ui::browse::LibrarySection::Composer(composer.name.clone()).key().into(),
+            label: composer.name.into(),
+            count: i32::try_from(composer.count).unwrap_or(i32::MAX),
+            kind: "".into(),
+        })
+        .collect();
+    window.set_composers(slint::ModelRc::new(slint::VecModel::from(composers)));
+    window.set_selected_section(model.section().key().into());
+    window.set_library_title(model.section().title().into());
+    window.set_library_subtitle(
+        format!("{row_count} {}", if row_count == 1 { "score" } else { "scores" }).into(),
+    );
+    window.set_show_search(matches!(state.screen(), Screen::Search));
     let metadata = model.metadata_editor();
     window.set_show_metadata_editor(metadata.is_some());
     window.set_metadata_note_key(
