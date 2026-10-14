@@ -56,17 +56,31 @@ impl SearchRow {
 }
 
 #[cfg(target_os = "android")]
-impl From<SearchRow> for crate::LibraryRow {
-    fn from(row: SearchRow) -> Self {
-        Self {
-            id: row.id.unwrap_or_default().into(),
-            title: row.title.into(),
-            composer_or_artist: row.composer_or_artist.unwrap_or_default().into(),
-            tags: row.tags.join(", ").into(),
-            status: row.status.into(),
-            note_key: row.note_key.into(),
-            relative_path: row.relative_path.into(),
-        }
+pub(crate) fn library_row(
+    row: SearchRow,
+    thumbnails: Option<&crate::thumbnails::ThumbnailCache>,
+) -> crate::LibraryRow {
+    // Slint caches images loaded from a path, so repeated syncs do not re-decode them.
+    let thumbnail = thumbnails
+        .and_then(|cache| cache.existing(&row.note_key))
+        .and_then(|path| slint::Image::load_from_path(&path).ok());
+    let (before, hit, after) = row.text_snippet.as_deref().map(split_snippet).unwrap_or_default();
+    crate::LibraryRow {
+        id: row.id.unwrap_or_default().into(),
+        title: row.title.into(),
+        composer_or_artist: row.composer_or_artist.unwrap_or_default().into(),
+        tags: row.tags.join(", ").into(),
+        status: row.status.into(),
+        note_key: row.note_key.into(),
+        relative_path: row.relative_path.into(),
+        text_pending: row.text_pending,
+        has_thumbnail: thumbnail.is_some(),
+        thumbnail: thumbnail.unwrap_or_default(),
+        title_origin: row.title_origin.into(),
+        composer_origin: row.composer_origin.into(),
+        snippet_before: before.into(),
+        snippet_match: hit.into(),
+        snippet_after: after.into(),
     }
 }
 
