@@ -25,6 +25,7 @@
 
 pub mod picker_fut;
 pub mod saf_tree;
+pub mod recent;
 pub mod state;
 pub mod storage;
 
