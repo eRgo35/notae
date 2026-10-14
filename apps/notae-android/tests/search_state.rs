@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use notae_android::state::{AppController, EventError, Screen, Transition, UiEvent};
 use notae_android::ui::library::LibraryViewModel;
+use notae_android::ui::search::split_snippet;
 use notae_domain::{
     IndexStatus, IndexedNote, MetadataOrigin, NoteId, NoteMetadata, PdfFingerprint,
     RelativePdfPath, Sha256Digest,
@@ -183,4 +184,35 @@ fn settings_navigation_requires_a_configured_library() {
         Ok(Transition::NoOp)
     );
     assert_eq!(controller.state().screen(), &Screen::Library);
+}
+
+#[test]
+fn split_snippet_returns_text_around_the_first_match() {
+    assert_eq!(
+        split_snippet("…alleluia. \u{2}Ave\u{3} \u{2}Maria\u{3} gratia…"),
+        ("…alleluia. ".to_owned(), "Ave".to_owned(), " Maria gratia…".to_owned())
+    );
+}
+
+#[test]
+fn split_snippet_keeps_only_the_last_48_characters_before_the_match() {
+    let long = format!("{}\u{2}hit\u{3}", "x".repeat(100));
+    let (before, hit, after) = split_snippet(&long);
+    assert_eq!(before, format!("…{}", "x".repeat(47)));
+    assert_eq!((hit.as_str(), after.as_str()), ("hit", ""));
+}
+
+#[test]
+fn library_view_model_applies_scope_and_fills_snippets() {
+    let store = store();
+    insert(&store, &note("a.pdf", 1, Some(1), "Antiphons", None, &[], IndexStatus::Ready), Some("Ave Maria gratia plena"));
+    insert(&store, &note("b.pdf", 2, Some(2), "Ave verum", None, &[], IndexStatus::Ready), None);
+    let mut model = LibraryViewModel::new(&store);
+    model.set_query("ave".to_owned());
+    model.set_scope(notae_index::SearchScope::Text);
+
+    let rows = model.search().expect("search");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].title, "Antiphons");
+    assert!(rows[0].text_snippet.is_some());
 }
