@@ -8,6 +8,7 @@
 //! [`state`]: crate::state
 
 #![forbid(unsafe_code)]
+pub mod browse;
 pub mod library;
 pub mod metadata_editor;
 pub mod search;
