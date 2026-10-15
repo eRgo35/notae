@@ -43,7 +43,7 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -73,8 +73,15 @@ use crate::AppWindow;
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 pub extern "C" fn android_main(app: slint::android::AndroidApp) {
+    if let Err(error) = run(app) {
+        eprintln!("notae: fatal startup error: {error}");
+    }
+}
+
+#[cfg(target_os = "android")]
+fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>> {
     // 1. Slint Android backend.
-    slint::android::init(app.clone()).expect("failed to initialise the Slint Android backend");
+    slint::android::init(app.clone()).map_err(|error| format!("Slint Android backend: {error}"))?;
 
     // 2 + 3. State + UI glue. A fresh `UiModel` is `Setup::Unconfigured`,
     // `Idle`, and `StorageState::Unconfigured` — the same properties
@@ -89,12 +96,12 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
 
     let index_dir = app
         .internal_data_path()
-        .expect("Android provides an internal data directory")
+        .ok_or("Android provides no internal data directory")?
         .join("notae");
-    std::fs::create_dir_all(&index_dir).expect("create private Notae index directory");
+    std::fs::create_dir_all(&index_dir)?;
     let index_path = index_dir.join("index.sqlite");
     let thumbnails = ThumbnailCache::new(index_dir.join("thumbnails"))
-        .expect("create private thumbnail directory");
+        .map_err(|error| format!("thumbnail directory: {error}"))?;
     model.borrow_mut().set_thumbnail_cache(thumbnails.clone());
     model
         .borrow_mut()
@@ -129,7 +136,7 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
     // and pulled in via `lib.rs`. Property setters and callback wiring
     // all share the same `model` so every state change goes through
     // `UiModel::dispatch`.
-    let window = AppWindow::new().expect("failed to construct Slint AppWindow");
+    let window = AppWindow::new().map_err(|error| format!("Slint window: {error}"))?;
 
     sync_window(&window, &model.borrow());
 
@@ -192,10 +199,10 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
         let operations = Rc::clone(&operations);
         let window_weak = window.as_weak();
         window.on_cancel_rescan_clicked(move || {
-            if let Some(controller) = operations.borrow().as_ref() {
-                if let Err(error) = controller.cancel() {
-                    eprintln!("notae: rescan cancellation rejected: {error}");
-                }
+            if let Some(controller) = operations.borrow().as_ref()
+                && let Err(error) = controller.cancel()
+            {
+                eprintln!("notae: rescan cancellation rejected: {error}");
             }
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
@@ -250,10 +257,10 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
         window.on_import_cancelled(move || {
             report_transition(model.borrow_mut().dispatch(UiEvent::CancelImport));
             model.borrow_mut().clear_import_preview();
-            if let Some(controller) = operations.borrow().as_ref() {
-                if let Err(error) = controller.discard_import_preview() {
-                    eprintln!("notae: cannot discard sidecar preview: {error}");
-                }
+            if let Some(controller) = operations.borrow().as_ref()
+                && let Err(error) = controller.discard_import_preview()
+            {
+                eprintln!("notae: cannot discard sidecar preview: {error}");
             }
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
@@ -284,10 +291,10 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
                 query: query.clone(),
             }));
             let scope = model.borrow().state().search().scope;
-            if let Some(controller) = operations.borrow().as_ref() {
-                if let Err(error) = controller.set_search(query, scope) {
-                    eprintln!("notae: search failed: {error}");
-                }
+            if let Some(controller) = operations.borrow().as_ref()
+                && let Err(error) = controller.set_search(query, scope)
+            {
+                eprintln!("notae: search failed: {error}");
             }
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
@@ -318,10 +325,10 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
                 .borrow_mut()
                 .dispatch(UiEvent::UpdateSearchScope { scope });
             let query = model.borrow().state().search().query.clone();
-            if let Some(controller) = operations.borrow().as_ref() {
-                if let Err(error) = controller.set_search(query, scope) {
-                    eprintln!("notae: search failed: {error}");
-                }
+            if let Some(controller) = operations.borrow().as_ref()
+                && let Err(error) = controller.set_search(query, scope)
+            {
+                eprintln!("notae: search failed: {error}");
             }
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
@@ -389,7 +396,7 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
                 title: title.to_string(),
                 composer_or_artist: composer.to_string(),
                 tags: tags
-                    .to_string()
+                    .as_str()
                     .split(',')
                     .map(str::trim)
                     .filter(|tag| !tag.is_empty())
@@ -474,10 +481,8 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
             model
                 .borrow_mut()
                 .set_pdf_launch_error(result.err().map(|error| error.to_string()));
-            if opened {
-                if let Err(error) = model.borrow_mut().record_opened(note_key.as_str()) {
-                    eprintln!("notae: cannot save recent scores: {error}");
-                }
+            if opened && let Err(error) = model.borrow_mut().record_opened(note_key.as_str()) {
+                eprintln!("notae: cannot save recent scores: {error}");
             }
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
@@ -525,18 +530,32 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
                         changed = true;
                     }
                 }
-                if changed {
-                    if let Some(window) = window_weak.upgrade() {
-                        sync_window(&window, &model.borrow());
-                    }
+                if changed && let Some(window) = window_weak.upgrade() {
+                    sync_window(&window, &model.borrow());
                 }
             },
         );
     }
 
+    // Reopen the folder chosen in a previous run so the library survives restarts.
+    if let Some(root) = provider.persisted_root() {
+        apply_picker_result(
+            &model,
+            &window.as_weak(),
+            &provider,
+            &operations,
+            &index_path,
+            &thumbnails,
+            Ok(root),
+        );
+    }
+
     // 5. UI loop. Returns `Ok(())` when the activity is destroyed by the
-    // OS — not an error path. `.expect` matches the Slint template.
-    window.run().expect("Slint UI loop exited with an error");
+    // OS — not an error path.
+    window
+        .run()
+        .map_err(|error| format!("Slint UI loop: {error}"))?;
+    Ok(())
 }
 
 thread_local! {
@@ -612,10 +631,10 @@ fn close_search(
         eprintln!("notae: cannot close search: {error}");
     }
     model.borrow_mut().select_note(selected);
-    if let Some(controller) = operations.borrow().as_ref() {
-        if let Err(error) = controller.set_search(String::new(), scope) {
-            eprintln!("notae: library refresh failed: {error}");
-        }
+    if let Some(controller) = operations.borrow().as_ref()
+        && let Err(error) = controller.set_search(String::new(), scope)
+    {
+        eprintln!("notae: library refresh failed: {error}");
     }
 }
 
@@ -664,34 +683,9 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         operation,
         OperationState::Completed { .. } | OperationState::Failed { .. }
     ));
-    let mut status_text = operation_progress_text(operation);
-    if let Some(summary) = status.latest_rescan {
-        let scan_text = format!(
-            "Latest scan: {} added, {} updated, {} moved, {} deleted, {} conflicts, {} failures",
-            summary.added,
-            summary.updated,
-            summary.moved,
-            summary.deleted,
-            summary.conflicts,
-            summary.failures,
-        );
-        status_text = if status_text.is_empty() {
-            scan_text
-        } else {
-            format!("{status_text}\n{scan_text}")
-        };
-    }
-    if status.pending_text_count > 0 {
-        let pending_text = format!(
-            "{} scores have text pending. Android does not run OCR; desktop OCR or sidecar import is available as a next step.",
-            status.pending_text_count,
-        );
-        status_text = if status_text.is_empty() {
-            pending_text
-        } else {
-            format!("{status_text}\n{pending_text}")
-        };
-    }
+    // The banner reports the running operation or its outcome on every screen. The latest scan
+    // result and the pending-text count are standing facts and live in Settings only.
+    let status_text = operation_progress_text(operation);
     let scan_summary = status.latest_rescan.map_or_else(
         || "No completed scan yet.".to_owned(),
         |summary| {
@@ -706,6 +700,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_settings_pending_text_count(status.pending_text_count.to_string().into());
     window.set_app_version(env!("CARGO_PKG_VERSION").into());
     window.set_operation_progress_text(status_text.into());
+    window.set_operation_failed(matches!(operation, OperationState::Failed { .. }));
     window.set_operation_busy(matches!(
         operation,
         OperationState::RescanInProgress { .. }
@@ -836,7 +831,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
 fn operation_progress_text(operation: &OperationState) -> String {
     match operation {
         OperationState::Idle => String::new(),
-        OperationState::RescanInProgress { completed, total } if *total == 0 => {
+        OperationState::RescanInProgress { total, .. } if *total == 0 => {
             "Scanning library…".to_owned()
         }
         OperationState::RescanInProgress { completed, total } => {
@@ -849,7 +844,7 @@ fn operation_progress_text(operation: &OperationState) -> String {
             format!("Review {candidate_count} proposed sidecar changes")
         }
         OperationState::ImportApplying => "Applying sidecar import…".to_owned(),
-        OperationState::Completed { summary } => summary.clone(),
+        OperationState::Completed { summary } => format!("Finished: {summary}"),
         OperationState::Failed { reason } => reason.clone(),
     }
 }
@@ -906,13 +901,13 @@ fn handle_picker_response(
     window_weak: &slint::Weak<AppWindow>,
     provider: &SafLibraryRootProvider,
     operations: &Rc<RefCell<Option<OperationController>>>,
-    index_path: &PathBuf,
+    index_path: &Path,
     thumbnails: &ThumbnailCache,
 ) {
     let provider_task = provider.clone();
     let model_task = Rc::clone(model);
     let operations_task = Rc::clone(operations);
-    let index_path_task = index_path.clone();
+    let index_path_task = index_path.to_path_buf();
     let thumbnails_task = thumbnails.clone();
     let window_task = window_weak.clone();
     if let Err(error) = slint::spawn_local(async move {
@@ -943,7 +938,7 @@ fn apply_picker_result(
     window_weak: &slint::Weak<AppWindow>,
     provider: &SafLibraryRootProvider,
     operations: &Rc<RefCell<Option<OperationController>>>,
-    index_path: &PathBuf,
+    index_path: &Path,
     thumbnails: &ThumbnailCache,
     result: Result<crate::storage::LibraryRoot, StorageError>,
 ) {
@@ -960,10 +955,10 @@ fn apply_picker_result(
                         Ok(controller) => {
                             *operations.borrow_mut() = Some(controller);
                             let query = model.borrow().state().search().query.clone();
-                            if let Some(controller) = operations.borrow().as_ref() {
-                                if let Err(error) = controller.set_query(query) {
-                                    eprintln!("notae: initial library query failed: {error}");
-                                }
+                            if let Some(controller) = operations.borrow().as_ref()
+                                && let Err(error) = controller.set_query(query)
+                            {
+                                eprintln!("notae: initial library query failed: {error}");
                             }
                             StorageState::Ready(source)
                         }
