@@ -48,7 +48,7 @@ export component WelcomeScreen inherits Rectangle {
                 width: root.available-width;
                 padding-top: max(24px, (root.available-height - 640px) / 3);
                 spacing: 20px;
-                HorizontalLayout { alignment: center; Image { source: @image-url("assets/notae.svg"); width: 96px; height: 96px; accessible-role: none; } }
+                HorizontalLayout { alignment: center; Image { source: @image-url("assets/notae.png"); image-fit: contain; width: 96px; height: 96px; accessible-role: none; } }
                 Text {
                     text: root.recovery ? "Reconnect your library" : "Welcome to Notae";
                     color: Theme.foreground; font-size: root.available-width < 420px ? 32px : 40px; font-weight: 600; horizontal-alignment: center; wrap: word-wrap;
