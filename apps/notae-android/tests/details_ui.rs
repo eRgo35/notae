@@ -17,8 +17,31 @@ fn app_exposes_score_details_and_two_argument_open_callback() {
 #[test]
 fn score_list_stays_hidden_until_details_have_room_for_both_panes() {
     let app = include_str!("../ui/app.slint");
-    assert!(app.contains("root.width >= 1280px"));
-    assert!(app.contains("root.width < 1280px"));
+    assert!(app.contains("root.window-width >= 1280px"));
+    assert!(app.contains("root.window-width < 1280px"));
+}
+
+#[test]
+fn scan_lives_in_each_screen_header_and_not_in_app_chrome() {
+    let ui = Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
+    let read = |name: &str| std::fs::read_to_string(ui.join(name)).expect("slint source exists");
+    let app = read("app.slint");
+    let library = read("library.slint");
+    let search = read("search.slint");
+    let setup = read("setup.slint");
+
+    // A scan row in `app.slint` pushes every screen down and leaves Scan off the header.
+    assert!(!app.contains("ScanButton"));
+    assert!(!app.contains("Scan library"));
+    assert!(library.contains("ScanButton {"));
+    assert!(search.contains("ScanButton {"));
+    assert!(setup.contains("ScanButton {"));
+    assert_eq!(
+        app.matches("rescan-clicked => { root.rescan_clicked(); }")
+            .count(),
+        3,
+        "Library, Search and Settings each forward Scan"
+    );
 }
 
 #[test]

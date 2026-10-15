@@ -37,11 +37,11 @@ component ImportEntry inherits Rectangle {
         HorizontalLayout {
             spacing: 8px;
             Label { text: root.item.path; font-weight: 500; horizontal-stretch: 1; }
-            SupportingText { text: root.item.change; color: Theme.accent; }
+            SupportingText { text: root.item.change; color: Theme.accent-text; }
         }
         Text { text: "On device: " + root.item.local_metadata; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
         Text { text: "From desktop: " + root.item.proposed_metadata; color: Theme.foreground; font-size: 14px; wrap: word-wrap; }
-        Text { text: root.item.fields + root.item.ocr; color: Theme.muted; font-size: 12px; wrap: word-wrap; }
+        Text { text: root.item.fields + root.item.ocr; color: Theme.muted; font-size: 13px; wrap: word-wrap; }
         if root.item.conflict != "" : Text { text: root.item.conflict; color: Theme.error; font-size: 14px; wrap: word-wrap; }
     }
 }
@@ -113,8 +113,13 @@ export component AppWindow inherits Window {
     callback search_scope_changed(string);
     callback search_result_chosen(string);
     callback score_selected(string);
+    in property <bool> operation_failed: false;
     private property <bool> configured: !root.show_setup && !root.show_recovery;
-    private property <bool> expanded: root.width >= 840px;
+    private property <bool> expanded: root.window-width >= 840px;
+    // Widths are derived from the window, never from child layouts, so adaptive screens cannot loop.
+    private property <length> window-width: root.width - root.safe-area-insets.left - root.safe-area-insets.right;
+    private property <length> details-width: root.window-width < 840px ? root.window-width - 32px
+        : root.window-width < 1280px ? root.window-width - 336px : root.window-width - 752px;
     private property <length> available-height: (root.virtual-keyboard-size.height > 0px ? root.virtual-keyboard-position.y : root.height - root.safe-area-insets.bottom) - root.safe-area-insets.top;
     private property <float> sheet-progress: root.show_metadata_editor || root.show_import_preview ? 1 : 0;
     private property <bool> modal-open: root.show_metadata_editor || root.show_import_preview;
@@ -151,37 +156,20 @@ export component AppWindow inherits Window {
         padding-right: root.safe-area-insets.right;
         spacing: 0px;
         VerticalLayout {
-            padding: root.configured && !root.show_settings ? 0px : root.expanded ? 28px : 16px;
-            spacing: 20px;
+            // Every configured screen owns its header (including the Scan action) and its own padding.
+            padding: root.configured ? 0px : root.expanded ? 28px : 16px;
+            spacing: 0px;
             if !root.configured : WelcomeScreen {
-                available-width: root.width - (root.expanded ? 56px : 32px);
+                available-width: root.window-width - (root.expanded ? 56px : 32px);
+                available-height: root.available-height;
+                vertical-stretch: 1;
                 recovery: root.show_recovery;
                 folder: root.recovery_folder_name;
                 error-text: root.setup_error_text;
                 accepted => { root.setup_chosen(); }
             }
-            if root.configured && root.show_settings && root.operation_progress_text != "" : OperationBanner {
-                text: root.operation_progress_text;
-                busy: root.operation_busy;
-                fraction: root.operation_fraction;
-                cancel-enabled: root.cancel_enabled;
-                acknowledge-enabled: root.acknowledge_enabled;
-                cancel => { root.cancel_rescan_clicked(); }
-                acknowledge => { root.acknowledge_clicked(); }
-            }
-            if root.configured : HorizontalLayout {
-                height: 56px;
-                padding-left: 8px;
-                padding-right: 8px;
-                alignment: end;
-                IconButton {
-                    label: "Scan library";
-                    icon: @image-url("material-icons/scan.svg");
-                    enabled: root.rescan_enabled;
-                    clicked => { root.rescan_clicked(); }
-                }
-            }
             if root.configured && !root.show_settings && !root.show_search : LibraryScreen {
+                available-width: root.window-width;
                 vertical-stretch: 1;
                 expanded: root.expanded;
                 sections: root.sections;
@@ -193,7 +181,7 @@ export component AppWindow inherits Window {
                 selected-key: root.selected_key;
                 HorizontalLayout {
                     spacing: 16px;
-                    if root.width >= 1280px : ScoreList {
+                    if root.window-width >= 1280px : ScoreList {
                         width: 400px;
                         rows: root.library_rows;
                         selected-key: root.selected_key;
@@ -202,7 +190,9 @@ export component AppWindow inherits Window {
                     ScoreDetails {
                         horizontal-stretch: 1;
                         score: root.selected;
-                        show-back: root.width < 1280px;
+                        show-back: root.window-width < 1280px;
+                        content-width: root.details-width - 16px;
+                        narrow: root.details-width < 560px;
                         close => { root.selection_cleared(); }
                         open => { root.open_pdf_requested(root.selected.relative_path, root.selected.note_key); }
                         edit => { root.edit_metadata_requested(root.selected.note_key); }
@@ -211,17 +201,22 @@ export component AppWindow inherits Window {
                 details-open: root.details_open;
                 progress-text: root.operation_progress_text;
                 busy: root.operation_busy;
+                failed: root.operation_failed;
                 fraction: root.operation_fraction;
                 cancel-enabled: root.cancel_enabled;
                 acknowledge-enabled: root.acknowledge_enabled;
+                rescan-enabled: root.rescan_enabled;
                 pdf-error: root.pdf_launch_error_text;
                 section-selected(key) => { root.section_selected(key); }
                 settings-clicked => { root.settings_clicked(); }
                 search-clicked => { root.search_opened(); }
+                rescan-clicked => { root.rescan_clicked(); }
+                cancel-clicked => { root.cancel_rescan_clicked(); }
                 acknowledge-clicked => { root.acknowledge_clicked(); }
                 score-selected(key) => { root.score_selected(key); }
             }
             if root.configured && root.show_search : SearchScreen {
+                available-width: root.window-width;
                 vertical-stretch: 1;
                 available-height: root.available-height;
                 query: root.search_text;
@@ -229,9 +224,12 @@ export component AppWindow inherits Window {
                 rows: root.library_rows;
                 progress-text: root.operation_progress_text;
                 busy: root.operation_busy;
+                failed: root.operation_failed;
                 fraction: root.operation_fraction;
                 cancel-enabled: root.cancel_enabled;
                 acknowledge-enabled: root.acknowledge_enabled;
+                rescan-enabled: root.rescan_enabled;
+                rescan-clicked => { root.rescan_clicked(); }
                 cancel => { root.cancel_rescan_clicked(); }
                 acknowledge => { root.acknowledge_clicked(); }
                 query-edited(value) => { root.search_text = value; root.search_changed(value); }
@@ -241,13 +239,23 @@ export component AppWindow inherits Window {
                 init => { self.focus-field(); }
             }
             if root.configured && root.show_settings : SettingsScreen {
+                available-width: root.window-width;
                 vertical-stretch: 1;
-                available-width: root.width - (root.expanded ? 56px : 32px);
                 available-height: root.available-height;
                 library-display-name: root.library_display_name;
                 scan-summary: root.settings_scan_summary;
                 pending-text-count: root.settings_pending_text_count;
                 version: root.app_version;
+                progress-text: root.operation_progress_text;
+                busy: root.operation_busy;
+                failed: root.operation_failed;
+                fraction: root.operation_fraction;
+                cancel-enabled: root.cancel_enabled;
+                acknowledge-enabled: root.acknowledge_enabled;
+                rescan-enabled: root.rescan_enabled;
+                rescan-clicked => { root.rescan_clicked(); }
+                cancel => { root.cancel_rescan_clicked(); }
+                acknowledge => { root.acknowledge_clicked(); }
                 change-library => { root.setup_chosen(); }
                 back => { root.settings_closed(); }
             }
@@ -322,19 +330,32 @@ export component AppWindow inherits Window {
             if !root.show_import_preview : VerticalLayout {
                 spacing: 16px;
                 SupportingText { text: "Update the details without renaming your PDF."; }
+                VerticalLayout {
+                    spacing: 16px;
+                    // Each label sits closer to its own field than to the previous one.
                     VerticalLayout {
-                        spacing: 8px;
-                        Label { text: "Title"; font-size: 13px; font-weight: 600; color: Theme.muted; }
+                        spacing: 6px;
+                        Label { text: "Title"; font-size: 14px; font-weight: 600; color: Theme.muted; }
                         TextField { in-dialog: true; text <=> root.metadata_title; placeholder: "Score title"; }
-                        Label { text: "Composer or artist"; font-size: 13px; font-weight: 600; color: Theme.muted; }
-                        TextField { in-dialog: true; text <=> root.metadata_composer_or_artist; placeholder: "Composer or artist (optional)"; }
-                        Label { text: "Score number"; font-size: 13px; font-weight: 600; color: Theme.muted; }
-                        TextField { in-dialog: true; text <=> root.metadata_id; placeholder: "Score number (optional)"; }
-                        Label { text: "Tags"; font-size: 13px; font-weight: 600; color: Theme.muted; }
-                        TextField { in-dialog: true; text <=> root.metadata_tags; placeholder: "Tags, separated by commas"; }
-                        if root.metadata_error_text != "" : Text { text: root.metadata_error_text; color: Theme.error; wrap: word-wrap; font-size: 14px; }
-                        Rectangle { background: transparent; vertical-stretch: 1; }
                     }
+                    VerticalLayout {
+                        spacing: 6px;
+                        Label { text: "Composer or artist"; font-size: 14px; font-weight: 600; color: Theme.muted; }
+                        TextField { in-dialog: true; text <=> root.metadata_composer_or_artist; placeholder: "Composer or artist (optional)"; }
+                    }
+                    VerticalLayout {
+                        spacing: 6px;
+                        Label { text: "Score number"; font-size: 14px; font-weight: 600; color: Theme.muted; }
+                        TextField { in-dialog: true; text <=> root.metadata_id; placeholder: "Score number (optional)"; }
+                    }
+                    VerticalLayout {
+                        spacing: 6px;
+                        Label { text: "Tags"; font-size: 14px; font-weight: 600; color: Theme.muted; }
+                        TextField { in-dialog: true; text <=> root.metadata_tags; placeholder: "Tags, separated by commas"; }
+                    }
+                    if root.metadata_error_text != "" : Text { text: root.metadata_error_text; color: Theme.error; wrap: word-wrap; font-size: 14px; }
+                    Rectangle { background: transparent; vertical-stretch: 1; }
+                }
                 HorizontalLayout {
                     alignment: end;
                     spacing: 12px;
