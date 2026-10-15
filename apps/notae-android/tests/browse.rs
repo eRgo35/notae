@@ -1,9 +1,13 @@
-use notae_android::ui::browse::{
-    ComposerCount, LibrarySection, composers, section_rows, sections,
-};
+use notae_android::ui::browse::{ComposerCount, LibrarySection, composers, section_rows, sections};
 use notae_android::ui::search::SearchRow;
 
-fn row(key: char, id: Option<&str>, title: &str, composer: Option<&str>, pending: bool) -> SearchRow {
+fn row(
+    key: char,
+    id: Option<&str>,
+    title: &str,
+    composer: Option<&str>,
+    pending: bool,
+) -> SearchRow {
     SearchRow {
         id: id.map(str::to_owned),
         title: title.to_owned(),
@@ -21,7 +25,13 @@ fn row(key: char, id: Option<&str>, title: &str, composer: Option<&str>, pending
 
 fn library() -> Vec<SearchRow> {
     vec![
-        row('a', Some("12"), "Clair de lune", Some("Claude Debussy"), false),
+        row(
+            'a',
+            Some("12"),
+            "Clair de lune",
+            Some("Claude Debussy"),
+            false,
+        ),
         row('b', Some("14"), "Cantique", Some("Gabriel Fauré"), true),
         row('c', None, "Scarborough Fair", Some("traditional"), false),
         row('d', Some("17"), "Pavane", Some("gabriel fauré"), false),
@@ -53,9 +63,18 @@ fn composers_merge_case_variants_and_sort_by_name() {
     assert_eq!(
         composers(&library()),
         vec![
-            ComposerCount { name: "Claude Debussy".to_owned(), count: 1 },
-            ComposerCount { name: "Gabriel Fauré".to_owned(), count: 2 },
-            ComposerCount { name: "traditional".to_owned(), count: 1 },
+            ComposerCount {
+                name: "Claude Debussy".to_owned(),
+                count: 1
+            },
+            ComposerCount {
+                name: "Gabriel Fauré".to_owned(),
+                count: 2
+            },
+            ComposerCount {
+                name: "traditional".to_owned(),
+                count: 1
+            },
         ]
     );
 }
@@ -97,8 +116,10 @@ fn recent_section_follows_recent_order_and_skips_unknown_keys() {
 fn fixed_sections_report_counts() {
     let recent = vec!["a".repeat(64)];
     let views = sections(&library(), &recent);
-    let summary: Vec<(String, usize)> =
-        views.into_iter().map(|view| (view.key, view.count)).collect();
+    let summary: Vec<(String, usize)> = views
+        .into_iter()
+        .map(|view| (view.key, view.count))
+        .collect();
     assert_eq!(
         summary,
         [

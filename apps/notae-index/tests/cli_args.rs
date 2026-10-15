@@ -123,7 +123,10 @@ fn a_root_it_cannot_read_is_refused() {
         matches!(error, RootRejection::Unusable { .. }),
         "an absent root is refused as unusable: {error}"
     );
-    assert!(error.to_string().contains(&missing.display().to_string()), "{error}");
+    assert!(
+        error.to_string().contains(&missing.display().to_string()),
+        "{error}"
+    );
 }
 
 #[test]
@@ -164,9 +167,7 @@ fn produces_root_relative_forward_slash_paths() {
     let library = Library::new();
     library.write("a/b/c/deep.pdf", "x");
 
-    let files = catalog_over(&library.root)
-        .enumerate()
-        .expect("enumerate");
+    let files = catalog_over(&library.root).enumerate().expect("enumerate");
 
     let path = files[0].path().as_str();
     assert_eq!(path, "a/b/c/deep.pdf");
@@ -245,8 +246,7 @@ fn records_an_unreadable_directory_without_aborting_enumeration() {
     fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o000))
         .expect("lock the directory");
 
-    let result = catalog_over(&library.root)
-        .enumerate();
+    let result = catalog_over(&library.root).enumerate();
 
     fs::set_permissions(&locked_dir, fs::Permissions::from_mode(0o755)).expect("unlock it");
 
@@ -279,9 +279,7 @@ fn computes_a_real_sha256_fingerprint() {
     let path = library.write("known.pdf", KNOWN_CONTENT);
     let byte_len = fs::metadata(&path).expect("metadata").len();
 
-    let files = catalog_over(&library.root)
-        .enumerate()
-        .expect("enumerate");
+    let files = catalog_over(&library.root).enumerate().expect("enumerate");
     let fingerprint = files[0].fingerprint().expect("the fixture is readable");
 
     assert_eq!(
@@ -357,9 +355,7 @@ fn fingerprints_a_file_larger_than_one_read_buffer() {
     let expected = hasher.finalize();
     let expected = notae_domain::Sha256Digest::from_bytes(expected.into());
 
-    let files = catalog_over(&library.root)
-        .enumerate()
-        .expect("enumerate");
+    let files = catalog_over(&library.root).enumerate().expect("enumerate");
     let fingerprint = files[0].fingerprint().expect("readable");
     assert_eq!(fingerprint.byte_len(), big.len() as u64);
     assert_eq!(fingerprint.sha256(), expected);
@@ -371,9 +367,7 @@ fn rereads_rewritten_content_rather_than_caching() {
     library.write("a.pdf", "one");
     library.write("a.pdf", "three");
 
-    let files = catalog_over(&library.root)
-        .enumerate()
-        .expect("enumerate");
+    let files = catalog_over(&library.root).enumerate().expect("enumerate");
     assert_eq!(files[0].fingerprint().expect("readable").byte_len(), 5);
 }
 
@@ -401,7 +395,11 @@ fn records_a_drive_prefix_filename_without_aborting_the_batch() {
     );
 
     let failures = catalog.failures();
-    assert_eq!(failures.len(), 1, "the rejected name is reported: {failures:?}");
+    assert_eq!(
+        failures.len(),
+        1,
+        "the rejected name is reported: {failures:?}"
+    );
     assert_eq!(failures[0].path(), "C:.pdf");
     assert!(
         failures[0].error().contains("C:.pdf"),
@@ -446,12 +444,15 @@ fn never_reads_or_reports_a_symlink_pointing_outside_the_root() {
     let files = catalog.enumerate().expect("enumerate");
 
     let found = files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>();
-    assert_eq!(found, vec!["inside.pdf"], "the link is not enumerated: {found:?}");
+    assert_eq!(
+        found,
+        vec!["inside.pdf"],
+        "the link is not enumerated: {found:?}"
+    );
     assert!(
-        !files
-            .iter()
-            .any(|f| f.path().as_str() == "outside-link.pdf"
-                && f.fingerprint().is_some_and(|fp| fp.byte_len() == "outside content".len() as u64)),
+        !files.iter().any(|f| f.path().as_str() == "outside-link.pdf"
+            && f.fingerprint()
+                .is_some_and(|fp| fp.byte_len() == "outside content".len() as u64)),
         "no fingerprint of the external target exists"
     );
 
@@ -475,7 +476,10 @@ fn never_reads_a_symlink_that_points_outside_through_a_subdirectory() {
     let catalog = catalog_over(&library.root);
     let files = catalog.enumerate().expect("enumerate");
 
-    assert!(files.is_empty(), "a linked directory is not walked: {files:?}");
+    assert!(
+        files.is_empty(),
+        "a linked directory is not walked: {files:?}"
+    );
 }
 
 #[cfg(unix)]
@@ -489,10 +493,16 @@ fn a_symlink_loop_terminates_without_reading_the_target() {
         .expect("create a self-referencing directory link");
 
     let catalog = catalog_over(&library.root);
-    let files = catalog.enumerate().expect("a loop does not hang or fail the run");
+    let files = catalog
+        .enumerate()
+        .expect("a loop does not hang or fail the run");
 
     let found = files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>();
-    assert_eq!(found, vec!["real.pdf"], "only the real file is enumerated: {found:?}");
+    assert_eq!(
+        found,
+        vec!["real.pdf"],
+        "only the real file is enumerated: {found:?}"
+    );
 }
 
 #[cfg(unix)]
@@ -507,7 +517,11 @@ fn a_symlink_inside_the_root_is_skipped_rather_than_followed() {
     let files = catalog.enumerate().expect("enumerate");
 
     let found = files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>();
-    assert_eq!(found, vec!["target.pdf"], "only the real file is enumerated: {found:?}");
+    assert_eq!(
+        found,
+        vec!["target.pdf"],
+        "only the real file is enumerated: {found:?}"
+    );
 }
 
 #[cfg(unix)]
@@ -517,8 +531,7 @@ fn an_unreadable_root_fails_the_run_and_names_the_root() {
 
     let library = Library::new();
     library.write("hidden.pdf", KNOWN_CONTENT);
-    fs::set_permissions(&library.root, fs::Permissions::from_mode(0o000))
-        .expect("lock the root");
+    fs::set_permissions(&library.root, fs::Permissions::from_mode(0o000)).expect("lock the root");
     if fs::read_dir(&library.root).is_ok() {
         // Running as a user that bypasses permissions (root).
         fs::set_permissions(&library.root, fs::Permissions::from_mode(0o755)).expect("unlock");
@@ -532,19 +545,23 @@ fn an_unreadable_root_fails_the_run_and_names_the_root() {
         .expect_err("a root that cannot be read cannot be opened");
     fs::set_permissions(&library.root, fs::Permissions::from_mode(0o755)).expect("unlock");
     assert!(
-        error.to_string().contains(&library.root.display().to_string()),
+        error
+            .to_string()
+            .contains(&library.root.display().to_string()),
         "the error names the root: {error}"
     );
 
     let library = Library::new();
     library.write("hidden.pdf", KNOWN_CONTENT);
-    fs::set_permissions(&library.root, fs::Permissions::from_mode(0o000))
-        .expect("lock the root");
+    fs::set_permissions(&library.root, fs::Permissions::from_mode(0o000)).expect("lock the root");
     let cli = parse(&[library.root.to_str().expect("utf-8 path")]).expect("arguments parse");
-    let run_error = notae_index_cli::run(cli).expect_err("an unreadable root cannot be reported on");
+    let run_error =
+        notae_index_cli::run(cli).expect_err("an unreadable root cannot be reported on");
     fs::set_permissions(&library.root, fs::Permissions::from_mode(0o755)).expect("unlock");
     assert!(
-        run_error.to_string().contains(&library.root.display().to_string()),
+        run_error
+            .to_string()
+            .contains(&library.root.display().to_string()),
         "the run error names the root: {run_error}"
     );
 }
@@ -558,15 +575,16 @@ fn an_unreadable_root_is_not_mistaken_for_an_isolated_file_failure() {
     library.write("hidden.pdf", KNOWN_CONTENT);
     let nested = library.root.join("nested");
     fs::create_dir_all(&nested).expect("create a subdirectory");
-    fs::set_permissions(&nested, fs::Permissions::from_mode(0o000))
-        .expect("lock the subdirectory");
+    fs::set_permissions(&nested, fs::Permissions::from_mode(0o000)).expect("lock the subdirectory");
     if fs::read_dir(&nested).is_ok() {
         fs::set_permissions(&nested, fs::Permissions::from_mode(0o755)).expect("unlock");
         return;
     }
 
     let catalog = catalog_over(&library.root);
-    let files = catalog.enumerate().expect("a locked subdirectory is an isolated failure");
+    let files = catalog
+        .enumerate()
+        .expect("a locked subdirectory is an isolated failure");
     fs::set_permissions(&nested, fs::Permissions::from_mode(0o755)).expect("unlock");
 
     assert_eq!(
@@ -575,7 +593,11 @@ fn an_unreadable_root_is_not_mistaken_for_an_isolated_file_failure() {
         "the readable part of the tree is still enumerated"
     );
     let failures = catalog.failures();
-    assert_eq!(failures.len(), 1, "the locked subdirectory is reported: {failures:?}");
+    assert_eq!(
+        failures.len(),
+        1,
+        "the locked subdirectory is reported: {failures:?}"
+    );
     assert_eq!(
         failures[0].path(),
         "nested",
@@ -750,7 +772,13 @@ fn a_real_root_is_accepted_however_it_is_spelled() {
     // Normalising the name must not cost a user a root: a trailing separator,
     // a trailing `.` and a doubled separator are the same directory, and the
     // report names the directory that was actually opened.
-    for spelling in ["library", "library/", "library//", "library/.", "library/./"] {
+    for spelling in [
+        "library",
+        "library/",
+        "library//",
+        "library/.",
+        "library/./",
+    ] {
         let root = library._dir.path().join(spelling);
         let cli = parse(&[root.to_str().expect("utf-8 path")]).expect("arguments parse");
         let report =
@@ -824,7 +852,9 @@ fn a_link_inside_the_root_still_degrades_to_a_reported_skip() {
         .expect("link a directory inside the root");
 
     let catalog = catalog_over(&library.root);
-    let files = catalog.enumerate().expect("a linked entry is an isolated failure");
+    let files = catalog
+        .enumerate()
+        .expect("a linked entry is an isolated failure");
 
     assert_eq!(
         files.iter().map(|f| f.path().as_str()).collect::<Vec<_>>(),

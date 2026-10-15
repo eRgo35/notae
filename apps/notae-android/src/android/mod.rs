@@ -10,7 +10,6 @@
 //! `android_main.rs` uses, and the rest of the crate keeps
 //! `#![forbid(unsafe_code)]`.
 
-pub mod saf;
 pub mod pdf_intent;
 pub mod pdf_pages;
-pub mod theme;
+pub mod saf;

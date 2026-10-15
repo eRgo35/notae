@@ -1,6 +1,7 @@
 // The single search screen, opened by the library's search icon or Ctrl K.
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, IconButton, SearchField, Card, Chip, ActionInput } from "components.slint";
+import { OperationBanner } from "library.slint";
 import { LibraryRow, PagePreview } from "library.slint";
 
 component ResultRow inherits Rectangle {
@@ -41,13 +42,22 @@ component ResultRow inherits Rectangle {
 
 export component SearchScreen inherits Rectangle {
     in-out property <string> query;
+    in property <length> available-height;
     in property <string> scope;
     in property <[LibraryRow]> rows;
+    in property <string> progress-text;
+    in property <bool> busy;
+    in property <float> fraction;
+    in property <bool> cancel-enabled;
+    in property <bool> acknowledge-enabled;
+    callback cancel();
+    callback acknowledge();
     callback query-edited(string);
     callback scope-changed(string);
     callback close();
     callback chosen(string);
     public function focus-field() { field.focus(); }
+    max-height: root.available-height;
     background: Theme.background;
 
     VerticalLayout {
@@ -64,6 +74,15 @@ export component SearchScreen inherits Rectangle {
                 placeholder: "Search titles, composers, tags or lyrics";
                 edited(value) => { root.query-edited(value); }
             }
+        }
+        if root.progress-text != "" : OperationBanner {
+            text: root.progress-text;
+            busy: root.busy;
+            fraction: root.fraction;
+            cancel-enabled: root.cancel-enabled;
+            acknowledge-enabled: root.acknowledge-enabled;
+            cancel => { root.cancel(); }
+            acknowledge => { root.acknowledge(); }
         }
         ScrollView {
             height: 48px;
@@ -97,8 +116,8 @@ export component SearchScreen inherits Rectangle {
             font-size: 18px;
             horizontal-alignment: center;
         }
-        Rectangle { vertical-stretch: 1; }
-        Text {
+        if root.query == "" || root.rows.length == 0 : Rectangle { vertical-stretch: 1; }
+        if root.available-height > 600px : Text {
             text: "Press Ctrl K to search from anywhere";
             color: Theme.muted;
             font-size: 13px;

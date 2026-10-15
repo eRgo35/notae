@@ -10,15 +10,14 @@
 //!
 //! An OCR call takes a rendered page image and a [`LanguagePolicy`], and
 //! returns either [`OcrText`] or a typed [`OcrError`]. The image type is
-//! [`OcrImage`], which is the same concrete type
-//! [`notae_index_cli::image::RenderedPage`] resolves to — a rendered PDF page
-//! flows in with no conversion. The policy decides which language packs the
-//! engine runs against, and the result carries the recognized text, the
-//! language(s) Tesseract reported, a confidence, and any warnings
-//! ([`MissingLanguagePack`], [`EmptyResult`]) the run accumulated.
+//! [`OcrImage`], which is the same concrete type as the CLI's rendered PDF
+//! page — a rendered page flows in with no conversion. The policy decides which
+//! language packs the engine runs against, and the result carries the recognized text,
+//! the language(s) Tesseract reported, a confidence, and any warnings
+//! ([`OcrWarning::MissingLanguagePack`], [`OcrWarning::EmptyResult`]) the run accumulated.
 //!
-//! [`MissingLanguagePack`]: OcrWarning::MissingLanguagePack
-//! [`EmptyResult`]: OcrWarning::EmptyResult
+//! [`OcrWarning::MissingLanguagePack`]: OcrWarning::MissingLanguagePack
+//! [`OcrWarning::EmptyResult`]: OcrWarning::EmptyResult
 
 mod image;
 mod language;
@@ -29,15 +28,13 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 pub use crate::image::OcrImage;
-pub use crate::language::{
-    DetectedLanguage, InstalledLanguages, LanguageDetector, LanguagePolicy,
-};
+pub use crate::language::{DetectedLanguage, InstalledLanguages, LanguageDetector, LanguagePolicy};
 pub use crate::tesseract::{TesseractConfig, TesseractProvider};
 
 /// The text and metadata Tesseract recognized on one page.
 ///
-/// `text` is the whitespace-normalized recognized string, exactly the form the
-/// [`notae_index`](::notae_index) sidecar stores in `ocr_text`. The other
+/// whitespace-normalized recognized string, exactly the form the
+/// `notae_index` sidecar stores in `ocr_text`. The other
 /// fields are what the OCR layer records alongside the text so a later stage
 /// can rebuild the same sidecar row without re-running the engine.
 ///
@@ -63,11 +60,7 @@ pub struct OcrText {
 impl OcrText {
     /// Creates OCR text without any warnings.
     #[must_use]
-    pub fn new(
-        text: impl Into<String>,
-        detected_languages: Vec<String>,
-        confidence: u8,
-    ) -> Self {
+    pub fn new(text: impl Into<String>, detected_languages: Vec<String>, confidence: u8) -> Self {
         Self {
             text: text.into(),
             detected_languages,
@@ -116,8 +109,8 @@ impl OcrText {
 ///
 /// The engine produced a result, but the result is incomplete or
 /// questionable. The warnings are carried alongside the text so the caller
-/// can decide what to do: an [`EmptyResult`] means the FTS index would gain
-/// nothing by storing the text; a [`MissingLanguagePack`] tells the user
+/// can decide what to do: [`OcrWarning::EmptyResult`] means the FTS index would gain
+/// nothing by storing the text; [`OcrWarning::MissingLanguagePack`] tells the user
 /// why their library is unsearchable for that page.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -191,11 +184,7 @@ pub trait OcrProvider {
     /// degenerate image. Non-fatal conditions such as an unsupported script
     /// or an empty result are returned as [`OcrWarning`]s inside the
     /// successful [`OcrText`].
-    fn recognize(
-        &self,
-        page: &OcrImage,
-        policy: &LanguagePolicy,
-    ) -> Result<OcrText, OcrError>;
+    fn recognize(&self, page: &OcrImage, policy: &LanguagePolicy) -> Result<OcrText, OcrError>;
 }
 
 /// Page-segmentation mode that runs OCR with orientation/script detection.

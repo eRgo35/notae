@@ -88,10 +88,16 @@ pub struct SectionView {
 #[must_use]
 pub fn composers(rows: &[SearchRow]) -> Vec<ComposerCount> {
     let mut by_name: BTreeMap<String, ComposerCount> = BTreeMap::new();
-    for name in rows.iter().filter_map(|row| row.composer_or_artist.as_deref()) {
+    for name in rows
+        .iter()
+        .filter_map(|row| row.composer_or_artist.as_deref())
+    {
         by_name
             .entry(name.to_lowercase())
-            .or_insert_with(|| ComposerCount { name: name.to_owned(), count: 0 })
+            .or_insert_with(|| ComposerCount {
+                name: name.to_owned(),
+                count: 0,
+            })
             .count += 1;
     }
     by_name.into_values().collect()
@@ -99,7 +105,11 @@ pub fn composers(rows: &[SearchRow]) -> Vec<ComposerCount> {
 
 /// Rows that belong to `section`; `recent` holds content keys, newest first.
 #[must_use]
-pub fn section_rows(rows: &[SearchRow], section: &LibrarySection, recent: &[String]) -> Vec<SearchRow> {
+pub fn section_rows(
+    rows: &[SearchRow],
+    section: &LibrarySection,
+    recent: &[String],
+) -> Vec<SearchRow> {
     match section {
         LibrarySection::All => rows.to_vec(),
         LibrarySection::Recent => recent
@@ -112,7 +122,11 @@ pub fn section_rows(rows: &[SearchRow], section: &LibrarySection, recent: &[Stri
             .filter(|row| row.id.is_none() || row.composer_or_artist.is_none())
             .cloned()
             .collect(),
-        LibrarySection::TextPending => rows.iter().filter(|row| row.text_pending).cloned().collect(),
+        LibrarySection::TextPending => rows
+            .iter()
+            .filter(|row| row.text_pending)
+            .cloned()
+            .collect(),
         LibrarySection::Composer(name) => {
             let name = name.to_lowercase();
             rows.iter()

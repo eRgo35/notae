@@ -1,0 +1,39 @@
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "aarch64-linux-android"]
+[advisories]
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "paste is a transitive dependency of Slint's image/AVIF stack; cargo-deny reports no safe upgrade." },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is a transitive dependency of Slint's desktop accessibility stack; cargo-deny reports no safe upgrade." },
+]
+[licenses]
+confidence-threshold = 0.8
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "GPL-3.0-only",
+    "ISC",
+    "LicenseRef-Slint-Royalty-free-2.0",
+    "LicenseRef-Slint-Software-3.0",
+    "MIT",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+[licenses.private]
+ignore = true
+
+[bans]
+allow-wildcard-paths = true
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

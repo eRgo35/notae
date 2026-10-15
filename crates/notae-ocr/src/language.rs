@@ -133,12 +133,12 @@ impl LanguagePolicy {
     /// Resolves the policy against `installed`, returning the packs the
     /// engine should run with and the warnings the resolution produced.
     ///
-    /// For [`Fixed`], the requested packs are intersected with the
+    /// For [`LanguagePolicy::Fixed`], the requested packs are intersected with the
     /// installed set: every pack that is not installed produces a
-    /// [`MissingLanguagePack`] warning. The returned packs are the
+    /// [`OcrWarning::MissingLanguagePack`] warning. The returned packs are the
     /// intersection, in the requested order.
     ///
-    /// For [`Automatic`], all installed text packs are returned in their
+    /// For [`LanguagePolicy::Automatic`], all installed text packs are returned in their
     /// installed order; the engine then picks among them based on its
     /// own scoring. `"osd"` is dropped from automatic runs: orientation
     /// detection is not what the indexer asks of an automatic call, and
@@ -149,7 +149,9 @@ impl LanguagePolicy {
         installed: &InstalledLanguages,
     ) -> (Vec<String>, Vec<OcrWarning>) {
         match self {
-            Self::Automatic { installed: candidate } => {
+            Self::Automatic {
+                installed: candidate,
+            } => {
                 let packs: Vec<String> = candidate
                     .languages()
                     .iter()
@@ -208,11 +210,7 @@ pub struct DetectedLanguage {
 impl DetectedLanguage {
     /// Builds a detection record from the engine's view of one page.
     #[must_use]
-    pub fn new(
-        primary: impl Into<String>,
-        script: Option<String>,
-        confidence: Option<u8>,
-    ) -> Self {
+    pub fn new(primary: impl Into<String>, script: Option<String>, confidence: Option<u8>) -> Self {
         Self {
             primary: primary.into(),
             script,
@@ -332,13 +330,10 @@ impl LanguageDetector {
             if pack == "osd" {
                 continue;
             }
-            let outcome = recognize_with(&self.tessdata_dir, pack, image)
-                .unwrap_or_else(|error| {
-                    tracing_warn(&format!(
-                        "tesseract init failed for {pack:?}: {error}"
-                    ));
-                    None
-                });
+            let outcome = recognize_with(&self.tessdata_dir, pack, image).unwrap_or_else(|error| {
+                tracing_warn(&format!("tesseract init failed for {pack:?}: {error}"));
+                None
+            });
             let Some(outcome) = outcome else {
                 continue;
             };
@@ -356,10 +351,9 @@ impl LanguageDetector {
             }
         }
 
-        let (primary, confidence) =
-            best.ok_or_else(|| OcrError::EngineInitializationFailed {
-                reason: "no installed language pack produced a result".to_string(),
-            })?;
+        let (primary, confidence) = best.ok_or_else(|| OcrError::EngineInitializationFailed {
+            reason: "no installed language pack produced a result".to_string(),
+        })?;
 
         // The `-1` sentinel is used to remember "this pack was the
         // best so far but did not actually recognize text"; only a
@@ -393,10 +387,11 @@ fn recognize_with(
     use tesseract::plumbing::TessBaseApi;
 
     let datapath_bytes = format!("{}\0", tessdata_dir.display());
-    let datapath_c = CStr::from_bytes_with_nul(datapath_bytes.as_bytes())
-        .map_err(|error| OcrError::EngineInitializationFailed {
+    let datapath_c = CStr::from_bytes_with_nul(datapath_bytes.as_bytes()).map_err(|error| {
+        OcrError::EngineInitializationFailed {
             reason: format!("tessdata path contains an interior NUL: {error}"),
-        })?;
+        }
+    })?;
     let language_bytes = format!("{pack}\0");
     let language_c = CStr::from_bytes_with_nul(language_bytes.as_bytes()).map_err(|_| {
         OcrError::EngineInitializationFailed {

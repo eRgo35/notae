@@ -46,18 +46,25 @@ impl OperationController {
     ///
     /// Construction opens no files and starts no scan; the caller must request
     /// each rescan explicitly.
-    #[must_use]
-    pub fn new(local: IndexStore, catalog: Box<dyn LibraryCatalog + Send>) -> Self {
+    ///
+    /// # Errors
+    /// Returns [`UiError::WorkerStart`] if the background worker cannot be started.
+    pub fn new(
+        local: IndexStore,
+        catalog: Box<dyn LibraryCatalog + Send>,
+    ) -> Result<Self, UiError> {
         Self::start(local, catalog, None)
     }
 
     /// Like [`OperationController::new`], also rendering first-page thumbnails into `cache`.
-    #[must_use]
+    ///
+    /// # Errors
+    /// Returns [`UiError::WorkerStart`] if the background worker cannot be started.
     pub fn with_thumbnails(
         local: IndexStore,
         catalog: Box<dyn LibraryCatalog + Send>,
         cache: ThumbnailCache,
-    ) -> Self {
+    ) -> Result<Self, UiError> {
         Self::start(local, catalog, Some(cache))
     }
 
@@ -65,7 +72,7 @@ impl OperationController {
         local: IndexStore,
         catalog: Box<dyn LibraryCatalog + Send>,
         thumbnails: Option<ThumbnailCache>,
-    ) -> Self {
+    ) -> Result<Self, UiError> {
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
         let busy = Arc::new(AtomicBool::new(false));
@@ -85,14 +92,14 @@ impl OperationController {
                     thumbnails,
                 );
             })
-            .expect("start Notae index worker");
-        Self {
+            .map_err(UiError::WorkerStart)?;
+        Ok(Self {
             commands: command_tx,
             events: event_rx,
             busy,
             cancellation,
             worker: Some(worker),
-        }
+        })
     }
 
     /// Requests a manual rescan. A second active operation is rejected.
@@ -330,7 +337,10 @@ fn run_worker(
     }
 }
 
-#[allow(clippy::too_many_arguments, reason = "worker state is passed explicitly")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "worker state is passed explicitly"
+)]
 fn run_rescan(
     local: &mut IndexStore,
     catalog: &dyn LibraryCatalog,
@@ -432,7 +442,9 @@ fn run_rescan(
                 });
                 if let (Some(cache), Some(fingerprint)) = (thumbnails, file.fingerprint()) {
                     let key = fingerprint.sha256().to_string();
-                    if let Err(error) = cache.ensure(&key, |out| catalog.render_thumbnail(file.path(), out)) {
+                    if let Err(error) =
+                        cache.ensure(&key, |out| catalog.render_thumbnail(file.path(), out))
+                    {
                         eprintln!("notae: no thumbnail for {path}: {error}");
                     }
                 }
@@ -560,7 +572,11 @@ fn apply_pdf_text_layer(
     Ok(outcome.failure.map(|error| error.to_string()))
 }
 
-fn project_rows(local: &IndexStore, query: &str, scope: SearchScope) -> Result<Vec<SearchRow>, UiError> {
+fn project_rows(
+    local: &IndexStore,
+    query: &str,
+    scope: SearchScope,
+) -> Result<Vec<SearchRow>, UiError> {
     let mut view_model = LibraryViewModel::new(local);
     view_model.set_query(query.to_owned());
     view_model.set_scope(scope);

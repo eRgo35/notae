@@ -190,7 +190,11 @@ fn settings_navigation_requires_a_configured_library() {
 fn split_snippet_returns_text_around_the_first_match() {
     assert_eq!(
         split_snippet("…alleluia. \u{2}Ave\u{3} \u{2}Maria\u{3} gratia…"),
-        ("…alleluia. ".to_owned(), "Ave".to_owned(), " Maria gratia…".to_owned())
+        (
+            "…alleluia. ".to_owned(),
+            "Ave".to_owned(),
+            " Maria gratia…".to_owned()
+        )
     );
 }
 
@@ -205,8 +209,32 @@ fn split_snippet_keeps_only_the_last_48_characters_before_the_match() {
 #[test]
 fn library_view_model_applies_scope_and_fills_snippets() {
     let store = store();
-    insert(&store, &note("a.pdf", 1, Some(1), "Antiphons", None, &[], IndexStatus::Ready), Some("Ave Maria gratia plena"));
-    insert(&store, &note("b.pdf", 2, Some(2), "Ave verum", None, &[], IndexStatus::Ready), None);
+    insert(
+        &store,
+        &note(
+            "a.pdf",
+            1,
+            Some(1),
+            "Antiphons",
+            None,
+            &[],
+            IndexStatus::Ready,
+        ),
+        Some("Ave Maria gratia plena"),
+    );
+    insert(
+        &store,
+        &note(
+            "b.pdf",
+            2,
+            Some(2),
+            "Ave verum",
+            None,
+            &[],
+            IndexStatus::Ready,
+        ),
+        None,
+    );
     let mut model = LibraryViewModel::new(&store);
     model.set_query("ave".to_owned());
     model.set_scope(notae_index::SearchScope::Text);
@@ -220,7 +248,9 @@ fn library_view_model_applies_scope_and_fills_snippets() {
 fn library_controller() -> AppController {
     let mut controller = AppController::new();
     controller
-        .dispatch(UiEvent::PickLibraryRoot { root: PathBuf::from("/library") })
+        .dispatch(UiEvent::PickLibraryRoot {
+            root: PathBuf::from("/library"),
+        })
         .expect("pick root");
     controller
 }
@@ -228,16 +258,24 @@ fn library_controller() -> AppController {
 #[test]
 fn search_opens_from_library_and_closing_clears_query_and_scope() {
     let mut controller = library_controller();
-    controller.dispatch(UiEvent::OpenSearch).expect("open search");
+    controller
+        .dispatch(UiEvent::OpenSearch)
+        .expect("open search");
     assert_eq!(controller.state().screen(), &Screen::Search);
 
     controller
-        .dispatch(UiEvent::UpdateSearchQuery { query: "ave".to_owned() })
+        .dispatch(UiEvent::UpdateSearchQuery {
+            query: "ave".to_owned(),
+        })
         .expect("type");
     controller
-        .dispatch(UiEvent::UpdateSearchScope { scope: SearchScope::Text })
+        .dispatch(UiEvent::UpdateSearchScope {
+            scope: SearchScope::Text,
+        })
         .expect("scope");
-    controller.dispatch(UiEvent::CloseSearch).expect("close search");
+    controller
+        .dispatch(UiEvent::CloseSearch)
+        .expect("close search");
 
     assert_eq!(controller.state().screen(), &Screen::Library);
     assert_eq!(controller.state().search().query, "");

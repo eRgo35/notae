@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use notae_domain::{
-    EpochTimestamp, FieldProvenance, IndexedNote, IndexStatus, MetadataField, MetadataOrigin,
+    EpochTimestamp, FieldProvenance, IndexStatus, IndexedNote, MetadataField, MetadataOrigin,
     NoteId, NoteMetadata, PdfFingerprint, RelativePdfPath, Sha256Digest, compare_library_order,
     normalize_whitespace,
 };
@@ -139,7 +139,7 @@ impl OcrText {
 ///   because text recognized from the previous bytes says nothing about the new
 ///   ones, so the replacement starts with empty OCR text.
 ///
-/// [`Replaced`] also reports the path that previously held the *new* content,
+/// [`ReindexOutcome::Replaced`] also reports the path that previously held the *new* content,
 /// if there was one. Two files with identical bytes cannot both be indexed,
 /// because the content hash is unique, so the record of the other path is
 /// dropped and that content is now indexed once, at this path.
@@ -353,8 +353,9 @@ impl IndexStore {
     /// Returns [`IndexError::UnknownNote`] when no record has that hash.
     pub fn set_ocr(&self, hash: &Sha256Digest, ocr: &OcrText) -> Result<(), IndexError> {
         let transaction = self.conn.unchecked_transaction()?;
-        let (row_id, note) = read_note_with_row_id(&transaction, "sha256 = ?1", [hash.to_string()])?
-            .ok_or(IndexError::UnknownNote { hash: *hash })?;
+        let (row_id, note) =
+            read_note_with_row_id(&transaction, "sha256 = ?1", [hash.to_string()])?
+                .ok_or(IndexError::UnknownNote { hash: *hash })?;
         transaction.execute(
             "UPDATE notes SET ocr_text = ?1, ocr_language = ?2 WHERE row_id = ?3",
             params![ocr.text(), ocr.language(), row_id],
@@ -633,9 +634,12 @@ fn read_note_with_row_id(
     parameter: impl rusqlite::Params,
 ) -> Result<Option<(i64, IndexedNote)>, IndexError> {
     // The alias keeps the two `row_id` columns distinguishable by name.
-    let query = format!("SELECT row_id AS note_row_id, {NOTE_COLUMNS} FROM notes WHERE {criterion}");
+    let query =
+        format!("SELECT row_id AS note_row_id, {NOTE_COLUMNS} FROM notes WHERE {criterion}");
     Ok(conn
-        .query_row(&query, parameter, |row| Ok((row.get("note_row_id")?, note_from_row(row)?)))
+        .query_row(&query, parameter, |row| {
+            Ok((row.get("note_row_id")?, note_from_row(row)?))
+        })
         .optional()?)
 }
 
@@ -688,11 +692,9 @@ fn update_params(
     ocr: &OcrText,
     row_id: i64,
 ) -> Result<impl rusqlite::Params, IndexError> {
-    Ok(params_from_iter(
-        note_params(note, ocr)?
-            .into_iter()
-            .chain(std::iter::once(Box::new(row_id) as Box<dyn ToSql>)),
-    ))
+    Ok(params_from_iter(note_params(note, ocr)?.into_iter().chain(
+        std::iter::once(Box::new(row_id) as Box<dyn ToSql>),
+    )))
 }
 
 /// Builds the bound parameters of [`INSERT_NOTE`] from a note and its OCR text.
@@ -714,7 +716,10 @@ fn note_params(note: &IndexedNote, ocr: &OcrText) -> Result<Vec<Box<dyn ToSql>>,
         Box::new(tags_text(note)),
         Box::new(origin_text(metadata.provenance(), MetadataField::Id)),
         Box::new(origin_text(metadata.provenance(), MetadataField::Title)),
-        Box::new(origin_text(metadata.provenance(), MetadataField::ComposerOrArtist)),
+        Box::new(origin_text(
+            metadata.provenance(),
+            MetadataField::ComposerOrArtist,
+        )),
         Box::new(origin_text(metadata.provenance(), MetadataField::Tags)),
         Box::new(status_text(note.status())),
         Box::new(ocr.text().to_owned()),
@@ -771,7 +776,8 @@ pub(crate) fn note_from_row(row: &Row<'_>) -> rusqlite::Result<IndexedNote> {
         .map_err(|error| conversion("title", error))?;
     metadata.assign_id(
         id,
-        origin_from_text(&provenance_id).ok_or_else(|| conversion("provenance_id", &provenance_id))?,
+        origin_from_text(&provenance_id)
+            .ok_or_else(|| conversion("provenance_id", &provenance_id))?,
     );
     metadata
         .assign_title(
@@ -795,17 +801,12 @@ pub(crate) fn note_from_row(row: &Row<'_>) -> rusqlite::Result<IndexedNote> {
         PdfFingerprint::new(sha256, byte_len, modified),
         metadata,
     );
-    note.set_status(
-        status_from_text(&status).ok_or_else(|| conversion("status", &status))?,
-    );
+    note.set_status(status_from_text(&status).ok_or_else(|| conversion("status", &status))?);
     Ok(note)
 }
 
 /// Wraps a decoding failure as a row conversion error naming the column.
-fn conversion(
-    column: &str,
-    reason: impl std::fmt::Display,
-) -> rusqlite::Error {
+fn conversion(column: &str, reason: impl std::fmt::Display) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(
         0,
         rusqlite::types::Type::Text,
@@ -820,7 +821,12 @@ struct StoreCorruption(String);
 
 /// Joins the normalized tags of a note for storage.
 fn tags_text(note: &IndexedNote) -> String {
-    note.metadata().tags().iter().cloned().collect::<Vec<_>>().join("\n")
+    note.metadata()
+        .tags()
+        .iter()
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Returns the last path segment, which is what a user types as a filename.

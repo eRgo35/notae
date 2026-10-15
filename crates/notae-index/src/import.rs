@@ -164,10 +164,7 @@ impl EntryChange {
     /// Whether applying this entry writes to the index.
     #[must_use]
     pub const fn writes(&self) -> bool {
-        matches!(
-            self,
-            Self::New | Self::Changed | Self::Moved { .. }
-        )
+        matches!(self, Self::New | Self::Changed | Self::Moved { .. })
     }
 }
 
@@ -900,9 +897,12 @@ fn derive(
             ),
         };
 
-        let note =
-            IndexedNote::new(entry.path().clone(), entry.fingerprint().clone(), metadata.clone())
-                .with_status(status);
+        let note = IndexedNote::new(
+            entry.path().clone(),
+            entry.fingerprint().clone(),
+            metadata.clone(),
+        )
+        .with_status(status);
 
         let change = match &moved_from {
             Some(from) => {
@@ -1092,12 +1092,14 @@ fn resolve_conflicts(
         // so a record cannot be marked by one path and left unmarked by the
         // other.
         if !candidates[keeper].conditioned {
-            candidates[keeper].note =
-                candidates[keeper].note.with_status(IndexStatus::DuplicateIdConflict);
+            candidates[keeper].note = candidates[keeper]
+                .note
+                .with_status(IndexStatus::DuplicateIdConflict);
         }
         if !candidates[loser].conditioned {
-            candidates[loser].note =
-                candidates[loser].note.with_status(IndexStatus::DuplicateIdConflict);
+            candidates[loser].note = candidates[loser]
+                .note
+                .with_status(IndexStatus::DuplicateIdConflict);
         }
         if candidates[loser]
             .note
@@ -1138,7 +1140,10 @@ fn resolve_conflicts(
     }
 }
 
-/// Finds a candidate by path.
+/// `path` comes from the duplicate-ID error produced from this same candidate set.
+/// Keeping the assertion here prevents a broken invariant from becoming a
+/// silently incomplete preview.
+#[allow(clippy::expect_used)]
 fn position(candidates: &[Candidate], path: &RelativePdfPath) -> usize {
     candidates
         .iter()
@@ -1263,7 +1268,10 @@ fn copy_field(
             let _ = target.assign_title(incoming.title(), origin);
         }
         MetadataField::ComposerOrArtist => {
-            target.assign_composer_or_artist(incoming.composer_or_artist().map(str::to_owned), origin);
+            target.assign_composer_or_artist(
+                incoming.composer_or_artist().map(str::to_owned),
+                origin,
+            );
         }
         MetadataField::Tags => target.assign_tags(incoming.tags().iter().cloned(), origin),
     }

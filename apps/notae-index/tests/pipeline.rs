@@ -14,14 +14,14 @@
 use std::collections::VecDeque;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Mutex};
+use std::sync::{Mutex, mpsc};
 
 use notae_domain::{IndexStatus, NoteId, Sha256Digest};
 use notae_index::IndexStore;
 use notae_index_cli::catalog::{FilesystemCatalog, ValidatedRoot};
 use notae_index_cli::pipeline::{IndexPipeline, ProgressEvent};
 use notae_index_cli::report::RunReport;
-use notae_ocr::{LanguagePolicy, OcrImage, OcrProvider, OcrText as OcrTextEngine, OcrError};
+use notae_ocr::{LanguagePolicy, OcrError, OcrImage, OcrProvider, OcrText as OcrTextEngine};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
@@ -190,7 +190,11 @@ fn a_rerun_after_no_changes_reuses_every_record() {
         .expect("second run");
 
     assert_eq!(report.processed(), 2);
-    assert_eq!(report.reused(), 2, "all records are reused when nothing changed");
+    assert_eq!(
+        report.reused(),
+        2,
+        "all records are reused when nothing changed"
+    );
     assert_eq!(report.moved(), 0);
     assert_eq!(report.pdf_failed(), 0);
 }
@@ -348,7 +352,11 @@ fn a_corrupt_pdf_is_counted_as_a_pdf_failure() {
         .run(&catalog, &mut store, &ocr, &policy(), mpsc::channel().0)
         .expect("pipeline run");
 
-    assert_eq!(report.pdf_failed(), 1, "the corrupt file is recorded as a PDF failure");
+    assert_eq!(
+        report.pdf_failed(),
+        1,
+        "the corrupt file is recorded as a PDF failure"
+    );
     assert_eq!(report.ocr_failed(), 0);
     let notes = store.list_all().expect("list the index");
     assert!(
@@ -374,11 +382,7 @@ fn a_partial_run_continues_after_a_pdf_failure() {
     assert_eq!(report.processed(), 2);
     assert_eq!(report.pdf_failed(), 1, "the broken file failed");
     let notes = store.list_all().expect("list the index");
-    assert_eq!(
-        notes.len(),
-        1,
-        "the good file was still indexed: {notes:?}"
-    );
+    assert_eq!(notes.len(), 1, "the good file was still indexed: {notes:?}");
     assert!(
         notes[0].path().as_str().contains("Good"),
         "the indexed record is the good one: {}",
@@ -500,8 +504,7 @@ fn a_file_that_becomes_unreadable_updates_its_stored_status() {
     // Strip read permissions so a regular user cannot open the file. Skip
     // the assertion (rather than pass with a confusing status) when running
     // as a user that bypasses permissions.
-    fs::set_permissions(&source, fs::Permissions::from_mode(0o000))
-        .expect("lock the source file");
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o000)).expect("lock the source file");
     if fs::File::open(&source).is_ok() {
         fs::set_permissions(&source, fs::Permissions::from_mode(0o644))
             .expect("unlock the source file");

@@ -1,6 +1,6 @@
 //! Storage Access Framework glue and the host-side equivalent.
 //!
-//! This module defines the *contract* every [`LibraryRootProvider`]
+//! This module defines the contract every `LibraryRootProvider`
 //! implementation satisfies. The Android implementation lives in
 //! `crate::android::saf` (Android-only); the Linux implementation lives
 //! in this file under `#[cfg(not(target_os = "android"))]` and is what
@@ -20,7 +20,7 @@
 //!
 //! # The async story
 //!
-//! [`LibraryRootProvider::select_root`] is `async` because on Android the
+//! `LibraryRootProvider::select_root` is `async` because on Android the
 //! Storage Access Framework returns its result through the Activity
 //! Result callback, which the host-side `android-activity` runtime
 //! bridges to an async future. We use native AFIT (Rust 1.75+ async
@@ -30,7 +30,7 @@
 //! given that selection happens once per app session. The returned
 //! future is `Send` because the Android runtime hands the result back
 //! on a different thread than the caller; host tests use
-//! [`pollster::block_on`] to await it from the test thread.
+//! `pollster::block_on` to await it from the test thread.
 //!
 //! # What `LibrarySource` is
 //!
@@ -518,7 +518,7 @@ mod host {
         persisted: HashMap<LibraryRootId, LibraryRoot>,
     }
 
-    /// The Linux-side [`LibraryRootProvider`].
+    /// The Linux-side `LibraryRootProvider`.
     ///
     /// Drives `select_root` from an in-memory queue so the host test
     /// can exercise the state machine without a UI. The implementation
@@ -539,8 +539,9 @@ mod host {
             Self::default()
         }
 
-        /// Locks the internal state. Exposed to the in-module
-        /// `select_root` and to the test helpers.
+        /// Locks the internal state. Exposed to `select_root` and test helpers.
+        // This in-memory test provider executes no callbacks while holding its private lock.
+        #[allow(clippy::expect_used)]
         fn lock(&self) -> MutexGuard<'_, Inner> {
             self.inner.lock().expect("provider mutex poisoned")
         }

@@ -3,6 +3,7 @@ name = "notae-domain"
 description = "Pure domain model for Notae, independent of storage and platform crates."
 edition.workspace = true
 version.workspace = true
+license.workspace = true
 
 [dependencies]
 serde = { workspace = true }

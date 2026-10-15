@@ -146,10 +146,7 @@ impl EpochTimestamp {
     #[must_use]
     pub fn from_system_time(time: SystemTime) -> Option<Self> {
         if let Ok(delta) = time.duration_since(UNIX_EPOCH) {
-            return Self::new(
-                i64::try_from(delta.as_secs()).ok()?,
-                delta.subsec_nanos(),
-            );
+            return Self::new(i64::try_from(delta.as_secs()).ok()?, delta.subsec_nanos());
         }
         let delta = UNIX_EPOCH.duration_since(time).ok()?;
         let secs = i64::try_from(delta.as_secs()).ok()?;
@@ -222,7 +219,11 @@ pub struct PdfFingerprint {
 impl PdfFingerprint {
     /// Creates a fingerprint from its parts.
     #[must_use]
-    pub const fn new(sha256: Sha256Digest, byte_len: u64, modified: Option<EpochTimestamp>) -> Self {
+    pub const fn new(
+        sha256: Sha256Digest,
+        byte_len: u64,
+        modified: Option<EpochTimestamp>,
+    ) -> Self {
         Self {
             sha256,
             byte_len,

@@ -10,10 +10,10 @@ the **sidecar**: a versioned JSON manifest the indexer writes
 beside its SQLite payload, and the Android app reads before
 importing anything.
 
-This repository holds the desktop half of the system — the
-indexer, the OCR layer, the SQLite store, the sidecar format, and
-the test fixtures the integration tests pin the contract on. The
-Android app lives in a separate plan and a separate repository.
+This repository contains the complete Notae workspace: the Linux indexer,
+OCR layer, SQLite store, portable sidecar format, and Android tablet app.
+The desktop writes the sidecar; Android imports it without requiring the
+devices to share a file system.
 
 ## Workspace layout
 
@@ -27,28 +27,36 @@ crates/
                     crates/notae-ocr/README.md for the dev-env setup.
 apps/
   notae-index/      The `notae-index` binary. See apps/notae-index/README.md.
+  notae-android/    Android application and tablet UI. See
+                    docs/android-debugging.md for build and device checks.
 ```
 
-## Build
+
+## Build and quality gates
+
+The Rust workspace is pinned to 1.98.1 in `rust-toolchain.toml`. On Linux,
+install `pkg-config`, Tesseract development headers, and Leptonica development
+headers first. Fedora/RHEL hosts without system pkg-config files can follow
+[`crates/notae-ocr/README.md`](crates/notae-ocr/README.md) and set
+`PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` for Cargo commands.
+
+The exact local gates run in CI; commands and Android target setup are listed
+in [`docs/engineering-standards.md`](docs/engineering-standards.md):
 
 ```sh
-# Build everything that is not the OCR crate
-cargo build --workspace --exclude notae-ocr
-
-# Build the OCR crate (requires the Tesseract/Leptonica dev shim)
-PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig cargo build --workspace
-
-# Run the test suite
-PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig cargo test --workspace
-
-# Lint
-PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --check
+cargo clippy --workspace --all-targets -- -D warnings -A clippy::unwrap_used -A clippy::expect_used
+cargo clippy --workspace --lib --bins -- -D warnings -D clippy::unwrap_used -D clippy::expect_used
+cargo test --workspace
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+cargo deny check
+cargo llvm-cov --workspace --summary-only --fail-under-lines 84
+cargo run -p notae-index-cli -- --help
 ```
 
-`notae-ocr` is the only crate that needs Tesseract and Leptonica
-on the build host. The other crates are pure Rust and build
-without any system dependencies beyond `pkg-config` itself
-(through `rusqlite`'s bundled SQLite).
+`notae-ocr` is the only crate that requires Tesseract and Leptonica headers.
+The Android arm64 target has a separate CI compile gate; installing and
+visually checking the app on the Galaxy Tab S10 FE+ remains a manual step.
 
 ## Run
 
@@ -69,9 +77,10 @@ for the full usage.
 * [`crates/notae-ocr/README.md`](crates/notae-ocr/README.md) —
   the dev-env setup for building against a system Tesseract and
   Leptonica on Fedora / RHEL.
-* `docs/` — the spec and the Linux-plan documents that drove
-  the implementation.
-
+* [`docs/android-debugging.md`](docs/android-debugging.md) — safe crash-log
+  capture and native debugging for the Samsung Android app.
+* [`docs/engineering-standards.md`](docs/engineering-standards.md) — local
+  quality commands, Android target gate, and standards audit.
 ## Target device
 
 The Android side targets the **Samsung Galaxy Tab S10 FE+** with

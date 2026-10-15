@@ -34,7 +34,12 @@ impl<'a> LibraryViewModel<'a> {
     /// query is empty.
     pub fn search(&self) -> Result<Vec<SearchRow>, UiError> {
         if self.query.trim().is_empty() {
-            return Ok(self.store.list_all()?.into_iter().map(SearchRow::from_note).collect());
+            return Ok(self
+                .store
+                .list_all()?
+                .into_iter()
+                .map(SearchRow::from_note)
+                .collect());
         }
         Ok(self
             .store

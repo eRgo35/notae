@@ -161,7 +161,10 @@ fn metadata_origin_equality_and_serde() {
         MetadataOrigin::Unset,
     ] {
         let json = serde_json::to_string(&origin).unwrap();
-        assert_eq!(serde_json::from_str::<MetadataOrigin>(&json).unwrap(), origin);
+        assert_eq!(
+            serde_json::from_str::<MetadataOrigin>(&json).unwrap(),
+            origin
+        );
     }
     assert_eq!(
         serde_json::to_string(&MetadataOrigin::PcImported).unwrap(),
@@ -201,7 +204,10 @@ fn index_status_wire_names_are_pinned() {
         (IndexStatus::OcrPending, "\"ocr_pending\""),
         (IndexStatus::OcrIncomplete, "\"ocr_incomplete\""),
         (IndexStatus::Stale, "\"stale\""),
-        (IndexStatus::DuplicateIdConflict, "\"duplicate_id_conflict\""),
+        (
+            IndexStatus::DuplicateIdConflict,
+            "\"duplicate_id_conflict\"",
+        ),
         (IndexStatus::Inaccessible, "\"inaccessible\""),
         (IndexStatus::InvalidPdf, "\"invalid_pdf\""),
         (IndexStatus::ImportMismatch, "\"import_mismatch\""),
@@ -344,9 +350,12 @@ fn note_metadata_mutation_api_preserves_invariants() {
 
 #[test]
 fn note_metadata_tracks_provenance_per_field() {
-    let mut meta =
-        NoteMetadata::new("Autumn Leaves", Some("Duke Ellington".to_string()), vec!["jazz".into()])
-            .unwrap();
+    let mut meta = NoteMetadata::new(
+        "Autumn Leaves",
+        Some("Duke Ellington".to_string()),
+        vec!["jazz".into()],
+    )
+    .unwrap();
     // Filename-derived IDs must not look like manual edits, so the import
     // facing path is the one that takes an explicit origin.
     meta.assign_id(Some(NoteId::new(12)), MetadataOrigin::FilenameDerived);
@@ -355,7 +364,10 @@ fn note_metadata_tracks_provenance_per_field() {
         meta.origin_of(MetadataField::Id),
         MetadataOrigin::FilenameDerived
     );
-    for field in MetadataField::ALL.into_iter().filter(|f| *f != MetadataField::Id) {
+    for field in MetadataField::ALL
+        .into_iter()
+        .filter(|f| *f != MetadataField::Id)
+    {
         assert_eq!(meta.origin_of(field), MetadataOrigin::Unset);
     }
 
@@ -419,9 +431,18 @@ fn field_provenance_defaults_to_unset_and_is_queryable() {
     let mut provenance = FieldProvenance::default();
     provenance.mark_manual(MetadataField::Title);
     provenance.set_origin(MetadataField::Id, MetadataOrigin::PcImported);
-    assert_eq!(provenance.origin_of(MetadataField::Title), MetadataOrigin::Manual);
-    assert_eq!(provenance.origin_of(MetadataField::Id), MetadataOrigin::PcImported);
-    assert_eq!(provenance.origin_of(MetadataField::Tags), MetadataOrigin::Unset);
+    assert_eq!(
+        provenance.origin_of(MetadataField::Title),
+        MetadataOrigin::Manual
+    );
+    assert_eq!(
+        provenance.origin_of(MetadataField::Id),
+        MetadataOrigin::PcImported
+    );
+    assert_eq!(
+        provenance.origin_of(MetadataField::Tags),
+        MetadataOrigin::Unset
+    );
     assert!(provenance.is_manual(MetadataField::Title));
     assert!(!provenance.is_manual(MetadataField::Tags));
 
@@ -438,10 +459,7 @@ fn field_provenance_defaults_to_unset_and_is_queryable() {
 
 #[test]
 fn metadata_field_wire_names_are_pinned() {
-    assert_eq!(
-        serde_json::to_string(&MetadataField::Id).unwrap(),
-        "\"id\""
-    );
+    assert_eq!(serde_json::to_string(&MetadataField::Id).unwrap(), "\"id\"");
     assert_eq!(
         serde_json::to_string(&MetadataField::Title).unwrap(),
         "\"title\""
@@ -524,7 +542,10 @@ fn user_id_edit_marks_manual_and_import_assignment_does_not() {
         MetadataOrigin::FilenameDerived
     );
     meta.assign_id(None, MetadataOrigin::PcImported);
-    assert_eq!(meta.origin_of(MetadataField::Id), MetadataOrigin::PcImported);
+    assert_eq!(
+        meta.origin_of(MetadataField::Id),
+        MetadataOrigin::PcImported
+    );
     meta.assign_id(Some(NoteId::new(3)), MetadataOrigin::Manual);
     assert_eq!(meta.origin_of(MetadataField::Id), MetadataOrigin::Manual);
 }
@@ -617,7 +638,11 @@ fn legacy_scalar_origin_is_migrated_to_every_field() {
         let raw = format!(r#"{{"title":"Study","origin":"{wire}"}}"#);
         let meta: NoteMetadata = serde_json::from_str(&raw).unwrap();
         for field in MetadataField::ALL {
-            assert_eq!(meta.origin_of(field), expected, "legacy {wire} must migrate {field:?}");
+            assert_eq!(
+                meta.origin_of(field),
+                expected,
+                "legacy {wire} must migrate {field:?}"
+            );
         }
     }
 
@@ -643,7 +668,9 @@ fn epoch_timestamp_returns_none_for_unrepresentable_pre_epoch_instants() {
     // `UNIX_EPOCH - (i64::MAX secs, 1 ns)` is the last instant the platform
     // can express before the epoch, and it is one second further back than
     // `EpochTimestamp` can represent in `i64` seconds.
-    let extreme = UNIX_EPOCH.checked_sub(Duration::new(i64::MAX as u64, 1)).unwrap();
+    let extreme = UNIX_EPOCH
+        .checked_sub(Duration::new(i64::MAX as u64, 1))
+        .unwrap();
     assert!(
         EpochTimestamp::from_system_time(extreme).is_none(),
         "an unrepresentable instant must return None, not panic"
@@ -659,7 +686,5 @@ fn epoch_timestamp_returns_none_for_unrepresentable_pre_epoch_instants() {
     assert_eq!(stamp.seconds(), -i64::MAX);
     assert_eq!(stamp.subsec_nanos(), 0);
     assert_eq!(stamp.to_system_time(), Some(representable));
-    assert!(
-        PdfFingerprint::from_system_time(digest(4), 4096, Some(representable)).is_some()
-    );
+    assert!(PdfFingerprint::from_system_time(digest(4), 4096, Some(representable)).is_some());
 }

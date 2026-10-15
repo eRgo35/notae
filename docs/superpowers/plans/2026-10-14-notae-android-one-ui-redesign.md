@@ -40,6 +40,21 @@ Deviations so far: Slint reserves `row`, so `PagePreview`/`ScoreCard` take `scor
 - One search entry point: a search icon in the Library header and Ctrl K both open the Search screen. There is no always-visible search bar.
 - Tapping a score opens its details pane; the PDF opens from **Open score**.
 
+## Post-install findings and follow-up design (2026-10-14)
+
+These findings came from manual review of the installed build. Record them for the next UI fix pass; this note does not claim the fixes are implemented.
+
+- **Text-pending status:** A “Text pending” badge alone does not explain progress. Add an app-wide status surface, visible on Library, Search, and Settings, that explains the current scan/index phase, progress, pending-text count, and any failure or next action. Keep the status visible as screens change; do not present pending text as OCR actively running when no such operation exists.
+- **Search layout:** The scope chips and result area must remain visible and usable at compact heights, including with the on-screen keyboard open. Chips may scroll horizontally; results must receive the remaining viewport height and scroll independently rather than being pushed below the screen or hidden.
+- **Settings layout:** Fix the broken vertical spacing and make the screen fit narrow viewports. Keep only controls and status tied to capabilities Notae actually has:
+  - **Library location:** show the selected folder’s display name and offer change/reconnect through the Storage Access Framework.
+  - **Library maintenance:** provide an explicit scan action and show scan/index outcome, pending-text count, conflicts, and failures when available.
+  - **Local storage and privacy:** explain that PDFs stay in place and thumbnails/index data are local. Do not invent storage controls or counts the app cannot report.
+  - **About:** retain only app name/version and concise product information if useful.
+  - Remove the generic “Motion” preference and reduce-motion plumbing: the product decision is **no animations**, not an optional reduced-motion mode. Remove decorative or irrelevant settings copy.
+- **Persistent actions:** Keep the Scan icon visible in the app chrome on Library, Search, and Settings; disable it only when scanning cannot be started. In score details, show **Edit details** as an icon-only action with an accessible label (“Edit details”).
+- **Motion:** No animated transitions or state effects anywhere in the redesigned UI.
+
 ## Global Constraints
 
 - No new crate dependencies (user rule). Java code may use only the Android SDK.

@@ -197,10 +197,7 @@ fn an_out_of_range_page_index_yields_a_typed_error() {
     let error = document
         .render_page(count, 144)
         .expect_err("page count is one past the last page");
-    assert!(
-        matches!(error, PdfError::PageOutOfRange { .. }),
-        "{error}"
-    );
+    assert!(matches!(error, PdfError::PageOutOfRange { .. }), "{error}");
     assert!(
         document.render_page(u32::MAX, 144).is_err(),
         "an absurd page index is still out of range, not a panic"
@@ -247,9 +244,7 @@ fn no_fixture_operation_panics() {
 fn the_shared_rendered_page_type_is_the_one_ocr_will_consume() {
     // `RenderedPage` is a re-export rather than a new type, so the OCR crate
     // can name `image::GrayImage` and get the identical type.
-    let image: image::GrayImage = open("text-layer.pdf")
-        .render_page(0, 72)
-        .expect("render");
+    let image: image::GrayImage = open("text-layer.pdf").render_page(0, 72).expect("render");
     let shared: RenderedPage = image;
     assert_eq!(shared.width(), 200);
 }

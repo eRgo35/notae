@@ -55,8 +55,7 @@ fn provider_with_all_languages() -> TesseractProvider {
 /// Builds a detector configured with the same packs.
 fn detector_with_all_languages() -> LanguageDetector {
     let installed = InstalledLanguages::new(["eng", "pol", "lat", "osd"]);
-    LanguageDetector::new(tessdata_dir(), installed)
-        .expect("detector should construct")
+    LanguageDetector::new(tessdata_dir(), installed).expect("detector should construct")
 }
 
 /// Asserts that `haystack` contains `needle`, ignoring case.
@@ -275,12 +274,16 @@ fn policy_resolve_against_returns_missing_warnings() {
 
     assert_eq!(packs, vec!["eng".to_string(), "pol".to_string()]);
     assert_eq!(warnings.len(), 2);
-    assert!(warnings
-        .iter()
-        .any(|w| matches!(w, OcrWarning::MissingLanguagePack { language } if language == "rus")));
-    assert!(warnings
-        .iter()
-        .any(|w| matches!(w, OcrWarning::MissingLanguagePack { language } if language == "deu")));
+    assert!(
+        warnings.iter().any(
+            |w| matches!(w, OcrWarning::MissingLanguagePack { language } if language == "rus")
+        )
+    );
+    assert!(
+        warnings.iter().any(
+            |w| matches!(w, OcrWarning::MissingLanguagePack { language } if language == "deu")
+        )
+    );
 }
 
 #[test]

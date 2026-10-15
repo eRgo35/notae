@@ -1,5 +1,5 @@
 // First run, folder recovery and settings in the One UI style.
-import { CheckBox } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Theme, Glyph, IconButton, PillButton, Card } from "components.slint";
 
 component FeatureRow inherits HorizontalLayout {
@@ -79,48 +79,74 @@ export component WelcomeScreen inherits Rectangle {
 }
 
 export component SettingsScreen inherits Rectangle {
-    in property <bool> rescan-enabled;
-    in-out property <bool> reduced-motion;
     in property <length> available-width;
+    in property <length> available-height;
+    in property <string> library-display-name;
+    in property <string> scan-summary;
+    in property <string> pending-text-count;
+    in property <string> version;
     callback back();
-    callback rescan();
+    callback change-library();
+    max-height: root.available-height;
     background: Theme.background;
     VerticalLayout {
-        padding: 24px;
-        spacing: 16px;
+        padding: 16px;
+        spacing: 12px;
         alignment: start;
         HorizontalLayout {
             spacing: 8px;
             IconButton { label: "Back to library"; icon: @image-url("material-icons/arrow-back.svg"); clicked => { root.back(); } }
-            Text { text: "Settings"; color: Theme.foreground; font-size: 40px; font-weight: 600; vertical-alignment: center; }
+            Text { text: "Settings"; color: Theme.foreground; font-size: 32px; font-weight: 600; vertical-alignment: center; }
         }
-        HorizontalLayout {
-            alignment: center;
+        ScrollView {
+            vertical-stretch: 1;
+            horizontal-scrollbar-policy: always-off;
             VerticalLayout {
-                width: min(720px, max(1px, root.available-width - 48px));
+                width: min(720px, max(1px, root.available-width - 32px));
+                spacing: 12px;
                 Card {
                     VerticalLayout {
-                        padding: 24px;
+                        padding: 20px;
                         spacing: 12px;
-                        Text { text: "Library"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
-                        Text { text: "Your PDFs stay in the folder you chose. Scanning refreshes the index, thumbnails and the desktop import check."; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
-                        HorizontalLayout { alignment: start; PillButton { text: "Scan library"; tonal: true; enabled: root.rescan-enabled; clicked => { root.rescan(); } } }
+                        Text { text: "Library location"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
+                        Text { text: root.library-display-name; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
+                        PillButton { text: "Change folder"; tonal: true; clicked => { root.change-library(); } }
                     }
                 }
                 Card {
                     VerticalLayout {
-                        padding: 24px;
-                        spacing: 12px;
-                        Text { text: "Motion"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
-                        CheckBox { text: "Reduce animations"; enabled: !Theme.modal-open; checked <=> root.reduced-motion; }
-                    }
-                }
-                Card {
-                    VerticalLayout {
-                        padding: 24px;
+                        padding: 20px;
                         spacing: 8px;
-                        Text { text: "Notae"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
-                        Text { text: "A personal home for sheet music. Light and dark follow your system setting."; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
+                        Text { text: "Library maintenance"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
+                        Text { text: root.scan-summary; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
+                        Text {
+                            text: root.pending-text-count + " scores have text pending. Android does not run OCR; desktop OCR or sidecar import is an available next step.";
+                            color: Theme.muted;
+                            font-size: 15px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+                Card {
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 8px;
+                        Text { text: "Local storage and privacy"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
+                        Text {
+                            text: "PDFs stay in their selected folder. The index and thumbnails are stored locally on this device.";
+                            color: Theme.muted;
+                            font-size: 15px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+                Card {
+                    VerticalLayout {
+                        padding: 20px;
+                        spacing: 8px;
+                        Text { text: "About"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
+                        Text { text: "Notae " + root.version; color: Theme.muted; font-size: 15px; }
+                        Text { text: "A personal library for sheet music."; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
                     }
                 }
             }

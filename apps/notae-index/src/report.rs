@@ -9,8 +9,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::catalog::{CatalogFailure, FilesystemCatalog};
 use crate::PdfState;
+use crate::catalog::{CatalogFailure, FilesystemCatalog};
 
 /// What a run observed, independent of what it wrote.
 ///

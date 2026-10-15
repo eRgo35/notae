@@ -82,9 +82,7 @@ impl ParsedFilename {
 #[must_use]
 pub fn parse_filename(filename: &str) -> ParsedFilename {
     let (stem, is_pdf) = split_extension(filename);
-    if is_pdf
-        && let Some((id, title)) = split_id_and_title(stem)
-    {
+    if is_pdf && let Some((id, title)) = split_id_and_title(stem) {
         return ParsedFilename {
             id: Some(id),
             title: title.to_string(),
@@ -146,9 +144,7 @@ fn split_extension(filename: &str) -> (&str, bool) {
 /// Returns the final path component, ignoring both separators so that a path
 /// built on Windows parses the same way as on POSIX.
 fn final_component(name: &str) -> &str {
-    let cut = name
-        .rfind(['/', '\\'])
-        .map_or(0, |index| index + 1);
+    let cut = name.rfind(['/', '\\']).map_or(0, |index| index + 1);
     &name[cut..]
 }
 

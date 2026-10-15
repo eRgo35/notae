@@ -185,7 +185,7 @@ export component OperationBanner inherits Card {
             accessible-value-maximum: 1;
             Rectangle {
                 width: parent.width * (root.fraction > 0 ? root.fraction : 0.3);
-                x: root.fraction > 0 || Theme.reduced-motion ? 0px : -self.width + (parent.width + self.width) * mod(animation-tick(), 1600ms) / 1600ms;
+                x: 0px;
                 height: 4px;
                 border-radius: 2px;
                 background: Theme.accent;
@@ -203,17 +203,15 @@ export component LibraryScreen inherits Rectangle {
     in property <string> subtitle;
     in property <[LibraryRow]> rows;
     in property <string> selected-key;
-    in property <bool> rescan-enabled;
+    in property <string> pdf-error;
     in property <string> progress-text;
     in property <bool> busy;
     in property <float> fraction;
     in property <bool> cancel-enabled;
     in property <bool> acknowledge-enabled;
-    in property <string> pdf-error;
     callback section-selected(string);
     callback settings-clicked();
     callback search-clicked();
-    callback rescan-clicked();
     callback cancel-clicked();
     callback acknowledge-clicked();
     callback score-selected(string);
@@ -251,7 +249,6 @@ export component LibraryScreen inherits Rectangle {
                     HorizontalLayout {
                         spacing: 4px;
                         IconButton { label: "Search"; icon: @image-url("material-icons/search.svg"); clicked => { root.search-clicked(); } }
-                        IconButton { label: "Scan library"; icon: @image-url("material-icons/scan.svg"); enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
                         if !root.expanded : IconButton { label: "Settings"; icon: @image-url("material-icons/settings.svg"); clicked => { root.settings-clicked(); } }
                     }
                 }
@@ -314,7 +311,6 @@ export component LibraryScreen inherits Rectangle {
                         }
                         if root.selected-section == "all" : HorizontalLayout {
                             alignment: center;
-                            PillButton { text: "Scan library"; primary: true; enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
                         }
                     }
                 }

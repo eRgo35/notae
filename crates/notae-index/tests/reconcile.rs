@@ -26,13 +26,20 @@ fn path(value: &str) -> RelativePdfPath {
 }
 
 fn file(relative: &str, seed: u8) -> PdfFile {
-    PdfFile::from_path(path(relative), PdfFingerprint::new(digest(seed), 1_024, None))
+    PdfFile::from_path(
+        path(relative),
+        PdfFingerprint::new(digest(seed), 1_024, None),
+    )
 }
 
 fn note(relative: &str, seed: u8, id: Option<NoteId>, title: &str) -> IndexedNote {
     let mut metadata = NoteMetadata::new(title, None, []).expect("valid title");
     metadata.assign_id(id, MetadataOrigin::FilenameDerived);
-    IndexedNote::new(path(relative), PdfFingerprint::new(digest(seed), 1_024, None), metadata)
+    IndexedNote::new(
+        path(relative),
+        PdfFingerprint::new(digest(seed), 1_024, None),
+        metadata,
+    )
 }
 
 fn temp_db(label: &str) -> PathBuf {
@@ -138,7 +145,12 @@ fn new_pdf_is_added() {
 #[test]
 fn unchanged_pdf_is_reused_without_a_write() {
     let (mut store, database) = open("unchanged");
-    let mut original = note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves");
+    let mut original = note(
+        "12 - Autumn Leaves.pdf",
+        1,
+        Some(NoteId::new(12)),
+        "Autumn Leaves",
+    );
     original.set_status(IndexStatus::Ready);
     store
         .upsert_note_with_ocr(&original, Some(&OcrText::with_language("alto clef", "eng")))
@@ -182,7 +194,12 @@ fn unchanged_pdf_is_reused_without_a_write() {
 #[test]
 fn same_hash_rename_is_a_move_that_keeps_one_record() {
     let (mut store, database) = open("move");
-    let mut original = note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves");
+    let mut original = note(
+        "12 - Autumn Leaves.pdf",
+        1,
+        Some(NoteId::new(12)),
+        "Autumn Leaves",
+    );
     original.set_status(IndexStatus::OcrPending);
     store
         .upsert_note_with_ocr(&original, Some(&OcrText::new("alto clef")))
@@ -209,7 +226,10 @@ fn same_hash_rename_is_a_move_that_keeps_one_record() {
 
     let report = Reconciler::apply(plan, &mut store).expect("apply");
     assert_eq!(report.moves().len(), 1);
-    assert!(report.deletions().is_empty(), "the old path is moved, not deleted");
+    assert!(
+        report.deletions().is_empty(),
+        "the old path is moved, not deleted"
+    );
 
     let stored = only_note(&store);
     assert_eq!(
@@ -237,9 +257,16 @@ fn same_hash_rename_is_a_move_that_keeps_one_record() {
 #[test]
 fn changed_content_at_a_known_path_updates_and_preserves_manual_metadata() {
     let (mut store, database) = open("update");
-    let mut original = note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves");
+    let mut original = note(
+        "12 - Autumn Leaves.pdf",
+        1,
+        Some(NoteId::new(12)),
+        "Autumn Leaves",
+    );
     let mut metadata = original.metadata().clone();
-    metadata.set_title("Autumn Leaves (my edition)").expect("title");
+    metadata
+        .set_title("Autumn Leaves (my edition)")
+        .expect("title");
     metadata.set_composer_or_artist(Some("Miles Davis".to_owned()));
     metadata.set_tags(["jazz".to_owned(), "slow".to_owned()]);
     metadata.set_id(Some(NoteId::new(99)));
@@ -293,10 +320,20 @@ fn changed_content_at_a_known_path_updates_and_preserves_manual_metadata() {
 fn deleted_pdf_is_removed() {
     let (mut store, database) = open("delete");
     store
-        .upsert_note(&note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves"))
+        .upsert_note(&note(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ))
         .expect("seed kept");
     store
-        .upsert_note(&note("13 - So What.pdf", 2, Some(NoteId::new(13)), "So What"))
+        .upsert_note(&note(
+            "13 - So What.pdf",
+            2,
+            Some(NoteId::new(13)),
+            "So What",
+        ))
         .expect("seed deleted");
 
     let files = vec![file("12 - Autumn Leaves.pdf", 1)];
@@ -318,7 +355,12 @@ fn deleted_pdf_is_removed() {
 fn duplicate_ids_are_reported_as_conflicts_with_both_paths() {
     let (mut store, database) = open("conflict");
     store
-        .upsert_note(&note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves"))
+        .upsert_note(&note(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ))
         .expect("seed");
 
     let files = vec![
@@ -336,7 +378,10 @@ fn duplicate_ids_are_reported_as_conflicts_with_both_paths() {
     let conflict = &plan.conflicts()[0];
     assert_eq!(conflict.id(), NoteId::new(12));
     assert_eq!(conflict.existing(), &path("12 - Autumn Leaves.pdf"));
-    assert_eq!(conflict.conflicting(), &path("12 - Autumn Leaves (copy).pdf"));
+    assert_eq!(
+        conflict.conflicting(),
+        &path("12 - Autumn Leaves (copy).pdf")
+    );
 
     let report = Reconciler::apply(plan, &mut store).expect("apply");
     assert_eq!(report.conflicts().len(), 1);
@@ -372,7 +417,12 @@ fn duplicate_ids_are_reported_as_conflicts_with_both_paths() {
 #[test]
 fn ocr_status_is_retained_across_a_no_op_rescan() {
     let (mut store, database) = open("ocr");
-    let mut original = note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves");
+    let mut original = note(
+        "12 - Autumn Leaves.pdf",
+        1,
+        Some(NoteId::new(12)),
+        "Autumn Leaves",
+    );
     original.set_status(IndexStatus::OcrIncomplete);
     store
         .upsert_note_with_ocr(&original, Some(&OcrText::with_language("coda", "eng")))
@@ -402,7 +452,9 @@ fn manual_fields_survive_a_filename_refresh_while_others_update() {
     let (mut store, database) = open("provenance");
     let mut manual = note("old name.pdf", 1, Some(NoteId::new(1)), "Old Title");
     let mut metadata = manual.metadata().clone();
-    metadata.set_title("Hand Written Title").expect("valid title");
+    metadata
+        .set_title("Hand Written Title")
+        .expect("valid title");
     metadata.set_composer_or_artist(Some("Bill Evans".to_owned()));
     metadata.set_tags(["piano".to_owned(), "modal".to_owned()]);
     metadata.set_id(Some(NoteId::new(42)));
@@ -441,7 +493,12 @@ fn manual_fields_survive_a_filename_refresh_while_others_update() {
         Some("Bill Evans")
     );
     assert_eq!(
-        manual_note.metadata().tags().iter().cloned().collect::<Vec<_>>(),
+        manual_note
+            .metadata()
+            .tags()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>(),
         vec!["modal".to_owned(), "piano".to_owned()]
     );
     for field in MetadataField::ALL {
@@ -468,7 +525,12 @@ fn manual_fields_survive_a_filename_refresh_while_others_update() {
 fn per_file_failure_is_isolated_rather_than_aborting_the_plan() {
     let (mut store, database) = open("failure");
     store
-        .upsert_note(&note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves"))
+        .upsert_note(&note(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ))
         .expect("seed");
 
     // `.pdf` has an empty stem, so it can never seed a title.
@@ -497,7 +559,12 @@ fn per_file_failure_is_isolated_rather_than_aborting_the_plan() {
 fn planning_never_mutates_the_store() {
     let (store, database) = open("readonly");
     store
-        .upsert_note(&note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves"))
+        .upsert_note(&note(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ))
         .expect("seed");
     let before = store.list_all().expect("list");
     let stamp = indexed_at(&database, &path("12 - Autumn Leaves.pdf"));
@@ -525,11 +592,14 @@ fn refresh_reports_which_fields_it_preserved() {
     metadata.set_title("Hand Written").expect("valid title");
     metadata.assign_id(Some(NoteId::new(5)), MetadataOrigin::FilenameDerived);
 
-    let (refreshed, outcome) = refresh_from_filename(&metadata, "9 - New Name.pdf")
-        .expect("refresh");
+    let (refreshed, outcome) =
+        refresh_from_filename(&metadata, "9 - New Name.pdf").expect("refresh");
     assert_eq!(refreshed.id(), Some(NoteId::new(9)));
     assert_eq!(refreshed.title(), "Hand Written");
-    assert_eq!(refreshed.provenance().origin_of(MetadataField::Title), MetadataOrigin::Manual);
+    assert_eq!(
+        refreshed.provenance().origin_of(MetadataField::Title),
+        MetadataOrigin::Manual
+    );
     assert!(outcome.preserved().contains(&MetadataField::Title));
     assert!(outcome.refreshed().contains(&MetadataField::Id));
     assert!(!outcome.preserved().contains(&MetadataField::Id));
@@ -568,7 +638,10 @@ fn two_new_files_claiming_one_id_are_both_kept_with_the_conflict_surfaced() {
     assert_eq!(one.title(), "One");
     assert_eq!(two.title(), "Two");
     assert_eq!(
-        store.get_by_id(NoteId::new(12)).expect("query").map(|n| n.path().clone()),
+        store
+            .get_by_id(NoteId::new(12))
+            .expect("query")
+            .map(|n| n.path().clone()),
         Some(path("12 - One.pdf")),
         "exactly one record holds the contested ID"
     );
@@ -620,18 +693,19 @@ fn identical_content_at_two_new_paths_is_deduplicated_stably() {
 #[test]
 fn duplicate_conflict_status_clears_once_the_collision_is_gone() {
     let (mut store, database) = open("conflict-clear");
-    let mut contested = note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves");
+    let mut contested = note(
+        "12 - Autumn Leaves.pdf",
+        1,
+        Some(NoteId::new(12)),
+        "Autumn Leaves",
+    );
     contested.set_status(IndexStatus::DuplicateIdConflict);
     store.upsert_note(&contested).expect("seed");
 
     let files = vec![file("12 - Autumn Leaves.pdf", 1)];
     let plan = Reconciler::plan(&store, &files).expect("plan");
     assert!(plan.conflicts().is_empty(), "the collision is over");
-    assert_eq!(
-        plan.updates().len(),
-        1,
-        "clearing the status is a write"
-    );
+    assert_eq!(plan.updates().len(), 1, "clearing the status is a write");
     assert_ne!(
         plan.updates()[0].note().status(),
         IndexStatus::DuplicateIdConflict
@@ -655,7 +729,9 @@ fn a_bare_pdf_name_fails_even_when_the_stored_title_is_manual() {
     let (mut store, database) = open("empty-title");
     let mut manual = note(".pdf", 1, None, "Autumn Leaves");
     let mut metadata = manual.metadata().clone();
-    metadata.set_title("Hand Written Title").expect("valid title");
+    metadata
+        .set_title("Hand Written Title")
+        .expect("valid title");
     manual = IndexedNote::new(
         path(".pdf"),
         PdfFingerprint::new(digest(1), 1_024, None),
@@ -665,7 +741,11 @@ fn a_bare_pdf_name_fails_even_when_the_stored_title_is_manual() {
 
     let files = vec![file(".pdf", 2)];
     let plan = Reconciler::plan(&store, &files).expect("plan");
-    assert_eq!(plan.failures().len(), 1, "the empty title is a per-file failure");
+    assert_eq!(
+        plan.failures().len(),
+        1,
+        "the empty title is a per-file failure"
+    );
     assert_eq!(plan.failures()[0].path(), &path(".pdf"));
     assert!(matches!(
         plan.failures()[0].reason(),
@@ -731,7 +811,11 @@ fn unreadable_and_invalid_pdfs_are_reported_per_file() {
     ];
 
     let plan = Reconciler::plan(&store, &files).expect("plan");
-    assert_eq!(plan.additions().len(), 1, "only the readable file is indexed");
+    assert_eq!(
+        plan.additions().len(),
+        1,
+        "only the readable file is indexed"
+    );
     assert_eq!(plan.failures().len(), 2);
     assert_eq!(plan.failures()[0].path(), &path("13 - Locked.pdf"));
     assert!(matches!(
@@ -755,7 +839,12 @@ fn unreadable_and_invalid_pdfs_are_reported_per_file() {
 #[test]
 fn an_unreadable_file_keeps_its_record_and_is_not_deleted() {
     let (mut store, database) = open("conditions-kept");
-    let mut original = note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves");
+    let mut original = note(
+        "12 - Autumn Leaves.pdf",
+        1,
+        Some(NoteId::new(12)),
+        "Autumn Leaves",
+    );
     original.set_status(IndexStatus::Ready);
     store
         .upsert_note_with_ocr(&original, Some(&OcrText::new("alto clef")))
@@ -766,7 +855,10 @@ fn an_unreadable_file_keeps_its_record_and_is_not_deleted() {
         FileCondition::Unreadable,
     )];
     let plan = Reconciler::plan(&store, &files).expect("plan");
-    assert!(plan.deletions().is_empty(), "a locked file is not a deletion");
+    assert!(
+        plan.deletions().is_empty(),
+        "a locked file is not a deletion"
+    );
     assert_eq!(plan.failures().len(), 1);
 
     Reconciler::apply(plan, &mut store).expect("apply");
@@ -774,7 +866,11 @@ fn an_unreadable_file_keeps_its_record_and_is_not_deleted() {
     assert_eq!(stored.path(), &path("12 - Autumn Leaves.pdf"));
     assert_eq!(stored.id(), Some(NoteId::new(12)));
     assert_eq!(
-        store.ocr_text(&digest(1)).expect("ocr").expect("text survives").text(),
+        store
+            .ocr_text(&digest(1))
+            .expect("ocr")
+            .expect("text survives")
+            .text(),
         "alto clef"
     );
     let _ = std::fs::remove_file(&database);
@@ -786,17 +882,30 @@ fn an_unreadable_file_keeps_its_record_and_is_not_deleted() {
 fn an_unreadable_file_survives_the_deletion_pass() {
     let (mut store, database) = open("conditions-delete");
     store
-        .upsert_note(&note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves"))
+        .upsert_note(&note(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ))
         .expect("seed kept");
     store
-        .upsert_note(&note("13 - So What.pdf", 2, Some(NoteId::new(13)), "So What"))
+        .upsert_note(&note(
+            "13 - So What.pdf",
+            2,
+            Some(NoteId::new(13)),
+            "So What",
+        ))
         .expect("seed gone");
     store
         .upsert_note(&note("14 - Locked.pdf", 3, Some(NoteId::new(14)), "Locked"))
         .expect("seed locked");
 
     let files = vec![
-        PdfFile::from_path_with_condition(path("12 - Autumn Leaves.pdf"), FileCondition::Unreadable),
+        PdfFile::from_path_with_condition(
+            path("12 - Autumn Leaves.pdf"),
+            FileCondition::Unreadable,
+        ),
         file("14 - Locked.pdf", 3),
     ];
     let plan = Reconciler::plan(&store, &files).expect("plan");
@@ -960,11 +1069,7 @@ fn a_renamed_or_deleted_newcomer_clears_the_conflict() {
     store
         .upsert_note(&note("12 - Zeta.pdf", 1, Some(NoteId::new(12)), "Zeta"))
         .expect("seed incumbent");
-    Reconciler::apply(
-        Reconciler::plan(&store, &files).expect("plan"),
-        &mut store,
-    )
-    .expect("apply");
+    Reconciler::apply(Reconciler::plan(&store, &files).expect("plan"), &mut store).expect("apply");
 
     let plan = Reconciler::plan(&store, &[file("12 - Zeta.pdf", 1)]).expect("plan");
     assert!(plan.conflicts().is_empty());
@@ -1143,7 +1248,10 @@ fn an_unreadable_or_invalid_file_updates_its_record_status() {
         plan.updates().is_empty(),
         "a repeated observation of the same condition costs no write"
     );
-    assert!(plan.unchanged().is_empty(), "and nothing is claimed untouched");
+    assert!(
+        plan.unchanged().is_empty(),
+        "and nothing is claimed untouched"
+    );
     Reconciler::apply(plan, &mut store).expect("apply");
     let _ = std::fs::remove_file(&database);
 }
@@ -1372,7 +1480,11 @@ fn an_unreadable_record_that_is_contested_keeps_its_condition() {
     for round in 1..=2 {
         let plan = Reconciler::plan(&store, &files).expect("plan");
         assert_eq!(plan.conflicts().len(), 1, "round {round}");
-        assert_eq!(plan.conflicts()[0].existing(), &path("12 - Zeta.pdf"), "round {round}");
+        assert_eq!(
+            plan.conflicts()[0].existing(),
+            &path("12 - Zeta.pdf"),
+            "round {round}"
+        );
         assert_eq!(plan.failures().len(), 1, "round {round}");
         assert!(
             plan.additions().is_empty() && plan.updates().is_empty(),
@@ -1396,4 +1508,3 @@ fn an_unreadable_record_that_is_contested_keeps_its_condition() {
     }
     let _ = std::fs::remove_file(&database);
 }
-

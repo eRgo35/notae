@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use notae_domain::Sha256Digest;
-use notae_index::{IndexStore, SidecarImporter, SidecarManifest, SIDECAR_SCHEMA_VERSION};
+use notae_index::{IndexStore, SIDECAR_SCHEMA_VERSION, SidecarImporter, SidecarManifest};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
@@ -138,8 +138,7 @@ fn the_manifests_schema_version_matches_the_builds() {
         stderr(&output)
     );
 
-    let manifest = SidecarManifest::read(library.manifest_path())
-        .expect("the manifest reads back");
+    let manifest = SidecarManifest::read(library.manifest_path()).expect("the manifest reads back");
     assert_eq!(
         manifest.schema_version(),
         SIDECAR_SCHEMA_VERSION,
@@ -155,8 +154,7 @@ fn the_tool_version_matches_cargo_pkg_version() {
     let output = run_index(&[library.root().to_str().expect("utf-8 path")]);
     assert!(output.status.success(), "a clean run exits 0");
 
-    let manifest = SidecarManifest::read(library.manifest_path())
-        .expect("the manifest reads back");
+    let manifest = SidecarManifest::read(library.manifest_path()).expect("the manifest reads back");
     assert_eq!(
         manifest.tool_version(),
         env!("CARGO_PKG_VERSION"),
@@ -173,8 +171,7 @@ fn every_entry_uses_a_root_relative_forward_slash_path() {
     let output = run_index(&[library.root().to_str().expect("utf-8 path")]);
     assert!(output.status.success(), "a clean run exits 0");
 
-    let manifest = SidecarManifest::read(library.manifest_path())
-        .expect("the manifest reads back");
+    let manifest = SidecarManifest::read(library.manifest_path()).expect("the manifest reads back");
     assert!(!manifest.entries().is_empty(), "the manifest is populated");
     for entry in manifest.entries() {
         let path = entry.path().as_str();
@@ -200,8 +197,7 @@ fn every_entrys_sha256_matches_the_files_content() {
     let output = run_index(&[library.root().to_str().expect("utf-8 path")]);
     assert!(output.status.success(), "a clean run exits 0");
 
-    let manifest = SidecarManifest::read(library.manifest_path())
-        .expect("the manifest reads back");
+    let manifest = SidecarManifest::read(library.manifest_path()).expect("the manifest reads back");
     for entry in manifest.entries() {
         let absolute = library.root().join(entry.path().as_str());
         let expected = sha256_of(&absolute);
@@ -224,8 +220,7 @@ fn ocr_status_is_present_on_every_entry_that_has_text() {
     assert!(output.status.success(), "a clean run exits 0");
 
     let store = IndexStore::open(library.index_path()).expect("open the index");
-    let manifest = SidecarManifest::read(library.manifest_path())
-        .expect("the manifest reads back");
+    let manifest = SidecarManifest::read(library.manifest_path()).expect("the manifest reads back");
     for entry in manifest.entries() {
         let stored = store
             .ocr_text(&entry.fingerprint().sha256())
@@ -257,12 +252,11 @@ fn the_manifest_round_trips_through_read() {
     let output = run_index(&[library.root().to_str().expect("utf-8 path")]);
     assert!(output.status.success(), "a clean run exits 0");
 
-    let manifest = SidecarManifest::read(library.manifest_path())
-        .expect("the manifest reads back");
+    let manifest = SidecarManifest::read(library.manifest_path()).expect("the manifest reads back");
     // A second read produces a manifest equal to the first, with the same
     // entries in the same order — the file is the same one, byte for byte.
-    let again = SidecarManifest::read(library.manifest_path())
-        .expect("the manifest reads back again");
+    let again =
+        SidecarManifest::read(library.manifest_path()).expect("the manifest reads back again");
     assert_eq!(
         manifest.entries().len(),
         again.entries().len(),
@@ -303,12 +297,8 @@ fn detected_languages_round_trip_through_the_sidecar() {
         stderr(&output)
     );
 
-    let manifest = SidecarManifest::read(library.manifest_path())
-        .expect("the manifest reads back");
-    let entry = manifest
-        .entries()
-        .first()
-        .expect("the entry was indexed");
+    let manifest = SidecarManifest::read(library.manifest_path()).expect("the manifest reads back");
+    let entry = manifest.entries().first().expect("the entry was indexed");
     let ocr = entry
         .ocr()
         .expect("a text-layer entry carries OCR text in the sidecar");
@@ -344,13 +334,13 @@ fn rewriting_the_same_store_produces_an_equivalent_manifest() {
 
     let first = run_index(&[library.root().to_str().expect("utf-8 path")]);
     assert!(first.status.success(), "first run exits 0");
-    let first_manifest = SidecarManifest::read(library.manifest_path())
-        .expect("first manifest reads back");
+    let first_manifest =
+        SidecarManifest::read(library.manifest_path()).expect("first manifest reads back");
 
     let second = run_index(&[library.root().to_str().expect("utf-8 path")]);
     assert!(second.status.success(), "second run exits 0");
-    let second_manifest = SidecarManifest::read(library.manifest_path())
-        .expect("second manifest reads back");
+    let second_manifest =
+        SidecarManifest::read(library.manifest_path()).expect("second manifest reads back");
 
     assert_eq!(
         first_manifest.schema_version(),
@@ -590,8 +580,7 @@ fn a_duplicate_id_is_carried_in_both_records() {
         stderr(&output)
     );
 
-    let manifest = SidecarManifest::read(library.manifest_path())
-        .expect("the manifest reads back");
+    let manifest = SidecarManifest::read(library.manifest_path()).expect("the manifest reads back");
     assert_eq!(
         manifest.entries().len(),
         2,
@@ -628,8 +617,7 @@ fn sidecar_importer_preview_accepts_the_run_output() {
     let local_path = local_root.path().join(".notae/index.sqlite");
     fs::create_dir_all(local_path.parent().expect("parent")).expect("mkdir");
     let local = IndexStore::open(&local_path).expect("open the local store");
-    let manifest = SidecarManifest::read(library.manifest_path())
-        .expect("read the sidecar");
+    let manifest = SidecarManifest::read(library.manifest_path()).expect("read the sidecar");
     let catalog = notae_index_cli::catalog::FilesystemCatalog::new(
         notae_index_cli::catalog::ValidatedRoot::open(library.root())
             .expect("open the library root"),

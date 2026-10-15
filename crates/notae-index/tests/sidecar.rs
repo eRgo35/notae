@@ -28,7 +28,12 @@ fn path(value: &str) -> RelativePdfPath {
 }
 
 /// Filename-derived metadata, as a rescan would leave it.
-fn metadata(id: Option<NoteId>, title: &str, composer: Option<&str>, tags: &[&str]) -> NoteMetadata {
+fn metadata(
+    id: Option<NoteId>,
+    title: &str,
+    composer: Option<&str>,
+    tags: &[&str],
+) -> NoteMetadata {
     let mut metadata = NoteMetadata::new(
         title,
         composer.map(str::to_owned),
@@ -40,7 +45,10 @@ fn metadata(id: Option<NoteId>, title: &str, composer: Option<&str>, tags: &[&st
         .assign_title(title, MetadataOrigin::FilenameDerived)
         .expect("valid title");
     metadata.assign_composer_or_artist(composer.map(str::to_owned), MetadataOrigin::Unset);
-    metadata.assign_tags(tags.iter().map(|tag| (*tag).to_owned()), MetadataOrigin::Unset);
+    metadata.assign_tags(
+        tags.iter().map(|tag| (*tag).to_owned()),
+        MetadataOrigin::Unset,
+    );
     metadata
 }
 
@@ -192,7 +200,13 @@ fn record_at(store: &IndexStore, relative: &str) -> IndexedNote {
 #[test]
 fn manifest_round_trips_through_json() {
     let original = manifest(vec![
-        entry_with_ocr("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves", "le  feuilles  d'automne"),
+        entry_with_ocr(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+            "le  feuilles  d'automne",
+        ),
         entry("Sibelius - Valse Triste.pdf", 2, None, "Valse Triste"),
     ]);
 
@@ -203,12 +217,18 @@ fn manifest_round_trips_through_json() {
     assert_eq!(read_back, original);
     assert_eq!(read_back.schema_version(), SIDECAR_SCHEMA_VERSION);
     assert_eq!(read_back.entries().len(), 2);
-    assert_eq!(read_back.entries()[0].path(), &path("12 - Autumn Leaves.pdf"));
+    assert_eq!(
+        read_back.entries()[0].path(),
+        &path("12 - Autumn Leaves.pdf")
+    );
     assert_eq!(
         read_back.entries()[0].ocr().map(SidecarOcr::text),
         Some("le feuilles d'automne")
     );
-    assert_eq!(read_back.entries()[0].metadata().id(), Some(NoteId::new(12)));
+    assert_eq!(
+        read_back.entries()[0].metadata().id(),
+        Some(NoteId::new(12))
+    );
 
     let _ = std::fs::remove_file(&file);
 }
@@ -293,7 +313,14 @@ fn malformed_manifest_is_rejected() {
 fn unsupported_schema_version_is_rejected_before_any_mutation() {
     let (store, database) = open("unsupported");
     store
-        .upsert_note(&note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves", None, &[]))
+        .upsert_note(&note(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+            None,
+            &[],
+        ))
         .expect("index the local record");
 
     let mut rejected = manifest(vec![entry(
@@ -305,7 +332,8 @@ fn unsupported_schema_version_is_rejected_before_any_mutation() {
     rejected.set_schema_version(SIDECAR_SCHEMA_VERSION + 1);
 
     let before = write_times(&database);
-    let error = SidecarImporter::preview(&store, &rejected, &catalog_of(&rejected)).expect_err("older build must refuse");
+    let error = SidecarImporter::preview(&store, &rejected, &catalog_of(&rejected))
+        .expect_err("older build must refuse");
     assert!(matches!(
         error,
         SidecarError::UnsupportedSchemaVersion { found, supported }
@@ -321,12 +349,26 @@ fn writer_emits_a_manifest_of_the_stored_records() {
     let (store, database) = open("writer");
     store
         .upsert_note_with_ocr(
-            &note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves", Some("Miles Davis"), &["jazz"]),
+            &note(
+                "12 - Autumn Leaves.pdf",
+                1,
+                Some(NoteId::new(12)),
+                "Autumn Leaves",
+                Some("Miles Davis"),
+                &["jazz"],
+            ),
             Some(&OcrText::with_language("autumn leaves", "eng")),
         )
         .expect("index the first record");
     store
-        .upsert_note(&note("507 - My Practice.pdf", 2, Some(NoteId::new(507)), "My Practice", None, &[]))
+        .upsert_note(&note(
+            "507 - My Practice.pdf",
+            2,
+            Some(NoteId::new(507)),
+            "My Practice",
+            None,
+            &[],
+        ))
         .expect("index the second record");
 
     let file = temp_file("writer", "json");
@@ -355,7 +397,10 @@ fn writer_emits_a_manifest_of_the_stored_records() {
         Some("autumn leaves")
     );
     assert_eq!(written.entries()[1].ocr(), None);
-    assert_eq!(written.entries()[0].ocr().and_then(SidecarOcr::language), Some("eng"));
+    assert_eq!(
+        written.entries()[0].ocr().and_then(SidecarOcr::language),
+        Some("eng")
+    );
     assert_eq!(
         written.entries()[0].metadata().composer_or_artist(),
         Some("Miles Davis")
@@ -377,7 +422,9 @@ fn writer_emits_a_manifest_of_the_stored_records() {
         MetadataOrigin::FilenameDerived
     );
     assert_eq!(
-        written.entries()[0].ocr_text().map(|ocr| ocr.text().to_string()),
+        written.entries()[0]
+            .ocr_text()
+            .map(|ocr| ocr.text().to_string()),
         Some("autumn leaves".to_string())
     );
     assert_eq!(written.entries()[1].ocr_text(), None);
@@ -396,23 +443,43 @@ fn preview_classifies_new_matched_moved_and_missing() {
     let (store, database) = open("classification");
     // Indexed under the old name; the sidecar has it under the new one.
     store
-        .upsert_note(&note("Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves", None, &[]))
+        .upsert_note(&note(
+            "Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+            None,
+            &[],
+        ))
         .expect("index the moved record");
     store
-        .upsert_note(&note("Sibelius - Valse Triste.pdf", 2, None, "Valse Triste", None, &[]))
+        .upsert_note(&note(
+            "Sibelius - Valse Triste.pdf",
+            2,
+            None,
+            "Valse Triste",
+            None,
+            &[],
+        ))
         .expect("index the matched record");
     store
         .upsert_note(&note("local-only.pdf", 3, None, "Local Only", None, &[]))
         .expect("index the record the sidecar does not mention");
 
     let sidecar = manifest(vec![
-        entry("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves"),
+        entry(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ),
         entry("Sibelius - Valse Triste.pdf", 2, None, "Valse Triste"),
         entry("44 - New Piece.pdf", 4, Some(NoteId::new(44)), "New Piece"),
     ]);
 
     let before = write_times(&database);
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
 
     assert_eq!(preview.new_entries().len(), 1);
     assert_eq!(preview.new_entries()[0].path(), &path("44 - New Piece.pdf"));
@@ -447,7 +514,11 @@ fn preview_classifies_new_matched_moved_and_missing() {
         "a record the sidecar does not mention is reported, not deleted"
     );
     assert!(preview.writes(), "a new entry and a move both write");
-    assert_eq!(preview.entries().len(), 3, "every entry is classified exactly once");
+    assert_eq!(
+        preview.entries().len(),
+        3,
+        "every entry is classified exactly once"
+    );
 
     assert_eq!(write_times(&database), before, "preview must not write");
     let _ = std::fs::remove_file(&database);
@@ -463,7 +534,8 @@ fn an_import_that_changes_nothing_writes_nothing() {
     let sidecar = manifest(vec![entry("a.pdf", 1, Some(NoteId::new(1)), "A")]);
     let before = write_times(&database);
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
     assert!(!preview.writes());
     assert_eq!(preview.unchanged_entries().len(), 1);
 
@@ -478,7 +550,14 @@ fn an_import_that_changes_nothing_writes_nothing() {
 fn preview_reports_hash_mismatches_and_never_applies_them() {
     let (store, database) = open("mismatch");
     store
-        .upsert_note(&note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves", None, &[]))
+        .upsert_note(&note(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+            None,
+            &[],
+        ))
         .expect("index the local record");
 
     // The file on the phone is the one the store fingerprinted; the sidecar
@@ -492,9 +571,12 @@ fn preview_reports_hash_mismatches_and_never_applies_them() {
     )]);
 
     let before = write_times(&database);
-    let preview =
-        SidecarImporter::preview(&store, &sidecar, &TestCatalog::agreeing(&[("12 - Autumn Leaves.pdf", 1)]))
-            .expect("preview");
+    let preview = SidecarImporter::preview(
+        &store,
+        &sidecar,
+        &TestCatalog::agreeing(&[("12 - Autumn Leaves.pdf", 1)]),
+    )
+    .expect("preview");
 
     assert_eq!(preview.mismatches().len(), 1);
     let mismatch = &preview.mismatches()[0];
@@ -510,7 +592,10 @@ fn preview_reports_hash_mismatches_and_never_applies_them() {
         None,
         "a mismatch is applied to no record at all"
     );
-    assert_eq!(mismatch.local().map(IndexedNote::title), Some("Autumn Leaves"));
+    assert_eq!(
+        mismatch.local().map(IndexedNote::title),
+        Some("Autumn Leaves")
+    );
     assert!(!mismatch.change().writes());
     assert_eq!(preview.new_entries().len(), 0);
     assert_eq!(preview.changed_entries().len(), 0);
@@ -551,32 +636,56 @@ fn preview_reports_duplicate_id_conflicts_with_both_paths() {
     // The record already indexed holds the ID, even though the newcomer's path
     // sorts first: ownership comes from the index as it was before the import.
     store
-        .upsert_note(&note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves", None, &[]))
+        .upsert_note(&note(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+            None,
+            &[],
+        ))
         .expect("index the record that already holds the id");
     let sidecar = manifest(vec![
-        entry("12 - Autumn Leaves (copy).pdf", 2, Some(NoteId::new(12)), "Autumn Leaves"),
-        entry("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves"),
+        entry(
+            "12 - Autumn Leaves (copy).pdf",
+            2,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ),
+        entry(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ),
     ]);
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
 
     assert_eq!(preview.conflicts().len(), 1);
     let conflict = &preview.conflicts()[0];
     assert_eq!(conflict.id(), NoteId::new(12));
     assert_eq!(conflict.existing(), &path("12 - Autumn Leaves.pdf"));
-    assert_eq!(conflict.conflicting(), &path("12 - Autumn Leaves (copy).pdf"));
+    assert_eq!(
+        conflict.conflicting(),
+        &path("12 - Autumn Leaves (copy).pdf")
+    );
     assert_eq!(
         preview.conflict_for(&path("12 - Autumn Leaves (copy).pdf")),
         Some(conflict),
         "both paths find the conflict by path"
     );
-    assert_eq!(preview.conflict_for(&path("12 - Autumn Leaves.pdf")), Some(conflict));
+    assert_eq!(
+        preview.conflict_for(&path("12 - Autumn Leaves.pdf")),
+        Some(conflict)
+    );
     assert_eq!(preview.conflict_for(&path("99 - Unrelated.pdf")), None);
     // Both entries carry the conflict, so the screen can mark either file
     // without joining two lists.
     for entry in preview.entries() {
-        let takes_part = entry.path() == conflict.existing()
-            || entry.path() == conflict.conflicting();
+        let takes_part =
+            entry.path() == conflict.existing() || entry.path() == conflict.conflicting();
         assert_eq!(
             entry.conflict().is_some(),
             takes_part,
@@ -598,11 +707,14 @@ fn preview_reports_duplicate_id_conflicts_with_both_paths() {
         2,
         "the loser stays in the library without the contested id"
     );
-    assert!(store
-        .list_all()
-        .expect("list")
-        .iter()
-        .all(|note| note.id() != Some(NoteId::new(12)) || note.path() == &path("12 - Autumn Leaves.pdf")));
+    assert!(
+        store
+            .list_all()
+            .expect("list")
+            .iter()
+            .all(|note| note.id() != Some(NoteId::new(12))
+                || note.path() == &path("12 - Autumn Leaves.pdf"))
+    );
 
     let _ = std::fs::remove_file(&database);
 }
@@ -637,7 +749,8 @@ fn manual_metadata_survives_a_sidecar_that_proposes_other_values() {
     );
     let sidecar = manifest(vec![proposed]);
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
     let planned = &preview.unchanged_entries()[0];
 
     assert!(
@@ -701,9 +814,15 @@ fn imported_metadata_is_applied_to_non_manual_fields() {
         None,
     )]);
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
     let planned = &preview.changed_entries()[0];
-    assert!(planned.metadata().preserved().contains(&MetadataField::Title));
+    assert!(
+        planned
+            .metadata()
+            .preserved()
+            .contains(&MetadataField::Title)
+    );
     assert!(
         planned
             .metadata()
@@ -711,12 +830,20 @@ fn imported_metadata_is_applied_to_non_manual_fields() {
             .contains(&MetadataField::ComposerOrArtist)
     );
     assert!(planned.metadata().imported().contains(&MetadataField::Tags));
-    assert!(!planned.metadata().imported().contains(&MetadataField::Title));
+    assert!(
+        !planned
+            .metadata()
+            .imported()
+            .contains(&MetadataField::Title)
+    );
 
     let report = SidecarImporter::apply(preview, &store).expect("apply");
     assert_eq!(report.imported().len(), 1);
 
-    let stored = store.get_by_hash(&digest(1)).expect("read").expect("record");
+    let stored = store
+        .get_by_hash(&digest(1))
+        .expect("read")
+        .expect("record");
     assert_eq!(stored.title(), "Autumn Leaves (my edit)");
     assert_eq!(stored.metadata().composer_or_artist(), Some("Miles Davis"));
     assert_eq!(
@@ -749,8 +876,12 @@ fn explicit_override_replaces_manual_metadata() {
         "Autumn Leaves (from PC)",
     )]);
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
-    assert!(preview.unchanged_entries().len() == 1, "manual metadata blocks the write");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    assert!(
+        preview.unchanged_entries().len() == 1,
+        "manual metadata blocks the write"
+    );
 
     let overridden = preview
         .with_override(&path("12 - Autumn Leaves.pdf"), [MetadataField::Title])
@@ -773,7 +904,10 @@ fn explicit_override_replaces_manual_metadata() {
     );
 
     SidecarImporter::apply(overridden, &store).expect("apply");
-    let stored = store.get_by_hash(&digest(1)).expect("read").expect("record");
+    let stored = store
+        .get_by_hash(&digest(1))
+        .expect("read")
+        .expect("record");
     assert_eq!(stored.title(), "Autumn Leaves (from PC)");
     assert_eq!(
         stored.metadata().origin_of(MetadataField::Title),
@@ -805,17 +939,23 @@ fn imported_ocr_fills_missing_and_replaces_stale_text() {
         entry_with_ocr("b.pdf", 2, None, "B", "text from the new bytes"),
     ]);
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
-    assert!(preview
-        .entries()
-        .iter()
-        .all(|item| matches!(item.ocr(), OcrAssessment::Importing)));
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    assert!(
+        preview
+            .entries()
+            .iter()
+            .all(|item| matches!(item.ocr(), OcrAssessment::Importing))
+    );
 
     let report = SidecarImporter::apply(preview, &store).expect("apply");
     assert_eq!(report.imported().len(), 2);
 
     assert_eq!(
-        store.ocr_text(&digest(1)).expect("read").map(|t| t.text().to_string()),
+        store
+            .ocr_text(&digest(1))
+            .expect("read")
+            .map(|t| t.text().to_string()),
         Some("recognized on the PC".to_string())
     );
     let b = store.ocr_text(&digest(2)).expect("read").expect("ocr text");
@@ -835,10 +975,17 @@ fn current_local_ocr_is_not_reimported() {
         )
         .expect("index the record");
 
-    let sidecar = manifest(vec![entry_with_ocr("a.pdf", 1, None, "A", "already indexed")]);
+    let sidecar = manifest(vec![entry_with_ocr(
+        "a.pdf",
+        1,
+        None,
+        "A",
+        "already indexed",
+    )]);
     let before = write_times(&database);
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
     assert_eq!(preview.unchanged_entries().len(), 1);
     assert!(matches!(
         preview.unchanged_entries()[0].ocr(),
@@ -861,29 +1008,51 @@ fn preview_does_not_touch_the_local_store() {
     let (store, database) = open("read-only");
     store
         .upsert_note_with_ocr(
-            &note("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves", None, &[]),
+            &note(
+                "12 - Autumn Leaves.pdf",
+                1,
+                Some(NoteId::new(12)),
+                "Autumn Leaves",
+                None,
+                &[],
+            ),
             Some(&OcrText::new("autumn leaves")),
         )
         .expect("index the record");
 
     let sidecar = manifest(vec![
-        entry_with_ocr("12 - Autumn Leaves.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves", "new pc text"),
+        entry_with_ocr(
+            "12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+            "new pc text",
+        ),
         entry("44 - New Piece.pdf", 4, Some(NoteId::new(12)), "New Piece"),
     ]);
 
     let before_times = write_times(&database);
     let before_notes = store.list_all().expect("list");
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
-    assert_eq!(preview.conflicts().len(), 1, "the preview still reports everything");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    assert_eq!(
+        preview.conflicts().len(),
+        1,
+        "the preview still reports everything"
+    );
     assert!(!preview.new_entries().is_empty());
-    let _ = preview.with_override(&path("44 - New Piece.pdf"), [MetadataField::Title])
+    let _ = preview
+        .with_override(&path("44 - New Piece.pdf"), [MetadataField::Title])
         .expect("override");
 
     assert_eq!(write_times(&database), before_times);
     assert_eq!(store.list_all().expect("list"), before_notes);
     assert_eq!(
-        store.ocr_text(&digest(1)).expect("read").map(|t| t.text().to_string()),
+        store
+            .ocr_text(&digest(1))
+            .expect("read")
+            .map(|t| t.text().to_string()),
         Some("autumn leaves".to_string())
     );
 
@@ -894,15 +1063,34 @@ fn preview_does_not_touch_the_local_store() {
 fn apply_keeps_at_most_one_record_per_numeric_id() {
     let (store, database) = open("unique-ids");
     store
-        .upsert_note(&note("existing.pdf", 1, Some(NoteId::new(12)), "Existing", None, &[]))
+        .upsert_note(&note(
+            "existing.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Existing",
+            None,
+            &[],
+        ))
         .expect("index the local record");
     store
-        .upsert_note(&note("local-only.pdf", 2, Some(NoteId::new(7)), "Local Only", None, &[]))
+        .upsert_note(&note(
+            "local-only.pdf",
+            2,
+            Some(NoteId::new(7)),
+            "Local Only",
+            None,
+            &[],
+        ))
         .expect("index a record the sidecar omits");
 
     let sidecar = manifest(vec![
         // Claims an ID the local library already holds.
-        entry("12 - Autumn Leaves.pdf", 3, Some(NoteId::new(12)), "Autumn Leaves"),
+        entry(
+            "12 - Autumn Leaves.pdf",
+            3,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ),
         // Two new files competing for one number.
         entry("99 - Take One.pdf", 4, Some(NoteId::new(99)), "Take One"),
         entry("99 - Take Two.pdf", 5, Some(NoteId::new(99)), "Take Two"),
@@ -910,7 +1098,8 @@ fn apply_keeps_at_most_one_record_per_numeric_id() {
         entry("100 - Unnumbered.pdf", 6, None, "Unnumbered"),
     ]);
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
     assert_eq!(preview.conflicts().len(), 2);
 
     let report = SidecarImporter::apply(preview, &store).expect("apply");
@@ -928,7 +1117,10 @@ fn apply_keeps_at_most_one_record_per_numeric_id() {
         let Some(id) = note.id() else { continue };
         assert!(seen.insert(id), "id {id} is held by two records");
         assert_eq!(
-            store.get_by_id(id).expect("read by id").map(|found| found.path().clone()),
+            store
+                .get_by_id(id)
+                .expect("read by id")
+                .map(|found| found.path().clone()),
             Some(note.path().clone())
         );
     }
@@ -936,7 +1128,11 @@ fn apply_keeps_at_most_one_record_per_numeric_id() {
 
     // The record indexed first keeps the contested number.
     assert_eq!(
-        store.get_by_id(NoteId::new(12)).expect("read").expect("held").path(),
+        store
+            .get_by_id(NoteId::new(12))
+            .expect("read")
+            .expect("held")
+            .path(),
         &path("existing.pdf")
     );
 
@@ -948,7 +1144,14 @@ fn apply_reports_a_store_refusal_as_a_failure() {
     let (store, database) = open("failure");
     // The number 12 is already held by a local record.
     store
-        .upsert_note(&note("existing.pdf", 1, Some(NoteId::new(12)), "Existing", None, &[]))
+        .upsert_note(&note(
+            "existing.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Existing",
+            None,
+            &[],
+        ))
         .expect("index the record that holds the id");
 
     // The newcomer also carries 12, and the user typed it in by hand on the PC,
@@ -959,10 +1162,16 @@ fn apply_reports_a_store_refusal_as_a_failure() {
     manual.set_id(Some(NoteId::new(12)));
     let sidecar = manifest(vec![
         SidecarEntry::new(&record("12 - Autumn Leaves.pdf", 2, manual), None),
-        entry("77 - Fine Piece.pdf", 3, Some(NoteId::new(77)), "Fine Piece"),
+        entry(
+            "77 - Fine Piece.pdf",
+            3,
+            Some(NoteId::new(77)),
+            "Fine Piece",
+        ),
     ]);
 
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
     assert_eq!(preview.conflicts().len(), 1);
     let report = SidecarImporter::apply(preview, &store).expect("apply");
 
@@ -995,7 +1204,10 @@ fn duplicate_paths_and_content_in_a_manifest_are_rejected() {
         Err(SidecarError::DuplicatePath(_))
     ));
 
-    let duplicate_content = manifest(vec![entry("a.pdf", 1, None, "A"), entry("b.pdf", 1, None, "B")]);
+    let duplicate_content = manifest(vec![
+        entry("a.pdf", 1, None, "A"),
+        entry("b.pdf", 1, None, "B"),
+    ]);
     assert!(matches!(
         SidecarImporter::preview(&store, &duplicate_content, &catalog_of(&duplicate_content)),
         Err(SidecarError::DuplicateContent(_))
@@ -1013,7 +1225,8 @@ fn duplicate_paths_and_content_in_a_manifest_are_rejected() {
 
     // An override naming a path the manifest does not have is refused.
     let sidecar = manifest(vec![entry("a.pdf", 1, None, "A")]);
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
     assert!(matches!(
         preview.with_override(&path("absent.pdf"), [MetadataField::Title]),
         Err(SidecarError::UnknownEntry(_))
@@ -1053,7 +1266,8 @@ fn import_does_not_delete_records_the_sidecar_omits() {
         .expect("index the record");
 
     let sidecar = manifest(vec![entry("new.pdf", 2, None, "New")]);
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
     assert_eq!(preview.missing().len(), 1);
 
     let report = SidecarImporter::apply(preview, &store).expect("apply");
@@ -1061,7 +1275,11 @@ fn import_does_not_delete_records_the_sidecar_omits() {
 
     let notes = store.list_all().expect("list");
     assert_eq!(notes.len(), 2);
-    assert!(notes.iter().any(|note| note.path() == &path("local-only.pdf")));
+    assert!(
+        notes
+            .iter()
+            .any(|note| note.path() == &path("local-only.pdf"))
+    );
 
     let _ = std::fs::remove_file(&database);
 }
@@ -1071,7 +1289,9 @@ fn ocr_text_from_a_sidecar_is_readable_through_the_store() {
     let (store, database) = open("ocr-read");
     let mut local = note("a.pdf", 1, None, "A", None, &[]);
     local.set_status(notae_domain::IndexStatus::OcrPending);
-    store.upsert_note_with_ocr(&local, Some(&OcrText::new(""))).expect("index");
+    store
+        .upsert_note_with_ocr(&local, Some(&OcrText::new("")))
+        .expect("index");
 
     let sidecar = manifest(vec![entry_with_ocr("a.pdf", 1, None, "A", "printed words")]);
     SidecarImporter::apply(
@@ -1085,12 +1305,17 @@ fn ocr_text_from_a_sidecar_is_readable_through_the_store() {
 
     let row: (String, i64) = rusqlite::Connection::open(&database)
         .expect("open raw")
-        .query_row("SELECT ocr_text, length(ocr_text) FROM notes", params![], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })
+        .query_row(
+            "SELECT ocr_text, length(ocr_text) FROM notes",
+            params![],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
         .expect("query");
     assert_eq!(row.0, "printed words");
-    assert_eq!(row.1, i64::try_from("printed words".len()).expect("length fits"));
+    assert_eq!(
+        row.1,
+        i64::try_from("printed words".len()).expect("length fits")
+    );
 
     let _ = std::fs::remove_file(&database);
 }
@@ -1099,7 +1324,14 @@ fn ocr_text_from_a_sidecar_is_readable_through_the_store() {
 fn a_file_that_changed_on_disk_is_a_hash_mismatch_and_is_not_applied() {
     let (store, database) = open("disk-mismatch");
     store
-        .upsert_note(&note("a.pdf", 1, Some(NoteId::new(12)), "Autumn Leaves", None, &[]))
+        .upsert_note(&note(
+            "a.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+            None,
+            &[],
+        ))
         .expect("index the record");
 
     // The sidecar and the store both still describe the bytes the phone had
@@ -1134,7 +1366,10 @@ fn a_file_that_changed_on_disk_is_a_hash_mismatch_and_is_not_applied() {
     assert_eq!(report.imported().len(), 0);
     assert_eq!(report.mismatches().len(), 1);
 
-    let stored = store.get_by_hash(&digest(1)).expect("read").expect("record");
+    let stored = store
+        .get_by_hash(&digest(1))
+        .expect("read")
+        .expect("record");
     assert_eq!(
         stored.title(),
         "Autumn Leaves",
@@ -1172,14 +1407,22 @@ fn an_entry_for_a_file_the_library_does_not_have_is_reported_as_missing() {
     assert_eq!(absent.change(), &EntryChange::Missing);
     assert_eq!(absent.resolved(), None);
     assert!(matches!(absent.ocr(), OcrAssessment::NotApplied));
-    assert_eq!(preview.new_entries().len(), 1, "the file that is there still imports");
+    assert_eq!(
+        preview.new_entries().len(),
+        1,
+        "the file that is there still imports"
+    );
 
     let report = SidecarImporter::apply(preview, &store).expect("apply");
     assert_eq!(report.absent_entries().len(), 1);
     assert_eq!(report.imported().len(), 1);
 
     let notes = store.list_all().expect("list");
-    assert_eq!(notes.len(), 1, "no record is created for a file that is not there");
+    assert_eq!(
+        notes.len(),
+        1,
+        "no record is created for a file that is not there"
+    );
     assert_eq!(notes[0].path(), &path("present.pdf"));
 
     let _ = std::fs::remove_file(&database);
@@ -1201,7 +1444,10 @@ fn a_file_the_catalog_cannot_read_is_not_imported() {
     let unreadable = &preview.unreadable_entries()[0];
     assert_eq!(unreadable.path(), &path("a.pdf"));
     assert_eq!(unreadable.resolved(), None);
-    assert!(!preview.writes(), "a hash that could not be read is not a hash");
+    assert!(
+        !preview.writes(),
+        "a hash that could not be read is not a hash"
+    );
 
     SidecarImporter::apply(preview, &store).expect("apply");
     assert!(
@@ -1294,8 +1540,10 @@ fn an_unknown_field_in_any_nested_value_is_rejected() {
     // The digest crosses the wire as the 32 raw bytes it is, not as hex.
     let digest = format!("[{}]", vec!["1"; 32].join(", "));
     let good_fingerprint = format!(r#"{{"sha256": {digest}, "byte_len": 10}}"#);
-    let good_metadata =
-        format!(r#"{{"id": null, "title": "A", "provenance": {}}}"#, provenance_json());
+    let good_metadata = format!(
+        r#"{{"id": null, "title": "A", "provenance": {}}}"#,
+        provenance_json()
+    );
 
     let cases: [(&str, String); 4] = [
         (
@@ -1385,13 +1633,31 @@ fn the_writer_preserves_contested_and_condition_failed_status() {
     let (store, database) = open("status-round-trip");
     // A record the PC could not index, and one it could not read: both carry a
     // status that says something about the record itself.
-    let mut contested = note("12 - Autumn Leaves (copy).pdf", 1, None, "Autumn Leaves", None, &[]);
+    let mut contested = note(
+        "12 - Autumn Leaves (copy).pdf",
+        1,
+        None,
+        "Autumn Leaves",
+        None,
+        &[],
+    );
     contested.set_status(IndexStatus::DuplicateIdConflict);
-    store.upsert_note(&contested).expect("index the contested record");
+    store
+        .upsert_note(&contested)
+        .expect("index the contested record");
 
-    let mut unreadable = note("44 - Broken.pdf", 2, Some(NoteId::new(44)), "Broken", None, &[]);
+    let mut unreadable = note(
+        "44 - Broken.pdf",
+        2,
+        Some(NoteId::new(44)),
+        "Broken",
+        None,
+        &[],
+    );
     unreadable.set_status(IndexStatus::InvalidPdf);
-    store.upsert_note(&unreadable).expect("index the unreadable record");
+    store
+        .upsert_note(&unreadable)
+        .expect("index the unreadable record");
 
     let file = temp_file("status-round-trip", "json");
     SidecarWriter::new("notae-index 0.1.0", timestamp())
@@ -1400,12 +1666,18 @@ fn the_writer_preserves_contested_and_condition_failed_status() {
 
     let written = SidecarManifest::read(&file).expect("read the sidecar");
     assert_eq!(
-        written.entry(&path("12 - Autumn Leaves (copy).pdf")).expect("entry").status(),
+        written
+            .entry(&path("12 - Autumn Leaves (copy).pdf"))
+            .expect("entry")
+            .status(),
         IndexStatus::DuplicateIdConflict,
         "a record the writer dropped the status of reads as a free unnumbered entry"
     );
     assert_eq!(
-        written.entry(&path("44 - Broken.pdf")).expect("entry").status(),
+        written
+            .entry(&path("44 - Broken.pdf"))
+            .expect("entry")
+            .status(),
         IndexStatus::InvalidPdf,
         "a condition a record was left in survives the round trip"
     );
@@ -1440,11 +1712,19 @@ fn a_conflict_with_an_omitted_incumbent_marks_both_records() {
     let (store, database) = open("omitted-incumbent");
     // The incumbent holds 30 and the sidecar does not mention it at all.
     store
-        .upsert_note(&note("held.pdf", 1, Some(NoteId::new(30)), "Held", None, &[]))
+        .upsert_note(&note(
+            "held.pdf",
+            1,
+            Some(NoteId::new(30)),
+            "Held",
+            None,
+            &[],
+        ))
         .expect("index the record that holds the id");
 
     let sidecar = manifest(vec![entry("loser.pdf", 2, Some(NoteId::new(30)), "Loser")]);
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
 
     assert_eq!(preview.conflicts().len(), 1);
     assert_eq!(
@@ -1472,7 +1752,11 @@ fn a_conflict_with_an_omitted_incumbent_marks_both_records() {
 
     let loser = record_at(&store, "loser.pdf");
     assert_eq!(loser.status(), IndexStatus::DuplicateIdConflict);
-    assert_eq!(loser.id(), None, "the newcomer is written without the contested id");
+    assert_eq!(
+        loser.id(),
+        None,
+        "the newcomer is written without the contested id"
+    );
 
     let _ = std::fs::remove_file(&database);
 }
@@ -1484,7 +1768,14 @@ fn a_contested_incumbent_write_is_not_an_empty_report() {
     // all. A report that calls that empty hides a real write.
     let (store, database) = open("contested-not-empty");
     store
-        .upsert_note(&note("held.pdf", 1, Some(NoteId::new(30)), "Held", None, &[]))
+        .upsert_note(&note(
+            "held.pdf",
+            1,
+            Some(NoteId::new(30)),
+            "Held",
+            None,
+            &[],
+        ))
         .expect("index the record that holds the id");
 
     // The only entry is the incumbent's own file, imported under a manual ID the
@@ -1496,7 +1787,8 @@ fn a_contested_incumbent_write_is_not_an_empty_report() {
         &record("held-copy.pdf", 2, manual),
         None,
     )]);
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
 
     let report = SidecarImporter::apply(preview, &store).expect("apply");
     assert_eq!(
@@ -1524,11 +1816,15 @@ fn an_empty_report_stays_empty_without_a_contested_write() {
         .expect("index the record");
 
     let sidecar = manifest(vec![entry("a.pdf", 1, Some(NoteId::new(1)), "A")]);
-    let preview = SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
+    let preview =
+        SidecarImporter::preview(&store, &sidecar, &catalog_of(&sidecar)).expect("preview");
     let report = SidecarImporter::apply(preview, &store).expect("apply");
 
     assert_eq!(report.contested_records().len(), 0);
-    assert!(report.is_empty(), "nothing was written, so the report is empty");
+    assert!(
+        report.is_empty(),
+        "nothing was written, so the report is empty"
+    );
 
     let _ = std::fs::remove_file(&database);
 }

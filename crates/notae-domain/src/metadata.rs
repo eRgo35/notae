@@ -62,12 +62,7 @@ pub enum MetadataField {
 
 impl MetadataField {
     /// Every tracked field, in display order.
-    pub const ALL: [Self; 4] = [
-        Self::Id,
-        Self::Title,
-        Self::ComposerOrArtist,
-        Self::Tags,
-    ];
+    pub const ALL: [Self; 4] = [Self::Id, Self::Title, Self::ComposerOrArtist, Self::Tags];
 }
 
 /// The [`MetadataOrigin`] of each editable field.
@@ -276,11 +271,7 @@ impl NoteMetadata {
     /// # Errors
     /// Returns [`DomainError::EmptyTitle`] when the trimmed title is empty,
     /// leaving the record untouched.
-    pub fn assign_title(
-        &mut self,
-        title: &str,
-        origin: MetadataOrigin,
-    ) -> Result<(), DomainError> {
+    pub fn assign_title(&mut self, title: &str, origin: MetadataOrigin) -> Result<(), DomainError> {
         let title = title.trim();
         if title.is_empty() {
             return Err(DomainError::EmptyTitle);
@@ -323,11 +314,7 @@ impl NoteMetadata {
 
     /// Replaces the whole tag set with an explicit origin, for filename
     /// parsing, initialization, and PC import.
-    pub fn assign_tags(
-        &mut self,
-        tags: impl IntoIterator<Item = String>,
-        origin: MetadataOrigin,
-    ) {
+    pub fn assign_tags(&mut self, tags: impl IntoIterator<Item = String>, origin: MetadataOrigin) {
         self.tags = normalize_tags(tags);
         self.set_origin(MetadataField::Tags, origin);
     }
@@ -378,9 +365,7 @@ impl<'de> Deserialize<'de> for NoteMetadata {
         let raw = Raw::deserialize(deserializer)?;
         let provenance = match (raw.provenance, raw.origin) {
             (Some(provenance), _) => provenance,
-            (None, Some(origin)) => {
-                FieldProvenance::with_every_field(origin)
-            }
+            (None, Some(origin)) => FieldProvenance::with_every_field(origin),
             (None, None) => {
                 return Err(serde::de::Error::custom(DomainError::MissingProvenance));
             }

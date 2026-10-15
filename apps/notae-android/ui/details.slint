@@ -98,7 +98,7 @@ export component ScoreDetails inherits Card {
                     spacing: 10px;
                     alignment: start;
                     PillButton { text: "Open score"; primary: true; clicked => { root.open(); } }
-                    PillButton { text: "Edit details"; tonal: true; clicked => { root.edit(); } }
+                    IconButton { label: "Edit details"; icon: @image-url("material-icons/edit.svg"); clicked => { root.edit(); } }
                 }
             }
         }

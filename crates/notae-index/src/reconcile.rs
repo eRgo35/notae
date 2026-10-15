@@ -160,11 +160,7 @@ pub struct PdfFile {
 impl PdfFile {
     /// Describes an enumerated, readable PDF.
     #[must_use]
-    pub const fn new(
-        path: RelativePdfPath,
-        fingerprint: PdfFingerprint,
-        filename: String,
-    ) -> Self {
+    pub const fn new(path: RelativePdfPath, fingerprint: PdfFingerprint, filename: String) -> Self {
         Self::with_condition(path, filename, FileCondition::Readable(fingerprint))
     }
 
@@ -194,10 +190,7 @@ impl PdfFile {
     /// observe, using the last segment of its library-relative path as its
     /// display name.
     #[must_use]
-    pub fn from_path_with_condition(
-        path: RelativePdfPath,
-        condition: FileCondition,
-    ) -> Self {
+    pub fn from_path_with_condition(path: RelativePdfPath, condition: FileCondition) -> Self {
         let filename = path
             .as_str()
             .rsplit('/')
@@ -576,7 +569,9 @@ impl RescanPlan {
         if self.conditioned.contains(path) {
             return;
         }
-        self.edit_note_at(path, |note| note.with_status(IndexStatus::DuplicateIdConflict));
+        self.edit_note_at(path, |note| {
+            note.with_status(IndexStatus::DuplicateIdConflict)
+        });
     }
 
     /// Withholds the contested note ID from the record at `path`.
@@ -612,11 +607,19 @@ impl RescanPlan {
     /// catalog could not use, a record that needed no write at all — is
     /// promoted to a write first, so an edit is never silently discarded.
     fn edit_note_at(&mut self, path: &RelativePdfPath, edit: impl Fn(IndexedNote) -> IndexedNote) {
-        if let Some(item) = self.additions.iter_mut().find(|item| item.note.path() == path) {
+        if let Some(item) = self
+            .additions
+            .iter_mut()
+            .find(|item| item.note.path() == path)
+        {
             item.note = edit(item.note.clone());
             return;
         }
-        if let Some(item) = self.updates.iter_mut().find(|item| item.note.path() == path) {
+        if let Some(item) = self
+            .updates
+            .iter_mut()
+            .find(|item| item.note.path() == path)
+        {
             item.note = edit(item.note.clone());
             return;
         }
@@ -794,9 +797,7 @@ impl Reconciler {
                 }
                 None => false,
             };
-            if !written
-                && let Some(record) = record
-            {
+            if !written && let Some(record) = record {
                 // No write was planned for this record, but it still holds a
                 // note ID and must take part in duplicate-ID resolution.
                 plan.observed.push(record);
@@ -1305,10 +1306,7 @@ fn classify_bytes(
             .map_err(fail)?;
         let mut note = IndexedNote::new(file.path.clone(), fingerprint, metadata);
         note.set_status(IndexStatus::Discovered);
-        return Ok(Classification::Update(
-            note,
-            record.fingerprint().clone(),
-        ));
+        return Ok(Classification::Update(note, record.fingerprint().clone()));
     }
 
     let metadata = metadata_from_filename(parsed.clone())
@@ -1351,4 +1349,3 @@ fn unconflicted(status: IndexStatus) -> IndexStatus {
         | IndexStatus::ImportMismatch => status,
     }
 }
-

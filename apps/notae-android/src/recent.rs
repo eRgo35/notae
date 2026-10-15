@@ -16,7 +16,10 @@ pub struct RecentScores {
 }
 
 fn is_content_key(text: &str) -> bool {
-    text.len() == 64 && text.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    text.len() == 64
+        && text
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 impl RecentScores {
@@ -24,7 +27,11 @@ impl RecentScores {
     #[must_use]
     pub fn from_text(text: &str) -> Self {
         let mut recent = Self::default();
-        for line in text.lines().map(str::trim).filter(|line| is_content_key(line)) {
+        for line in text
+            .lines()
+            .map(str::trim)
+            .filter(|line| is_content_key(line))
+        {
             if !recent.keys.iter().any(|key| key == line) && recent.keys.len() < RECENT_LIMIT {
                 recent.keys.push(line.to_owned());
             }

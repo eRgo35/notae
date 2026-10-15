@@ -8,7 +8,19 @@ The UI follows a fixed One UI palette (not wallpaper-derived): background is `#F
 
 The launcher icon combines a folded score page with a musical N. `android/res` contains legacy density PNGs, API-26 adaptive resources, and an API-33 monochrome themed icon. Cargo's Android resource metadata, not the reference manifest alone, packages them.
 
-Controls animate state layers over 120–180 ms, sheets enter over 240 ms, and scan progress animates over 200 ms. **Settings → Reduce animations** disables this motion for the session. Android's disabled animator setting is read at launch.
+The redesigned UI has no animated transitions or state effects. Controls respond immediately to input, modal sheets open and close immediately, and progress changes only when worker events report new progress.
+
+## Follow-up UI verification
+
+The following checks cover the post-install usability fixes. They remain unverified in this run; installing an APK on the connected tablet is still deferred pending explicit user approval.
+
+- Start a scan, switch among Library, Search, and Settings, and confirm the same phase, progress, pending-text count, and outcome remain visible. Confirm pending text is described as an index state, not Android OCR running.
+- Confirm the Scan action appears in Library, Search, and Settings, starts the existing scan, and disables while another operation is active.
+- In Settings, verify the selected folder name and Change folder action, latest available scan result/conflicts/failures, pending-text count, local-only storage copy, and app version.
+- Open Search with the on-screen keyboard. Confirm scope chips scroll horizontally and results use the remaining viewport and scroll independently.
+- Open score details and verify the icon-only Edit details action has the accessible name “Edit details” and opens the editor.
+- Confirm screen changes, state layers, modal sheets, and progress have no animations.
+
 
 SAF readiness also synchronizes the controller's Library screen. Previously, selecting a folder opened the visible library but left the controller in Setup, so Settings was rejected. A host regression verifies that selecting ready storage enables Settings without starting a scan.
 

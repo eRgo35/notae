@@ -18,7 +18,6 @@ export global Theme {
     out property <color> error: root.dark ? #FF8A80 : #C62828;
     out property <color> paper: root.dark ? #E4E4E8 : #FFFFFF;
     out property <color> paper-edge: root.dark ? #2A2A2E : #E3E3E8;
-    in-out property <bool> reduced-motion: false;
     in-out property <bool> modal-open: false;
 }
 
@@ -119,7 +118,6 @@ export component PillButton inherits Rectangle {
         background: root.ink;
         opacity: !root.enabled ? 0 : input.pressed || input.keyboard-pressed ? 0.12
             : input.has-hover ? 0.08 : 0;
-        animate opacity { duration: Theme.reduced-motion ? 0ms : 120ms; easing: ease-out; }
     }
     content := HorizontalLayout {
         padding-left: 28px;
@@ -199,7 +197,6 @@ export component IconButton inherits Rectangle {
         background: root.ink;
         opacity: !root.enabled ? 0 : input.pressed || input.keyboard-pressed ? 0.12
             : input.has-hover ? 0.08 : 0;
-        animate opacity { duration: Theme.reduced-motion ? 0ms : 120ms; easing: ease-out; }
     }
     Image {
         x: 12px;
@@ -255,7 +252,6 @@ export component SearchField inherits Rectangle {
     accessible-action-set-selection-offsets(anchor, focus) => {
         if root.effective-enabled { editor.set-selection-offsets(anchor, focus); }
     }
-    animate border-color { duration: Theme.reduced-motion ? 0ms : 120ms; }
 
     Glyph {
         kind: "search";
@@ -354,7 +350,6 @@ export component TextField inherits Rectangle {
     accessible-action-set-selection-offsets(anchor, focus) => {
         if root.effective-enabled { editor.set-selection-offsets(anchor, focus); }
     }
-    animate border-color { duration: Theme.reduced-motion ? 0ms : 120ms; }
 
     viewport := Rectangle {
         x: 16px;

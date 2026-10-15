@@ -3,9 +3,9 @@
 use std::cmp::Ordering;
 
 use notae_domain::{
-    FilenameError, IndexedNote, IndexStatus, MetadataField, MetadataOrigin, NoteId,
-    PdfFingerprint, RelativePdfPath, Sha256Digest, compare_library_order, is_note_filename,
-    parse_filename, parse_note_filename, validate_unique_ids,
+    FilenameError, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId, PdfFingerprint,
+    RelativePdfPath, Sha256Digest, compare_library_order, is_note_filename, parse_filename,
+    parse_note_filename, validate_unique_ids,
 };
 
 fn fingerprint() -> PdfFingerprint {
@@ -272,7 +272,10 @@ fn parse_note_filename_rejects_non_pdf_names() {
         parse_note_filename("12 - Autumn Leaves"),
         Err(FilenameError::NotPdf)
     );
-    assert_eq!(parse_note_filename("noextension"), Err(FilenameError::NotPdf));
+    assert_eq!(
+        parse_note_filename("noextension"),
+        Err(FilenameError::NotPdf)
+    );
 }
 
 #[test]
@@ -330,7 +333,10 @@ fn duplicate_id_records_sort_deterministically() {
     ];
     notes.sort_by(compare_library_order);
     let paths: Vec<&str> = notes.iter().map(|n| n.path().as_str()).collect();
-    assert_eq!(paths, ["b/12 - Other.pdf", "a/12 - Same.pdf", "c/12 - Same.pdf"]);
+    assert_eq!(
+        paths,
+        ["b/12 - Other.pdf", "a/12 - Same.pdf", "c/12 - Same.pdf"]
+    );
 }
 
 fn note_with_fingerprint(filename: &str, seed: u8) -> IndexedNote {
@@ -416,7 +422,11 @@ fn a_library_with_colliding_records_sorts_deterministically() {
         .collect::<Vec<_>>();
     count.sort();
     count.dedup();
-    assert_eq!(count.len(), library.len(), "no record is dropped or duplicated");
+    assert_eq!(
+        count.len(),
+        library.len(),
+        "no record is dropped or duplicated"
+    );
 
     // A different input permutation reaches the same order.
     let mut shuffled = [
@@ -491,7 +501,10 @@ fn indexed_note_carries_its_index_status() {
 
 #[test]
 fn a_new_indexed_note_is_discovered() {
-    assert_eq!(note("12 - Autumn Leaves.pdf").status(), IndexStatus::Discovered);
+    assert_eq!(
+        note("12 - Autumn Leaves.pdf").status(),
+        IndexStatus::Discovered
+    );
     assert_eq!(
         IndexedNote::new(
             RelativePdfPath::new("12 - Autumn Leaves.pdf").expect("valid"),
@@ -538,9 +551,7 @@ fn index_status_round_trips_through_json() {
 fn a_record_without_status_loads_as_discovered() {
     let note = note("12 - Autumn Leaves.pdf");
     let mut json = serde_json::to_value(&note).expect("serializes");
-    json.as_object_mut()
-        .expect("object")
-        .remove("status");
+    json.as_object_mut().expect("object").remove("status");
     assert_eq!(
         serde_json::from_value::<IndexedNote>(json)
             .expect("deserializes")

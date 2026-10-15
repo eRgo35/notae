@@ -1,8 +1,8 @@
 //! SQLite persistence and full-text search for the Notae library.
 //!
 //! [`IndexStore`] is the only entry point: it owns one bundled SQLite
-//! connection with FTS5 enabled, applies the schema migrations in
-//! [`schema`], and stores the canonical [`IndexedNote`](notae_domain::IndexedNote)
+//! connection with FTS5 enabled, applies the schema migrations in `schema`,
+//! and stores the canonical [`IndexedNote`](notae_domain::IndexedNote)
 //! metadata in ordinary columns next to a derived FTS5 search index.
 //!
 //! # Layout
@@ -40,7 +40,7 @@
 //! [`RescanPlan`] the caller can preview and abandon; [`Reconciler::apply`]
 //! performs it and returns a [`RescanReport`]. File identity is the SHA-256 of
 //! the contents, so a rename moves one record instead of creating a second, and
-//! manually edited metadata in [`crate::provenance`] is never overwritten by a
+//! manually edited metadata in `provenance` is never overwritten by a
 //! filename-derived value.
 //!
 //! A catalog reports what it could not use through a [`FileCondition`], so a

@@ -14,7 +14,7 @@
 //!
 //! * [`state`] and [`ui`] declare `#![forbid(unsafe_code)]` so the
 //!   host-testable core and the Slint glue remain strictly safe.
-//! * [`android_main`] declares `#![allow(unsafe_code)]` because it
+//! * `android_main` declares `#![allow(unsafe_code)]` because it
 //!   owns the FFI shim (`#[unsafe(no_mangle)] fn android_main`) that
 //!   the `android-activity` runtime requires. The exception is
 //!   scoped to that one file.
@@ -24,8 +24,8 @@
 //! it off here keeps the per-module policies in control.
 
 pub mod picker_fut;
-pub mod saf_tree;
 pub mod recent;
+pub mod saf_tree;
 pub mod state;
 pub mod storage;
 

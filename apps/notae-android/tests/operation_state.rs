@@ -97,7 +97,8 @@ fn rescan_starts_only_on_request_and_reports_success_and_per_file_failure() {
             entered: None,
             release: None,
         }),
-    );
+    )
+    .expect("start test worker");
 
     assert!(
         controller
@@ -141,7 +142,8 @@ fn cancellation_during_catalog_enumeration_does_not_apply_a_partial_scan() {
             entered: Some(entered_tx),
             release: Some(Arc::clone(&release)),
         }),
-    );
+    )
+    .expect("start test worker");
 
     controller
         .start_rescan()
@@ -288,6 +290,123 @@ fn worker_progress_and_completion_are_reflected_in_ui_state_and_rows() {
         }
     );
 }
+#[test]
+fn ui_status_projects_operation_scan_summary_and_pending_rows() {
+    use notae_android::operations::events::RescanSummary;
+    use notae_android::state::{OperationState, UiEvent};
+    use notae_android::ui::UiModel;
+    use notae_android::ui::search::SearchRow;
+
+    let mut model = UiModel::new();
+    let pending_row = SearchRow {
+        id: None,
+        title: "Pending".to_owned(),
+        composer_or_artist: None,
+        tags: vec![],
+        status: "OCR pending".to_owned(),
+        note_key: "pending".to_owned(),
+        relative_path: "pending.pdf".to_owned(),
+        text_pending: true,
+        title_origin: String::new(),
+        composer_origin: String::new(),
+        text_snippet: None,
+    };
+    model
+        .apply_operation_event(OperationEvent::SearchRows(vec![pending_row.clone()]))
+        .expect("rows event");
+    let status = model.status();
+    assert_eq!(status.operation, OperationState::Idle);
+    assert_eq!(status.latest_rescan, None);
+    assert_eq!(status.pending_text_count, 1);
+
+    model
+        .dispatch(UiEvent::PickLibraryRoot {
+            root: std::path::PathBuf::from("/library"),
+        })
+        .expect("choose library");
+    model.start_rescan().expect("request scan");
+    model
+        .apply_operation_event(OperationEvent::Started)
+        .expect("start");
+    assert!(matches!(
+        model.status().operation,
+        OperationState::RescanInProgress { .. }
+    ));
+    model
+        .apply_operation_event(OperationEvent::RescanFinalizing { total: 1 })
+        .expect("finalizing");
+    assert_eq!(
+        model.status().operation,
+        OperationState::RescanFinalizing {
+            completed: 0,
+            total: 1
+        }
+    );
+
+    let summary = RescanSummary {
+        added: 2,
+        conflicts: 1,
+        failures: 1,
+        ..RescanSummary::default()
+    };
+    model
+        .apply_operation_event(OperationEvent::Completed {
+            summary,
+            rows: vec![pending_row],
+        })
+        .expect("complete scan");
+    assert_eq!(
+        model.status().operation,
+        OperationState::Completed {
+            summary: "2 added, 1 ID conflicts, 1 failures".to_owned(),
+        }
+    );
+    assert_eq!(model.status().latest_rescan, Some(summary));
+    assert_eq!(model.status().pending_text_count, 1);
+
+    model
+        .apply_operation_event(OperationEvent::ImportPreviewReady {
+            summary: Default::default(),
+        })
+        .expect("import preview");
+    model
+        .apply_operation_event(OperationEvent::ImportApplied {
+            summary: Default::default(),
+            rows: vec![],
+        })
+        .expect("apply import");
+    assert_eq!(model.status().latest_rescan, Some(summary));
+
+    model
+        .dispatch(UiEvent::AcknowledgeOperation)
+        .expect("dismiss");
+    model.start_rescan().expect("request second scan");
+    model
+        .apply_operation_event(OperationEvent::Started)
+        .expect("start second");
+    model
+        .apply_operation_event(OperationEvent::Canceled)
+        .expect("cancel second scan");
+    assert_eq!(model.status().operation, OperationState::Idle);
+    assert_eq!(model.status().latest_rescan, Some(summary));
+
+    model.start_rescan().expect("request failed scan");
+    model
+        .apply_operation_event(OperationEvent::Started)
+        .expect("start failed");
+    model
+        .apply_operation_event(OperationEvent::Failed {
+            reason: "scan failed".to_owned(),
+        })
+        .expect("fail scan");
+    assert_eq!(
+        model.status().operation,
+        OperationState::Failed {
+            reason: "scan failed".to_owned(),
+        }
+    );
+    assert_eq!(model.status().latest_rescan, Some(summary));
+}
 
 #[test]
 fn rescan_previews_root_sidecar_hash_mismatch_without_importing_it() {
@@ -316,7 +435,8 @@ fn rescan_previews_root_sidecar_hash_mismatch_without_importing_it() {
             files: vec![readable(path, b"%PDF-current")],
             manifest,
         }),
-    );
+    )
+    .expect("start test worker");
 
     controller
         .start_rescan()
@@ -391,7 +511,8 @@ fn worker_loads_edits_and_returns_the_updated_library_row() {
             entered: None,
             release: None,
         }),
-    );
+    )
+    .expect("start test worker");
 
     controller
         .load_metadata(note_key.clone())
