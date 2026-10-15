@@ -309,6 +309,8 @@ The Android app does not run OCR. It renders first-page thumbnails with `PdfRend
 
 Android visual design follows the [approved One UI canvas](https://claude.ai/artifact/3bQ38pa1r5L3hVXF1M8N6Z) and the fixed light/dark palette in the One UI redesign plan's Global Constraints.
 
+Android layout rules: the window draws edge-to-edge and the UI pads itself by the system-bar insets (no framework action bar). Every configured screen owns its header, and the Scan icon is that header's right-most action on Library, Search and Settings; there is no global bar above the screens. Layout is compact below 840 px of window width (section chips, Settings in the Library header), shows the section side panel from 840 px, and shows list plus details side by side from 1280 px. The status banner reports only the running operation or its outcome; the latest scan result and pending-text count are in Settings. Touch targets are at least 48 px.
+
 ### Linux CLI
 
 The PC tool is Linux-only for the first release:
