@@ -1,6 +1,6 @@
 // One UI library: side panel, large title, thumbnail grid and operation banner.
 import { ListView } from "std-widgets.slint";
-import { Theme, Glyph, IconButton, PillButton, Card, NavRow, Chip, StatusBadge, ActionInput } from "components.slint";
+import { Theme, Glyph, IconButton, ScanButton, PillButton, Card, NavRow, Chip, StatusBadge, ActionInput } from "components.slint";
 
 export struct LibraryRow {
     id: string,
@@ -55,7 +55,7 @@ component ScoreCard inherits Rectangle {
     in property <bool> selected;
     callback clicked();
     border-radius: 20px;
-    background: root.selected ? Theme.accent-soft : transparent;
+    background: root.selected ? Theme.accent-soft : input.pressed ? Theme.field : transparent;
     border-width: input.has-focus ? 2px : 0px;
     border-color: Theme.accent;
     accessible-role: button;
@@ -75,10 +75,10 @@ component ScoreCard inherits Rectangle {
             spacing: 2px;
             padding-left: 4px;
             padding-right: 4px;
-            Text { text: root.score.title; color: Theme.foreground; font-size: 16px; font-weight: 600; overflow: elide; }
+            Text { text: root.score.title; color: root.selected ? Theme.on-accent-soft : Theme.foreground; font-size: 16px; font-weight: 600; overflow: elide; }
             Text {
                 text: (root.score.id != "" ? root.score.id + " · " : "") + root.score.composer_or_artist;
-                color: Theme.muted;
+                color: root.selected ? Theme.on-accent-soft : Theme.muted;
                 font-size: 14px;
                 overflow: elide;
             }
@@ -157,6 +157,7 @@ component SidePanel inherits VerticalLayout {
 export component OperationBanner inherits Card {
     in property <string> text;
     in property <bool> busy;
+    in property <bool> failed;
     in property <float> fraction;
     in property <bool> cancel-enabled;
     in property <bool> acknowledge-enabled;
@@ -168,8 +169,8 @@ export component OperationBanner inherits Card {
         spacing: 12px;
         HorizontalLayout {
             spacing: 12px;
-            VerticalLayout { alignment: center; Glyph { kind: root.busy ? "scan" : "check"; } }
-            Text { text: root.text; color: Theme.foreground; font-size: 15px; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
+            VerticalLayout { alignment: center; Glyph { kind: root.busy ? "scan" : root.failed ? "warning" : "check"; ink: root.failed ? Theme.error : Theme.muted; } }
+            Text { text: root.text; color: root.failed ? Theme.error : Theme.foreground; font-size: 15px; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
             if root.cancel-enabled : PillButton { text: "Cancel"; tonal: true; clicked => { root.cancel(); } }
             if root.acknowledge-enabled : PillButton { text: "Dismiss"; tonal: true; clicked => { root.acknowledge(); } }
         }
@@ -195,6 +196,7 @@ export component OperationBanner inherits Card {
 }
 
 export component LibraryScreen inherits Rectangle {
+    in property <length> available-width;
     in property <bool> expanded;
     in property <[SectionItem]> sections;
     in property <[SectionItem]> composers;
@@ -209,6 +211,23 @@ export component LibraryScreen inherits Rectangle {
     in property <float> fraction;
     in property <bool> cancel-enabled;
     in property <bool> acknowledge-enabled;
+    in property <bool> failed;
+    in property <bool> rescan-enabled;
+    callback rescan-clicked();
+    pure function empty-title(key: string) -> string {
+        return key == "all" ? "A little space for your scores"
+            : key == "recent" ? "No recent scores"
+            : key == "needs-details" ? "Nothing needs details"
+            : key == "text-pending" ? "No text pending"
+            : "No scores here";
+    }
+    pure function empty-detail(key: string) -> string {
+        return key == "all" ? "Scan your library folder to add the PDFs it contains."
+            : key == "recent" ? "Scores you open appear here."
+            : key == "needs-details" ? "Scores missing a number or composer appear here."
+            : key == "text-pending" ? "Scores still waiting for searchable text appear here."
+            : "No scores by this composer are in the library.";
+    }
     callback section-selected(string);
     callback settings-clicked();
     callback search-clicked();
@@ -234,22 +253,24 @@ export component LibraryScreen inherits Rectangle {
             horizontal-stretch: 1;
             spacing: 12px;
             HorizontalLayout {
-                padding-top: root.expanded ? 40px : 8px;
+                padding-top: 8px;
                 padding-left: 8px;
                 spacing: 4px;
                 VerticalLayout {
                     horizontal-stretch: 1;
-                    alignment: end;
+                    alignment: center;
                     spacing: 4px;
-                    Text { text: root.title; color: Theme.foreground; font-size: root.expanded ? 40px : 30px; font-weight: 600; overflow: elide; }
+                    Text { text: root.title; color: Theme.foreground; font-size: root.expanded ? 40px : root.available-width < 420px ? 24px : 30px; font-weight: 600; overflow: elide; }
                     Text { text: root.subtitle; color: Theme.muted; font-size: 15px; }
                 }
+                // Header actions: Search, Settings (compact only), Scan. Scan is always right-most.
                 VerticalLayout {
-                    alignment: end;
+                    alignment: center;
                     HorizontalLayout {
                         spacing: 4px;
                         IconButton { label: "Search"; icon: @image-url("material-icons/search.svg"); clicked => { root.search-clicked(); } }
                         if !root.expanded : IconButton { label: "Settings"; icon: @image-url("material-icons/settings.svg"); clicked => { root.settings-clicked(); } }
+                        ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
                     }
                 }
             }
@@ -273,13 +294,14 @@ export component LibraryScreen inherits Rectangle {
             if root.progress-text != "" : OperationBanner {
                 text: root.progress-text;
                 busy: root.busy;
+                failed: root.failed;
                 fraction: root.fraction;
                 cancel-enabled: root.cancel-enabled;
                 acknowledge-enabled: root.acknowledge-enabled;
                 cancel => { root.cancel-clicked(); }
                 acknowledge => { root.acknowledge-clicked(); }
             }
-            if root.pdf-error != "" : Text { text: root.pdf-error; color: Theme.error; wrap: word-wrap; }
+            if root.pdf-error != "" : Text { text: root.pdf-error; color: Theme.error; font-size: 15px; wrap: word-wrap; }
             // The details pane (Task 9, passed as children) replaces the grid. Slint does not allow
             // @children inside a conditional element, so the slot is always present and hidden.
             Rectangle {
@@ -303,14 +325,26 @@ export component LibraryScreen inherits Rectangle {
                     VerticalLayout {
                         alignment: center;
                         padding: 32px;
-                        spacing: 16px;
+                        spacing: 12px;
                         HorizontalLayout { alignment: center; Glyph { kind: "folder"; width: 56px; height: 56px; } }
                         Text {
-                            text: root.selected-section == "all" ? "A little space for your scores" : "Nothing here yet";
+                            text: root.empty-title(root.selected-section);
                             color: Theme.foreground; font-size: 22px; font-weight: 600; horizontal-alignment: center; wrap: word-wrap;
+                        }
+                        Text {
+                            text: root.empty-detail(root.selected-section);
+                            color: Theme.muted; font-size: 15px; horizontal-alignment: center; wrap: word-wrap;
                         }
                         if root.selected-section == "all" : HorizontalLayout {
                             alignment: center;
+                            padding-top: 8px;
+                            PillButton {
+                                text: "Scan library";
+                                icon: @image-url("material-icons/scan.svg");
+                                primary: true;
+                                enabled: root.rescan-enabled;
+                                clicked => { root.rescan-clicked(); }
+                            }
                         }
                     }
                 }

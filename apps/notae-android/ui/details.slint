@@ -1,5 +1,5 @@
 // List-detail pane: the current section on the left, one score's details on the right.
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, IconButton, PillButton, Card, StatusBadge, ActionInput } from "components.slint";
 import { LibraryRow, PagePreview } from "library.slint";
 
@@ -14,6 +14,7 @@ component ScoreListItem inherits Rectangle {
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: root.score.title;
+    accessible-description: root.score.composer_or_artist;
     accessible-action-default => { if !Theme.modal-open { root.clicked(); } }
     forward-focus: input;
     HorizontalLayout {
@@ -25,7 +26,7 @@ component ScoreListItem inherits Rectangle {
             alignment: center;
             spacing: 2px;
             Text { text: root.score.title; font-size: 16px; font-weight: 600; overflow: elide; color: root.selected ? Theme.on-accent-soft : Theme.foreground; }
-            Text { text: (root.score.id != "" ? root.score.id + " · " : "") + root.score.tags; font-size: 14px; color: Theme.muted; overflow: elide; }
+            Text { text: (root.score.id != "" ? root.score.id + " · " : "") + root.score.composer_or_artist; font-size: 14px; color: root.selected ? Theme.on-accent-soft : Theme.muted; overflow: elide; }
         }
     }
     input := ActionInput {
@@ -55,12 +56,39 @@ component InfoRow inherits HorizontalLayout {
     in property <string> label;
     in property <string> value;
     in property <string> origin;
-    in property <bool> last;
     min-height: 60px;
     spacing: 16px;
-    Text { text: root.label; width: 110px; color: Theme.muted; font-size: 15px; vertical-alignment: center; }
-    Text { text: root.value == "" ? "—" : root.value; horizontal-stretch: 1; color: Theme.foreground; font-size: 16px; vertical-alignment: center; wrap: word-wrap; }
-    Text { text: root.origin; color: Theme.muted; font-size: 13px; vertical-alignment: center; }
+    Text { text: root.label; width: 96px; color: Theme.muted; font-size: 15px; vertical-alignment: center; }
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 2px;
+        Text { text: root.value == "" ? "—" : root.value; color: Theme.foreground; font-size: 16px; wrap: word-wrap; }
+        if root.origin != "" : Text { text: root.origin; color: Theme.muted; font-size: 13px; }
+    }
+}
+
+// Title, composer and the Open/Edit actions; shared by the side-by-side and stacked layouts.
+component ScoreHeadline inherits VerticalLayout {
+    in property <LibraryRow> score;
+    in property <bool> centered;
+    callback open();
+    callback edit();
+    spacing: 6px;
+    alignment: start;
+    if root.score.id != "" : Text { text: "No. " + root.score.id; color: Theme.accent-text; font-size: 14px; font-weight: 600; horizontal-alignment: root.centered ? center : left; }
+    Text { text: root.score.title; color: Theme.foreground; font-size: root.centered ? 26px : 32px; font-weight: 600; wrap: word-wrap; horizontal-alignment: root.centered ? center : left; }
+    if root.score.composer_or_artist != "" : Text { text: root.score.composer_or_artist; color: Theme.muted; font-size: 17px; wrap: word-wrap; horizontal-alignment: root.centered ? center : left; }
+    if root.score.text_pending : HorizontalLayout { alignment: root.centered ? center : start; StatusBadge { text: "Lyrics text pending"; } }
+    HorizontalLayout {
+        padding-top: 18px;
+        spacing: 10px;
+        alignment: root.centered ? center : start;
+        PillButton { text: "Open score"; primary: true; clicked => { root.open(); } }
+        IconButton { label: "Edit details"; icon: @image-url("material-icons/edit.svg"); clicked => { root.edit(); } }
+    }
 }
 
 export component ScoreDetails inherits Card {
@@ -69,61 +97,73 @@ export component ScoreDetails inherits Card {
     callback close();
     callback open();
     callback edit();
+    // The app computes the pane's width; below 560px the preview stacks above the title.
+    in property <length> content-width;
+    in property <bool> narrow;
     VerticalLayout {
         padding: 8px;
-        padding-bottom: 24px;
         HorizontalLayout {
-            alignment: space-between;
+            alignment: start;
             IconButton {
                 label: root.show-back ? "Back to list" : "Close details";
                 icon: root.show-back ? @image-url("material-icons/arrow-back.svg") : @image-url("material-icons/close.svg");
                 clicked => { root.close(); }
             }
         }
-        HorizontalLayout {
-            padding-left: 24px;
-            padding-right: 24px;
-            spacing: 28px;
-            PagePreview { score: root.score; width: 172px; height: 228px; border-radius: 16px; }
+        // The pane can be shorter than its content in split screen, so the body scrolls.
+        ScrollView {
+            vertical-stretch: 1;
+            horizontal-scrollbar-policy: always-off;
             VerticalLayout {
-                spacing: 6px;
-                padding-top: 12px;
-                alignment: start;
-                if root.score.id != "" : Text { text: "No. " + root.score.id; color: Theme.accent; font-size: 14px; font-weight: 600; }
-                Text { text: root.score.title; color: Theme.foreground; font-size: 32px; font-weight: 600; wrap: word-wrap; }
-                Text { text: root.score.composer_or_artist; color: Theme.muted; font-size: 17px; }
-                if root.score.text_pending : StatusBadge { text: "Lyrics text pending"; }
+                width: root.content-width;
+                padding-bottom: 24px;
+                spacing: 24px;
+                if !root.narrow : HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 28px;
+                    PagePreview { score: root.score; width: 172px; height: 228px; border-radius: 16px; }
+                    ScoreHeadline {
+                        horizontal-stretch: 1;
+                        score: root.score;
+                        open => { root.open(); }
+                        edit => { root.edit(); }
+                    }
+                }
+                if root.narrow : VerticalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 16px;
+                    HorizontalLayout { alignment: center; PagePreview { score: root.score; width: 140px; height: 186px; border-radius: 16px; } }
+                    ScoreHeadline {
+                        centered: true;
+                        score: root.score;
+                        open => { root.open(); }
+                        edit => { root.edit(); }
+                    }
+                }
                 HorizontalLayout {
-                    padding-top: 18px;
-                    spacing: 10px;
-                    alignment: start;
-                    PillButton { text: "Open score"; primary: true; clicked => { root.open(); } }
-                    IconButton { label: "Edit details"; icon: @image-url("material-icons/edit.svg"); clicked => { root.edit(); } }
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    Rectangle {
+                        border-radius: 20px;
+                        background: Theme.background;
+                        VerticalLayout {
+                            padding-left: 20px;
+                            padding-right: 20px;
+                            padding-top: 4px;
+                            padding-bottom: 4px;
+                            InfoRow { label: "Title"; value: root.score.title; origin: root.score.title_origin; }
+                            Rectangle { height: 1px; background: Theme.divider; }
+                            InfoRow { label: "Composer"; value: root.score.composer_or_artist; origin: root.score.composer_origin; }
+                            Rectangle { height: 1px; background: Theme.divider; }
+                            InfoRow { label: "Tags"; value: root.score.tags; origin: ""; }
+                            Rectangle { height: 1px; background: Theme.divider; }
+                            InfoRow { label: "File"; value: root.score.relative_path; origin: root.score.status; }
+                        }
+                    }
                 }
             }
         }
-        Rectangle { height: 24px; }
-        HorizontalLayout {
-            padding-left: 24px;
-            padding-right: 24px;
-            Rectangle {
-                border-radius: 20px;
-                background: Theme.background;
-                VerticalLayout {
-                    padding-left: 20px;
-                    padding-right: 20px;
-                    padding-top: 4px;
-                    padding-bottom: 4px;
-                    InfoRow { label: "Title"; value: root.score.title; origin: root.score.title_origin; }
-                    Rectangle { height: 1px; background: Theme.divider; }
-                    InfoRow { label: "Composer"; value: root.score.composer_or_artist; origin: root.score.composer_origin; }
-                    Rectangle { height: 1px; background: Theme.divider; }
-                    InfoRow { label: "Tags"; value: root.score.tags; origin: ""; }
-                    Rectangle { height: 1px; background: Theme.divider; }
-                    InfoRow { label: "File"; value: root.score.relative_path; origin: root.score.status; }
-                }
-            }
-        }
-        Rectangle { vertical-stretch: 1; }
     }
 }

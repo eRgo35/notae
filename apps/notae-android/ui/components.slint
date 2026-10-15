@@ -10,6 +10,8 @@ export global Theme {
     out property <color> muted: root.dark ? #A1A1A8 : #6E6E73;
     out property <color> divider: root.dark ? #2A2A2E : #E6E6EA;
     out property <color> accent: root.dark ? #5B9BFF : #2F6FEB;
+    // Accent for text on neutral backgrounds; plain `accent` is 4.1:1 on the light background.
+    out property <color> accent-text: root.dark ? #5B9BFF : #1A4FB8;
     out property <color> on-accent: root.dark ? #06142E : #FFFFFF;
     out property <color> accent-soft: root.dark ? #1C2C4A : #E6EEFE;
     out property <color> on-accent-soft: root.dark ? #B9D2FF : #1A4FB8;
@@ -218,6 +220,13 @@ export component IconButton inherits Rectangle {
             }
         }
     }
+}
+
+// The one Scan entry point. Library, Search and Settings each place it as the right-most action
+// of their header so it never moves between screens.
+export component ScanButton inherits IconButton {
+    label: "Scan library";
+    icon: @image-url("material-icons/scan.svg");
 }
 
 export component SearchField inherits Rectangle {

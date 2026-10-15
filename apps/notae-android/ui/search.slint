@@ -1,6 +1,6 @@
 // The single search screen, opened by the library's search icon or Ctrl K.
 import { ListView, ScrollView } from "std-widgets.slint";
-import { Theme, IconButton, SearchField, Card, Chip, ActionInput } from "components.slint";
+import { Theme, Glyph, IconButton, ScanButton, SearchField, Card, Chip, ActionInput } from "components.slint";
 import { OperationBanner } from "library.slint";
 import { LibraryRow, PagePreview } from "library.slint";
 
@@ -30,10 +30,14 @@ component ResultRow inherits Rectangle {
                 text: (root.score.id != "" ? root.score.id + " · " : "") + root.score.composer_or_artist;
                 color: Theme.muted; font-size: 14px; overflow: elide;
             }
-            if root.score.snippet_match != "" : HorizontalLayout {
-                Text { text: root.score.snippet_before; color: Theme.muted; font-size: 14px; }
-                Text { text: root.score.snippet_match; color: Theme.accent; font-size: 14px; font-weight: 700; }
-                Text { text: root.score.snippet_after; color: Theme.muted; font-size: 14px; overflow: elide; horizontal-stretch: 1; }
+            if root.score.snippet_match != "" : Rectangle {
+                height: 20px;
+                clip: true;
+                HorizontalLayout {
+                    Text { text: root.score.snippet_before; color: Theme.muted; font-size: 14px; }
+                    Text { text: root.score.snippet_match; color: Theme.accent-text; font-size: 14px; font-weight: 700; }
+                    Text { text: root.score.snippet_after; color: Theme.muted; font-size: 14px; overflow: elide; horizontal-stretch: 1; }
+                }
             }
         }
     }
@@ -43,6 +47,7 @@ component ResultRow inherits Rectangle {
 export component SearchScreen inherits Rectangle {
     in-out property <string> query;
     in property <length> available-height;
+    in property <length> available-width;
     in property <string> scope;
     in property <[LibraryRow]> rows;
     in property <string> progress-text;
@@ -50,6 +55,9 @@ export component SearchScreen inherits Rectangle {
     in property <float> fraction;
     in property <bool> cancel-enabled;
     in property <bool> acknowledge-enabled;
+    in property <bool> failed;
+    in property <bool> rescan-enabled;
+    callback rescan-clicked();
     callback cancel();
     callback acknowledge();
     callback query-edited(string);
@@ -61,8 +69,8 @@ export component SearchScreen inherits Rectangle {
     background: Theme.background;
 
     VerticalLayout {
-        padding: 24px;
-        padding-bottom: 0px;
+        padding: root.available-width < 600px ? 16px : 24px;
+        padding-bottom: 16px;
         spacing: 16px;
         alignment: start;
         HorizontalLayout {
@@ -74,10 +82,12 @@ export component SearchScreen inherits Rectangle {
                 placeholder: "Search titles, composers, tags or lyrics";
                 edited(value) => { root.query-edited(value); }
             }
+            VerticalLayout { alignment: center; ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } } }
         }
         if root.progress-text != "" : OperationBanner {
             text: root.progress-text;
             busy: root.busy;
+            failed: root.failed;
             fraction: root.fraction;
             cancel-enabled: root.cancel-enabled;
             acknowledge-enabled: root.acknowledge-enabled;
@@ -110,19 +120,20 @@ export component SearchScreen inherits Rectangle {
                 for score in root.rows : ResultRow { score: score; clicked => { root.chosen(score.note_key); } }
             }
         }
-        if root.query != "" && root.rows.length == 0 : Text {
-            text: "No scores found";
-            color: Theme.muted;
-            font-size: 18px;
-            horizontal-alignment: center;
+        if root.query != "" && root.rows.length == 0 : VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            spacing: 8px;
+            Text { text: "No scores found"; color: Theme.foreground; font-size: 20px; font-weight: 600; horizontal-alignment: center; }
+            Text { text: "Try another word, or switch the scope above."; color: Theme.muted; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
         }
-        if root.query == "" || root.rows.length == 0 : Rectangle { vertical-stretch: 1; }
-        if root.available-height > 600px : Text {
-            text: "Press Ctrl K to search from anywhere";
-            color: Theme.muted;
-            font-size: 13px;
-            horizontal-alignment: center;
-            height: 48px;
+        if root.query == "" : VerticalLayout {
+            vertical-stretch: 1;
+            alignment: center;
+            spacing: 8px;
+            HorizontalLayout { alignment: center; Glyph { kind: "search"; width: 40px; height: 40px; } }
+            Text { text: "Search your library"; color: Theme.foreground; font-size: 20px; font-weight: 600; horizontal-alignment: center; }
+            Text { text: "Find scores by title, composer, tag or lyrics. Press Ctrl K to open search from anywhere."; color: Theme.muted; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
         }
     }
 }
