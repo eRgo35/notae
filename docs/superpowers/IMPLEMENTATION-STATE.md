@@ -1,11 +1,20 @@
 # Notae Implementation State
 
-**As of:** 2026-10-14
-**Branch:** `feat/one-ui-redesign`
-**Last committed commit:** `4fe85be feat(android): remove duplicate chip label`
-**Remote:** `git@github.com:eRgo35/notae.git`
+**As of:** 2026-10-15
+**Branch:** `main`
+**Implementation baseline:** `4876f98` (Android Settings/Search layout, Back and thumbnails); documentation baseline `13869a2`.
+**Remote:** `https://github.com/eRgo35/notae.git`
 
 This document records where the project actually stands so work can resume without re-deriving context. It is a status record, not a design document.
+
+## Current release cycle: v0.2.0
+
+- [Milestone v0.2.0](https://github.com/eRgo35/notae/milestone/1) contains all twenty open tablet-feedback issues (#1–#20).
+- [Release implementation plan](plans/2026-10-15-notae-v0.2.0-release.md) defines sequencing, shared interfaces, all issue acceptance gates and publication checks.
+- Preparation only: no application fixes, version bump, tag or release are claimed by this planning update.
+- #2 (first-focus Android caret) and #13 (Polish IME input) are tablet-led investigations. #17 requires actual TalkBack acceptance; Slint Android accessibility support must be verified, not inferred from accessible labels.
+- New issue requirements supersede earlier “no animations”, “Scan in every header”, split-preview and Settings pending/privacy instructions. See the release plan for the final contracts.
+- The sections below are historical implementation records; their old branch/build references are not the current release baseline.
 
 ## Documents
 
@@ -15,6 +24,7 @@ This document records where the project actually stands so work can resume witho
 | Core plan (Tasks 1-5) | `docs/superpowers/plans/2026-10-09-notae-core-index-plan.md` | Complete |
 | Linux indexer plan (Tasks 1-5) | `docs/superpowers/plans/2026-10-09-notae-linux-indexer-plan.md` | Complete |
 | Android app plan (Tasks 1-7) | `docs/superpowers/plans/2026-10-09-notae-android-plan.md` | Complete |
+| v0.2.0 tablet-feedback release plan | `docs/superpowers/plans/2026-10-15-notae-v0.2.0-release.md` | Prepared; implementation not started |
 
 ## Product decisions already settled
 
