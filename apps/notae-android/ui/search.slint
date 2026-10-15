@@ -27,7 +27,7 @@ component ResultRow inherits Rectangle {
             spacing: 4px;
             Text { text: root.score.title; color: Theme.foreground; font-size: 16px; font-weight: 600; overflow: elide; }
             if root.score.snippet_match == "" : Text {
-                text: (root.score.id != "" ? root.score.id + " · " : "") + root.score.composer_or_artist;
+                text: (root.score.id != "" && root.score.composer_or_artist != "" ? root.score.id + " · " + root.score.composer_or_artist : root.score.id + root.score.composer_or_artist);
                 color: Theme.muted; font-size: 14px; overflow: elide;
             }
             if root.score.snippet_match != "" : Rectangle {
@@ -72,7 +72,6 @@ export component SearchScreen inherits Rectangle {
         padding: root.available-width < 600px ? 16px : 24px;
         padding-bottom: 16px;
         spacing: 16px;
-        alignment: start;
         HorizontalLayout {
             spacing: 8px;
             VerticalLayout { alignment: center; IconButton { label: "Back to library"; icon: @image-url("material-icons/arrow-back.svg"); clicked => { root.close(); } } }
@@ -94,12 +93,11 @@ export component SearchScreen inherits Rectangle {
             cancel => { root.cancel(); }
             acknowledge => { root.acknowledge(); }
         }
-        ScrollView {
-            height: 48px;
-            horizontal-scrollbar-policy: always-off;
-            vertical-scrollbar-policy: always-off;
-            mouse-drag-pan-enabled: true;
-            HorizontalLayout {
+        Flickable {
+            min-height: 48px;
+            max-height: 48px;
+            content-width: chips.preferred-width;
+            chips := HorizontalLayout {
                 padding-left: 56px;
                 spacing: 8px;
                 alignment: start;

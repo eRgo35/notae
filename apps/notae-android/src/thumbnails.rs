@@ -74,11 +74,25 @@ impl ThumbnailCache {
             let _ = fs::remove_file(&partial);
             return outcome.map(|_| None);
         }
+        if let Err(error) = fs::File::open(&partial).and_then(|file| file.sync_all()) {
+            let _ = fs::remove_file(&partial);
+            return Err(PdfError::Platform(format!(
+                "cannot flush thumbnail: {error}"
+            )));
+        }
         fs::rename(&partial, &path).map_err(|error| {
             let _ = fs::remove_file(&partial);
             PdfError::Platform(format!("cannot store thumbnail: {error}"))
         })?;
         Ok(Some(path))
+    }
+
+    /// Removes an undecodable thumbnail (for example one truncated by an unclean shutdown) so
+    /// the next rescan renders it again.
+    pub fn discard(&self, note_key: &str) {
+        if let Some(path) = self.path_for(note_key) {
+            let _ = fs::remove_file(path);
+        }
     }
 
     /// Deletes thumbnails whose key is not in `keep`, and stray partial files.
