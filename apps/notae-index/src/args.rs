@@ -106,9 +106,7 @@ impl Cli {
     pub fn validate(&self) -> Result<ValidatedRoot, CliError> {
         ValidatedRoot::open(&self.library_root).map_err(|rejection| match rejection {
             RootRejection::Symlink(_) => CliError::RootSymlinked(self.library_root.clone()),
-            RootRejection::Unusable { .. } => {
-                CliError::RootUnreadable(self.library_root.clone())
-            }
+            RootRejection::Unusable { .. } => CliError::RootUnreadable(self.library_root.clone()),
         })
     }
 }

@@ -19,7 +19,10 @@ pub struct ThumbnailCache {
 }
 
 fn is_content_key(text: &str) -> bool {
-    text.len() == 64 && text.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+    text.len() == 64
+        && text
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 impl ThumbnailCache {
@@ -87,7 +90,10 @@ impl ThumbnailCache {
         let mut removed = 0;
         for entry in fs::read_dir(&self.dir)? {
             let path = entry?.path();
-            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
             let stale = match name.strip_suffix(".png") {
                 Some(key) => !keep.contains(key),
                 None => name.ends_with(".png.part"),

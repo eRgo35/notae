@@ -192,12 +192,13 @@ impl PickerState {
     /// [`dispatch`](Self::dispatch) fires.
     ///
     /// `pub` (not `fn`) so the Android-only
-    /// [`SelectRootFuture`](crate::android::saf::SelectRootFuture) can
+    /// `SelectRootFuture` can
     /// register its waker into the *same* map `dispatch` walks —
     /// writing into a parallel map is exactly the bug round 4 fixed.
     /// The map is the single source of truth; both the
     /// host-testable [`SelectRootHandshake`] and the production
     /// Android future use this method.
+    #[allow(clippy::expect_used)] // Map access runs no callbacks while the guard is held.
     pub fn register_waker(&self, request_code: i32, waker: Arc<AtomicWaker>) {
         let mut guard = self
             .inner
@@ -209,12 +210,9 @@ impl PickerState {
 
     /// Looks up the outcome for a request code, draining it so the
     /// next `select_root` for the same code observes no stale value.
+    #[allow(clippy::expect_used)] // Outcome-map access runs no callbacks while locked.
     fn take_outcome(&self, request_code: i32) -> Option<PickerOutcome> {
-        let mut guard = self
-            .inner
-            .outcomes
-            .lock()
-            .expect("outcomes mutex poisoned");
+        let mut guard = self.inner.outcomes.lock().expect("outcomes mutex poisoned");
         guard.remove(&request_code)
     }
 
@@ -222,12 +220,9 @@ impl PickerState {
     /// The Android `select_root` future uses this to know whether the
     /// bridge has already delivered an answer for the request code
     /// it allocated.
+    #[allow(clippy::expect_used)] // Outcome-map access runs no callbacks while locked.
     pub fn peek_outcome(&self, request_code: i32) -> Option<PickerOutcome> {
-        let guard = self
-            .inner
-            .outcomes
-            .lock()
-            .expect("outcomes mutex poisoned");
+        let guard = self.inner.outcomes.lock().expect("outcomes mutex poisoned");
         guard.get(&request_code).cloned()
     }
 
@@ -244,6 +239,7 @@ impl PickerState {
     /// dispatch wins: subsequent dispatches for the same code are
     /// ignored so a sloppy `onActivityResult` chain cannot rewrite a
     /// recorded outcome.
+    #[allow(clippy::expect_used)] // Map edits run no callbacks while either guard is held.
     pub fn dispatch(&self, request_code: i32, outcome: PickerOutcome) {
         let waker = {
             let mut guard = self
@@ -254,11 +250,7 @@ impl PickerState {
             guard.remove(&request_code)
         };
         {
-            let mut guard = self
-                .inner
-                .outcomes
-                .lock()
-                .expect("outcomes mutex poisoned");
+            let mut guard = self.inner.outcomes.lock().expect("outcomes mutex poisoned");
             guard.entry(request_code).or_insert(outcome);
         }
         if let Some(waker) = waker {
@@ -287,6 +279,7 @@ impl PickerState {
     /// this accessor is the safe handle tests use to inspect the
     /// dispatcher's map.
     #[must_use]
+    #[allow(clippy::expect_used)] // This is a read-only diagnostic accessor.
     pub fn inner_pending_len(&self) -> usize {
         let guard = self
             .inner
@@ -304,17 +297,14 @@ impl Default for PickerState {
 }
 
 impl fmt::Debug for PickerState {
+    #[allow(clippy::expect_used)] // Debug data is read-only; no user code runs under these guards.
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let pending = self
             .inner
             .pending
             .lock()
             .expect("pending requests mutex poisoned");
-        let outcomes = self
-            .inner
-            .outcomes
-            .lock()
-            .expect("outcomes mutex poisoned");
+        let outcomes = self.inner.outcomes.lock().expect("outcomes mutex poisoned");
         formatter
             .debug_struct("PickerState")
             .field("pending", &pending.len())
@@ -324,7 +314,7 @@ impl fmt::Debug for PickerState {
     }
 }
 
-/// The future returned by [`SafLibraryRootProvider::select_root`].
+/// The future returned by the Android `SafLibraryRootProvider::select_root` implementation.
 ///
 /// The future is one-shot: once it returns a value, polling it again
 /// returns `Poll::Ready` with the same value (we only ever get one

@@ -16,8 +16,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
 use notae_android::picker_fut::{
-    decode_activity_result, new_picker_state, poll_outcome, DispatchOutcome, PickerOutcome,
-    SelectRootHandshake,
+    DispatchOutcome, PickerOutcome, SelectRootHandshake, decode_activity_result, new_picker_state,
+    poll_outcome,
 };
 use notae_android::storage::{LibraryRootId, StorageError};
 
@@ -43,7 +43,8 @@ fn root_id_value() -> LibraryRootId {
 
 fn ok_outcome() -> PickerOutcome {
     PickerOutcome::Ok {
-        tree_uri: "content://com.android.externalstorage.documents/tree/primary%3ADocuments".to_owned(),
+        tree_uri: "content://com.android.externalstorage.documents/tree/primary%3ADocuments"
+            .to_owned(),
         display_name: "Documents".to_owned(),
         root_id: root_id_value(),
     }
@@ -168,8 +169,8 @@ fn dispatch_outcome_helper_constructs_platform_outcome() {
 //    a chance to drive it on the next iteration.
 #[test]
 fn dispatch_wakes_the_future_waker() {
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::task::{Wake, Waker};
 
     /// A tiny `Arc<AtomicBool>`-backed `Waker` whose `wake` flips
@@ -235,8 +236,8 @@ fn dispatch_wakes_the_future_waker() {
 //    the bug.
 #[test]
 fn poll_outcome_registers_waker_into_dispatchers_map_and_completes() {
-    use std::sync::Arc;
     use atomic_waker::AtomicWaker;
+    use std::sync::Arc;
     use std::task::{Wake, Waker};
 
     struct FlagWaker(std::sync::atomic::AtomicBool);
@@ -308,8 +309,8 @@ fn poll_outcome_registers_waker_into_dispatchers_map_and_completes() {
 //    all until the future polls).
 #[test]
 fn poll_outcome_fast_paths_when_outcome_already_dispatched() {
-    use std::sync::Arc;
     use atomic_waker::AtomicWaker;
+    use std::sync::Arc;
 
     let state = new_picker_state();
     let code = state.next_request_code();
@@ -367,12 +368,7 @@ fn activity_result_without_uri_is_rejected() {
     const RESULT_OK: i32 = -1;
     const FLAG_GRANT_READ_URI_PERMISSION: i32 = 1;
 
-    assert!(decode_activity_result(
-        RESULT_OK,
-        None,
-        FLAG_GRANT_READ_URI_PERMISSION,
-    )
-    .is_err());
+    assert!(decode_activity_result(RESULT_OK, None, FLAG_GRANT_READ_URI_PERMISSION,).is_err());
 }
 
 #[test]

@@ -332,13 +332,29 @@ fn chosen_storage_enables_settings_without_starting_a_scan() {
     let provider = FilesystemLibraryRootProvider::new();
     provider.queue_directory(directory.path().to_path_buf());
     let root = select_root_blocking(&provider).expect("choose library");
+    let expected_name = directory
+        .path()
+        .file_name()
+        .expect("temporary directory has a name")
+        .to_string_lossy()
+        .into_owned();
     let source = provider.reopen(&root).expect("open library");
     let mut model = UiModel::new();
     model.set_storage(StorageState::Ready(Arc::new(Mutex::new(source))));
 
-    model.dispatch(UiEvent::OpenSettings).expect("settings available after choosing a library");
+    assert!(matches!(
+        model.storage_kind(),
+        notae_android::ui::StorageStateKindView::Ready { display_name }
+            if display_name == expected_name
+    ));
+
+    model
+        .dispatch(UiEvent::OpenSettings)
+        .expect("settings available after choosing a library");
     assert_eq!(model.state().screen(), &Screen::Settings);
     assert_eq!(model.state().operation(), &OperationState::Idle);
-    model.dispatch(UiEvent::CloseSettings).expect("return to library");
+    model
+        .dispatch(UiEvent::CloseSettings)
+        .expect("return to library");
     assert_eq!(model.state().screen(), &Screen::Library);
 }

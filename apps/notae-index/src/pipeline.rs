@@ -29,7 +29,7 @@
 //!
 //! Per-file problems — a PDF that cannot be opened, a corrupt file, an OCR
 //! engine that refuses a page — are recorded as counters on the returned
-//! [`RunReport`](crate::report::RunReport). [`PipelineError`] is reserved for
+//! [`RunReport`]. [`PipelineError`] is reserved for
 //! failures that abort the run: the library cannot be enumerated or the store
 //! cannot be read or written as a whole.
 
@@ -38,16 +38,16 @@ use std::sync::mpsc;
 
 use notae_domain::{IndexedNote, RelativePdfPath};
 use notae_index::{
-    CatalogError, FileFailureReason, IndexError, IndexStore, OcrText, PdfCatalog,
-    PdfFile, ReconcileError, Reconciler,
+    CatalogError, FileFailureReason, IndexError, IndexStore, OcrText, PdfCatalog, PdfFile,
+    ReconcileError, Reconciler,
 };
 use notae_ocr::{LanguagePolicy, OcrProvider};
 use thiserror::Error;
 
-use crate::catalog::FilesystemCatalog;
-use crate::pdf::{LinuxPdfDocument, PdfError, DEFAULT_OCR_DPI};
-use crate::report::RunReport;
 use crate::PdfState;
+use crate::catalog::FilesystemCatalog;
+use crate::pdf::{DEFAULT_OCR_DPI, LinuxPdfDocument, PdfError};
+use crate::report::RunReport;
 
 /// A single thing a running pipeline reports to its caller.
 ///
@@ -158,8 +158,7 @@ impl IndexPipeline {
 
         let files = catalog.enumerate()?;
         let total = files.len();
-        let pdf_states: Vec<PdfState> =
-            files.iter().cloned().map(PdfState::from_file).collect();
+        let pdf_states: Vec<PdfState> = files.iter().cloned().map(PdfState::from_file).collect();
 
         let catalog_root = catalog.root().to_path_buf();
         let plan = Reconciler::plan(store, &files)?;
@@ -193,7 +192,10 @@ impl IndexPipeline {
             );
         }
 
-        let mut counters = Counters { processed: total, ..Counters::default() };
+        let mut counters = Counters {
+            processed: total,
+            ..Counters::default()
+        };
 
         for (index, file) in files.iter().enumerate() {
             let position = index + 1;
@@ -285,14 +287,7 @@ impl IndexPipeline {
                         // visible in the index — a future run can retry OCR.
                         counters.pdf_failed += 1;
                         counters.ocr_failed += 1;
-                        if apply_with_ocr(
-                            store,
-                            &note,
-                            &empty_ocr_text(),
-                            &output,
-                            &path,
-                        )? == 1
-                        {
+                        if apply_with_ocr(store, &note, &empty_ocr_text(), &output, &path)? == 1 {
                             write_succeeded = true;
                         }
                     }
@@ -322,14 +317,7 @@ impl IndexPipeline {
                     Err(FileProcessingError::Ocr) => {
                         counters.pdf_failed += 1;
                         counters.ocr_failed += 1;
-                        if apply_with_ocr(
-                            store,
-                            &note,
-                            &empty_ocr_text(),
-                            &output,
-                            &path,
-                        )? == 1
-                        {
+                        if apply_with_ocr(store, &note, &empty_ocr_text(), &output, &path)? == 1 {
                             write_succeeded = true;
                         }
                     }
@@ -639,8 +627,7 @@ mod tests {
 
     #[test]
     fn into_index_ocr_picks_the_primary_language_when_one_is_present() {
-        let engine_ocr =
-            notae_ocr::OcrText::new("recognized".to_string(), vec!["pol".into()], 80);
+        let engine_ocr = notae_ocr::OcrText::new("recognized".to_string(), vec!["pol".into()], 80);
         let converted = into_index_ocr(&engine_ocr);
         assert_eq!(converted.text(), "recognized");
         assert_eq!(converted.language(), Some("pol"));
@@ -648,8 +635,7 @@ mod tests {
 
     #[test]
     fn into_index_ocr_with_no_detected_language_omits_the_language_field() {
-        let engine_ocr =
-            notae_ocr::OcrText::new("recognized".to_string(), Vec::new(), 0);
+        let engine_ocr = notae_ocr::OcrText::new("recognized".to_string(), Vec::new(), 0);
         let converted = into_index_ocr(&engine_ocr);
         assert_eq!(converted.text(), "recognized");
         assert_eq!(converted.language(), None);

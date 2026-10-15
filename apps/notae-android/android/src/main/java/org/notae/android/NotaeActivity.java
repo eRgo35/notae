@@ -7,7 +7,6 @@ import android.graphics.Color;
 import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
-import android.provider.Settings;
 import java.io.FileOutputStream;
 
 public final class NotaeActivity extends NativeActivity {
@@ -18,10 +17,6 @@ public final class NotaeActivity extends NativeActivity {
     private native void nativeOnActivityResult(
         int requestCode, int resultCode, String treeUri, int readGrantFlags);
 
-    public boolean isNotaeMotionReduced() {
-        return Settings.Global.getFloat(
-            getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f;
-    }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {

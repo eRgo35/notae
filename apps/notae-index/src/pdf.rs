@@ -150,14 +150,14 @@ const MAX_BASELINE_JITTER: f64 = 1.0;
 /// pipeline is [`Unreadable`](Self::Unreadable) — the bytes could not be got at
 /// all, a filesystem or permission problem — versus
 /// [`InvalidPdf`](Self::InvalidPdf) — the bytes were got and are not a usable
-/// PDF. The first is [`FileCondition::Unreadable`], the second is
-/// [`FileCondition::InvalidPdf`], and both are per-file: a batch continues.
+/// PDF. The first is `FileCondition::Unreadable`, the second is
+/// `FileCondition::InvalidPdf`, and both are per-file: a batch continues.
 #[derive(Debug, Error)]
 pub enum PdfError {
     /// The file could not be read.
     ///
     /// This is a filesystem condition — absent, denied, a directory, a link
-    /// that would not open — and maps onto [`FileCondition::Unreadable`].
+    /// that would not open — and maps onto `FileCondition::Unreadable`.
     #[error("{path}: cannot be read: {source}")]
     Unreadable {
         /// The path that was opened.
@@ -172,7 +172,7 @@ pub enum PdfError {
     /// This covers a file that is not a PDF at all, whatever its name says, and
     /// a file that begins like one but whose structure cannot be recovered.
     /// Either way the bytes were read and are not a usable PDF, which maps onto
-    /// [`FileCondition::InvalidPdf`].
+    /// `FileCondition::InvalidPdf`.
     #[error("{path}: not a usable PDF: {reason}")]
     InvalidPdf {
         /// The path that was parsed.
@@ -185,7 +185,7 @@ pub enum PdfError {
     ///
     /// Reported separately from [`InvalidPdf`](Self::InvalidPdf) because the
     /// file is a perfectly good PDF that happens to need a password this
-    /// tool does not have. It maps onto [`FileCondition::InvalidPdf`] for
+    /// tool does not have. It maps onto `FileCondition::InvalidPdf` for
     /// indexing purposes — nothing about it can be extracted without the
     /// password — but the message tells the user why.
     #[error("{path}: the PDF is encrypted")]
@@ -316,7 +316,10 @@ fn unicode_of(decoded: Option<BfString>) -> Option<Vec<char>> {
 /// vertically, where the advance is along y and there is no x gap to judge.
 /// Without an advance there is nothing to compare a positional gap against,
 /// so no separator is invented.
-fn advance_in_page_space(glyph: &hayro::hayro_interpret::font::PositionedGlyph<'_>, transform: &Affine) -> Option<f64> {
+fn advance_in_page_space(
+    glyph: &hayro::hayro_interpret::font::PositionedGlyph<'_>,
+    transform: &Affine,
+) -> Option<f64> {
     let width = match &**glyph {
         hayro::hayro_interpret::font::Glyph::Outline(outline) => outline.advance_width(),
         // A Type3 font's widths live in its own `d0`/`d1` operators and are
@@ -547,9 +550,7 @@ impl LinuxPdfDocument {
         let mut glyphs_seen = 0;
 
         for page in self.pdf.pages().iter() {
-            let mut collector = TextCollector {
-                glyphs: Vec::new(),
-            };
+            let mut collector = TextCollector { glyphs: Vec::new() };
             let mut context = Context::new(
                 Affine::IDENTITY,
                 Rect::ZERO,
@@ -586,7 +587,9 @@ impl LinuxPdfDocument {
                 dpi,
             });
         }
-        let index = usize::try_from(page).ok().filter(|i| *i < page_count as usize);
+        let index = usize::try_from(page)
+            .ok()
+            .filter(|i| *i < page_count as usize);
         let Some(index) = index else {
             return Err(PdfError::PageOutOfRange {
                 path: self.path.clone(),
@@ -651,7 +654,11 @@ fn append_page_text(text: &mut String, glyphs: &mut [DrawnGlyph]) {
             .y
             .partial_cmp(&left.y)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| left.x.partial_cmp(&right.x).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| {
+                left.x
+                    .partial_cmp(&right.x)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     });
 
     let mut previous: Option<&DrawnGlyph> = None;

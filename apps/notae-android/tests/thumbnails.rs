@@ -29,7 +29,10 @@ fn only_content_keys_get_a_path() {
 fn ensure_renders_once_and_reuses_the_file() {
     let (_dir, cache) = cache();
     let first = cache
-        .ensure(KEY, |out: &Path| { std::fs::write(out, b"png").unwrap(); Ok(true) })
+        .ensure(KEY, |out: &Path| {
+            std::fs::write(out, b"png").unwrap();
+            Ok(true)
+        })
         .expect("render");
     assert!(first.as_deref().is_some_and(Path::is_file));
     let second = cache
@@ -47,13 +50,23 @@ fn failed_render_leaves_no_partial_file() {
     });
     assert!(result.is_err());
     assert!(cache.existing(KEY).is_none());
-    assert_eq!(std::fs::read_dir(cache.path_for(KEY).unwrap().parent().unwrap()).unwrap().count(), 0);
+    assert_eq!(
+        std::fs::read_dir(cache.path_for(KEY).unwrap().parent().unwrap())
+            .unwrap()
+            .count(),
+        0
+    );
 }
 
 #[test]
 fn declined_render_is_not_cached() {
     let (_dir, cache) = cache();
-    assert_eq!(cache.ensure(KEY, |_out: &Path| Ok(false)).expect("declined"), None);
+    assert_eq!(
+        cache
+            .ensure(KEY, |_out: &Path| Ok(false))
+            .expect("declined"),
+        None
+    );
     assert!(cache.existing(KEY).is_none());
 }
 
@@ -62,7 +75,12 @@ fn prune_removes_thumbnails_of_deleted_scores() {
     let (_dir, cache) = cache();
     let other = "b".repeat(64);
     for key in [KEY, other.as_str()] {
-        cache.ensure(key, |out: &Path| { std::fs::write(out, b"png").unwrap(); Ok(true) }).unwrap();
+        cache
+            .ensure(key, |out: &Path| {
+                std::fs::write(out, b"png").unwrap();
+                Ok(true)
+            })
+            .unwrap();
     }
     let keep: HashSet<String> = [KEY.to_owned()].into();
     assert_eq!(cache.prune(&keep).expect("prune"), 1);
@@ -100,10 +118,14 @@ fn rescan_writes_a_thumbnail_for_each_indexed_score() {
         IndexStore::open(":memory:").expect("index"),
         Box::new(ThumbnailCatalog { file }),
         cache.clone(),
-    );
+    )
+    .expect("start test worker");
     controller.start_rescan().expect("rescan");
     loop {
-        match controller.recv_event_timeout(Duration::from_secs(5)).expect("event") {
+        match controller
+            .recv_event_timeout(Duration::from_secs(5))
+            .expect("event")
+        {
             OperationEvent::Completed { .. } => break,
             OperationEvent::Failed { reason } => panic!("{reason}"),
             _ => {}

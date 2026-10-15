@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use notae_domain::{
-    EpochTimestamp, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId,
-    NoteMetadata, PdfFingerprint, RelativePdfPath, Sha256Digest,
+    EpochTimestamp, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId, NoteMetadata,
+    PdfFingerprint, RelativePdfPath, Sha256Digest,
 };
 use notae_index::{IndexError, IndexStore, OcrText, ReindexOutcome, SCHEMA_VERSION, SearchScope};
 
@@ -133,11 +133,7 @@ fn metadata_provenance_and_status_round_trip() {
     metadata.add_tag("transcription");
     metadata.mark_manual(MetadataField::ComposerOrArtist);
     let fingerprint = PdfFingerprint::new(digest(7), 4_096, EpochTimestamp::new(-12, 250));
-    let mut stored = IndexedNote::new(
-        path("scores/12 - Autumn Leaves.pdf"),
-        fingerprint,
-        metadata,
-    );
+    let mut stored = IndexedNote::new(path("scores/12 - Autumn Leaves.pdf"), fingerprint, metadata);
     stored.set_status(IndexStatus::OcrIncomplete);
 
     store.upsert_note(&stored).expect("upsert");
@@ -169,10 +165,7 @@ fn metadata_provenance_and_status_round_trip() {
         MetadataOrigin::Manual
     );
     assert!(
-        loaded
-            .metadata()
-            .tags()
-            .contains("transcription"),
+        loaded.metadata().tags().contains("transcription"),
         "manually added tag must survive"
     );
 }
@@ -183,7 +176,14 @@ fn update_replaces_the_stored_record() {
     let first = note("a.pdf", 1, Some(NoteId::new(4)), "Prelude", None, &[]);
     store.upsert_note(&first).expect("insert");
 
-    let mut second = note("a.pdf", 1, Some(NoteId::new(4)), "Prelude in C", None, &["piano"]);
+    let mut second = note(
+        "a.pdf",
+        1,
+        Some(NoteId::new(4)),
+        "Prelude in C",
+        None,
+        &["piano"],
+    );
     second.set_status(IndexStatus::Ready);
     store.upsert_note(&second).expect("update");
 
@@ -205,14 +205,7 @@ fn duplicate_note_ids_are_refused_with_the_contested_id() {
         .expect("first record claims id 9");
 
     let error = store
-        .upsert_note(&note(
-            "b.pdf",
-            2,
-            Some(NoteId::new(9)),
-            "Second",
-            None,
-            &[],
-        ))
+        .upsert_note(&note("b.pdf", 2, Some(NoteId::new(9)), "Second", None, &[]))
         .expect_err("a duplicate id must not be silently hidden");
 
     match error {
@@ -221,10 +214,7 @@ fn duplicate_note_ids_are_refused_with_the_contested_id() {
     }
     assert_eq!(store.list_all().expect("list").len(), 1);
     assert!(
-        store
-            .get_by_hash(&digest(2))
-            .expect("lookup")
-            .is_none(),
+        store.get_by_hash(&digest(2)).expect("lookup").is_none(),
         "the rejected record must not be stored"
     );
 }
@@ -309,7 +299,15 @@ fn search_matches_title_tags_filename_and_ocr_text() {
         )
         .expect("insert with ocr");
 
-    for query in ["Autumn", "Autu", "jazz", "Sonatina", "Sonatina.pdf", "chromatic", "sharp"] {
+    for query in [
+        "Autumn",
+        "Autu",
+        "jazz",
+        "Sonatina",
+        "Sonatina.pdf",
+        "chromatic",
+        "sharp",
+    ] {
         let hits = store.search(query, 10).expect("search");
         assert!(!hits.is_empty(), "expected a match for {query}");
         assert!(
@@ -409,7 +407,11 @@ fn an_exact_id_match_outranks_an_exact_title_match() {
     let hits = store.search("12", 10).expect("search");
     assert_eq!(hits.len(), 3, "every record mentions the number");
     assert_eq!(hits[0].note.id(), Some(NoteId::new(12)), "exact id first");
-    assert_eq!(hits[1].note.id(), Some(NoteId::new(88)), "exact title second");
+    assert_eq!(
+        hits[1].note.id(),
+        Some(NoteId::new(88)),
+        "exact title second"
+    );
     assert_eq!(hits[2].note.id(), None, "ocr-only match last");
     assert!(hits[0].rank > hits[1].rank);
     assert!(hits[1].rank > hits[2].rank);
@@ -518,12 +520,7 @@ fn list_all_uses_the_library_order() {
         .collect();
     assert_eq!(
         order,
-        vec![
-            Some(NoteId::new(2)),
-            Some(NoteId::new(10)),
-            None,
-            None,
-        ]
+        vec![Some(NoteId::new(2)), Some(NoteId::new(10)), None, None,]
     );
     let listed = store.list_all().expect("list");
     let titles: Vec<&str> = listed.iter().map(IndexedNote::title).collect();
@@ -540,7 +537,10 @@ fn reindexing_changed_content_at_a_known_path_keeps_one_record() {
         .upsert_note(&first)
         .expect("insert the original content");
     store
-        .set_ocr(&digest(1), &OcrText::new("printed text of the first revision"))
+        .set_ocr(
+            &digest(1),
+            &OcrText::new("printed text of the first revision"),
+        )
         .expect("ocr the original");
 
     let mut second = note("a.pdf", 2, Some(NoteId::new(4)), "Prelude", None, &[]);
@@ -568,10 +568,7 @@ fn reindexing_changed_content_at_a_known_path_keeps_one_record() {
     assert_eq!(notes[0].title(), "Prelude");
     assert_eq!(notes[0].status(), IndexStatus::OcrPending);
     assert!(
-        store
-            .get_by_hash(&digest(1))
-            .expect("lookup")
-            .is_none(),
+        store.get_by_hash(&digest(1)).expect("lookup").is_none(),
         "the stale fingerprint must not survive"
     );
     assert_eq!(
@@ -580,10 +577,7 @@ fn reindexing_changed_content_at_a_known_path_keeps_one_record() {
         "recognized text of the replaced content does not describe the new bytes"
     );
     assert!(
-        store
-            .search("printed", 10)
-            .expect("search")
-            .is_empty(),
+        store.search("printed", 10).expect("search").is_empty(),
         "the derived index must not keep the replaced content"
     );
     assert_eq!(
@@ -632,16 +626,12 @@ fn reindexing_distinguishes_a_move_from_a_content_change() {
     );
     assert_eq!(
         store
-            .reindex_note(&note(
-                "b.pdf",
-                7,
-                Some(NoteId::new(13)),
-                "B",
-                None,
-                &[],
-            ))
+            .reindex_note(&note("b.pdf", 7, Some(NoteId::new(13)), "B", None, &[],))
             .expect("changed content at a known path"),
-        ReindexOutcome::Replaced { previous: digest(6), duplicate_at: None },
+        ReindexOutcome::Replaced {
+            previous: digest(6),
+            duplicate_at: None
+        },
         "changed content at a known path is a replacement"
     );
     assert_eq!(
@@ -683,7 +673,14 @@ fn reindexing_content_that_lives_at_another_path_collapses_the_duplicate() {
         )
         .expect("insert");
     store
-        .upsert_note(&note("second.pdf", 10, Some(NoteId::new(22)), "Other", None, &[]))
+        .upsert_note(&note(
+            "second.pdf",
+            10,
+            Some(NoteId::new(22)),
+            "Other",
+            None,
+            &[],
+        ))
         .expect("insert");
 
     let outcome = store
@@ -735,14 +732,7 @@ fn a_duplicate_id_is_still_refused_after_a_same_path_replacement() {
         .expect("reindex the changed file");
 
     let error = store
-        .reindex_note(&note(
-            "b.pdf",
-            3,
-            Some(NoteId::new(9)),
-            "Second",
-            None,
-            &[],
-        ))
+        .reindex_note(&note("b.pdf", 3, Some(NoteId::new(9)), "Second", None, &[]))
         .expect_err("a contested id must be refused");
 
     match error {
@@ -775,7 +765,10 @@ fn opening_a_database_that_claims_the_version_without_the_schema_is_refused() {
     let error = IndexStore::open(&file)
         .expect_err("a version row without the schema it names must not be trusted");
     match error {
-        IndexError::IncompleteSchema { version, ref missing } => {
+        IndexError::IncompleteSchema {
+            version,
+            ref missing,
+        } => {
             assert_eq!(version, SCHEMA_VERSION);
             assert!(
                 missing.contains("notes") && missing.contains("notes_fts"),
@@ -826,13 +819,29 @@ fn get_by_id_returns_none_for_unknown_ids() {
 
 fn scoped_store() -> IndexStore {
     let store = IndexStore::open(":memory:").expect("open");
-    let schubert = note("ave.pdf", 1, Some(NoteId::new(13)), "Ave Maria", Some("Schubert"), &["solo"]);
-    let antiphons = note("antiphons.pdf", 2, Some(NoteId::new(77)), "Marian antiphons", Some("Traditional"), &["choir"]);
+    let schubert = note(
+        "ave.pdf",
+        1,
+        Some(NoteId::new(13)),
+        "Ave Maria",
+        Some("Schubert"),
+        &["solo"],
+    );
+    let antiphons = note(
+        "antiphons.pdf",
+        2,
+        Some(NoteId::new(77)),
+        "Marian antiphons",
+        Some("Traditional"),
+        &["choir"],
+    );
     store.upsert_note(&schubert).expect("insert");
     store
         .upsert_note_with_ocr(
             &antiphons,
-            Some(&OcrText::new("Regina caeli laetare alleluia. Ave Maria gratia plena Dominus tecum")),
+            Some(&OcrText::new(
+                "Regina caeli laetare alleluia. Ave Maria gratia plena Dominus tecum",
+            )),
         )
         .expect("insert");
     store
@@ -840,7 +849,9 @@ fn scoped_store() -> IndexStore {
 
 #[test]
 fn text_scope_matches_only_page_text_and_returns_a_marked_snippet() {
-    let hits = scoped_store().search_in("ave maria", SearchScope::Text, 10).expect("search");
+    let hits = scoped_store()
+        .search_in("ave maria", SearchScope::Text, 10)
+        .expect("search");
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].note.title(), "Marian antiphons");
     let snippet = hits[0].text_snippet.as_deref().expect("snippet");
@@ -849,7 +860,9 @@ fn text_scope_matches_only_page_text_and_returns_a_marked_snippet() {
 
 #[test]
 fn titles_scope_ignores_page_text() {
-    let hits = scoped_store().search_in("ave", SearchScope::Titles, 10).expect("search");
+    let hits = scoped_store()
+        .search_in("ave", SearchScope::Titles, 10)
+        .expect("search");
     let titles: Vec<&str> = hits.iter().map(|hit| hit.note.title()).collect();
     assert_eq!(titles, ["Ave Maria"]);
     assert!(hits[0].text_snippet.is_none());
@@ -858,31 +871,71 @@ fn titles_scope_ignores_page_text() {
 #[test]
 fn composers_and_tags_scopes_use_their_columns() {
     let store = scoped_store();
-    assert_eq!(store.search_in("traditional", SearchScope::Composers, 10).expect("search").len(), 1);
-    assert_eq!(store.search_in("choir", SearchScope::Tags, 10).expect("search").len(), 1);
-    assert!(store.search_in("choir", SearchScope::Composers, 10).expect("search").is_empty());
+    assert_eq!(
+        store
+            .search_in("traditional", SearchScope::Composers, 10)
+            .expect("search")
+            .len(),
+        1
+    );
+    assert_eq!(
+        store
+            .search_in("choir", SearchScope::Tags, 10)
+            .expect("search")
+            .len(),
+        1
+    );
+    assert!(
+        store
+            .search_in("choir", SearchScope::Composers, 10)
+            .expect("search")
+            .is_empty()
+    );
 }
 
 #[test]
 fn everything_scope_matches_search() {
     let store = scoped_store();
-    let scoped = store.search_in("ave", SearchScope::Everything, 10).expect("search");
+    let scoped = store
+        .search_in("ave", SearchScope::Everything, 10)
+        .expect("search");
     let plain = store.search("ave", 10).expect("search");
-    let titles = |hits: &[notae_index::SearchHit]| hits.iter().map(|hit| hit.note.title().to_owned()).collect::<Vec<_>>();
+    let titles = |hits: &[notae_index::SearchHit]| {
+        hits.iter()
+            .map(|hit| hit.note.title().to_owned())
+            .collect::<Vec<_>>()
+    };
     assert_eq!(titles(&scoped), titles(&plain));
 }
 
 #[test]
 fn punctuation_only_query_in_any_scope_returns_nothing() {
     let store = scoped_store();
-    for scope in [SearchScope::Everything, SearchScope::Titles, SearchScope::Composers, SearchScope::Tags, SearchScope::Text] {
-        assert!(store.search_in("?!…", scope, 10).expect("search").is_empty());
+    for scope in [
+        SearchScope::Everything,
+        SearchScope::Titles,
+        SearchScope::Composers,
+        SearchScope::Tags,
+        SearchScope::Text,
+    ] {
+        assert!(
+            store
+                .search_in("?!…", scope, 10)
+                .expect("search")
+                .is_empty()
+        );
     }
 }
 
 #[test]
 fn scope_keys_round_trip() {
-    for scope in [SearchScope::Everything, SearchScope::Titles, SearchScope::Composers, SearchScope::Tags, SearchScope::Text] {
+    for scope in [
+        SearchScope::Everything,
+        SearchScope::Titles,
+        SearchScope::Composers,
+        SearchScope::Tags,
+        SearchScope::Text,
+    ] {
         assert_eq!(SearchScope::from_key(scope.key()), scope);
     }
     assert_eq!(SearchScope::from_key("bogus"), SearchScope::Everything);

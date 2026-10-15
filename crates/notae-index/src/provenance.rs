@@ -128,7 +128,10 @@ pub(crate) fn refresh_from_parsed(
     if !existing.provenance().is_manual(MetadataField::Id) {
         metadata.assign_id(parsed.id(), MetadataOrigin::FilenameDerived);
     }
-    outcome.record(MetadataField::Id, !existing.provenance().is_manual(MetadataField::Id));
+    outcome.record(
+        MetadataField::Id,
+        !existing.provenance().is_manual(MetadataField::Id),
+    );
 
     let title_is_manual = existing.provenance().is_manual(MetadataField::Title);
     if !title_is_manual {

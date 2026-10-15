@@ -57,7 +57,11 @@ impl SearchRow {
 
 #[cfg(target_os = "android")]
 pub(crate) fn library_row(row: SearchRow, thumbnail: Option<slint::Image>) -> crate::LibraryRow {
-    let (before, hit, after) = row.text_snippet.as_deref().map(split_snippet).unwrap_or_default();
+    let (before, hit, after) = row
+        .text_snippet
+        .as_deref()
+        .map(split_snippet)
+        .unwrap_or_default();
     crate::LibraryRow {
         id: row.id.unwrap_or_default().into(),
         title: row.title.into(),
@@ -134,6 +138,9 @@ pub enum UiError {
     /// The background operation thread has stopped.
     #[error("the index worker has stopped")]
     WorkerStopped,
+    /// The background operation thread could not be created.
+    #[error("failed to start the index worker: {0}")]
+    WorkerStart(#[source] std::io::Error),
 }
 
 /// Splits an FTS5 snippet into (before, match, after) around its first marked match.

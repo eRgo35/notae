@@ -85,6 +85,38 @@ fn overlapping_rescan_requests_are_rejected() {
     );
 }
 
+#[test]
+fn shared_scan_eligibility_tracks_idle_operation_state() {
+    use notae_android::ui::UiModel;
+
+    let mut model = UiModel::new();
+    assert!(model.rescan_enabled());
+
+    model
+        .dispatch(UiEvent::PickLibraryRoot {
+            root: std::path::PathBuf::from("/tmp/example"),
+        })
+        .expect("choose library");
+    assert!(model.rescan_enabled());
+
+    model.start_rescan().expect("request scan");
+    assert!(!model.rescan_enabled());
+
+    model
+        .controller_mut()
+        .cancel_operation()
+        .expect("cancel scan");
+    assert!(model.rescan_enabled());
+
+    model.controller_mut().import_preview_ready(1);
+    assert!(!model.rescan_enabled());
+    model
+        .controller_mut()
+        .cancel_import()
+        .expect("cancel import");
+    assert!(model.rescan_enabled());
+}
+
 // P3 #7: `StorageState::Error(_)` carries a payload the UI can
 // render. The display string is what `StorageStateKindView::Error(message)`
 // hands to the Slint `setup_error_label`.

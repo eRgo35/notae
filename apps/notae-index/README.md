@@ -5,9 +5,8 @@ folder of PDFs, extracts text (and OCRs the image-only ones), and writes
 a portable sidecar the Android app imports without needing to redo any of
 the work.
 
-The indexer is the only Notae component that runs on the desktop. The
-Android app reads the sidecar the indexer wrote and never asks the
-desktop to do anything else.
+The Android app imports the sidecar written by this CLI; both applications
+and the shared libraries are maintained in this repository workspace.
 
 ## Quick start
 
@@ -41,7 +40,7 @@ through `pkg-config`. The system requirements are:
   without an unversioned symlink — the build script handles both).
 * **Leptonica 1.8x** with development headers (`leptonica-devel` /
   `libleptonica-dev`).
-* **Rust 1.85+** (edition 2024).
+* **Rust 1.98.1** (edition 2024; pinned in the workspace's `rust-toolchain.toml`).
 * **`pkg-config`** on `PATH`.
 
 On a fresh Fedora 44 box without sudo this is a no-go because the

@@ -3,7 +3,7 @@
 //! # Exit codes
 //!
 //! * `0` — the command succeeded: an informational request (`--help`,
-//!   `--version`), or a run that produced a [`RunReport`](notae_index_cli::report::RunReport).
+//!   `--version`), or a run that produced a [`RunReport`].
 //!   A report that carries isolated per-file failures is still a report, so
 //!   it exits zero and the failures are printed rather than signalled through
 //!   the status. An isolated failure is any problem with something *below*
@@ -155,9 +155,7 @@ fn run_pipeline(
     let ocr = match TesseractProvider::new(config) {
         Ok(provider) => provider,
         Err(error) => {
-            eprintln!(
-                "notae-index: could not initialise Tesseract: {error}"
-            );
+            eprintln!("notae-index: could not initialise Tesseract: {error}");
             return ExitCode::FAILURE;
         }
     };
@@ -241,16 +239,18 @@ fn print_catalog_diagnostics(report: &RunReport, verbose: bool) {
 fn progress_line(event: &ProgressEvent) -> Option<String> {
     match event {
         ProgressEvent::Started => Some("starting indexing run".to_string()),
-        ProgressEvent::FileStarted { path, position, total } => {
-            Some(format!("[{position}/{total}] {path}"))
-        }
-        ProgressEvent::PageProgress { path, current, total } => Some(format!(
-            "{path}: OCR page {current}/{total}"
-        )),
+        ProgressEvent::FileStarted {
+            path,
+            position,
+            total,
+        } => Some(format!("[{position}/{total}] {path}")),
+        ProgressEvent::PageProgress {
+            path,
+            current,
+            total,
+        } => Some(format!("{path}: OCR page {current}/{total}")),
         ProgressEvent::FileCompleted { path } => Some(format!("{path}: indexed")),
-        ProgressEvent::FileFailed { path, reason } => {
-            Some(format!("{path}: failed ({reason})"))
-        }
+        ProgressEvent::FileFailed { path, reason } => Some(format!("{path}: failed ({reason})")),
         ProgressEvent::Finished => Some("finished indexing run".to_string()),
     }
 }

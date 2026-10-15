@@ -26,11 +26,11 @@
 //!   and tells the user to pass the directory it points at. The root is
 //!   canonicalised exactly zero times.
 //!
-//!   What counts as "the name" is fixed by [`named_root`], because a name can
+//!   What counts as "the name" is fixed by `named_root`, because a name can
 //!   name a link while spelling something else: Linux resolves a trailing
 //!   separator — and a trailing `.`, and a doubled separator — before it
 //!   stats anything, so a check on `link/` describes the link's *target* and
-//!   the link itself goes unseen. [`named_root`] rebuilds the name from its
+//!   the link itself goes unseen. `named_root` rebuilds the name from its
 //!   [`Path::components`], which drops exactly those spellings and nothing
 //!   else. The rebuild is lexical: no component is resolved and nothing is
 //!   canonicalised, so the name the user typed is still the name inspected,
@@ -233,7 +233,7 @@ impl ValidatedRoot {
     /// object the run then uses. Three things are settled, in the order a user
     /// would fix them:
     ///
-    /// * [`named_root`] first strips the spellings Linux resolves away before
+    /// * `named_root` first strips the spellings Linux resolves away before
     ///   it stats anything — a trailing separator, a trailing `.`, a doubled
     ///   separator — so the name inspected below is the name the user typed
     ///   with only those removed.
@@ -617,7 +617,9 @@ fn fingerprint(path: &Path, identity: Identity) -> Result<PdfFingerprint, io::Er
             break;
         }
         hasher.update(&buffer[..read]);
-        byte_len += u64::try_from(read).expect("a chunk length fits in u64");
+        let chunk_len =
+            u64::try_from(read).map_err(|_| io::Error::other("read length exceeds u64"))?;
+        byte_len += chunk_len;
     }
     let digest = hasher.finalize();
     let sha256 = Sha256Digest::from_bytes(digest.into());

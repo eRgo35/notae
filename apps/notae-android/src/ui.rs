@@ -38,11 +38,20 @@ use crate::ui::search::SearchRow;
 /// They are kept distinct so the storage layer can be swapped (host
 /// test vs. device) without touching the state machine the UI
 /// consumes.
+/// A UI-facing snapshot of operation and library status.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiStatus {
+    pub operation: crate::state::OperationState,
+    pub latest_rescan: Option<RescanSummary>,
+    pub pending_text_count: usize,
+}
+
 pub struct UiModel {
     controller: AppController,
     storage: Rc<Mutex<StorageState>>,
     search_rows: Vec<SearchRow>,
     import_preview_summary: Option<ImportPreviewSummary>,
+    latest_rescan: Option<RescanSummary>,
     metadata_editor: Option<EditableMetadata>,
     metadata_error: Option<String>,
     pdf_launch_error: Option<String>,
@@ -64,6 +73,7 @@ impl UiModel {
             storage,
             search_rows: Vec::new(),
             import_preview_summary: None,
+            latest_rescan: None,
             metadata_editor: None,
             metadata_error: None,
             pdf_launch_error: None,
@@ -103,6 +113,8 @@ impl UiModel {
     }
 
     /// Updates the storage state in place.
+    // Storage state is UI-thread-owned; this lock protects brief, callback-free access.
+    #[allow(clippy::expect_used)]
     pub fn set_storage(&mut self, state: StorageState) {
         if matches!(
             self.controller.state().screen(),
@@ -223,7 +235,10 @@ impl UiModel {
     #[must_use]
     pub fn selected_row(&self) -> Option<SearchRow> {
         let key = self.selected_note.as_deref()?;
-        self.search_rows.iter().find(|row| row.note_key == key).cloned()
+        self.search_rows
+            .iter()
+            .find(|row| row.note_key == key)
+            .cloned()
     }
 
     /// The current read-only sidecar preview counts, when one is awaiting
@@ -276,11 +291,12 @@ impl UiModel {
                 self.controller.update_rescan_progress(completed, total)?;
             }
             OperationEvent::FileSucceeded { .. } | OperationEvent::FileFailed { .. } => {}
+            OperationEvent::Canceled => self.controller.cancel_operation()?,
             OperationEvent::Completed { summary, rows } => {
+                self.latest_rescan = Some(summary);
                 self.search_rows = rows;
                 self.controller.complete_operation(rescan_summary(&summary));
             }
-            OperationEvent::Canceled => self.controller.cancel_operation()?,
             OperationEvent::ImportPreviewReady { summary } => {
                 let candidate_count = summary.new + summary.changed;
                 self.import_preview_summary = Some(summary);
@@ -306,6 +322,24 @@ impl UiModel {
             OperationEvent::Failed { reason } => self.controller.fail_operation(reason),
         }
         Ok(())
+    }
+
+    /// Whether a new library scan can be started from shared app chrome.
+    #[must_use]
+    pub fn rescan_enabled(&self) -> bool {
+        self.controller.state().operation() == &crate::state::OperationState::Idle
+    }
+    #[must_use]
+    pub fn status(&self) -> UiStatus {
+        UiStatus {
+            operation: self.controller.state().operation().clone(),
+            latest_rescan: self.latest_rescan,
+            pending_text_count: self
+                .search_rows
+                .iter()
+                .filter(|row| row.text_pending)
+                .count(),
+        }
     }
 
     /// Returns the current [`AppState`].
@@ -385,7 +419,7 @@ pub enum StorageStateKindView {
     /// No library root chosen yet.
     Unconfigured,
     /// A library root is open and the catalog is ready.
-    Ready,
+    Ready { display_name: String },
     /// The previously-chosen root's persisted permission was revoked.
     /// The string is the root's display name, used as the body text
     /// of the recovery screen.
@@ -399,11 +433,20 @@ impl UiModel {
     /// Returns the [`StorageStateKindView`] of the current storage
     /// state. The view drops the contained source or root.
     #[must_use]
+    // Storage state is UI-thread-owned; this read invokes no user callback.
+    #[allow(clippy::expect_used)]
     pub fn storage_kind(&self) -> StorageStateKindView {
         let guard = self.storage.lock().expect("storage mutex poisoned");
         match &*guard {
             StorageState::Unconfigured => StorageStateKindView::Unconfigured,
-            StorageState::Ready(_) => StorageStateKindView::Ready,
+            StorageState::Ready(source) => StorageStateKindView::Ready {
+                display_name: source
+                    .lock()
+                    .expect("library source mutex poisoned")
+                    .root()
+                    .display_name()
+                    .to_owned(),
+            },
             StorageState::PermissionLost(root) => {
                 StorageStateKindView::PermissionLost(root.display_name().to_owned())
             }

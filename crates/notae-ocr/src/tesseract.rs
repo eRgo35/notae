@@ -19,9 +19,7 @@ use notae_domain::normalize_whitespace;
 use tesseract::plumbing::TessBaseApi;
 
 use crate::language::{InstalledLanguages, LanguagePolicy};
-use crate::{
-    OcrError, OcrImage, OcrProvider, OcrText, OcrWarning, PSM_AUTO_OSD,
-};
+use crate::{OcrError, OcrImage, OcrProvider, OcrText, OcrWarning, PSM_AUTO_OSD};
 
 /// Configuration for [`TesseractProvider`].
 ///
@@ -39,6 +37,7 @@ use crate::{
 ///
 /// [`Fixed`]: crate::LanguagePolicy::Fixed
 /// [`MissingLanguagePack`]: crate::OcrWarning::MissingLanguagePack
+/// [`Automatic`]: crate::LanguagePolicy::Automatic
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TesseractConfig {
     tessdata_dir: PathBuf,
@@ -54,10 +53,7 @@ impl TesseractConfig {
     /// [`TesseractProvider::new`]) and the language list is validated at
     /// the first recognition.
     #[must_use]
-    pub fn new(
-        tessdata_dir: impl Into<PathBuf>,
-        available_languages: InstalledLanguages,
-    ) -> Self {
+    pub fn new(tessdata_dir: impl Into<PathBuf>, available_languages: InstalledLanguages) -> Self {
         Self {
             tessdata_dir: tessdata_dir.into(),
             available_languages,
@@ -82,9 +78,7 @@ impl TesseractConfig {
     /// library on the first recognition.
     ///
     /// [`Automatic`]: crate::LanguagePolicy::Automatic
-    pub fn discover(
-        tessdata_dir: impl Into<PathBuf>,
-    ) -> Result<Self, OcrError> {
+    pub fn discover(tessdata_dir: impl Into<PathBuf>) -> Result<Self, OcrError> {
         let tessdata_dir = tessdata_dir.into();
         if !tessdata_dir.exists() || !tessdata_dir.is_dir() {
             return Err(OcrError::TessdataDirectoryUnavailable { path: tessdata_dir });
@@ -159,19 +153,14 @@ impl TesseractProvider {
 }
 
 impl OcrProvider for TesseractProvider {
-    fn recognize(
-        &self,
-        page: &OcrImage,
-        policy: &LanguagePolicy,
-    ) -> Result<OcrText, OcrError> {
+    fn recognize(&self, page: &OcrImage, policy: &LanguagePolicy) -> Result<OcrText, OcrError> {
         if page.width() == 0 || page.height() == 0 {
             return Err(OcrError::InvalidImage {
                 reason: format!("image is {}x{}", page.width(), page.height()),
             });
         }
 
-        let (packs, warnings) =
-            policy.resolve_against(&self.config.available_languages);
+        let (packs, warnings) = policy.resolve_against(&self.config.available_languages);
 
         if packs.is_empty() {
             // No requested pack is installed. Returning the warning instead of
@@ -218,11 +207,7 @@ fn recognize_with(
 
     match outcome {
         RecognizeOutcome::Recognized { text, confidence } => {
-            let mut ocr = OcrText::new(
-                text,
-                packs.to_vec(),
-                clamp_confidence(confidence),
-            );
+            let mut ocr = OcrText::new(text, packs.to_vec(), clamp_confidence(confidence));
             for warning in warnings.drain(..) {
                 ocr.push_warning(warning);
             }
@@ -243,9 +228,7 @@ fn recognize_with(
                 let _ = warning;
             }
             Err(OcrError::RecognitionFailed {
-                reason: format!(
-                    "tesseract failed against language string {language:?}"
-                ),
+                reason: format!("tesseract failed against language string {language:?}"),
             })
         }
     }
@@ -259,10 +242,11 @@ fn recognize_inner(
     warnings: &mut Vec<OcrWarning>,
 ) -> Result<RecognizeOutcome, OcrError> {
     let datapath_bytes = format!("{}\0", tessdata_dir.display());
-    let datapath_c = CStr::from_bytes_with_nul(datapath_bytes.as_bytes())
-        .map_err(|error| OcrError::EngineInitializationFailed {
+    let datapath_c = CStr::from_bytes_with_nul(datapath_bytes.as_bytes()).map_err(|error| {
+        OcrError::EngineInitializationFailed {
             reason: format!("tessdata path contains an interior NUL: {error}"),
-        })?;
+        }
+    })?;
     let language_bytes = format!("{language}\0");
     let language_c = CStr::from_bytes_with_nul(language_bytes.as_bytes()).map_err(|_| {
         OcrError::EngineInitializationFailed {

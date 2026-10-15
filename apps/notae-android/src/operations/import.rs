@@ -66,13 +66,12 @@ impl ImportPreviewViewModel {
     /// Returns [`UiError::ConfirmationRequired`] until confirmed, or a core
     /// import error if the index cannot be updated.
     pub fn apply(&mut self, local: &IndexStore) -> Result<ImportReport, UiError> {
-        if self.preview.is_none() {
-            return Err(UiError::NoImportPreview);
-        }
         if !self.confirmed {
             return Err(UiError::ConfirmationRequired);
         }
-        let preview = self.preview.take().expect("preview checked above");
+        let Some(preview) = self.preview.take() else {
+            return Err(UiError::NoImportPreview);
+        };
         self.confirmed = false;
         Ok(SidecarImporter::apply(preview, local)?)
     }

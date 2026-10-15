@@ -158,6 +158,8 @@ fn is_pdf_name(name: &str) -> bool {
     bytes.len() >= 4 && bytes[bytes.len() - 4..].eq_ignore_ascii_case(b".pdf")
 }
 
+// The SAF byte slice is bounded by addressable Android memory, which fits u64 on supported targets.
+#[allow(clippy::expect_used)]
 fn fingerprint(bytes: &[u8]) -> PdfFingerprint {
     let digest = Sha256::digest(bytes);
     PdfFingerprint::new(

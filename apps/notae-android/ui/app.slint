@@ -79,6 +79,10 @@ export component AppWindow inherits Window {
     in-out property <string> metadata_tags: "";
     in property <string> metadata_error_text: "";
     in property <string> pdf_launch_error_text: "";
+    in property <string> library_display_name: "";
+    in property <string> settings_scan_summary: "";
+    in property <string> settings_pending_text_count: "0";
+    in property <string> app_version: "";
     in property <[SectionItem]> sections: [];
     in property <[SectionItem]> composers: [];
     in property <string> selected_section: "all";
@@ -89,7 +93,6 @@ export component AppWindow inherits Window {
     in property <bool> details_open: false;
     in property <bool> show_search: false;
     in property <string> search_scope: "everything";
-    in-out property <bool> reduced_motion <=> Theme.reduced-motion;
     callback settings_clicked();
     callback settings_closed();
     callback setup_chosen();
@@ -114,7 +117,6 @@ export component AppWindow inherits Window {
     private property <bool> expanded: root.width >= 840px;
     private property <length> available-height: (root.virtual-keyboard-size.height > 0px ? root.virtual-keyboard-position.y : root.height - root.safe-area-insets.bottom) - root.safe-area-insets.top;
     private property <float> sheet-progress: root.show_metadata_editor || root.show_import_preview ? 1 : 0;
-    animate sheet-progress { duration: Theme.reduced-motion ? 0ms : 240ms; easing: ease-out; }
     private property <bool> modal-open: root.show_metadata_editor || root.show_import_preview;
     changed modal-open => {
         Theme.modal-open = root.modal-open;
@@ -167,6 +169,18 @@ export component AppWindow inherits Window {
                 cancel => { root.cancel_rescan_clicked(); }
                 acknowledge => { root.acknowledge_clicked(); }
             }
+            if root.configured : HorizontalLayout {
+                height: 56px;
+                padding-left: 8px;
+                padding-right: 8px;
+                alignment: end;
+                IconButton {
+                    label: "Scan library";
+                    icon: @image-url("material-icons/scan.svg");
+                    enabled: root.rescan_enabled;
+                    clicked => { root.rescan_clicked(); }
+                }
+            }
             if root.configured && !root.show_settings && !root.show_search : LibraryScreen {
                 vertical-stretch: 1;
                 expanded: root.expanded;
@@ -195,7 +209,6 @@ export component AppWindow inherits Window {
                     }
                 }
                 details-open: root.details_open;
-                rescan-enabled: root.rescan_enabled;
                 progress-text: root.operation_progress_text;
                 busy: root.operation_busy;
                 fraction: root.operation_fraction;
@@ -205,16 +218,22 @@ export component AppWindow inherits Window {
                 section-selected(key) => { root.section_selected(key); }
                 settings-clicked => { root.settings_clicked(); }
                 search-clicked => { root.search_opened(); }
-                rescan-clicked => { root.rescan_clicked(); }
-                cancel-clicked => { root.cancel_rescan_clicked(); }
                 acknowledge-clicked => { root.acknowledge_clicked(); }
                 score-selected(key) => { root.score_selected(key); }
             }
             if root.configured && root.show_search : SearchScreen {
                 vertical-stretch: 1;
+                available-height: root.available-height;
                 query: root.search_text;
                 scope: root.search_scope;
                 rows: root.library_rows;
+                progress-text: root.operation_progress_text;
+                busy: root.operation_busy;
+                fraction: root.operation_fraction;
+                cancel-enabled: root.cancel_enabled;
+                acknowledge-enabled: root.acknowledge_enabled;
+                cancel => { root.cancel_rescan_clicked(); }
+                acknowledge => { root.acknowledge_clicked(); }
                 query-edited(value) => { root.search_text = value; root.search_changed(value); }
                 scope-changed(key) => { root.search_scope_changed(key); }
                 close => { root.search_closed(); }
@@ -222,11 +241,15 @@ export component AppWindow inherits Window {
                 init => { self.focus-field(); }
             }
             if root.configured && root.show_settings : SettingsScreen {
+                vertical-stretch: 1;
                 available-width: root.width - (root.expanded ? 56px : 32px);
-                rescan-enabled: root.rescan_enabled;
-                reduced-motion <=> root.reduced_motion;
+                available-height: root.available-height;
+                library-display-name: root.library_display_name;
+                scan-summary: root.settings_scan_summary;
+                pending-text-count: root.settings_pending_text_count;
+                version: root.app_version;
+                change-library => { root.setup_chosen(); }
                 back => { root.settings_closed(); }
-                rescan => { root.rescan_clicked(); }
             }
         }
     }

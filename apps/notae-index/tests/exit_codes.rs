@@ -104,10 +104,7 @@ fn a_missing_root_argument_is_a_usage_error() {
 #[test]
 fn an_unknown_flag_is_a_usage_error() {
     let output = index(&["/tmp", "--nonsense"]);
-    assert!(
-        !output.status.success(),
-        "an unknown flag exits non-zero"
-    );
+    assert!(!output.status.success(), "an unknown flag exits non-zero");
     assert!(
         !stderr(&output).is_empty(),
         "the usage error is reported on stderr"
@@ -304,8 +301,11 @@ fn no_spelling_of_a_symlinked_root_is_followed_by_the_binary() {
     fs::write(outside.join("secret.pdf"), "outside content").expect("write the target");
     std::os::unix::fs::symlink(&outside, library._dir.path().join("library-link"))
         .expect("link the directory as the root");
-    std::os::unix::fs::symlink(library._dir.path().join("nothing-here"), library._dir.path().join("dead-link"))
-        .expect("link a directory that does not exist");
+    std::os::unix::fs::symlink(
+        library._dir.path().join("nothing-here"),
+        library._dir.path().join("dead-link"),
+    )
+    .expect("link a directory that does not exist");
 
     for spelling in [
         "library-link",
@@ -344,7 +344,13 @@ fn a_real_root_exits_zero_however_the_binary_is_spelled() {
     let library = Library::new();
     library.write("inside.pdf", "readable");
 
-    for spelling in ["library", "library/", "library//", "library/.", "library/./"] {
+    for spelling in [
+        "library",
+        "library/",
+        "library//",
+        "library/.",
+        "library/./",
+    ] {
         let root = library._dir.path().join(spelling);
         let output = index(&[root.to_str().expect("utf-8 path")]);
         assert!(

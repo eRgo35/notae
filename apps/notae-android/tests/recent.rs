@@ -44,7 +44,12 @@ fn record_keeps_at_most_the_limit() {
 
 #[test]
 fn from_text_keeps_only_valid_unique_keys() {
-    let text = format!("{}\nnot-a-key\n\n{}\n{}\nABC\n", key('a'), key('b'), key('a'));
+    let text = format!(
+        "{}\nnot-a-key\n\n{}\n{}\nABC\n",
+        key('a'),
+        key('b'),
+        key('a')
+    );
     assert_eq!(RecentScores::from_text(&text).keys(), [key('a'), key('b')]);
 }
 
@@ -70,7 +75,11 @@ fn ui_model_records_opened_scores_and_filters_recent_section() {
     model.record_opened(&key('b')).expect("record");
     model.select_section(LibrarySection::Recent);
 
-    let titles: Vec<String> = model.visible_rows().into_iter().map(|row| row.title).collect();
+    let titles: Vec<String> = model
+        .visible_rows()
+        .into_iter()
+        .map(|row| row.title)
+        .collect();
     assert_eq!(titles, ["Two"]);
 
     let reloaded = notae_android::recent::RecentScores::load(&dir.path().join("recent.txt"));
@@ -82,7 +91,10 @@ fn selection_is_dropped_when_the_row_disappears() {
     let mut model = UiModel::new();
     model.set_search_rows(vec![row('a', "One")]);
     model.select_note(Some(key('a')));
-    assert_eq!(model.selected_row().map(|row| row.title), Some("One".to_owned()));
+    assert_eq!(
+        model.selected_row().map(|row| row.title),
+        Some("One".to_owned())
+    );
 
     model.set_search_rows(vec![row('b', "Two")]);
     assert!(model.selected_row().is_none());

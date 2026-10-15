@@ -74,11 +74,9 @@ pub fn applied_version(conn: &Connection) -> Result<u32, IndexError> {
     if !exists {
         return Ok(0);
     }
-    let version = conn.query_row(
-        "SELECT max(version) FROM schema_migrations",
-        [],
-        |row| row.get::<_, Option<i64>>(0),
-    )?;
+    let version = conn.query_row("SELECT max(version) FROM schema_migrations", [], |row| {
+        row.get::<_, Option<i64>>(0)
+    })?;
     Ok(version.map_or(0, |value| u32::try_from(value).unwrap_or(u32::MAX)))
 }
 

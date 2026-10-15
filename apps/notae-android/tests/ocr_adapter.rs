@@ -180,7 +180,8 @@ fn rescan_marks_image_only_pdf_pending_without_overwriting_search_state() {
             file,
             extracted: Ok(None),
         }),
-    );
+    )
+    .expect("start test worker");
     let rows = wait_for_scan(&controller);
 
     assert_eq!(rows.len(), 1);
@@ -219,7 +220,8 @@ fn rescan_preserves_sidecar_ocr_when_platform_has_no_text_layer() {
             file,
             extracted: Ok(None),
         }),
-    );
+    )
+    .expect("start test worker");
     let rows = wait_for_scan(&controller);
 
     assert_eq!(rows[0].status, "Ready");
@@ -252,7 +254,8 @@ fn rescan_reports_pdf_text_extraction_failure_and_marks_record_incomplete() {
             file,
             extracted: Err(PdfError::Platform("text layer unavailable".to_owned())),
         }),
-    );
+    )
+    .expect("start test worker");
     controller.start_rescan().expect("start explicit rescan");
 
     let mut saw_file_failure = false;
@@ -292,7 +295,8 @@ fn rescan_cannot_be_canceled_after_reconciliation_commits() {
             entered: entered_tx,
             release: Arc::clone(&release),
         }),
-    );
+    )
+    .expect("start test worker");
     controller.start_rescan().expect("start explicit rescan");
 
     let mut saw_finalizing = false;

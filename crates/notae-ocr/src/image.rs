@@ -23,6 +23,6 @@ use image::GrayImage;
 
 /// A rendered PDF page as 8-bit grayscale, ready for OCR.
 ///
-/// This is a re-export of [`image::GrayImage`]; see the [module
-/// documentation](self) for why it is not a distinct type.
+/// This is a re-export of [`image::GrayImage`]; see the module-level
+/// explanation for why it is not a distinct type.
 pub type OcrImage = GrayImage;

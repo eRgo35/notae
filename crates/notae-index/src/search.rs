@@ -137,7 +137,11 @@ pub(crate) fn search(
         return Ok(Vec::new());
     }
 
-    let exact_id = query.trim().parse::<NoteId>().ok().map(|id| i64::from(id.get()));
+    let exact_id = query
+        .trim()
+        .parse::<NoteId>()
+        .ok()
+        .map(|id| i64::from(id.get()));
     let exact_title = query.trim().to_lowercase();
     let mut statement = conn.prepare(SEARCH_SQL)?;
     let rows = statement.query_map(
@@ -160,13 +164,12 @@ pub(crate) fn search(
         let (relevance, snippet, note) = row?;
         // `exact_id` is `None` for any query that is not a number; comparing
         // options directly would score every unnumbered record as an exact hit.
-        let exact_id_match = if exact_id.is_some()
-            && exact_id == note.id().map(|id| i64::from(id.get()))
-        {
-            EXACT_ID_BONUS
-        } else {
-            0.0
-        };
+        let exact_id_match =
+            if exact_id.is_some() && exact_id == note.id().map(|id| i64::from(id.get())) {
+                EXACT_ID_BONUS
+            } else {
+                0.0
+            };
         let exact_title_match = if exact_title == note.title().to_lowercase() {
             EXACT_TITLE_BONUS
         } else {
@@ -184,9 +187,7 @@ pub(crate) fn search(
         right
             .rank
             .total_cmp(&left.rank)
-            .then_with(|| {
-                notae_domain::compare_library_order(&left.note, &right.note)
-            })
+            .then_with(|| notae_domain::compare_library_order(&left.note, &right.note))
     });
     Ok(hits)
 }

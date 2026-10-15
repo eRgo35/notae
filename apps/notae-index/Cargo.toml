@@ -3,6 +3,7 @@ name = "notae-index-cli"
 description = "Linux-only CLI that indexes a folder of PDFs into a portable Notae sidecar."
 edition.workspace = true
 version.workspace = true
+license.workspace = true
 
 [lib]
 name = "notae_index_cli"
@@ -11,14 +12,15 @@ path = "src/lib.rs"
 [[bin]]
 name = "notae-index"
 path = "src/main.rs"
+doc = false
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
 hayro = "0.8"
 image = "0.25"
-notae-domain = { path = "../../crates/notae-domain" }
-notae-index = { path = "../../crates/notae-index" }
-notae-ocr = { path = "../../crates/notae-ocr" }
+notae-domain = { path = "../../crates/notae-domain", version = "0.1" }
+notae-index = { path = "../../crates/notae-index", version = "0.1" }
+notae-ocr = { path = "../../crates/notae-ocr", version = "0.1" }
 sha2 = "0.10"
 thiserror = { workspace = true }
 

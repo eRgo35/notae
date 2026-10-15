@@ -3,6 +3,7 @@ name = "notae-ocr"
 description = "Local multilingual OCR provider for Notae, backed by Tesseract."
 edition.workspace = true
 version.workspace = true
+license.workspace = true
 
 [lib]
 name = "notae_ocr"
@@ -10,7 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 image = "0.25"
-notae-domain = { path = "../notae-domain" }
+notae-domain = { path = "../notae-domain", version = "0.1" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tesseract = "0.15.2"

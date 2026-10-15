@@ -53,8 +53,8 @@ use slint::ComponentHandle;
 use crate::android::saf::{SafHandles, SafLibraryRootProvider};
 use crate::operations::rescan::OperationController;
 use crate::state::{EventError, OperationState, Screen, Setup, Transition, UiEvent};
-use crate::thumbnails::ThumbnailCache;
 use crate::storage::{LibraryRootProvider, SharedLibraryCatalog, StorageError, StorageState};
+use crate::thumbnails::ThumbnailCache;
 use crate::ui::UiModel;
 use crate::ui::search::SearchRow;
 use notae_index::IndexStore;
@@ -96,7 +96,9 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
     let thumbnails = ThumbnailCache::new(index_dir.join("thumbnails"))
         .expect("create private thumbnail directory");
     model.borrow_mut().set_thumbnail_cache(thumbnails.clone());
-    model.borrow_mut().set_recent_path(index_dir.join("recent.txt"));
+    model
+        .borrow_mut()
+        .set_recent_path(index_dir.join("recent.txt"));
     let operations = Rc::new(RefCell::new(None::<OperationController>));
 
     // Sanity-check the contract on a fresh install. If the smoke test
@@ -128,7 +130,6 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
     // all share the same `model` so every state change goes through
     // `UiModel::dispatch`.
     let window = AppWindow::new().expect("failed to construct Slint AppWindow");
-    crate::android::theme::configure(&app, &window);
 
     sync_window(&window, &model.borrow());
 
@@ -313,7 +314,9 @@ pub extern "C" fn android_main(app: slint::android::AndroidApp) {
         let window_weak = window.as_weak();
         window.on_search_scope_changed(move |key| {
             let scope = notae_index::SearchScope::from_key(key.as_str());
-            let _ = model.borrow_mut().dispatch(UiEvent::UpdateSearchScope { scope });
+            let _ = model
+                .borrow_mut()
+                .dispatch(UiEvent::UpdateSearchScope { scope });
             let query = model.borrow().state().search().query.clone();
             if let Some(controller) = operations.borrow().as_ref() {
                 if let Err(error) = controller.set_search(query, scope) {
@@ -555,7 +558,11 @@ struct LibraryRowsCache {
 
 impl LibraryRowsCache {
     fn push(&mut self, window: &AppWindow, model: &UiModel, visible: Vec<SearchRow>) {
-        let keys: HashSet<&str> = model.search_rows().iter().map(|row| row.note_key.as_str()).collect();
+        let keys: HashSet<&str> = model
+            .search_rows()
+            .iter()
+            .map(|row| row.note_key.as_str())
+            .collect();
         self.images.retain(|key, _| keys.contains(key.as_str()));
         let thumbnails: Vec<Option<slint::Image>> = visible
             .iter()
@@ -581,7 +588,11 @@ impl LibraryRowsCache {
 
     /// The decoded thumbnail for `note_key`, loading it once the file exists. A file that fails
     /// to decode yields `None` (the placeholder) and is retried on a later sync.
-    fn thumbnail(&mut self, files: Option<&ThumbnailCache>, note_key: &str) -> Option<slint::Image> {
+    fn thumbnail(
+        &mut self,
+        files: Option<&ThumbnailCache>,
+        note_key: &str,
+    ) -> Option<slint::Image> {
         if let Some(image) = self.images.get(note_key) {
             return Some(image.clone());
         }
@@ -622,32 +633,79 @@ fn close_search(
 /// the storage state is authoritative for the picker-driven flows.
 fn sync_window(window: &AppWindow, model: &UiModel) {
     let state = model.state();
-    let (show_setup, show_recovery, recovery_folder_name, setup_error) = match model.storage_kind()
-    {
-        crate::ui::StorageStateKindView::Unconfigured => {
-            (true, false, String::new(), String::new())
-        }
-        crate::ui::StorageStateKindView::Ready => (false, false, String::new(), String::new()),
-        crate::ui::StorageStateKindView::PermissionLost(name) => (false, true, name, String::new()),
-        crate::ui::StorageStateKindView::Error(message) => {
-            // The setup screen stays visible so the user can
-            // re-tap "Select folder"; the error label is the body
-            // text the user sees.
-            (true, false, String::new(), message)
-        }
-    };
+    let (show_setup, show_recovery, recovery_folder_name, setup_error, library_display_name) =
+        match model.storage_kind() {
+            crate::ui::StorageStateKindView::Unconfigured => {
+                (true, false, String::new(), String::new(), String::new())
+            }
+            crate::ui::StorageStateKindView::Ready { display_name } => {
+                (false, false, String::new(), String::new(), display_name)
+            }
+            crate::ui::StorageStateKindView::PermissionLost(name) => {
+                (false, true, name, String::new(), String::new())
+            }
+            crate::ui::StorageStateKindView::Error(message) => {
+                // The setup screen stays visible so the user can
+                // re-tap "Select folder"; the error label is the body
+                // text the user sees.
+                (true, false, String::new(), message, String::new())
+            }
+        };
+    window.set_library_display_name(library_display_name.into());
     window.set_show_setup(show_setup);
     window.set_show_recovery(show_recovery);
     window.set_recovery_folder_name(recovery_folder_name.into());
     window.set_setup_error_text(setup_error.into());
-    let operation = state.operation();
-    window.set_rescan_enabled(operation == &OperationState::Idle);
+    let status = model.status();
+    let operation = &status.operation;
+    window.set_rescan_enabled(model.rescan_enabled());
     window.set_cancel_enabled(matches!(operation, OperationState::RescanInProgress { .. }));
     window.set_acknowledge_enabled(matches!(
         operation,
         OperationState::Completed { .. } | OperationState::Failed { .. }
     ));
-    window.set_operation_progress_text(operation_progress_text(operation).into());
+    let mut status_text = operation_progress_text(operation);
+    if let Some(summary) = status.latest_rescan {
+        let scan_text = format!(
+            "Latest scan: {} added, {} updated, {} moved, {} deleted, {} conflicts, {} failures",
+            summary.added,
+            summary.updated,
+            summary.moved,
+            summary.deleted,
+            summary.conflicts,
+            summary.failures,
+        );
+        status_text = if status_text.is_empty() {
+            scan_text
+        } else {
+            format!("{status_text}\n{scan_text}")
+        };
+    }
+    if status.pending_text_count > 0 {
+        let pending_text = format!(
+            "{} scores have text pending. Android does not run OCR; desktop OCR or sidecar import is available as a next step.",
+            status.pending_text_count,
+        );
+        status_text = if status_text.is_empty() {
+            pending_text
+        } else {
+            format!("{status_text}\n{pending_text}")
+        };
+    }
+    let scan_summary = status.latest_rescan.map_or_else(
+        || "No completed scan yet.".to_owned(),
+        |summary| {
+            format!(
+                "Latest scan: {} added, {} updated, {} moved, {} deleted, {} conflicts, {} failures",
+                summary.added, summary.updated, summary.moved, summary.deleted,
+                summary.conflicts, summary.failures,
+            )
+        },
+    );
+    window.set_settings_scan_summary(scan_summary.into());
+    window.set_settings_pending_text_count(status.pending_text_count.to_string().into());
+    window.set_app_version(env!("CARGO_PKG_VERSION").into());
+    window.set_operation_progress_text(status_text.into());
     window.set_operation_busy(matches!(
         operation,
         OperationState::RescanInProgress { .. }
@@ -656,7 +714,9 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     ));
     window.set_operation_fraction(match operation {
         OperationState::RescanInProgress { completed, total }
-        | OperationState::RescanFinalizing { completed, total } if *total > 0 => {
+        | OperationState::RescanFinalizing { completed, total }
+            if *total > 0 =>
+        {
             (*completed as f32 / *total as f32).clamp(0.0, 1.0)
         }
         _ => 0.0,
@@ -669,11 +729,16 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
 
     let selected = model.selected_row();
     window.set_details_open(selected.is_some());
-    window.set_selected_key(selected.as_ref().map(|row| row.note_key.clone()).unwrap_or_default().into());
+    window.set_selected_key(
+        selected
+            .as_ref()
+            .map(|row| row.note_key.clone())
+            .unwrap_or_default()
+            .into(),
+    );
     if let Some(row) = selected {
-        let thumbnail = LIBRARY_ROWS.with_borrow_mut(|cache| {
-            cache.thumbnail(model.thumbnail_cache(), &row.note_key)
-        });
+        let thumbnail = LIBRARY_ROWS
+            .with_borrow_mut(|cache| cache.thumbnail(model.thumbnail_cache(), &row.note_key));
         window.set_selected(crate::ui::search::library_row(row, thumbnail));
     }
     LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible));
@@ -692,7 +757,9 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     let composers: Vec<crate::SectionItem> = crate::ui::browse::composers(all_rows)
         .into_iter()
         .map(|composer| crate::SectionItem {
-            key: crate::ui::browse::LibrarySection::Composer(composer.name.clone()).key().into(),
+            key: crate::ui::browse::LibrarySection::Composer(composer.name.clone())
+                .key()
+                .into(),
             label: composer.name.into(),
             count: i32::try_from(composer.count).unwrap_or(i32::MAX),
             kind: "".into(),
@@ -702,7 +769,11 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_selected_section(model.section().key().into());
     window.set_library_title(model.section().title().into());
     window.set_library_subtitle(
-        format!("{row_count} {}", if row_count == 1 { "score" } else { "scores" }).into(),
+        format!(
+            "{row_count} {}",
+            if row_count == 1 { "score" } else { "scores" }
+        )
+        .into(),
     );
     window.set_show_search(matches!(state.screen(), Screen::Search));
     let metadata = model.metadata_editor();
@@ -838,25 +909,33 @@ fn handle_picker_response(
     index_path: &PathBuf,
     thumbnails: &ThumbnailCache,
 ) {
-    let provider = provider.clone();
-    let model = Rc::clone(model);
-    let operations = Rc::clone(operations);
-    let index_path = index_path.clone();
-    let thumbnails = thumbnails.clone();
-    let window_weak = window_weak.clone();
-    slint::spawn_local(async move {
-        let result = provider.select_root().await;
+    let provider_task = provider.clone();
+    let model_task = Rc::clone(model);
+    let operations_task = Rc::clone(operations);
+    let index_path_task = index_path.clone();
+    let thumbnails_task = thumbnails.clone();
+    let window_task = window_weak.clone();
+    if let Err(error) = slint::spawn_local(async move {
+        let result = provider_task.select_root().await;
         apply_picker_result(
-            &model,
-            &window_weak,
-            &provider,
-            &operations,
-            &index_path,
-            &thumbnails,
+            &model_task,
+            &window_task,
+            &provider_task,
+            &operations_task,
+            &index_path_task,
+            &thumbnails_task,
             result,
         );
-    })
-    .expect("failed to schedule SAF picker future on Slint event loop");
+    }) {
+        model
+            .borrow_mut()
+            .set_storage(StorageState::Error(StorageError::Other(format!(
+                "could not schedule folder picker: {error}"
+            ))));
+        if let Some(window) = window_weak.upgrade() {
+            sync_window(&window, &model.borrow());
+        }
+    }
 }
 
 fn apply_picker_result(
@@ -873,19 +952,28 @@ fn apply_picker_result(
             Ok(source) => match IndexStore::open(index_path) {
                 Ok(local) => {
                     let source = Arc::new(Mutex::new(source));
-                    let controller = OperationController::with_thumbnails(
+                    match OperationController::with_thumbnails(
                         local,
                         Box::new(SharedLibraryCatalog(Arc::clone(&source))),
                         thumbnails.clone(),
-                    );
-                    *operations.borrow_mut() = Some(controller);
-                    let query = model.borrow().state().search().query.clone();
-                    if let Some(controller) = operations.borrow().as_ref() {
-                        if let Err(error) = controller.set_query(query) {
-                            eprintln!("notae: initial library query failed: {error}");
+                    ) {
+                        Ok(controller) => {
+                            *operations.borrow_mut() = Some(controller);
+                            let query = model.borrow().state().search().query.clone();
+                            if let Some(controller) = operations.borrow().as_ref() {
+                                if let Err(error) = controller.set_query(query) {
+                                    eprintln!("notae: initial library query failed: {error}");
+                                }
+                            }
+                            StorageState::Ready(source)
+                        }
+                        Err(error) => {
+                            *operations.borrow_mut() = None;
+                            StorageState::Error(StorageError::Other(format!(
+                                "cannot start index worker: {error}"
+                            )))
                         }
                     }
-                    StorageState::Ready(source)
                 }
                 Err(error) => StorageState::Error(StorageError::Other(format!(
                     "cannot open local index: {error}"
