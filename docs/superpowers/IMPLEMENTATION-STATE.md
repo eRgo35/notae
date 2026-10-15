@@ -9,9 +9,9 @@ This document records where the project actually stands so work can resume witho
 
 ## Current release cycle: v0.2.0
 
-- [Milestone v0.2.0](https://github.com/eRgo35/notae/milestone/1) contains all twenty open tablet-feedback issues (#1–#20).
+- [Milestone v0.2.0](https://github.com/eRgo35/notae/milestone/1) contains the twenty tablet-feedback issues (#1–#20) plus [CI repair #21](https://github.com/eRgo35/notae/issues/21).
 - [Release implementation plan](plans/2026-10-15-notae-v0.2.0-release.md) defines sequencing, shared interfaces, all issue acceptance gates and publication checks.
-- Preparation only: no application fixes, version bump, tag or release are claimed by this planning update.
+- Application work remains preparation-only: no UI fixes, version bump, tag or release are claimed. CI repair #21 is now in implementation at the maintainer's request.
 - #2 (first-focus Android caret) and #13 (Polish IME input) are tablet-led investigations. #17 requires actual TalkBack acceptance; Slint Android accessibility support must be verified, not inferred from accessible labels.
 - New issue requirements supersede earlier “no animations”, “Scan in every header”, split-preview and Settings pending/privacy instructions. See the release plan for the final contracts.
 - The sections below are historical implementation records; their old branch/build references are not the current release baseline.
