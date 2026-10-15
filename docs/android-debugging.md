@@ -44,6 +44,13 @@ Emulator checks (2560x1600 AVD, `-gpu host`; `swiftshader_indirect` segfaults he
 
 ## Protect the ADB session
 
+- The host has two ADB binaries: `/usr/bin/adb` (37.0.0) and the SDK binary at `/home/mike/Android/Sdk/platform-tools/adb` (37.0.1). Use the SDK binary consistently for every command so troubleshooting does not alternate client versions. In the debugging terminal, put the SDK tools first:
+
+  ```sh
+  export PATH="/home/mike/Android/Sdk/platform-tools:$PATH"
+  adb version
+  ```
+
 - Do not run `adb kill-server`, `adb start-server`, `adb disconnect`, `adb reboot`, or USB-reset commands as a debugging shortcut.
 - Do not clear log buffers (`adb logcat -c`) before collecting the failure.
 - Run one ADB command at a time. If a command hangs, stop there; do not queue more ADB work or repeatedly retry it. Use Android Studio's Logcat window on the already connected device instead.
