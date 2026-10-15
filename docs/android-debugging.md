@@ -6,7 +6,7 @@ The original failure was a JNI `UnsatisfiedLinkError` when Android returned from
 
 The UI follows a fixed One UI palette (not wallpaper-derived): background is `#F3F3F5` / `#000000`, cards `#FFFFFF` / `#17171A`, fields `#EBEBEF` / `#26262B`, and accent `#2F6FEB` / `#5B9BFF` (light / dark). Wide layouts show library sections and score cards; compact layouts adapt the library and details. Search opens from its icon or Ctrl K, with scope chips and lyric-match snippets. Metadata and import reviews use modal sheets. The earlier emulator and tablet observations recorded below relate to the previous UI, not this redesign; they are not visual verification of the new design.
 
-The launcher icon combines a folded score page with a musical N in its own purple brand palette (`#381e72` background); it is deliberately independent of the blue UI accent. `android/res` contains legacy density PNGs, API-26 adaptive resources, and an API-33 monochrome themed icon. Cargo's Android resource metadata, not the reference manifest alone, packages them.
+The launcher icon is the blue folded score page with a music note (source `apps/notae-android/android/icon-source.png`): a light-blue (`#EAF1FF`) adaptive background, a transparent foreground PNG sized for the safe zone, a note-and-sheet monochrome mask for themed icons, and the same art as the in-app logo (`ui/assets/notae.png`). `android/res` contains legacy density PNGs, API-26 adaptive resources, and an API-33 monochrome themed icon. Cargo's Android resource metadata, not the reference manifest alone, packages them.
 
 The redesigned UI has no animated transitions or state effects. Controls respond immediately to input, modal sheets open and close immediately, and progress changes only when worker events report new progress.
 
@@ -97,7 +97,7 @@ JAVA_TARGET_VERSION=17 \
 cargo apk2 build --release -p notae-android
 ```
 
-If the device's ADB shell is unresponsive, plain `cargo apk2 build` hangs after `Using package ...` while probing the device. Pass `--target aarch64-linux-android` (or `-d <serial>` once it responds) to skip the probe.
+`[package.metadata.android] build_targets` pins `aarch64-linux-android`, so `cargo apk2 build` never probes the device's ABI over ADB (the probe hung when the device shell was unresponsive). For the emulator pass `--target x86_64-linux-android`.
 
 Build artifacts and runtime behavior must come from the same source revision. Capture original failure logs before reinstalling or using `cargo apk2 run`, which can replace the state needed to reproduce the problem. For a native crash, retain the exact APK and matching unstripped `.so`/debug symbols; use `cargo apk2 gdb -p notae-android` only after saving evidence and confirming the device transport is responsive.
 

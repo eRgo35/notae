@@ -70,6 +70,7 @@ pollster = "0.4"
 # `cargo-apk2` compiles the Java result adapter and generates the
 # launcher manifest from the metadata below.
 [package.metadata.android]
+build_targets = ["aarch64-linux-android"]
 package = "org.notae.android"
 apk_name = "notae-android"
 java_sources = "android/src/main/java"
