@@ -77,7 +77,7 @@ component ScoreCard inherits Rectangle {
             padding-right: 4px;
             Text { text: root.score.title; color: root.selected ? Theme.on-accent-soft : Theme.foreground; font-size: 16px; font-weight: 600; overflow: elide; }
             Text {
-                text: (root.score.id != "" ? root.score.id + " · " : "") + root.score.composer_or_artist;
+                text: (root.score.id != "" && root.score.composer_or_artist != "" ? root.score.id + " · " + root.score.composer_or_artist : root.score.id + root.score.composer_or_artist);
                 color: root.selected ? Theme.on-accent-soft : Theme.muted;
                 font-size: 14px;
                 overflow: elide;
@@ -275,7 +275,7 @@ export component LibraryScreen inherits Rectangle {
                 }
             }
             if !root.expanded : Flickable {
-                height: 48px;
+                min-height: 48px; max-height: 48px;
                 content-width: chips.preferred-width;
                 chips := HorizontalLayout {
                     spacing: 8px;
@@ -292,6 +292,7 @@ export component LibraryScreen inherits Rectangle {
                 }
             }
             if root.progress-text != "" : OperationBanner {
+                vertical-stretch: 0;
                 text: root.progress-text;
                 busy: root.busy;
                 failed: root.failed;

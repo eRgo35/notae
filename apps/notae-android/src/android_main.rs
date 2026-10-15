@@ -606,7 +606,8 @@ impl LibraryRowsCache {
     }
 
     /// The decoded thumbnail for `note_key`, loading it once the file exists. A file that fails
-    /// to decode yields `None` (the placeholder) and is retried on a later sync.
+    /// to decode is deleted so the next rescan renders it again; meanwhile the row shows the
+    /// placeholder.
     fn thumbnail(
         &mut self,
         files: Option<&ThumbnailCache>,
@@ -615,7 +616,11 @@ impl LibraryRowsCache {
         if let Some(image) = self.images.get(note_key) {
             return Some(image.clone());
         }
-        let image = slint::Image::load_from_path(&files?.existing(note_key)?).ok()?;
+        let files = files?;
+        let Ok(image) = slint::Image::load_from_path(&files.existing(note_key)?) else {
+            files.discard(note_key);
+            return None;
+        };
         self.images.insert(note_key.to_owned(), image.clone());
         Some(image)
     }

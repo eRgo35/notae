@@ -26,7 +26,7 @@ component ScoreListItem inherits Rectangle {
             alignment: center;
             spacing: 2px;
             Text { text: root.score.title; font-size: 16px; font-weight: 600; overflow: elide; color: root.selected ? Theme.on-accent-soft : Theme.foreground; }
-            Text { text: (root.score.id != "" ? root.score.id + " · " : "") + root.score.composer_or_artist; font-size: 14px; color: root.selected ? Theme.on-accent-soft : Theme.muted; overflow: elide; }
+            Text { text: (root.score.id != "" && root.score.composer_or_artist != "" ? root.score.id + " · " + root.score.composer_or_artist : root.score.id + root.score.composer_or_artist); font-size: 14px; color: root.selected ? Theme.on-accent-soft : Theme.muted; overflow: elide; }
         }
     }
     input := ActionInput {

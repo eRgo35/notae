@@ -40,6 +40,8 @@ The following checks cover the post-install usability fixes. They remain unverif
 
 SAF readiness also synchronizes the controller's Library screen. Previously, selecting a folder opened the visible library but left the controller in Setup, so Settings was rejected. A host regression verifies that selecting ready storage enables Settings without starting a scan.
 
+Emulator checks (2560x1600 AVD, `-gpu host`; `swiftshader_indirect` segfaults here) confirmed: saved folder restored after force-stop and emulator reboot, edge-to-edge layout with no offset, Scan in every header, Settings/Search scroll and stretch, Android Back closes Settings, Search and details instead of leaving the app, corrupt thumbnails self-heal on the next scan, and dark and compact (1000x1600) layouts.
+
 ## Protect the ADB session
 
 - Do not run `adb kill-server`, `adb start-server`, `adb disconnect`, `adb reboot`, or USB-reset commands as a debugging shortcut.

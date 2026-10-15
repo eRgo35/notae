@@ -127,6 +127,10 @@ export component AppWindow inherits Window {
         Theme.modal-open = root.modal-open;
         if root.modal-open { dialog-scope.focus(); }
     }
+    // Screens that unmount the focused control would otherwise leave Back/Escape unhandled.
+    changed show_settings => { if !root.modal-open { shortcuts.focus(); } }
+    changed show_search => { if !root.show_search && !root.modal-open { shortcuts.focus(); } }
+    changed details_open => { if !root.modal-open { shortcuts.focus(); } }
 
     forward-focus: shortcuts;
     shortcuts := FocusScope {
@@ -138,8 +142,9 @@ export component AppWindow inherits Window {
                 if !root.show_search { root.search_opened(); }
                 return accept;
             }
-            if event.text == Key.Escape {
+            if event.text == Key.Escape || event.text == Key.Back {
                 if root.show_search { root.search_closed(); return accept; }
+                if root.show_settings { root.settings_closed(); return accept; }
                 if root.details_open { root.selection_cleared(); return accept; }
             }
             return reject;
@@ -292,7 +297,7 @@ export component AppWindow inherits Window {
             enabled: root.modal-open;
             forward-focus: dialog-close;
             key-pressed(event) => {
-                if event.text == Key.Escape {
+                if event.text == Key.Escape || event.text == Key.Back {
                     if root.show_import_preview { root.import_cancelled(); } else { root.metadata_cancelled(); }
                     return accept;
                 }
