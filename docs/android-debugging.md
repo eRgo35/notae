@@ -6,16 +6,32 @@ The original failure was a JNI `UnsatisfiedLinkError` when Android returned from
 
 The UI follows a fixed One UI palette (not wallpaper-derived): background is `#F3F3F5` / `#000000`, cards `#FFFFFF` / `#17171A`, fields `#EBEBEF` / `#26262B`, and accent `#2F6FEB` / `#5B9BFF` (light / dark). Wide layouts show library sections and score cards; compact layouts adapt the library and details. Search opens from its icon or Ctrl K, with scope chips and lyric-match snippets. Metadata and import reviews use modal sheets. The earlier emulator and tablet observations recorded below relate to the previous UI, not this redesign; they are not visual verification of the new design.
 
-The launcher icon combines a folded score page with a musical N. `android/res` contains legacy density PNGs, API-26 adaptive resources, and an API-33 monochrome themed icon. Cargo's Android resource metadata, not the reference manifest alone, packages them.
+The launcher icon combines a folded score page with a musical N in its own purple brand palette (`#381e72` background); it is deliberately independent of the blue UI accent. `android/res` contains legacy density PNGs, API-26 adaptive resources, and an API-33 monochrome themed icon. Cargo's Android resource metadata, not the reference manifest alone, packages them.
 
 The redesigned UI has no animated transitions or state effects. Controls respond immediately to input, modal sheets open and close immediately, and progress changes only when worker events report new progress.
+
+## Window insets and the "app offset downward" report
+
+Two causes were found by reading the code, not by running the tablet (the tablet's adb shell was unresponsive, so neither fix has been seen on a device):
+
+1. `app.slint` placed a 56 px Scan row (plus 20 px spacing) above every configured screen. That pushed the Library header, side panel, search field and settings title down by 76 px and let Search and Settings, which size themselves to the safe viewport, overrun the bottom. Each screen now owns its header; the Scan icon is part of it (`ScanButton` in `components.slint`) and `tests/details_ui.rs` fails if a scan row returns to `app.slint`.
+2. Slint's Android backend always reports the window manager's system-bar and display-cutout insets as `safe-area-insets` and never makes the window edge-to-edge itself, while `NotaeActivity` ran with the default framework theme (action bar, decor fitting system windows). The UI was therefore inset by the status and navigation bars twice. `NotaeActivity.onCreate` now removes the title/action bar, calls `setDecorFitsSystemWindows(false)` (API 30+, legacy layout flags before), makes the bars transparent and chooses light or dark bar icons from the night mode. `app.slint` pads the layout by `safe-area-insets`, and `window-width`/`available-height` come from the window, never from child layouts (deriving them from children caused Slint binding loops).
+
+Check on the tablet in landscape and portrait: the title starts just below the status bar with no empty band, the bottom row ends above the gesture bar, nothing is clipped, and system-bar icons are legible in light and dark.
+
+## Implemented screen layout
+
+- **Breakpoints** (window width minus side insets): `< 840 px` compact (chip row instead of side panel, Settings icon in the Library header, details take the full width); `>= 840 px` side panel; `>= 1280 px` list plus details side by side. Score details stack the preview above the title below 560 px of pane width and scroll vertically.
+- **Headers:** Library: title and count left; Search, Settings (compact only), Scan right. Search: Back, search field, Scan. Settings: Back, title, Scan. The Scan icon is always the right-most action.
+- **Status banner:** running operation or its outcome (Cancel while scanning, Dismiss after an outcome; a failure uses the error colour and warning icon). Idle shows nothing.
+- **Empty states:** Library (per section), Search with no query, and Search with no results each explain what to do. Text on neutral surfaces that is accent-coloured uses `Theme.accent-text` (4.5:1 or better in both themes).
 
 ## Follow-up UI verification
 
 The following checks cover the post-install usability fixes. They remain unverified in this run; installing an APK on the connected tablet is still deferred pending explicit user approval.
 
-- Start a scan, switch among Library, Search, and Settings, and confirm the same phase, progress, pending-text count, and outcome remain visible. Confirm pending text is described as an index state, not Android OCR running.
-- Confirm the Scan action appears in Library, Search, and Settings, starts the existing scan, and disables while another operation is active.
+- Start a scan, switch among Library, Search, and Settings, and confirm the same phase, progress, and outcome banner remains visible until dismissed. An idle library shows no banner. The latest scan result and pending-text count live in Settings > Library maintenance; confirm pending text is described as an index state, not Android OCR running.
+- Confirm the Scan icon is the right-most header action on Library (after Search, and after Settings in compact layouts), on Search (right of the search field), and on Settings (right of the title); each starts the existing scan, and it dims while another operation is active. There is no separate bar above the screens.
 - In Settings, verify the selected folder name and Change folder action, latest available scan result/conflicts/failures, pending-text count, local-only storage copy, and app version.
 - Open Search with the on-screen keyboard. Confirm scope chips scroll horizontally and results use the remaining viewport and scroll independently.
 - Open score details and verify the icon-only Edit details action has the accessible name “Edit details” and opens the editor.
@@ -81,6 +97,8 @@ JAVA_TARGET_VERSION=17 \
 cargo apk2 build --release -p notae-android
 ```
 
+If the device's ADB shell is unresponsive, plain `cargo apk2 build` hangs after `Using package ...` while probing the device. Pass `--target aarch64-linux-android` (or `-d <serial>` once it responds) to skip the probe.
+
 Build artifacts and runtime behavior must come from the same source revision. Capture original failure logs before reinstalling or using `cargo apk2 run`, which can replace the state needed to reproduce the problem. For a native crash, retain the exact APK and matching unstripped `.so`/debug symbols; use `cargo apk2 gdb -p notae-android` only after saving evidence and confirming the device transport is responsive.
 
 ## Emulator setup
@@ -109,7 +127,7 @@ adb -s emulator-5554 install -r target/release/apk/notae-android.apk
 adb -s emulator-5554 shell am start -n org.notae.android/.NotaeActivity
 ```
 
-Picker smoke check: tap **Choose library folder**, choose `Audiobooks` in the system picker, tap **Use this folder**, then **Allow**. Expected: Notae opens the library screen; an empty folder shows **A little space for your scores** with a **Scan library** action. The crash buffer should stay empty.
+Picker smoke check: tap **Choose score folder**, choose `Audiobooks` in the system picker, tap **Use this folder**, then **Allow**. Expected: Notae opens the library screen; an empty folder shows **A little space for your scores** with a **Scan library** button, and the header's Scan icon does the same. The crash buffer should stay empty.
 
 Redesign smoke checks: in light and dark (`adb shell cmd uimode night yes|no`) check the welcome screen, scan a library and wait for thumbnails, switch sections (All, Recent, Needs details, Text pending, a composer), tap a score to open its details, use **Open score** and confirm it appears under Recent, edit details, open search from the icon and with Ctrl K, try each scope chip, choose a result, and open Settings. Check split screen (< 840 px): chips replace the side panel and details take the full width. While a sheet is open, Tab stays inside it and Escape dismisses it.
 

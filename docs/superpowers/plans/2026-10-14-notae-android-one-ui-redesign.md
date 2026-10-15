@@ -44,7 +44,7 @@ Deviations so far: Slint reserves `row`, so `PagePreview`/`ScoreCard` take `scor
 
 These findings came from manual review of the installed build. Record them for the next UI fix pass; this note does not claim the fixes are implemented.
 
-- **Text-pending status:** A “Text pending” badge alone does not explain progress. Add an app-wide status surface, visible on Library, Search, and Settings, that explains the current scan/index phase, progress, pending-text count, and any failure or next action. Keep the status visible as screens change; do not present pending text as OCR actively running when no such operation exists.
+- **Text-pending status:** A “Text pending” badge alone does not explain progress. Add an app-wide status surface, visible on Library, Search, and Settings, that explains the current scan/index phase, progress, pending-text count, and any failure or next action. Keep the status visible as screens change; do not present pending text as OCR actively running when no such operation exists. *As implemented:* the banner on all three screens shows only the running operation or its outcome (until dismissed); the latest scan result and the pending-text count are standing facts shown in Settings > Library maintenance, so an idle library has no permanent banner.
 - **Search layout:** The scope chips and result area must remain visible and usable at compact heights, including with the on-screen keyboard open. Chips may scroll horizontally; results must receive the remaining viewport height and scroll independently rather than being pushed below the screen or hidden.
 - **Settings layout:** Fix the broken vertical spacing and make the screen fit narrow viewports. Keep only controls and status tied to capabilities Notae actually has:
   - **Library location:** show the selected folder’s display name and offer change/reconnect through the Storage Access Framework.
@@ -52,7 +52,7 @@ These findings came from manual review of the installed build. Record them for t
   - **Local storage and privacy:** explain that PDFs stay in place and thumbnails/index data are local. Do not invent storage controls or counts the app cannot report.
   - **About:** retain only app name/version and concise product information if useful.
   - Remove the generic “Motion” preference and reduce-motion plumbing: the product decision is **no animations**, not an optional reduced-motion mode. Remove decorative or irrelevant settings copy.
-- **Persistent actions:** Keep the Scan icon visible in the app chrome on Library, Search, and Settings; disable it only when scanning cannot be started. In score details, show **Edit details** as an icon-only action with an accessible label (“Edit details”).
+- **Persistent actions:** Keep the Scan icon visible on Library, Search, and Settings; disable it only when scanning cannot be started. *As implemented:* there is no shared app-chrome row (it pushed every screen down); each screen's header carries the `ScanButton` as its right-most action (Library: Search, Settings in compact, Scan; Search: Back, field, Scan; Settings: Back, title, Scan). An empty All scores view also offers a **Scan library** button. In score details, show **Edit details** as an icon-only action with an accessible label (“Edit details”).
 - **Motion:** No animated transitions or state effects anywhere in the redesigned UI.
 
 ## Global Constraints
@@ -63,9 +63,9 @@ These findings came from manual review of the installed build. Record them for t
 - `min_sdk_version = 23`, `target_sdk_version = 34` stay as they are.
 - `state.rs` and `ui.rs` keep `#![forbid(unsafe_code)]`; new host modules also declare it.
 - Touch targets at least 48×48 px; text contrast at least 4.5:1 against its background in both themes (the palette below meets this).
-- Palette (light / dark): background `#F3F3F5` / `#000000`; card `#FFFFFF` / `#17171A`; field `#EBEBEF` / `#26262B`; foreground `#111114` / `#F2F2F4`; muted `#6E6E73` / `#A1A1A8`; divider `#E6E6EA` / `#2A2A2E`; accent `#2F6FEB` / `#5B9BFF`; on-accent `#FFFFFF` / `#06142E`; accent-soft `#E6EEFE` / `#1C2C4A`; on-accent-soft `#1A4FB8` / `#B9D2FF`; warn-soft `#FFF0E0` / `#3A2610`; on-warn-soft `#A14D00` / `#FFB870`; error `#C62828` / `#FF8A80`; paper `#FFFFFF` / `#E4E4E8`; paper-edge `#E3E3E8` / `#2A2A2E`.
+- Palette (light / dark): background `#F3F3F5` / `#000000`; card `#FFFFFF` / `#17171A`; field `#EBEBEF` / `#26262B`; foreground `#111114` / `#F2F2F4`; muted `#6E6E73` / `#A1A1A8`; divider `#E6E6EA` / `#2A2A2E`; accent `#2F6FEB` / `#5B9BFF`; on-accent `#FFFFFF` / `#06142E`; accent-soft `#E6EEFE` / `#1C2C4A`; on-accent-soft `#1A4FB8` / `#B9D2FF`; accent-text `#1A4FB8` / `#5B9BFF` (accent-coloured text on neutral surfaces; plain accent is 4.1:1 on the light background); warn-soft `#FFF0E0` / `#3A2610`; on-warn-soft `#A14D00` / `#FFB870`; error `#C62828` / `#FF8A80`; paper `#FFFFFF` / `#E4E4E8`; paper-edge `#E3E3E8` / `#2A2A2E`.
 - Shapes: cards 26 px radius, list/nav rows 18 px, pill buttons height 52 px, chips height 40 px, search field height 52 px.
-- Copy: "All scores", "Recent", "Needs details", "Text pending", "Composers", "Open score", "Edit details", "Text pending" badge, "Press Ctrl K to search from anywhere".
+- Copy: "All scores", "Recent", "Needs details", "Text pending", "Composers", "Open score", "Edit details", "Text pending" badge, "Press Ctrl K to open search from anywhere" (shown on the empty Search screen).
 - Out of scope (needs a sidecar/schema change, separate plan): page numbers on lyrics matches. Snippets show the matching text without a page number.
 
 ## Review Focus

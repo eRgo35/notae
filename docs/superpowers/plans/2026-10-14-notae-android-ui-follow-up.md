@@ -79,7 +79,7 @@ Add public `UiStatus` in `src/ui.rs` and `UiModel::status() -> UiStatus`. Save t
 
 - [ ] **Step 4: Pass and render the same snapshot on all configured screens**
 
-Add shared Slint properties for status text, progress fraction, pending-text count, cancel state, and acknowledge state. Render a compact status surface for Library, Search, and Settings; keep scan status visible while switching screens. Preserve Cancel only during cancellable scanning and Dismiss only when an outcome can be acknowledged. For pending text, show a count and explain that Android does not run OCR; mention desktop OCR/sidecar import only as an available next step, not an active Android operation.
+Add shared Slint properties for status text, progress fraction, pending-text count, cancel state, and acknowledge state. Render a compact status surface for Library, Search, and Settings; keep the running operation and its outcome visible while switching screens (the latest scan result and pending-text count are shown in Settings only, so an idle library has no permanent banner). Preserve Cancel only during cancellable scanning and Dismiss only when an outcome can be acknowledged. For pending text, show a count and explain that Android does not run OCR; mention desktop OCR/sidecar import only as an available next step, not an active Android operation.
 
 - [ ] **Step 5: Verify status behavior**
 
@@ -107,7 +107,7 @@ git commit -m "fix(android): keep library status visible across screens"
 
 **Interfaces:**
 - Consume existing `rescan_enabled`, `rescan_clicked`, scan worker callbacks, and `IconButton`/`Glyph` controls.
-- Produce a persistent Scan icon action in shared app chrome on Library, Search, and Settings. It is disabled exactly when a scan cannot be started; all three entry points invoke the same callback.
+- Produce a Scan icon action (`ScanButton`) in the header of Library, Search, and Settings, right-most in each. It is disabled exactly when a scan cannot be started; all three entry points invoke the same callback.
 - Produce an icon-only details edit action with accessible label `Edit details`; preserve its existing callback and 48×48 px minimum touch target.
 
 - [ ] **Step 1: Add a host test for shared scan eligibility**
@@ -116,7 +116,7 @@ Extend `tests/smoke.rs` or the existing operation-state tests to verify the acti
 
 - [ ] **Step 2: Move Scan into shared screen chrome**
 
-Place a Scan `IconButton` in `app.slint` chrome visible in Library, Search, and Settings. Bind `enabled` to `rescan_enabled`, provide the accessible label `Scan library`, and route the click to `rescan_clicked`. Remove duplicate scan actions from per-screen components so the action appears once per screen. Keep any currently exposed cancel/dismiss actions in the status surface from Task 1.
+Place the shared `ScanButton` (`components.slint`, accessible label `Scan library`) in each screen's own header, not in a row in `app.slint` (a global row offsets every screen). Bind `enabled` to `rescan_enabled` and route the click to `rescan_clicked`. Remove duplicate scan actions from per-screen components so the action appears once per screen. Keep any currently exposed cancel/dismiss actions in the status surface from Task 1.
 
 - [ ] **Step 3: Replace the details text button with the accessible icon action**
 
