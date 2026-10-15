@@ -367,14 +367,13 @@ fn content_resolver<'local>(
     env: &mut jni::Env<'local>,
     activity: &JObject<'local>,
 ) -> Result<JObject<'local>, JniError> {
-    Ok(env
-        .call_method(
-            activity,
-            jni_str!("getContentResolver"),
-            jni_sig!("()Landroid/content/ContentResolver;"),
-            &[],
-        )?
-        .l()?)
+    env.call_method(
+        activity,
+        jni_str!("getContentResolver"),
+        jni_sig!("()Landroid/content/ContentResolver;"),
+        &[],
+    )?
+    .l()
 }
 
 fn selected_tree_outcome<'local>(
@@ -620,6 +619,19 @@ impl SafLibraryRootProvider {
     }
 }
 
+impl SafLibraryRootProvider {
+    /// The root saved by a previous run, if its persistable grant is still
+    /// valid. A revoked grant or unreadable preferences yield `None`, so the
+    /// caller falls back to the first-run picker.
+    #[must_use]
+    pub fn persisted_root(&self) -> Option<LibraryRoot> {
+        match read_persisted_root_jni(&self.app) {
+            Ok(Some(persisted)) => Some(persisted.root),
+            Ok(None) | Err(_) => None,
+        }
+    }
+}
+
 impl LibraryRootProvider for SafLibraryRootProvider {
     fn select_root(&self) -> impl Future<Output = Result<LibraryRoot, StorageError>> + Send {
         SelectRootFuture::new(self.app.clone())
@@ -704,7 +716,9 @@ impl Future for SelectRootFuture {
                 }
             }
         }
-        let request_code = self.request_code.expect("request_code set above");
+        let Some(request_code) = self.request_code else {
+            return Poll::Ready(Err(StorageError::PermissionDenied));
+        };
 
         // 2. Drive the shared poll helper. The waker is registered
         //    into `PickerState.inner.pending` (the dispatcher's map);
