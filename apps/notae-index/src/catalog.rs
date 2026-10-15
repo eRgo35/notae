@@ -722,7 +722,9 @@ mod tests {
             open_subdirectory(&nested, vetted).is_ok(),
             "an untouched directory is still the one that was listed"
         );
-        fs::remove_dir(&nested).expect("remove it");
+        // Keep the original inode allocated so the replacement cannot reuse its identity.
+        let moved = dir.path().join("original");
+        fs::rename(&nested, &moved).expect("move the original directory aside");
         fs::create_dir(&nested).expect("create another directory at the same name");
 
         let Err(error) = open_subdirectory(&nested, vetted) else {
