@@ -2,7 +2,7 @@
 
 ## Local Rust gates
 
-Use Rust 1.98.1 from `rust-toolchain.toml`, including `rustfmt` and `clippy`. On Linux, install `pkg-config`, Tesseract development headers, and Leptonica development headers. Fedora/RHEL hosts without system pkg-config files can follow [`crates/notae-ocr/README.md`](../crates/notae-ocr/README.md) and set `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` for Cargo commands.
+Use Rust 1.98.1 from `rust-toolchain.toml`, including `rustfmt` and `clippy`. On Linux, install `pkg-config`, Tesseract development headers, Leptonica development headers, and Fontconfig development headers (required by Slint host builds). On Ubuntu, the packages are `pkg-config libtesseract-dev libleptonica-dev libfontconfig1-dev`. Fedora/RHEL hosts without system pkg-config files can follow [`crates/notae-ocr/README.md`](../crates/notae-ocr/README.md) and set `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` for Cargo commands; Fontconfig must also be discoverable by pkg-config.
 
 ```sh
 cargo fmt --check
@@ -22,6 +22,8 @@ The measured workspace line-coverage baseline was 85.48%; the enforced floor is 
 ## Android target gate
 
 Install JDK 17, Android SDK command-line tools, NDK r26d, and `cargo-apk2` 1.4.0. Then run:
+
+CI explicitly installs `platform-tools`, `platforms;android-34`, and `build-tools;34.0.0` through `android-actions/setup-android`, then NDK `26.3.11579264`. Do not use the action's default package list: it includes the retired `tools` SDK package, which causes setup to fail before the target gate runs.
 
 ```sh
 cargo apk2 check -p notae-android --target aarch64-linux-android

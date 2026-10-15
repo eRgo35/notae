@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install native OCR dependencies
+      - name: Install native host dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libtesseract-dev libleptonica-dev pkg-config
+          sudo apt-get install --yes libtesseract-dev libleptonica-dev libfontconfig1-dev pkg-config
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
       - name: Install pinned Cargo tools
@@ -49,6 +49,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
       - name: Install Android NDK r26d
         run: |
           sdkmanager "ndk;26.3.11579264"
