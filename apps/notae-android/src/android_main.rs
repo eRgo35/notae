@@ -692,7 +692,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     // result and the pending-text count are standing facts and live in Settings only.
     let status_text = operation_progress_text(operation);
     let scan_summary = status.latest_rescan.map_or_else(
-        || "No completed scan yet.".to_owned(),
+        || "No scan this session".to_owned(),
         |summary| {
             format!(
                 "Latest scan: {} added, {} updated, {} moved, {} deleted, {} conflicts, {} failures",
@@ -702,8 +702,12 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         },
     );
     window.set_settings_scan_summary(scan_summary.into());
-    window.set_settings_pending_text_count(status.pending_text_count.to_string().into());
+    window.set_settings_indexed_count(status.indexed_count.to_string().into());
     window.set_app_version(env!("CARGO_PKG_VERSION").into());
+    window.set_app_build_identity(env!("NOTAE_BUILD_ID").into());
+    window.set_repository_url("https://github.com/eRgo35/notae".into());
+    window.set_app_license("MIT License".into());
+    window.set_sidecar_schema_version(notae_index::SIDECAR_SCHEMA_VERSION.to_string().into());
     window.set_operation_progress_text(status_text.into());
     window.set_operation_failed(matches!(operation, OperationState::Failed { .. }));
     window.set_operation_busy(matches!(
