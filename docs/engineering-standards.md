@@ -2,7 +2,7 @@
 
 ## Local Rust gates
 
-Use Rust 1.98.1 from `rust-toolchain.toml`, including `rustfmt` and `clippy`. On Linux, install `pkg-config`, Tesseract development headers, Leptonica development headers, and Fontconfig development headers (required by Slint host builds). On Ubuntu, the packages are `pkg-config libtesseract-dev libleptonica-dev libfontconfig1-dev`. Fedora/RHEL hosts without system pkg-config files can follow [`crates/notae-ocr/README.md`](../crates/notae-ocr/README.md) and set `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` for Cargo commands; Fontconfig must also be discoverable by pkg-config.
+Use Rust 1.98.1 from `rust-toolchain.toml`, including `rustfmt` and `clippy`. On Linux, install `pkg-config`, Tesseract development headers, Leptonica development headers, Fontconfig development headers, and the English Tesseract language data used by CLI integration tests. On Ubuntu, the packages are `pkg-config libtesseract-dev libleptonica-dev libfontconfig1-dev tesseract-ocr-eng`. Ubuntu installs that language data under `/usr/share/tesseract-ocr/5/tessdata`; CI sets `TESSDATA_PREFIX` to this directory so subprocess tests use the installed pack. Fedora/RHEL hosts without system pkg-config files can follow [`crates/notae-ocr/README.md`](../crates/notae-ocr/README.md) and set `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` for Cargo commands; Fontconfig must also be discoverable by pkg-config. For CLI integration tests on such hosts, install an English Tesseract pack and point `TESSDATA_PREFIX` at its data directory.
 
 ```sh
 cargo fmt --check

@@ -8,12 +8,14 @@ jobs:
   rust-quality:
     name: Rust quality gates
     runs-on: ubuntu-latest
+    env:
+      TESSDATA_PREFIX: /usr/share/tesseract-ocr/5/tessdata
     steps:
       - uses: actions/checkout@v4
       - name: Install native host dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --yes libtesseract-dev libleptonica-dev libfontconfig1-dev pkg-config
+          sudo apt-get install --yes libtesseract-dev libleptonica-dev libfontconfig1-dev pkg-config tesseract-ocr-eng
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
       - name: Install pinned Cargo tools
