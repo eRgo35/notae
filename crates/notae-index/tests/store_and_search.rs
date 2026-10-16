@@ -940,3 +940,32 @@ fn scope_keys_round_trip() {
     }
     assert_eq!(SearchScope::from_key("bogus"), SearchScope::Everything);
 }
+
+#[test]
+fn title_search_preserves_polish_letters_and_records_accentless_behavior() {
+    let store = IndexStore::open(":memory:").expect("open");
+    let polish = note(
+        "score.pdf",
+        3,
+        Some(NoteId::new(303)),
+        "Łódź — Pieśń żółta",
+        None,
+        &[],
+    );
+    store.upsert_note(&polish).expect("insert");
+
+    for query in ["łódź", "ŁÓDŹ", "pieśń", "żółta"] {
+        let hits = store
+            .search_in(query, SearchScope::Titles, 10)
+            .expect("search");
+        assert_eq!(hits.len(), 1, "query {query:?}");
+        assert_eq!(hits[0].note.title(), "Łódź — Pieśń żółta");
+    }
+    assert!(
+        store
+            .search_in("lodz", SearchScope::Titles, 10)
+            .expect("search")
+            .is_empty(),
+        "FTS accent removal does not fold Ł to l"
+    );
+}

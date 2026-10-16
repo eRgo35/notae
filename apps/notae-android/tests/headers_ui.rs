@@ -269,3 +269,18 @@ fn independently_initialized_threads_own_their_generated_ui() {
             .expect("each test thread initializes its own Slint backend");
     }
 }
+#[test]
+fn changing_search_scope_keeps_following_chip_bounds_stable() {
+    let app = app_sized(1280, 800);
+    app.set_show_search(true);
+
+    let titles = ElementHandle::find_by_accessible_label(&app, "Titles")
+        .next()
+        .expect("Titles scope chip exists");
+    let before = titles.absolute_position();
+    app.set_search_scope("titles".into());
+    slint::platform::update_timers_and_animations();
+    let after = titles.absolute_position();
+
+    assert_eq!(after.x, before.x);
+}

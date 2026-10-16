@@ -38,6 +38,14 @@ Check on the tablet in landscape and portrait: the title starts just below the s
 - Open score details and verify the icon-only Edit details action has the accessible name “Edit details” and opens the editor.
 - Confirm screen changes, state layers, modal sheets, and progress have no animations.
 
+### Task 1: startup and input feedback (#1, #2, #3, #13)
+
+- On the assigned API 35 scratch AVD (`emulator-5556`), the captured restored Library shows one indexed `hex-contents` score; no Welcome or empty-library frame is visible in the retained screenshot at `target/emulator-evidence/task-1/current.png`. This is a settled-screen observation, not a cold-launch frame recording, so it does not identify whether startup briefly showed Welcome, an empty Library, or the Android window background. Issue #1 remains open pending a cold-launch recording and explicit startup loading/error-state coverage.
+- A generated-UI regression exposed a 1 px horizontal shift in the Search **Titles** scope chip when changing selection: the preceding **All** chip changed its font weight from 600 to 500. Chip label weight is now invariant across selection, and Search plus compact Library chip rows only accept Flickable interaction when content overflows. The regression verifies the Search chip position remains stable. Actual finger press/drift/drag geometry on the physical tablet remains unverified.
+- On the AVD, Search opened from Library with Gboard already visible; the first recorded field tap after portrait rotation made the keyboard disappear (screenshots `search-portrait-dark.png` and `search-first-field-tap-dark.png`). This does not establish whether the caret handle landed at the tap or whether the event was due to keyboard/window geometry. No focus timestamps or field rectangles were instrumented. Keep #2 open pending controlled tests of both entry paths, keyboard dismissal/refocus and cover-keyboard behavior.
+- The index regression confirms exact/case-variant Polish title queries (`łódź`, `ŁÓDŹ`, `pieśń`, `żółta`) find `Łódź — Pieśń żółta`; `lodz` does not. An initial failing test accidentally used `lodz.pdf`, whose filename matched the accentless query; the fixture was corrected to `score.pdf`, after which the title-token behavior passed. This does not establish Android IME composition or close issue #13.
+- Samsung Keyboard, hardware Polish layout, composing/long-press alternates, and the physical tablet are unavailable here. Gboard or `adb shell input text` would not meet those gates; #13 remains open.
+
 
 SAF readiness also synchronizes the controller's Library screen. Previously, selecting a folder opened the visible library but left the controller in Setup, so Settings was rejected. A host regression verifies that selecting ready storage enables Settings without starting a scan.
 

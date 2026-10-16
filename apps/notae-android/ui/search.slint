@@ -103,6 +103,7 @@ export component SearchScreen inherits Rectangle {
             acknowledge => { root.acknowledge(); }
         }
         Flickable {
+            interactive: self.content-width > self.width;
             min-height: 48px;
             max-height: 48px;
             content-width: chips.preferred-width;
