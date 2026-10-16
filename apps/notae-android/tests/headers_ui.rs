@@ -284,3 +284,34 @@ fn changing_search_scope_keeps_following_chip_bounds_stable() {
 
     assert_eq!(after.x, before.x);
 }
+
+#[test]
+fn search_scope_chips_scroll_only_when_the_row_overflows() {
+    for (width, expect_scroll) in [(1280, false), (320, true)] {
+        let app = app_sized(width, 600);
+        app.set_show_search(true);
+        let titles = ElementHandle::find_by_accessible_label(&app, "Titles")
+            .next()
+            .expect("Titles scope chip exists");
+        let before = titles.absolute_position();
+        let flickable = ElementHandle::find_by_element_type_name(&app, "Flickable")
+            .next()
+            .expect("Search scope row is a Flickable");
+
+        flickable.scroll(-500.0, 0.0);
+        slint::platform::update_timers_and_animations();
+        let after = titles.absolute_position();
+
+        if expect_scroll {
+            assert!(
+                after.x < before.x,
+                "narrow overflowing scope row scrolls horizontally: before={before:?}, after={after:?}"
+            );
+        } else {
+            assert_eq!(
+                after.x, before.x,
+                "scope row that fits does not scroll: before={before:?}, after={after:?}"
+            );
+        }
+    }
+}
