@@ -1,6 +1,6 @@
-use std::cell::Cell;
 use notae_android::AppWindow;
 use slint::ComponentHandle;
+use std::cell::Cell;
 
 thread_local! {
     static TEST_BACKEND_INITIALIZED: Cell<bool> = const { Cell::new(false) };
