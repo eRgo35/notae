@@ -47,4 +47,12 @@ pub mod voice_search;
 // `env!("OUT_DIR")` so the include works on Android *and* on Linux
 // (where the Linux-side smoke test indirectly exercises the same build
 // pipeline).
-include!(concat!(env!("OUT_DIR"), "/app.rs"));
+// Slint's generated bindings intentionally use unwrap/expect internally;
+// keep the production panic policy strict everywhere else by containing
+// this lint exception in a private module around generated source only.
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod generated {
+    include!(concat!(env!("OUT_DIR"), "/app.rs"));
+}
+
+pub use generated::*;
