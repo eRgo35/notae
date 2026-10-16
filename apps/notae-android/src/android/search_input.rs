@@ -25,7 +25,6 @@ pub fn bind_window(window: slint::Weak<AppWindow>) {
     }
 }
 
-
 pub fn read_hardware_keyboard(app: &AndroidApp) -> bool {
     call_activity_bool(app, ActivityMethod::HardwareKeyboard).unwrap_or(false)
 }
@@ -45,7 +44,10 @@ enum ActivityMethod {
     StartVoice,
 }
 
-fn call_activity_bool(app: &AndroidApp, method: ActivityMethod) -> Result<bool, jni::errors::Error> {
+fn call_activity_bool(
+    app: &AndroidApp,
+    method: ActivityMethod,
+) -> Result<bool, jni::errors::Error> {
     let activity_ptr = app.activity_as_ptr();
     super::saf::with_env(app, |env| {
         let activity = super::saf::activity_as_jobject(env, activity_ptr)?;
@@ -72,7 +74,6 @@ fn call_activity_bool(app: &AndroidApp, method: ActivityMethod) -> Result<bool, 
         result.z()
     })
 }
-
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_notae_android_NotaeActivity_nativeOnKeyboardConfigurationChanged(
@@ -125,7 +126,8 @@ pub extern "system" fn Java_org_notae_android_NotaeActivity_nativeOnVoiceResult<
     if !voice_result_is_current(request_code, VOICE_REQUEST_CODE, window.is_some()) {
         return;
     }
-    let Some(query) = recognized_query(result_code == RESULT_OK, &phrases).map(str::to_owned) else {
+    let Some(query) = recognized_query(result_code == RESULT_OK, &phrases).map(str::to_owned)
+    else {
         return;
     };
     if let Some(window) = window {

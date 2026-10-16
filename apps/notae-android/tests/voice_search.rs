@@ -7,7 +7,10 @@ fn canceled_recognition_does_not_replace_the_query() {
 
 #[test]
 fn successful_phrase_preserves_polish_text() {
-    assert_eq!(recognized_query(true, &["Łódź pieśń".into()]), Some("Łódź pieśń"));
+    assert_eq!(
+        recognized_query(true, &["Łódź pieśń".into()]),
+        Some("Łódź pieśń")
+    );
 }
 
 #[test]
