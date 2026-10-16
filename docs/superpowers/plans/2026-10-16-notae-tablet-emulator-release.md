@@ -27,16 +27,22 @@
 
 **Files:** `docs/android-debugging.md` only if verified instructions need correction; build output under ignored `target/`.
 
-**Consumes:** Existing `notae-api35-tablet` AVD and current API 35 x86_64 image. **Produces:** Evidence that the local emulator boots, Notae installs and launches, and a baseline screenshot/log is captured.
+**Consumes:** Existing `notae-api35-tablet` AVD and API 35 x86_64 image. **Produces:** A clean scratch tablet AVD for app interactions plus install/launch and UI-flow evidence.
 
 - [ ] Use the SDK ADB and exact serial from `adb devices -l`. Read `docs/android-debugging.md` before interacting; it documents that `-gpu swiftshader_indirect` segfaults on this host and `-gpu host` is the known working graphics mode.
-- [ ] Start `notae-api35-tablet` with `-gpu host` and wait for `sys.boot_completed=1`. If it remains offline or exits, capture the emulator process output and read-only `adb logcat`/crash data; do not run ADB reset commands or guess at product fixes.
+- [ ] `notae-api35-tablet` currently contains an existing library with 70 indexed scores. Preserve it; do not select/search/scan its scores, clear its app data, or wipe the AVD. Create `notae-test-api35` as a separate API 35 Google APIs x86_64 Pixel Tablet AVD if it does not already exist:
+
+```sh
+printf 'no\n' | avdmanager create avd --name notae-test-api35 --package "system-images;android-35;google_apis;x86_64" --device pixel_tablet
+```
+
+- [ ] Start the scratch AVD with `-gpu host`, `-no-snapshot-load`, `-no-snapshot-save`, `-no-window`, `-no-audio`, and `-no-boot-anim`; wait for `sys.boot_completed=1`. If it remains offline or exits, capture process output and read-only `adb logcat`/crash data; do not run ADB reset commands or guess at product fixes.
 - [ ] Build the development APK for x86_64 with the JDK 17 source/target settings already documented in `docs/android-debugging.md`:
 
 ```sh
 export ANDROID_SDK_ROOT="$HOME/Android/Sdk"
 export ANDROID_HOME="$ANDROID_SDK_ROOT"
-export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/26.3.11579264"
+export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/android-ndk-r26d"
 export PATH="$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 export JAVA_HOME="/usr/lib/jvm/java-25-openjdk"
 export JDK_JAVAC_OPTIONS="-source 17 -target 17"
