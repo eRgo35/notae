@@ -65,6 +65,8 @@ export component AppWindow inherits Window {
     in property <[LibraryRow]> library_rows: [];
     in property <[ImportRow]> import_rows: [];
     in-out property <string> search_text: "";
+    in property <bool> hardware_keyboard_present: false;
+    in property <bool> voice_search_available: false;
     in property <string> operation_progress_text: "";
     in property <bool> cancel_enabled: false;
     in property <bool> operation_busy: false;
@@ -116,6 +118,7 @@ export component AppWindow inherits Window {
     callback search_closed();
     callback search_scope_changed(string);
     callback search_result_chosen(string);
+    callback voice_search_requested();
     callback score_selected(string);
     in property <bool> operation_failed: false;
     private property <bool> configured: !root.show_setup && !root.show_recovery;
@@ -237,8 +240,9 @@ export component AppWindow inherits Window {
                 fraction: root.operation_fraction;
                 cancel-enabled: root.cancel_enabled;
                 acknowledge-enabled: root.acknowledge_enabled;
-                rescan-enabled: root.rescan_enabled;
-                rescan-clicked => { root.rescan_clicked(); }
+                hardware-keyboard-present: root.hardware_keyboard_present;
+                voice-available: root.voice_search_available;
+                voice-requested => { root.voice_search_requested(); }
                 cancel => { root.cancel_rescan_clicked(); }
                 acknowledge => { root.acknowledge_clicked(); }
                 query-edited(value) => { root.search_text = value; root.search_changed(value); }

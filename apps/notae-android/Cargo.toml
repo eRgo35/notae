@@ -87,6 +87,9 @@ actions = ["android.intent.action.VIEW"]
 [[package.metadata.android.queries.intent.data]]
 mime_type = "application/pdf"
 
+[[package.metadata.android.queries.intent]]
+actions = ["android.speech.action.RECOGNIZE_SPEECH"]
+
 [package.metadata.android.application]
 label = "Notae"
 has_code = true
@@ -94,7 +97,7 @@ icon = "@mipmap/ic_launcher"
 
 [[package.metadata.android.application.activity]]
 name = ".NotaeActivity"
-config_changes = "orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
+config_changes = "orientation|keyboard|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
 exported = true
 
 [[package.metadata.android.application.activity.meta_data]]

@@ -38,6 +38,7 @@ pub mod ui;
 
 pub mod operations;
 pub mod pdf_intent;
+pub mod voice_search;
 pub mod pdf_pages;
 pub mod thumbnails;
 

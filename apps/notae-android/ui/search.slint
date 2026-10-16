@@ -1,6 +1,6 @@
 // The single search screen, opened by the library's search icon or Ctrl K.
 import { ListView, ScrollView } from "std-widgets.slint";
-import { Theme, Glyph, IconButton, ScanButton, SearchField, Card, Chip, ActionInput } from "components.slint";
+import { Theme, Glyph, IconButton, SearchField, Card, Chip, ActionInput } from "components.slint";
 import { OperationBanner } from "library.slint";
 import { LibraryRow, PagePreview } from "library.slint";
 
@@ -56,8 +56,9 @@ export component SearchScreen inherits Rectangle {
     in property <bool> cancel-enabled;
     in property <bool> acknowledge-enabled;
     in property <bool> failed;
-    in property <bool> rescan-enabled;
-    callback rescan-clicked();
+    in property <bool> hardware-keyboard-present;
+    in property <bool> voice-available;
+    callback voice-requested();
     callback cancel();
     callback acknowledge();
     callback query-edited(string);
@@ -79,9 +80,17 @@ export component SearchScreen inherits Rectangle {
                 horizontal-stretch: 1;
                 text <=> root.query;
                 placeholder: "Search titles, composers, tags or lyrics";
+                hardware-keyboard-present: root.hardware-keyboard-present;
                 edited(value) => { root.query-edited(value); }
             }
-            VerticalLayout { alignment: center; ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } } }
+            if root.voice-available : VerticalLayout {
+                alignment: center;
+                IconButton {
+                    label: "Search by voice";
+                    icon: @image-url("material-icons/mic.svg");
+                    clicked => { root.voice-requested(); }
+                }
+            }
         }
         if root.progress-text != "" : OperationBanner {
             text: root.progress-text;
@@ -131,7 +140,7 @@ export component SearchScreen inherits Rectangle {
             spacing: 8px;
             HorizontalLayout { alignment: center; Glyph { kind: "search"; width: 40px; height: 40px; } }
             Text { text: "Search your library"; color: Theme.foreground; font-size: 20px; font-weight: 600; horizontal-alignment: center; }
-            Text { text: "Find scores by title, composer, tag or lyrics. Press Ctrl K to open search from anywhere."; color: Theme.muted; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
+            Text { text: "Find scores by title, composer, tag or lyrics."; color: Theme.muted; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
         }
     }
 }

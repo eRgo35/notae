@@ -234,6 +234,7 @@ export component SearchField inherits Rectangle {
     in property <string> placeholder;
     in property <bool> enabled: true;
     in property <bool> in-dialog: false;
+    in property <bool> hardware-keyboard-present: false;
     private property <bool> effective-enabled: root.enabled && (!Theme.modal-open || root.in-dialog);
     callback edited(string);
 
@@ -270,7 +271,7 @@ export component SearchField inherits Rectangle {
     viewport := Rectangle {
         x: 52px;
         y: 4px;
-        width: max(1px, parent.width - self.x - (root.text != "" ? 56px : 16px));
+        width: max(1px, parent.width - self.x - (root.text != "" || editor.preedit-text != "" ? 56px : root.hardware-keyboard-present ? 88px : 16px));
         height: parent.height - 8px;
         clip: true;
         Text {
@@ -308,6 +309,24 @@ export component SearchField inherits Rectangle {
                 }
             }
             edited => { root.edited(self.text); }
+        }
+    }
+    if root.text == "" && editor.preedit-text == "" && root.hardware-keyboard-present : Rectangle {
+        x: parent.width - 76px;
+        y: (parent.height - 28px) / 2;
+        width: 64px;
+        height: 28px;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.divider;
+        background: Theme.card;
+        Text {
+            text: "Ctrl K";
+            color: Theme.muted;
+            font-size: 12px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            accessible-label: "Ctrl K";
         }
     }
     if root.text != "": IconButton {

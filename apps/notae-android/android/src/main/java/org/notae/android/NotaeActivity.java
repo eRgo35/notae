@@ -3,6 +3,8 @@ package org.notae.android;
 import android.app.NativeActivity;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.content.ActivityNotFoundException;
+import android.speech.RecognizerIntent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.pdf.PdfRenderer;
@@ -18,6 +20,37 @@ import java.io.FileOutputStream;
 public final class NotaeActivity extends NativeActivity {
     static {
         System.loadLibrary("notae_android");
+    }
+    private static final int VOICE_REQUEST_CODE = 0x4e4f;
+
+    private native void nativeOnVoiceResult(int requestCode, int resultCode, String[] results);
+    private native void nativeOnKeyboardConfigurationChanged(boolean present);
+
+    public boolean hasVoiceRecognizer() {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        return intent.resolveActivity(getPackageManager()) != null;
+    }
+
+    public boolean startVoiceRecognition() {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(
+            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+            RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(
+            RecognizerIntent.EXTRA_LANGUAGE,
+            java.util.Locale.getDefault().toLanguageTag());
+        try {
+            startActivityForResult(intent, VOICE_REQUEST_CODE);
+            return true;
+        } catch (ActivityNotFoundException error) {
+            return false;
+        }
+    }
+
+    public boolean hasHardwareKeyboard() {
+        Configuration configuration = getResources().getConfiguration();
+        return configuration.keyboard == Configuration.KEYBOARD_QWERTY
+            && configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO;
     }
 
     private native void nativeOnActivityResult(
@@ -60,12 +93,29 @@ public final class NotaeActivity extends NativeActivity {
             }
             getWindow().getDecorView().setSystemUiVisibility(flags);
         }
+        nativeOnKeyboardConfigurationChanged(hasHardwareKeyboard());
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        nativeOnKeyboardConfigurationChanged(hasHardwareKeyboard());
     }
 
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == VOICE_REQUEST_CODE) {
+            java.util.ArrayList<String> phrases = data == null
+                ? null : data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            nativeOnVoiceResult(
+                requestCode,
+                resultCode,
+                phrases == null ? null : phrases.toArray(new String[0]));
+            return;
+        }
 
         String treeUri = data == null || data.getData() == null
             ? null : data.getData().toString();
