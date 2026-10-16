@@ -5,7 +5,10 @@
 //! bindings are visible there.
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = slint_build::CompilerConfiguration::new().with_style("material".into());
+    let mut config = slint_build::CompilerConfiguration::new().with_style("material".into());
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("android") {
+        config = config.with_debug_info(true);
+    }
     slint_build::compile_with_config("ui/app.slint", config)?;
     Ok(())
 }
