@@ -17,6 +17,12 @@ fn successful_empty_result_does_not_replace_the_query() {
 }
 
 #[test]
+fn skips_blank_candidates_and_uses_the_first_nonblank_phrase() {
+    let candidates = ["  ".into(), "Chopin".into(), "Bach".into()];
+    assert_eq!(recognized_query(true, &candidates), Some("Chopin"));
+}
+
+#[test]
 fn unrelated_activity_request_is_not_a_voice_result() {
     assert!(!voice_result_is_current(42, 43, true));
 }
