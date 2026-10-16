@@ -276,6 +276,7 @@ export component LibraryScreen inherits Rectangle {
             }
             if !root.expanded : Flickable {
                 min-height: 48px; max-height: 48px;
+                interactive: self.content-width > self.width;
                 content-width: chips.preferred-width;
                 chips := HorizontalLayout {
                     spacing: 8px;
