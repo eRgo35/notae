@@ -14,11 +14,10 @@ fn welcome_and_recovery_actions_remain_reachable_in_compact_and_short_landscape(
                 .next()
                 .is_some()
         );
-        assert!(
-            ElementHandle::find_by_accessible_label(&app, "Choose score folder")
-                .next()
-                .is_some()
-        );
+        let choose = ElementHandle::find_by_accessible_label(&app, "Choose score folder")
+            .next()
+            .expect("setup action exists");
+        assert_element_in_viewport(&choose, width, height);
 
         app.set_show_recovery(true);
         app.set_recovery_folder_name("Orchestra".into());
@@ -27,36 +26,94 @@ fn welcome_and_recovery_actions_remain_reachable_in_compact_and_short_landscape(
                 .next()
                 .is_some()
         );
-        assert!(
-            ElementHandle::find_by_accessible_label(&app, "Reconnect folder")
-                .next()
-                .is_some()
-        );
+        let reconnect = ElementHandle::find_by_accessible_label(&app, "Reconnect folder")
+            .next()
+            .expect("recovery action exists");
+        assert_element_in_viewport(&reconnect, width, height);
     }
 }
+
+#[test]
+fn short_landscape_welcome_scrolls_its_content_without_clipping_the_action() {
+    let app = app_sized(800, 360);
+    app.set_show_setup(true);
+    let scroll = ElementHandle::find_by_element_type_name(&app, "ScrollView")
+        .next()
+        .expect("welcome content scroll view exists");
+    let title = ElementHandle::find_by_accessible_label(&app, "Welcome to Notae")
+        .next()
+        .expect("welcome title exists");
+    let before = title.absolute_position();
+    scroll.scroll(0.0, -1_000.0);
+    let after = title.absolute_position();
+    assert!(
+        after.y < before.y,
+        "scrolling the short landscape welcome content upward moves its title: before={before:?}, after={after:?}, scroll={:?} {:?}",
+        scroll.absolute_position(),
+        scroll.size()
+    );
+    let choose = ElementHandle::find_by_accessible_label(&app, "Choose score folder")
+        .next()
+        .expect("setup action exists");
+    assert_element_in_viewport(&choose, 800, 360);
+}
+
 #[test]
 fn settings_actions_stay_in_the_screen_and_expose_folder_change() {
     let app = app_sized(360, 600);
     app.set_show_settings(true);
 
-    assert!(
-        ElementHandle::find_by_accessible_label(&app, "Change")
-            .next()
-            .is_some()
-    );
     app.set_library_display_name("A very long shared family sheet music folder name".into());
-    assert!(
-        ElementHandle::find_by_accessible_label(
-            &app,
-            "A very long shared family sheet music folder name"
-        )
+    let folder = ElementHandle::find_by_accessible_label(
+        &app,
+        "A very long shared family sheet music folder name",
+    )
+    .next()
+    .expect("long folder name is present");
+    let change = ElementHandle::find_by_accessible_label(&app, "Change")
         .next()
-        .is_some()
+        .expect("Change action is present");
+    let folder_pos = folder.absolute_position();
+    let folder_size = folder.size();
+    let change_pos = change.absolute_position();
+    let change_size = change.size();
+    assert!(
+        change_pos.y < folder_pos.y + folder_size.height
+            && folder_pos.y < change_pos.y + change_size.height,
+        "folder name and Change remain on the same wrapped row: folder={folder_pos:?} {folder_size:?}, Change={change_pos:?} {change_size:?}"
+    );
+    assert_element_in_viewport(&change, 360, 600);
+    let folder_card = ElementHandle::find_by_element_type_name(&app, "Card")
+        .next()
+        .expect("folder card exists");
+    let card_pos = folder_card.absolute_position();
+    let card_size = folder_card.size();
+    assert!(
+        (folder_pos.x - (card_pos.x + 16.0)).abs() < 0.1
+            && (change_pos.x + change_size.width - (card_pos.x + card_size.width - 16.0)).abs()
+                < 0.1,
+        "folder card content keeps its 16 px horizontal padding: card={card_pos:?} {card_size:?}, folder={folder_pos:?}, Change={change_pos:?} {change_size:?}"
+    );
+    assert!(
+        folder_pos.x >= 0.0 && folder_pos.x + folder_size.width <= 360.0,
+        "long folder name stays within the horizontal viewport: {folder_pos:?} {folder_size:?}"
     );
     assert_eq!(
         ElementHandle::find_by_accessible_label(&app, "Scan library").count(),
         1,
         "Settings has one maintenance Scan action and no header Scan action"
+    );
+}
+
+fn assert_element_in_viewport(element: &ElementHandle, width: u32, height: u32) {
+    let position = element.absolute_position();
+    let size = element.size();
+    assert!(
+        position.x >= 0.0
+            && position.y >= 0.0
+            && position.x + size.width <= width as f32
+            && position.y + size.height <= height as f32,
+        "element bounds must stay inside {width}x{height}: position={position:?}, size={size:?}"
     );
 }
 
