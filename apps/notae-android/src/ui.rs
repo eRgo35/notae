@@ -43,6 +43,7 @@ use crate::ui::search::SearchRow;
 pub struct UiStatus {
     pub operation: crate::state::OperationState,
     pub latest_rescan: Option<RescanSummary>,
+    pub indexed_count: usize,
     pub pending_text_count: usize,
 }
 
@@ -50,6 +51,7 @@ pub struct UiModel {
     controller: AppController,
     storage: Rc<Mutex<StorageState>>,
     search_rows: Vec<SearchRow>,
+    indexed_count: usize,
     import_preview_summary: Option<ImportPreviewSummary>,
     latest_rescan: Option<RescanSummary>,
     metadata_editor: Option<EditableMetadata>,
@@ -72,6 +74,7 @@ impl UiModel {
             controller,
             storage,
             search_rows: Vec::new(),
+            indexed_count: 0,
             import_preview_summary: None,
             latest_rescan: None,
             metadata_editor: None,
@@ -294,6 +297,10 @@ impl UiModel {
             OperationEvent::Canceled => self.controller.cancel_operation()?,
             OperationEvent::Completed { summary, rows } => {
                 self.latest_rescan = Some(summary);
+                self.indexed_count = self
+                    .indexed_count
+                    .saturating_add(summary.added)
+                    .saturating_sub(summary.deleted);
                 self.search_rows = rows;
                 self.controller.complete_operation(rescan_summary(&summary));
             }
@@ -307,7 +314,12 @@ impl UiModel {
                 self.search_rows = rows;
                 self.controller.complete_operation(import_summary(&summary));
             }
-            OperationEvent::SearchRows(rows) => self.search_rows = rows,
+            OperationEvent::SearchRows(rows) => {
+                if self.controller.state().search().query.is_empty() {
+                    self.indexed_count = rows.len();
+                }
+                self.search_rows = rows;
+            }
             OperationEvent::MetadataLoaded(metadata) => {
                 self.metadata_error = None;
                 self.metadata_editor = Some(metadata);
@@ -334,6 +346,7 @@ impl UiModel {
         UiStatus {
             operation: self.controller.state().operation().clone(),
             latest_rescan: self.latest_rescan,
+            indexed_count: self.indexed_count,
             pending_text_count: self
                 .search_rows
                 .iter()

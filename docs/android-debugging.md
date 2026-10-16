@@ -14,7 +14,7 @@ The redesigned UI has no animated transitions or state effects. Controls respond
 
 Two causes were found by reading the code, not by running the tablet (the tablet's adb shell was unresponsive, so neither fix has been seen on a device):
 
-1. `app.slint` placed a 56 px Scan row (plus 20 px spacing) above every configured screen. That pushed the Library header, side panel, search field and settings title down by 76 px and let Search and Settings, which size themselves to the safe viewport, overrun the bottom. Each screen now owns its header; the Scan icon is part of it (`ScanButton` in `components.slint`) and `tests/details_ui.rs` fails if a scan row returns to `app.slint`.
+1. The former app-level Scan row pushed configured screens down and let Search and Settings overrun the safe viewport. Each configured screen owns its own header; the maintenance Scan action belongs in Settings body rather than the Settings header. `app.slint` pads the layout by `safe-area-insets`, and `window-width`/`available-height` come from the window, never from child layouts (deriving them from children caused Slint binding loops).
 2. Slint's Android backend always reports the window manager's system-bar and display-cutout insets as `safe-area-insets` and never makes the window edge-to-edge itself, while `NotaeActivity` ran with the default framework theme (action bar, decor fitting system windows). The UI was therefore inset by the status and navigation bars twice. `NotaeActivity.onCreate` now removes the title/action bar, calls `setDecorFitsSystemWindows(false)` (API 30+, legacy layout flags before), makes the bars transparent and chooses light or dark bar icons from the night mode. `app.slint` pads the layout by `safe-area-insets`, and `window-width`/`available-height` come from the window, never from child layouts (deriving them from children caused Slint binding loops).
 
 Check on the tablet in landscape and portrait: the title starts just below the status bar with no empty band, the bottom row ends above the gesture bar, nothing is clipped, and system-bar icons are legible in light and dark.
@@ -22,17 +22,16 @@ Check on the tablet in landscape and portrait: the title starts just below the s
 ## Implemented screen layout
 
 - **Breakpoints** (window width minus side insets): `< 840 px` compact (chip row instead of side panel, Settings icon in the Library header, details take the full width); `>= 840 px` side panel; `>= 1280 px` list plus details side by side. Score details stack the preview above the title below 560 px of pane width and scroll vertically.
-- **Headers:** Library: title and count left; Search, Settings (compact only), Scan right. Search: Back, search field, Scan. Settings: Back, title, Scan. The Scan icon is always the right-most action.
-- **Status banner:** running operation or its outcome (Cancel while scanning, Dismiss after an outcome; a failure uses the error colour and warning icon). Idle shows nothing.
+- **Headers:** Library: title and count left; Search, Settings (compact only), Scan right. Search: Back, search field, Scan. Settings: Back and title only; its maintenance Scan action is in the screen body.
+- **Status banner:** running operation or its outcome on every configured screen (Cancel while scanning, Dismiss after an outcome; a failure uses the error colour and warning icon). Idle shows nothing.
 - **Empty states:** Library (per section), Search with no query, and Search with no results each explain what to do. Text on neutral surfaces that is accent-coloured uses `Theme.accent-text` (4.5:1 or better in both themes).
 
 ## Follow-up UI verification
 
-The following checks cover the post-install usability fixes. They remain unverified in this run; installing an APK on the connected tablet is still deferred pending explicit user approval.
-
-- Start a scan, switch among Library, Search, and Settings, and confirm the same phase, progress, and outcome banner remains visible until dismissed. An idle library shows no banner. The latest scan result and pending-text count live in Settings > Library maintenance; confirm pending text is described as an index state, not Android OCR running.
-- Confirm the Scan icon is the right-most header action on Library (after Search, and after Settings in compact layouts), on Search (right of the search field), and on Settings (right of the title); each starts the existing scan, and it dims while another operation is active. There is no separate bar above the screens.
-- In Settings, verify the selected folder name and Change folder action, latest available scan result/conflicts/failures, pending-text count, local-only storage copy, and app version.
+- Generated-UI behavior checks use `tests/support/mod.rs` and `ElementHandle`; they verify Settings has a reachable Change action, its header has no Scan control, and the body maintenance Scan remains reachable. The headless window is laid out at compact and expanded widths; physical tablet rendering remains pending.
+- Welcome and recovery keep the intro, feature card and action in a scrollable viewport; tall-window top padding is capped. Settings uses 16 px card padding, keeps Change beside the wrapping folder name, reports the indexed count and actual scan counts, and says **No scan this session** without a scan summary. These dimensions and device colors still need visual confirmation on the Samsung tablet.
+- About identifies the package version, Git build identity (or `unknown` in source archives), MIT license, repository URL and `notae_index::sidecar::SIDECAR_SCHEMA_VERSION`. It has one local-only privacy statement; indexed count appears only in maintenance.
+- The Samsung tablet is not connected. No Task 2 physical-device, light/dark, large-text, or tablet visual acceptance is claimed; those checks remain pending.
 - Open Search with the on-screen keyboard. Confirm scope chips scroll horizontally and results use the remaining viewport and scroll independently.
 - Open score details and verify the icon-only Edit details action has the accessible name “Edit details” and opens the editor.
 - Confirm screen changes, state layers, modal sheets, and progress have no animations.
@@ -40,7 +39,7 @@ The following checks cover the post-install usability fixes. They remain unverif
 
 SAF readiness also synchronizes the controller's Library screen. Previously, selecting a folder opened the visible library but left the controller in Setup, so Settings was rejected. A host regression verifies that selecting ready storage enables Settings without starting a scan.
 
-Emulator checks (2560x1600 AVD, `-gpu host`; `swiftshader_indirect` segfaults here) confirmed: saved folder restored after force-stop and emulator reboot, edge-to-edge layout with no offset, Scan in every header, Settings/Search scroll and stretch, Android Back closes Settings, Search and details instead of leaving the app, corrupt thumbnails self-heal on the next scan, and dark and compact (1000x1600) layouts.
+Emulator checks (2560x1600 AVD, `-gpu host`; `swiftshader_indirect` segfaults here) previously confirmed: saved folder restored after force-stop and emulator reboot, edge-to-edge layout with no offset, Scan in Library and Search headers (Settings maintenance has its own body Scan), Settings/Search scroll and stretch, Android Back closes Settings, Search and details instead of leaving the app, corrupt thumbnails self-heal on the next scan, and dark and compact (1000x1600) layouts. This does not verify Task 2's Settings redesign.
 
 ## Protect the ADB session
 

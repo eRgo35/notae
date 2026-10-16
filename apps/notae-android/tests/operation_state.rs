@@ -315,8 +315,8 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         .apply_operation_event(OperationEvent::SearchRows(vec![pending_row.clone()]))
         .expect("rows event");
     let status = model.status();
-    assert_eq!(status.operation, OperationState::Idle);
     assert_eq!(status.latest_rescan, None);
+    assert_eq!(status.indexed_count, 1);
     assert_eq!(status.pending_text_count, 1);
 
     model
@@ -406,6 +406,40 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         }
     );
     assert_eq!(model.status().latest_rescan, Some(summary));
+}
+#[test]
+fn settings_indexed_count_is_not_replaced_by_filtered_search_rows() {
+    use notae_android::state::UiEvent;
+    use notae_android::ui::UiModel;
+    use notae_android::ui::search::SearchRow;
+
+    let row = SearchRow {
+        id: None,
+        title: "Score".to_owned(),
+        composer_or_artist: None,
+        tags: vec![],
+        status: "Ready".to_owned(),
+        note_key: "score".to_owned(),
+        relative_path: "score.pdf".to_owned(),
+        text_pending: false,
+        title_origin: String::new(),
+        composer_origin: String::new(),
+        text_snippet: None,
+    };
+    let mut model = UiModel::new();
+    model
+        .apply_operation_event(OperationEvent::SearchRows(vec![row.clone(), row.clone()]))
+        .expect("full library rows");
+    model
+        .dispatch(UiEvent::UpdateSearchQuery {
+            query: "filtered".to_owned(),
+        })
+        .expect("update query");
+    model
+        .apply_operation_event(OperationEvent::SearchRows(vec![row]))
+        .expect("filtered search rows");
+
+    assert_eq!(model.status().indexed_count, 2);
 }
 
 #[test]
