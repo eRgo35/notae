@@ -46,5 +46,4 @@ pub mod thumbnails;
 // `env!("OUT_DIR")` so the include works on Android *and* on Linux
 // (where the Linux-side smoke test indirectly exercises the same build
 // pipeline).
-#[cfg(target_os = "android")]
 include!(concat!(env!("OUT_DIR"), "/app.rs"));
