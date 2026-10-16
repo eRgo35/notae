@@ -12,6 +12,7 @@ This document records where the project actually stands so work can resume witho
 - [Milestone v0.2.0](https://github.com/eRgo35/notae/milestone/1) contains the twenty tablet-feedback issues (#1–#20) plus [CI repair #21](https://github.com/eRgo35/notae/issues/21).
 - [Release implementation plan](plans/2026-10-15-notae-v0.2.0-release.md) defines sequencing, shared interfaces, all issue acceptance gates and publication checks.
 - Application work remains preparation-only: no UI fixes, version bump, tag or release are claimed. CI repair #21 is now in implementation at the maintainer's request.
+- CI repair #21: host Fontconfig setup, supported Android SDK packages, deterministic directory-replacement fixture, and installed English Tesseract data are implemented locally. The latest CI run is still blocked on the missing tessdata prerequisite; focused CLI tests pass locally. Push and successful Actions completion remain outstanding, so #21 stays open.
 - #2 (first-focus Android caret) and #13 (Polish IME input) are tablet-led investigations. #17 requires actual TalkBack acceptance; Slint Android accessibility support must be verified, not inferred from accessible labels.
 - New issue requirements supersede earlier “no animations”, “Scan in every header”, split-preview and Settings pending/privacy instructions. See the release plan for the final contracts.
 - The sections below are historical implementation records; their old branch/build references are not the current release baseline.
