@@ -33,7 +33,8 @@ The local AVD `notae-api35-tablet` is API 35 x86_64 at 2560×1600. Its initial c
 
 - Existing pull request and branch CI gates remain in force.
 - The emulator test runs on pull requests and pushes to branches, using an Android emulator runner compatible with GitHub-hosted Linux runners.
-- The release job is conditional on `refs/tags/v*` and requires successful `rust-quality`, `android-target`, and emulator jobs.
+- The release APK builder also runs on pull requests and branch pushes with a generated, disposable CI-only keystore, so the signed release build is exercised before merge without exposing the maintainer's release secret. Pushed `v*` tags and explicit `workflow_dispatch` dry runs use the configured maintainer keystore; only a pushed `v*` tag may publish.
+- The publishing job is conditional on `refs/tags/v*` and requires successful `rust-quality`, `android-target`, emulator, and signed release-build jobs. Branch and pull-request release-build validation uses an ephemeral test key and cannot publish.
 - Release builds are arm64, signed using a dedicated maintainer-owned keystore loaded from repository secrets into a temporary file with restrictive permissions, then removed in an `always()` cleanup step.
 - The workflow creates a GitHub Release for the pushed tag and attaches the APK and checksum. It uses the repository-provided `GITHUB_TOKEN` with only the `contents: write` permission needed to publish the release.
 - Release job logs must not print secret values, encoded keystore contents, or passwords. Missing signing secrets fail before the release is created.
@@ -44,5 +45,6 @@ The local AVD `notae-api35-tablet` is API 35 x86_64 at 2560×1600. Its initial c
 - Run the existing documented host quality gates and Android arm64 compile gate.
 - Run the emulator workflow locally against the available AVD where possible; verify install, launch, representative navigation/actions, and crash-free logs. Also run the same workflow on GitHub after changes are pushed.
 - Verify the release APK package name, arm64 ABI, version, signing certificate, and checksum. Install the x86_64 emulator build to verify runtime behavior; do not require an arm64 APK to install on the x86_64 AVD.
+- On pull requests and branch pushes, verify the signed arm64 release build using a disposable CI key before merge. After the workflow is present on the default branch, dispatch a real-key dry run and verify it does not publish.
 - Exercise tag release automation with a non-production test tag or an equivalent release dry run before publishing the intended version.
 - Review the workflow permissions, secret handling, artifact names, and release behavior before merging to `main`.
