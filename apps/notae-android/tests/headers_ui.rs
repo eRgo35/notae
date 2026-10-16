@@ -105,6 +105,34 @@ fn settings_actions_stay_in_the_screen_and_expose_folder_change() {
     );
 }
 
+#[test]
+fn search_header_has_no_scan_and_keyboard_hint_is_contextual() {
+    let app = app_sized(360, 600);
+    assert!(ElementHandle::find_by_accessible_label(&app, "Scan library").next().is_some());
+    app.set_show_settings(true);
+    assert_eq!(ElementHandle::find_by_accessible_label(&app, "Scan library").count(), 1);
+    app.set_show_settings(false);
+    app.set_show_search(true);
+    assert!(ElementHandle::find_by_accessible_label(&app, "Search by voice").next().is_none());
+    app.set_voice_search_available(true);
+    let microphone = ElementHandle::find_by_accessible_label(&app, "Search by voice")
+        .next()
+        .expect("available recognizer exposes voice search");
+    assert!(microphone.size().width >= 48.0 && microphone.size().height >= 48.0);
+
+    assert_eq!(ElementHandle::find_by_accessible_label(&app, "Scan library").count(), 0);
+    assert!(ElementHandle::find_by_accessible_label(&app, "Ctrl K").next().is_none());
+
+    app.set_hardware_keyboard_present(true);
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Ctrl K")
+            .next()
+            .is_some()
+    );
+    app.set_search_text("Chopin".into());
+    assert!(ElementHandle::find_by_accessible_label(&app, "Ctrl K").next().is_none());
+}
+
 fn assert_element_in_viewport(element: &ElementHandle, width: u32, height: u32) {
     let position = element.absolute_position();
     let size = element.size();

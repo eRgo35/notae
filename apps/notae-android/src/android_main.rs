@@ -136,8 +136,12 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
     // and pulled in via `lib.rs`. Property setters and callback wiring
     // all share the same `model` so every state change goes through
     // `UiModel::dispatch`.
+    let hardware_keyboard_present = crate::android::search_input::read_hardware_keyboard(&app);
+    let voice_available = crate::android::search_input::voice_recognizer_available(&app);
     let window = AppWindow::new().map_err(|error| format!("Slint window: {error}"))?;
-
+    crate::android::search_input::bind_window(window.as_weak());
+    window.set_hardware_keyboard_present(hardware_keyboard_present);
+    window.set_voice_search_available(voice_available);
     sync_window(&window, &model.borrow());
 
     // The "Select folder" / "Reauthorize folder" button on the setup
@@ -305,12 +309,30 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
     {
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
+        let app = app.clone();
         window.on_search_opened(move || {
             if let Err(error) = model.borrow_mut().dispatch(UiEvent::OpenSearch) {
                 eprintln!("notae: cannot open search: {error}");
             }
+            let keyboard_present = crate::android::search_input::read_hardware_keyboard(&app);
             if let Some(window) = window_weak.upgrade() {
+                window.set_hardware_keyboard_present(keyboard_present);
                 sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let app = app.clone();
+        let window_weak = window.as_weak();
+        window.on_voice_search_requested(move || {
+            match crate::android::search_input::launch_voice_recognition(&app) {
+                Ok(true) => {}
+                Ok(false) => {
+                    if let Some(window) = window_weak.upgrade() {
+                        window.set_voice_search_available(false);
+                    }
+                }
+                Err(error) => eprintln!("notae: cannot launch voice recognizer: {error}"),
             }
         });
     }

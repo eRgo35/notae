@@ -24,13 +24,16 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="application/pdf" />
         </intent>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
     </queries>
 
     <application android:label="Notae" android:hasCode="true"
                  android:icon="@mipmap/ic_launcher">
         <activity android:name=".NotaeActivity"
                   android:exported="true"
-                  android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize">
+                  android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
