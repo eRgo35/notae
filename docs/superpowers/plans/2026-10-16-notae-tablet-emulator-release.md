@@ -18,8 +18,8 @@
 - Use SDK ADB at `$ANDROID_SDK_ROOT/platform-tools/adb`, pass an explicit emulator serial, and do not reset the ADB server or clear logs before collecting evidence.
 - Build emulator APKs with `--target x86_64-linux-android`; build distributable APKs with `--target aarch64-linux-android`. Do not claim the arm64 APK was runtime-tested on the x86_64 AVD.
 - Release keys/passwords must not enter source control or logs. The Cargo APK release keystore must be a single-private-key keystore whose key and store passwords are the same; pinned cargo-apk2 invokes `apksigner` without an explicit alias.
-- GitHub Releases are tag-triggered (`v*`) and require passing host, arm64, and emulator jobs. Do not create a version tag or publish a release as part of this plan without a separately approved version/release request.
-- Samsung One UI-specific keyboard behavior and real TalkBack acceptance remain physical-device gates; emulator or host tests do not discharge those gates.
+- GitHub Releases are tag-triggered (`v*`) and require passing host, arm64, and emulator jobs. A manual workflow dispatch may build/sign and validate in dry-run mode but must never publish a release. Do not create a version tag or publish a release as part of this plan without a separately approved version/release request.
+- Samsung One UI-specific keyboard behavior and real TalkBack acceptance remain physical-device gates; emulator or host tests do not discharge those gates. If #17's controls are not exposed to Android accessibility, implement the verified Slint bridge/upgrade required by the existing issue plan before marking the code task complete.
 
 ---
 
@@ -35,6 +35,7 @@
 ```sh
 printf 'no\n' | avdmanager create avd --name notae-test-api35 --package "system-images;android-35;google_apis;x86_64" --device pixel_tablet
 ```
+- [ ] Verify creation with `avdmanager list avd` before retrying. On this host `avdmanager create avd` printed a missing `devices.xml` error but did create the named AVD; do not repeat creation if the AVD is listed.
 
 - [ ] Start the scratch AVD with `-gpu host`, `-no-snapshot-load`, `-no-snapshot-save`, `-no-window`, `-no-audio`, and `-no-boot-anim`; wait for `sys.boot_completed=1`. If it remains offline or exits, capture process output and read-only `adb logcat`/crash data; do not run ADB reset commands or guess at product fixes.
 - [ ] Build the development APK for x86_64 with the JDK 17 source/target settings already documented in `docs/android-debugging.md`:
@@ -95,7 +96,7 @@ cargo apk2 build -p notae-android --target x86_64-linux-android
 
 - [ ] Implement Task 7's stable-key callbacks, Back/previous/next semantics, long-press cancellation, Recent open, and preview/editor behavior. Add the listed behavioral tests before implementation and run its browse/recent/metadata targets.
 - [ ] On the emulator, capture and exercise preview, external viewer return, Edit details, context actions, menu dismissal, Back restoration, light/dark and breakpoints. Inspect `uiautomator dump` and perform actual TalkBack interactions where the AVD exposes TalkBack.
-- [ ] If TalkBack cannot reach or activate the score controls, keep #17's physical accessibility acceptance open and record the specific missing platform behavior. Do not close #17 based on visible labels or host tests.
+- [ ] If Android accessibility cannot reach/activate the controls, identify and adopt a verified Slint accessibility implementation or implement the missing native accessibility bridge as required by existing plan Task 7. Test the bridge with `uiautomator dump` and real TalkBack gestures on the AVD; do not mark #17's code task complete until controls are exposed and operable. Keep physical TalkBack acceptance open until verified on hardware; do not claim visible labels or host tests prove it.
 
 ### Task 5: Themed, draggable scrollbars (#19)
 
@@ -135,41 +136,49 @@ cargo apk2 build -p notae-android --target x86_64-linux-android
 - [ ] Add project badges and feature overview, a link to the GitHub Releases APK, quick start before technical details, and the accurate workflow diagram from existing plan Task 11. Keep all existing technical instructions intact.
 - [ ] Render/inspect the README's relative image links, badges, diagram, download link, and CLI commands. Run CLI `--help`; update issue #6 evidence only with captures from the verified build.
 
-### Task 9: CI tablet emulator build and smoke test
+### Task 9: CI tablet emulator build and interaction smoke test
 
-**Files:** `.github/workflows/ci.yml`; create `scripts/android-emulator-smoke.sh`; `docs/engineering-standards.md`; `docs/android-debugging.md`.
+**Files:** `.github/workflows/ci.yml`; create `scripts/android-emulator-smoke.py`; `docs/engineering-standards.md`; `docs/android-debugging.md`.
 
-**Consumes:** Task 0 successful local x86_64 APK build and existing host UI test seam. **Produces:** A reproducible pull-request/push emulator job that builds, installs, launches, and captures runtime evidence.
+**Consumes:** Task 0 successful local x86_64 APK build, clean AVD, and accessibility controls from Task 4. **Produces:** Repeatable pull-request/push emulator coverage of a real folder-picker path, navigation, screenshots, and crash evidence.
 
 - [ ] Add an `android-emulator` job using `actions/setup-java@v4` (Temurin 17) and `android-actions/setup-android@v3`; install `platform-tools`, `platforms;android-34`, `build-tools;34.0.0`, `emulator`, and `system-images;android-35;google_apis;x86_64`.
-- [ ] Install NDK `26.3.11579264`, Rust target `x86_64-linux-android`, and pinned cargo-apk2 1.4.0. Create a tablet AVD from the API 35 Google APIs x86_64 image, cold boot it headlessly, and wait for `sys.boot_completed=1` with a bounded timeout that prints useful emulator/ADB diagnostics on failure.
-- [ ] Add the smoke script with arguments/env for SDK ADB, APK path, serial, and evidence directory. It must fail for a missing APK/device, install failure, failed activity start, absent app process, or fatal Java/native app crash; save a screenshot and full relevant logcat as workflow artifacts even on failure. Do not clear logcat buffers.
-- [ ] Use the built-in x86_64 override, confirmed in cargo-apk2 1.4.0: `cargo apk2 build -p notae-android --target x86_64-linux-android`; verify output at `target/debug/apk/notae-android.apk`. Run host generated-UI behavior tests in the same workflow as the screen-level interaction contract.
-- [ ] Validate the script with `bash -n`, run it on the local AVD, and exercise a failing install/start case in a disposable test invocation to verify it returns nonzero. Then run the full workflow job and preserve screenshots/logs as artifacts.
+- [ ] Before booting the x86_64 AVD, enable KVM for the GitHub runner exactly as documented by GitHub: write `KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"` to `/etc/udev/rules.d/99-kvm4all.rules`, run `sudo udevadm control --reload-rules` and `sudo udevadm trigger --name-match=kvm`, and assert `/dev/kvm` is readable/writable.
+- [ ] Install NDK `26.3.11579264`, Rust target `x86_64-linux-android`, and pinned cargo-apk2 1.4.0. Create a `pixel_tablet` AVD from API 35 Google APIs x86_64, cold boot headlessly with hardware acceleration, and wait for `sys.boot_completed=1` with a bounded timeout that prints useful emulator/ADB diagnostics on failure.
+- [ ] Build with `cargo apk2 build -p notae-android --target x86_64-linux-android`; verify `target/debug/apk/notae-android.apk`. Create an empty `Download/NotaeSmoke` folder on the disposable emulator.
+- [ ] Implement the Python-standard-library smoke driver. It must install the APK; launch `org.notae.android/.NotaeActivity`; assert the resumed foreground activity and process; inspect `uiautomator dump` XML and find/click controls by exact visible text/content description and returned bounds (never fixed screen coordinates); use Android DocumentsUI to select `Download/NotaeSmoke` and grant SAF access; assert Notae resumes into Library; navigate to Settings, return with Back, open Search, enter a query, and verify the expected screen/query state. If app controls are absent from the accessibility tree, fail with the hierarchy/screenshot and fix the missing bridge through Task 4 rather than weakening the check.
+- [ ] Capture screenshot and relevant logcat plus UI hierarchy at each checkpoint, including on failure; fail for missing APK/device, boot timeout, missing expected control, picker grant failure, wrong resumed activity, missing process, or fatal Java/native crash. Do not clear logcat buffers.
+- [ ] Run `python3 -m py_compile scripts/android-emulator-smoke.py`, `cargo test --workspace` remains in `rust-quality`, and execute the smoke driver against both local scratch AVD and GitHub runner. Upload screenshots/logcat/UI hierarchy as workflow artifacts with `if: always()` and a short retention period. Include a controlled bad-APK invocation to verify the driver returns nonzero.
 
 ### Task 10: Signed tag-triggered GitHub APK release
 
-**Files:** `.github/workflows/ci.yml`; `apps/notae-android/Cargo.toml`; add `docs/android-release.md`; `README.md` release download section.
+**Files:** `.github/workflows/ci.yml`; `apps/notae-android/Cargo.toml`; `docs/android-debugging.md`; add `docs/android-release.md`; `README.md` release download section.
 
-**Consumes:** Passing `rust-quality`, `android-target`, and `android-emulator` jobs. **Produces:** A verified signed arm64 APK and SHA-256 checksum attached to a GitHub Release for pushed `v*` tags.
+**Consumes:** Passing `rust-quality`, `android-target`, and `android-emulator` jobs. **Produces:** A verified signed arm64 APK and SHA-256 checksum attached to a GitHub Release for pushed `v*` tags, plus a non-publishing manual dry-run.
 
 - [ ] Remove the local absolute `/home/mike/.android/debug.keystore` release signing configuration from `apps/notae-android/Cargo.toml`. Confirm from pinned cargo-apk2 1.4.0 docs/source that `CARGO_APK_RELEASE_KEYSTORE` and `CARGO_APK_RELEASE_KEYSTORE_PASSWORD` override manifest signing and that signing passes no explicit key alias.
-- [ ] Add a tag-conditional release job with `needs: [rust-quality, android-target, android-emulator]`, and job-only `permissions: contents: write`. Decode `NOTAE_RELEASE_KEYSTORE_BASE64` into a mode-0600 file under `$RUNNER_TEMP`, export the supported cargo-apk2 signing variables without printing them, and remove the temporary key via an `always()` cleanup step. Fail before publishing if secrets are absent or keystore validation fails.
-- [ ] Build with `cargo apk2 build --release -p notae-android --target aarch64-linux-android`; check `target/release/apk/notae-android.apk`, validate package/version/ABI, verify the signer with SDK `apksigner`, and generate `sha256sum` for the APK.
-- [ ] Publish the existing pushed tag using `gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes` with the APK and checksum as assets and `GH_TOKEN: ${{ github.token }}`. Do not create tags in CI or from this task. Keep tag-triggered release creation gated on all three CI jobs.
-- [ ] Verify the release package path and signature flow using a locally configured test keystore that is not committed; document the exact GitHub secret names, required single-key/password constraints, tag format, download behavior, and manual release steps in `docs/android-release.md`.
+- [ ] Add `workflow_dispatch` with a boolean `dry_run` input defaulting to true. A manual run with `dry_run=false` must skip all release jobs; manual dry-run builds/signs/checks but cannot publish.
+- [ ] Add `android-release-build` with `needs: [rust-quality, android-target, android-emulator]`, `contents: read`, and an `if` allowing pull requests, branch pushes, `refs/tags/v*` pushes, or manual dispatches with `dry_run=true`. Pull requests and branch pushes must generate a disposable single-key test keystore under `$RUNNER_TEMP` with a random password; never expose release secrets to those events. Tags and manual dry-runs must use `NOTAE_RELEASE_KEYSTORE_BASE64` and `NOTAE_RELEASE_KEYSTORE_PASSWORD`, decode to a mode-0600 file, export Cargo env vars without printing values, and remove temporary keys in `always()` cleanup. Apply `::add-mask::` to any generated/secret password before use. Fail if required real-release secrets or key validation are missing.
+- [ ] Build with `cargo apk2 build --release -p notae-android --target aarch64-linux-android`; check `target/release/apk/notae-android.apk`; validate package and arm64 ABI; read APK `versionName` with SDK `aapt dump badging` and fail unless it exactly equals `${GITHUB_REF_NAME#v}` on tag pushes (manual dry runs compare with the workspace package version); verify signer with SDK `apksigner`; generate `sha256sum`; upload the APK/checksum as a short-retention Actions artifact.
+- [ ] Before cargo-apk2, validate the keystore without emitting credentials: `keytool -list -v` must show exactly one `PrivateKeyEntry`, then `keytool -importkeystore` must open it using environment-backed store and key passwords into a disposable validation store under `$RUNNER_TEMP`; remove validation files in `always()` cleanup. This verifies the same password can unlock the private key and prevents cargo-apk2's password-bearing error path from handling a malformed key.
+- [ ] Add a separate `publish-release` job with `needs: [android-release-build]`, `contents: write`, and a tag-push-only condition. Download the build artifact and run `gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes` with the APK and checksum assets, `GH_TOKEN: ${{ github.token }}`, and `GH_REPO: ${{ github.repository }}`; do not check out repository content in this publisher job. Manual dry runs must never enter this job; CI must never create tags.
+- [ ] Use a local disposable test keystore under ignored `target/` to exercise local signing, then use the GitHub `workflow_dispatch` dry-run after the workflow is on the default branch to exercise the hosted signed build; verify no GitHub Release is created. Document the GitHub secret names, single-key/password constraints, tag/version match, dry-run, download behavior, and local release-build env vars in `docs/android-release.md`; update the old release-build instructions in `docs/android-debugging.md`.
+- [ ] Document the one-time signing migration: existing installs were signed with the development debug key and cannot be upgrade-installed over with the new dedicated release key. The first release-key install requires uninstall/reinstall and loses app-private preferences/grants/index; never uninstall or overwrite the user's existing tablet app/data as part of this plan. Validate signing/install behavior only on the clean scratch AVD. Continue using the debug key for local debug installs; use the dedicated release key for local release APKs and future release-to-release upgrades.
 
 ### Task 11: Final qualification, review, and merge
 
 **Files:** `docs/engineering-standards.md`, `docs/android-debugging.md`, `docs/android-release.md`, `docs/superpowers/IMPLEMENTATION-STATE.md`, the existing SDD ledger, and any issue-specific docs from prior tasks.
 
-**Consumes:** All completed product tasks and CI/release jobs. **Produces:** Verified local branch merged into `main`, with hardware gates explicitly retained where unavailable.
+**Consumes:** All completed product tasks and CI/release jobs. **Produces:** Verified local branch merged to `main`, with hardware gates explicitly retained where unavailable.
 
-- [ ] Run every documented host quality command, x86_64 emulator build/smoke, arm64 Android check and release APK verification. Run the emulator interaction checklist from the existing plan, including folder selection, screen flows, keyboard/voice availability, light/dark, orientation, operations, Back navigation, and upgrade behavior. Save evidence without private data.
-- [ ] Confirm workflows have not weakened existing quality gates, no signing secrets/keystores are tracked, temporary key files are removed, release permissions are minimal, and the release job cannot publish on branch/PR events.
+- [ ] Run every documented host quality command, x86_64 emulator build/interaction smoke, arm64 Android check and local signed release build. Run the complete local emulator checklist from the existing issue plan, including folder selection, all screen flows, keyboard/voice availability, light/dark, orientation, operations, Back navigation, and fresh-key upgrade behavior. Save evidence without private data.
+- [ ] Confirm workflows have not weakened existing quality gates, no signing secrets/keystores are tracked, temporary key files are removed, PR/branch jobs use only disposable keys, release permissions are minimal, version/tag mismatch fails, and publishing cannot run on branch/PR/manual dry-run events.
 - [ ] Run independent code review on the complete diff; address all blocking findings. Verify every signed commit with GPG, using `pinentry-qt` when a passphrase prompt is requested.
-- [ ] Keep Samsung-only keyboard, physical TalkBack, and any tablet-only acceptance open if not observed; do not close those issues or claim a complete v0.2.0 release on emulator evidence alone.
-- [ ] Merge the reviewed feature branch into local `main` as requested, then push the merged `main` branch so GitHub CI runs. Do not push a version tag or publish a release without the required keystore secrets and a separately approved release version.
+- [ ] Push the verified feature branch and observe the GitHub CI run to completion before merging. Diagnose failures and rerun until host, arm64, and emulator gates pass. Record the successful Actions run URL on issue #21 and close it only after its acceptance is met.
+- [ ] Keep Samsung-only keyboard and physical TalkBack acceptance open if not observed; do not close those issues or claim a complete v0.2.0 release on emulator evidence alone.
+- [ ] Merge the reviewed feature branch into local `main` as requested, push the merged `main`, and observe its CI run. Do not push a version tag or publish a release without the required keystore secrets and a separately approved release version.
+- [ ] After the workflow is on the default branch, trigger `workflow_dispatch` with `dry_run=true` and observe the hosted release build; if secrets are not configured or the run fails, report the exact blocker or fix on the feature branch, repeat its CI gates, and merge the correction. Confirm the run created no GitHub Release.
+
 
 ## Release signing secret setup
 
@@ -182,4 +191,4 @@ The repository is currently private; GitHub Release assets will be downloadable 
 
 ## Execution order
 
-The issue-specific task sequence is intentionally serialized because Tasks 1–8 share UI files and interfaces. Task 9 can be implemented after the emulator build in Task 0, and Task 10 after Task 9. Final qualification and merge are last. No task closes an issue without the acceptance evidence described by its source plan.
+The issue-specific task sequence is intentionally serialized because Tasks 1–8 share UI files and interfaces. Task 9 starts after Task 4's verified Android accessibility exposure and all product/UI tasks through Task 8, because its CI interaction depends on the accessible app paths; Task 10 follows Task 9 because its release builder depends on all three quality gates. Final qualification, branch CI, review, and merge are last. The real-key hosted dry-run runs after the workflow reaches the default branch. No task closes an issue without the acceptance evidence described by its source plan.
