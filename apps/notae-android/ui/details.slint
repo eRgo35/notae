@@ -1,56 +1,7 @@
-// List-detail pane: the current section on the left, one score's details on the right.
-import { ListView, ScrollView } from "std-widgets.slint";
-import { Theme, IconButton, PillButton, Card, ActionInput } from "components.slint";
+// Full-width score preview: one score at a time, with previous/next browsing.
+import { ScrollView } from "std-widgets.slint";
+import { Theme, IconButton, PillButton, Card } from "components.slint";
 import { LibraryRow, PagePreview } from "library.slint";
-
-component ScoreListItem inherits Rectangle {
-    in property <LibraryRow> score;
-    in property <bool> selected;
-    callback clicked();
-    height: 76px;
-    border-radius: 18px;
-    background: root.selected ? Theme.accent-soft : input.pressed ? Theme.field : transparent;
-    border-width: input.has-focus ? 2px : 0px;
-    border-color: Theme.accent;
-    accessible-role: button;
-    accessible-label: root.score.title;
-    accessible-description: root.score.composer_or_artist;
-    accessible-action-default => { if !Theme.modal-open { root.clicked(); } }
-    forward-focus: input;
-    HorizontalLayout {
-        padding-left: 14px;
-        padding-right: 14px;
-        spacing: 14px;
-        VerticalLayout { alignment: center; PagePreview { score: root.score; width: 40px; height: 52px; border-radius: 6px; } }
-        VerticalLayout {
-            alignment: center;
-            spacing: 2px;
-            Text { text: root.score.title; font-size: 16px; font-weight: 600; overflow: elide; color: root.selected ? Theme.on-accent-soft : Theme.foreground; }
-            Text { text: (root.score.id != "" && root.score.composer_or_artist != "" ? root.score.id + " · " + root.score.composer_or_artist : root.score.id + root.score.composer_or_artist); font-size: 14px; color: root.selected ? Theme.on-accent-soft : Theme.muted; overflow: elide; }
-        }
-    }
-    input := ActionInput {
-        enabled: !Theme.modal-open;
-        clicked => { self.focus(); root.clicked(); }
-    }
-}
-
-export component ScoreList inherits Card {
-    in property <[LibraryRow]> rows;
-    in property <string> selected-key;
-    callback select(string);
-    ListView {
-        x: 8px;
-        y: 8px;
-        width: parent.width - 16px;
-        height: parent.height - 16px;
-        for score in root.rows : ScoreListItem {
-            score: score;
-            selected: score.note_key == root.selected-key;
-            clicked => { root.select(score.note_key); }
-        }
-    }
-}
 
 component InfoRow inherits HorizontalLayout {
     in property <string> label;
@@ -70,7 +21,26 @@ component InfoRow inherits HorizontalLayout {
     }
 }
 
-// Title, composer and the Open/Edit actions; shared by the side-by-side and stacked layouts.
+component InfoCard inherits Rectangle {
+    in property <LibraryRow> score;
+    border-radius: 20px;
+    background: Theme.background;
+    VerticalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 4px;
+        padding-bottom: 4px;
+        InfoRow { label: "Title"; value: root.score.title; origin: root.score.title_origin; }
+        Rectangle { height: 1px; background: Theme.divider; }
+        InfoRow { label: "Composer"; value: root.score.composer_or_artist; origin: root.score.composer_origin; }
+        Rectangle { height: 1px; background: Theme.divider; }
+        InfoRow { label: "Tags"; value: root.score.tags; origin: ""; }
+        Rectangle { height: 1px; background: Theme.divider; }
+        InfoRow { label: "File"; value: root.score.relative_path; origin: root.score.status; }
+    }
+}
+
+// Title, composer and the Open/Edit actions; shared by the wide and stacked layouts.
 component ScoreHeadline inherits VerticalLayout {
     in property <LibraryRow> score;
     in property <bool> centered;
@@ -93,75 +63,93 @@ component ScoreHeadline inherits VerticalLayout {
 
 export component ScoreDetails inherits Card {
     in property <LibraryRow> score;
-    in property <bool> show-back;
+    // "3 of 12" in the current section; empty when the score is not in it.
+    in property <string> position;
+    in property <bool> has-previous;
+    in property <bool> has-next;
     callback close();
     callback open();
     callback edit();
-    // The app computes the pane's width; below 560px the preview stacks above the title.
-    in property <length> content-width;
-    in property <bool> narrow;
+    callback previous();
+    callback next();
+    // Derived from this pane's own size (assigned by its parent), never from its children.
+    private property <bool> wide: root.width >= 720px;
+    private property <length> preview-width: root.wide
+        ? max(160px, min(380px, root.width * 0.4, (root.height - 112px) / 1.3))
+        : max(140px, min(300px, root.width - 64px));
     VerticalLayout {
         padding: 8px;
         HorizontalLayout {
-            alignment: start;
+            spacing: 4px;
             IconButton {
-                label: root.show-back ? "Back to list" : "Close details";
-                icon: root.show-back ? @image-url("material-icons/arrow-back.svg") : @image-url("material-icons/close.svg");
+                label: "Back to library";
+                icon: @image-url("material-icons/arrow-back.svg");
                 clicked => { root.close(); }
             }
+            Text {
+                horizontal-stretch: 1;
+                text: root.position;
+                color: Theme.muted;
+                font-size: 15px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accessible-role: text;
+                accessible-label: root.position == "" ? "" : "Score " + root.position;
+            }
+            IconButton {
+                label: "Previous score";
+                icon: @image-url("material-icons/chevron-left.svg");
+                enabled: root.has-previous;
+                clicked => { root.previous(); }
+            }
+            IconButton {
+                label: "Next score";
+                icon: @image-url("material-icons/chevron-right.svg");
+                enabled: root.has-next;
+                clicked => { root.next(); }
+            }
         }
-        // The pane can be shorter than its content in split screen, so the body scrolls.
+        // The pane can be shorter than its content (landscape phones, split screen), so the body scrolls.
         ScrollView {
             vertical-stretch: 1;
             horizontal-scrollbar-policy: always-off;
             VerticalLayout {
-                width: root.content-width;
+                width: root.width - 16px;
                 padding-bottom: 24px;
                 spacing: 24px;
-                if !root.narrow : HorizontalLayout {
+                if root.wide : HorizontalLayout {
                     padding-left: 16px;
                     padding-right: 16px;
-                    spacing: 28px;
-                    PagePreview { score: root.score; width: 172px; height: 228px; border-radius: 16px; }
-                    ScoreHeadline {
+                    spacing: 32px;
+                    alignment: center;
+                    PagePreview { score: root.score; width: root.preview-width; height: root.preview-width * 1.3; border-radius: 16px; }
+                    VerticalLayout {
+                        // Reading width: the metadata stays beside the page instead of stretching across a tablet.
                         horizontal-stretch: 1;
-                        score: root.score;
-                        open => { root.open(); }
-                        edit => { root.edit(); }
+                        min-width: 320px;
+                        preferred-width: 560px;
+                        max-width: 640px;
+                        spacing: 24px;
+                        ScoreHeadline {
+                            score: root.score;
+                            open => { root.open(); }
+                            edit => { root.edit(); }
+                        }
+                        InfoCard { score: root.score; }
                     }
                 }
-                if root.narrow : VerticalLayout {
+                if !root.wide : VerticalLayout {
                     padding-left: 16px;
                     padding-right: 16px;
-                    spacing: 16px;
-                    HorizontalLayout { alignment: center; PagePreview { score: root.score; width: 140px; height: 186px; border-radius: 16px; } }
+                    spacing: 20px;
+                    HorizontalLayout { alignment: center; PagePreview { score: root.score; width: root.preview-width; height: root.preview-width * 1.3; border-radius: 16px; } }
                     ScoreHeadline {
                         centered: true;
                         score: root.score;
                         open => { root.open(); }
                         edit => { root.edit(); }
                     }
-                }
-                HorizontalLayout {
-                    padding-left: 16px;
-                    padding-right: 16px;
-                    Rectangle {
-                        border-radius: 20px;
-                        background: Theme.background;
-                        VerticalLayout {
-                            padding-left: 20px;
-                            padding-right: 20px;
-                            padding-top: 4px;
-                            padding-bottom: 4px;
-                            InfoRow { label: "Title"; value: root.score.title; origin: root.score.title_origin; }
-                            Rectangle { height: 1px; background: Theme.divider; }
-                            InfoRow { label: "Composer"; value: root.score.composer_or_artist; origin: root.score.composer_origin; }
-                            Rectangle { height: 1px; background: Theme.divider; }
-                            InfoRow { label: "Tags"; value: root.score.tags; origin: ""; }
-                            Rectangle { height: 1px; background: Theme.divider; }
-                            InfoRow { label: "File"; value: root.score.relative_path; origin: root.score.status; }
-                        }
-                    }
+                    InfoCard { score: root.score; }
                 }
             }
         }

@@ -26,7 +26,7 @@ use crate::state::{
 };
 use crate::storage::StorageState;
 use crate::thumbnails::ThumbnailCache;
-use crate::ui::browse::{LibrarySection, section_rows};
+use crate::ui::browse::{LibrarySection, Neighbours, neighbours, section_rows};
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
 use crate::ui_prefs::{LibraryView, UiPrefs};
@@ -208,6 +208,7 @@ impl UiModel {
     /// back to the UI thread through this method.
     pub fn set_search_rows(&mut self, rows: Vec<SearchRow>) {
         self.search_rows = rows;
+        self.forget_missing_selection();
     }
 
     /// Returns the rows most recently projected by the operation worker.
@@ -343,6 +344,27 @@ impl UiModel {
             .cloned()
     }
 
+    /// Closes the preview when its score left the library, so it cannot reopen if the
+    /// same key later returns.
+    fn forget_missing_selection(&mut self) {
+        if let Some(key) = self.selected_note.as_deref()
+            && !self.search_rows.iter().any(|row| row.note_key == key)
+        {
+            self.selected_note = None;
+        }
+    }
+
+    /// The previewed score's place among the current section's rows. `None` when no preview
+    /// is open or the score is not in the section (for example a Search result).
+    #[must_use]
+    pub fn preview_neighbours(&self) -> Option<Neighbours> {
+        let key = self.selected_note.as_deref()?;
+        neighbours(
+            &section_rows(&self.search_rows, &self.section, self.recent.keys()),
+            key,
+        )
+    }
+
     /// The current read-only sidecar preview counts, when one is awaiting
     /// confirmation.
     #[must_use]
@@ -458,6 +480,7 @@ impl UiModel {
                 self.startup_presentation = StartupPresentation::Ready;
             }
         }
+        self.forget_missing_selection();
         Ok(())
     }
 

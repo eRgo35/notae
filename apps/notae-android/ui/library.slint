@@ -280,14 +280,14 @@ export component LibraryScreen inherits Rectangle {
     callback cancel-clicked();
     callback acknowledge-clicked();
     callback score-selected(string);
-    // When true, the details pane (Task 9, passed as children) replaces the grid.
+    // When true, the full-width preview (passed as children) replaces the whole library chrome.
     in property <bool> details-open;
     background: Theme.background;
 
     HorizontalLayout {
         padding: 16px;
         spacing: 16px;
-        if root.sidebar-visible : SidePanel {
+        if root.sidebar-visible && !root.details-open : SidePanel {
             width: 288px;
             sections: root.sections;
             composers: root.composers;
@@ -298,7 +298,7 @@ export component LibraryScreen inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             spacing: 12px;
-            HorizontalLayout {
+            if !root.details-open : HorizontalLayout {
                 padding-top: 8px;
                 padding-left: 8px;
                 spacing: 4px;
@@ -333,7 +333,7 @@ export component LibraryScreen inherits Rectangle {
                     }
                 }
             }
-            if !root.sidebar-visible : Flickable {
+            if !root.sidebar-visible && !root.details-open : Flickable {
                 min-height: 48px; max-height: 48px;
                 // A Flickable reports its viewport width as its maximum, which would cap the whole column.
                 max-width: 100000px;
@@ -365,7 +365,7 @@ export component LibraryScreen inherits Rectangle {
                 acknowledge => { root.acknowledge-clicked(); }
             }
             if root.pdf-error != "" : Text { text: root.pdf-error; color: Theme.error; font-size: 15px; wrap: word-wrap; }
-            // The details pane (Task 9, passed as children) replaces the grid. Slint does not allow
+            // The preview (passed as children) replaces the grid. Slint does not allow
             // @children inside a conditional element, so the slot is always present and hidden.
             Rectangle {
                 vertical-stretch: 1;

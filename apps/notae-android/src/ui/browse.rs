@@ -156,6 +156,30 @@ pub fn section_rows(
     }
 }
 
+/// Where a row sits among its section's rows, with the keys of the rows either side.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Neighbours {
+    pub previous: Option<String>,
+    pub next: Option<String>,
+    /// One-based index of the row.
+    pub position: usize,
+    pub total: usize,
+}
+
+/// The neighbours of `key` in `rows`, without wrapping; `None` when `key` is not in `rows`.
+#[must_use]
+pub fn neighbours(rows: &[SearchRow], key: &str) -> Option<Neighbours> {
+    let index = rows.iter().position(|row| row.note_key == key)?;
+    Some(Neighbours {
+        previous: index
+            .checked_sub(1)
+            .map(|previous| rows[previous].note_key.clone()),
+        next: rows.get(index + 1).map(|row| row.note_key.clone()),
+        position: index + 1,
+        total: rows.len(),
+    })
+}
+
 /// The four fixed side-panel sections with their counts.
 #[must_use]
 pub fn sections(rows: &[SearchRow], recent: &[String]) -> Vec<SectionView> {

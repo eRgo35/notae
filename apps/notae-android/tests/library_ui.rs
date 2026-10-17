@@ -258,3 +258,239 @@ fn content_fills_the_window_when_the_sidebar_is_collapsed() {
         );
     }
 }
+
+fn open_preview(app: &AppWindow, index: usize, count: usize) {
+    let row = score(index);
+    app.set_selected_key(row.note_key.clone());
+    app.set_selected(row);
+    app.set_selected_previous_key(if index > 1 {
+        score(index - 1).note_key
+    } else {
+        "".into()
+    });
+    app.set_selected_next_key(if index < count {
+        score(index + 1).note_key
+    } else {
+        "".into()
+    });
+    app.set_selected_position(format!("{index} of {count}").into());
+    app.set_details_open(true);
+}
+
+#[test]
+fn preview_uses_the_full_width_without_sidebar_chips_or_companion_list() {
+    for (width, height, list) in [
+        (1280, 800, false),
+        (1280, 800, true),
+        (1920, 1080, false),
+        (900, 1400, true),
+    ] {
+        let app = app_sized(width, height);
+        app.set_library_list_view(list);
+        app.set_sidebar_collapsed_portrait(false);
+        with_library(&app, 3);
+        open_preview(&app, 2, 3);
+
+        for hidden in ["SidePanel", "Chip", "ScoreCard", "ScoreRow", "ScoreList"] {
+            assert_eq!(
+                count(&app, hidden),
+                0,
+                "{hidden} at {width}x{height} list={list}"
+            );
+        }
+        assert!(
+            labelled(&app, "Hide sidebar").is_none() && labelled(&app, "Show sidebar").is_none()
+        );
+        let details = ElementHandle::find_by_element_type_name(&app, "ScoreDetails")
+            .next()
+            .expect("preview is shown");
+        assert!(
+            (details.size().width - (width as f32 - 32.0)).abs() < 1.0,
+            "{width}x{height}: preview spans the content width, got {}",
+            details.size().width
+        );
+        assert_eq!(
+            app.get_library_list_view(),
+            list,
+            "preview does not touch the layout choice"
+        );
+    }
+}
+
+#[test]
+fn preview_back_returns_with_the_same_layout_and_section() {
+    let app = app();
+    app.set_library_list_view(true);
+    app.set_selected_section("recent".into());
+    with_library(&app, 3);
+    open_preview(&app, 1, 3);
+    let cleared = Rc::new(RefCell::new(0));
+    let counter = Rc::clone(&cleared);
+    let weak = app.as_weak();
+    app.on_selection_cleared(move || {
+        *counter.borrow_mut() += 1;
+        if let Some(app) = weak.upgrade() {
+            app.set_details_open(false);
+        }
+    });
+    let back = labelled(&app, "Back to library").expect("Back is available at wide width");
+    assert!(back.size().width >= 48.0 && back.size().height >= 48.0);
+    back.invoke_accessible_default_action();
+    assert_eq!(*cleared.borrow(), 1);
+    assert_eq!(count(&app, "ScoreRow"), 3, "list layout is restored");
+    assert_eq!(count(&app, "SidePanel"), 1);
+    assert_eq!(app.get_selected_section(), "recent");
+}
+
+#[test]
+fn compact_preview_also_offers_back() {
+    let app = app_sized(360, 640);
+    with_library(&app, 2);
+    open_preview(&app, 1, 2);
+    assert!(labelled(&app, "Back to library").is_some());
+}
+
+#[test]
+fn previous_and_next_follow_the_neighbours_and_disable_at_boundaries() {
+    let app = app();
+    with_library(&app, 3);
+    let chosen = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&chosen);
+    app.on_score_selected(move |key| recorded.borrow_mut().push(key.to_string()));
+
+    open_preview(&app, 1, 3);
+    assert_eq!(
+        labelled(&app, "Previous score").and_then(|e| e.accessible_enabled()),
+        Some(false)
+    );
+    assert_eq!(
+        labelled(&app, "Next score").and_then(|e| e.accessible_enabled()),
+        Some(true)
+    );
+    press(&app, "Previous score");
+    assert!(chosen.borrow().is_empty(), "disabled at the first score");
+    press(&app, "Next score");
+    assert_eq!(*chosen.borrow(), [format!("{:064}", 2)]);
+
+    open_preview(&app, 3, 3);
+    assert_eq!(
+        labelled(&app, "Next score").and_then(|e| e.accessible_enabled()),
+        Some(false)
+    );
+    press(&app, "Next score");
+    assert_eq!(chosen.borrow().len(), 1, "disabled at the last score");
+    press(&app, "Previous score");
+    assert_eq!(chosen.borrow()[1], format!("{:064}", 2));
+
+    // A single score (or one outside the section) has neither neighbour.
+    open_preview(&app, 1, 1);
+    for label in ["Previous score", "Next score"] {
+        assert_eq!(
+            labelled(&app, label).and_then(|e| e.accessible_enabled()),
+            Some(false)
+        );
+    }
+    assert_eq!(labelled(&app, "Score 1 of 1").is_some(), true);
+}
+
+#[test]
+fn left_and_right_keys_browse_the_preview() {
+    use slint::platform::{Key, WindowEvent};
+    let app = app();
+    with_library(&app, 3);
+    let chosen = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&chosen);
+    app.on_score_selected(move |key| recorded.borrow_mut().push(key.to_string()));
+    open_preview(&app, 2, 3);
+    let send = |key: Key| {
+        let text: SharedString = key.into();
+        app.window()
+            .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+        app.window()
+            .dispatch_event(WindowEvent::KeyReleased { text });
+    };
+    send(Key::LeftArrow);
+    send(Key::RightArrow);
+    assert_eq!(
+        *chosen.borrow(),
+        [format!("{:064}", 1), format!("{:064}", 3)]
+    );
+
+    open_preview(&app, 1, 3);
+    send(Key::LeftArrow);
+    assert_eq!(chosen.borrow().len(), 2, "no wrap before the first score");
+    open_preview(&app, 3, 3);
+    send(Key::RightArrow);
+    assert_eq!(chosen.borrow().len(), 2, "no wrap after the last score");
+}
+
+#[test]
+fn arrow_keys_do_nothing_while_a_sheet_is_open_or_no_preview_is_showing() {
+    use slint::platform::{Key, WindowEvent};
+    let app = app();
+    with_library(&app, 3);
+    let chosen = Rc::new(RefCell::new(0));
+    let counter = Rc::clone(&chosen);
+    app.on_score_selected(move |_| *counter.borrow_mut() += 1);
+    let send = |key: Key| {
+        let text: SharedString = key.into();
+        app.window()
+            .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+        app.window()
+            .dispatch_event(WindowEvent::KeyReleased { text });
+    };
+    send(Key::RightArrow);
+    assert_eq!(*chosen.borrow(), 0, "library without preview");
+    open_preview(&app, 1, 3);
+    app.set_show_metadata_editor(true);
+    send(Key::RightArrow);
+    assert_eq!(*chosen.borrow(), 0, "editor sheet owns the keys");
+}
+
+#[test]
+fn preview_actions_open_and_edit_the_previewed_score() {
+    let app = app();
+    with_library(&app, 2);
+    open_preview(&app, 2, 2);
+    let opened = Rc::new(RefCell::new(Vec::new()));
+    let edited = Rc::new(RefCell::new(Vec::new()));
+    let (o, e) = (Rc::clone(&opened), Rc::clone(&edited));
+    app.on_open_pdf_requested(move |path, key| {
+        o.borrow_mut().push((path.to_string(), key.to_string()))
+    });
+    app.on_edit_metadata_requested(move |key| e.borrow_mut().push(key.to_string()));
+    press(&app, "Open score");
+    press(&app, "Edit details");
+    assert_eq!(
+        *opened.borrow(),
+        [("score-2.pdf".to_owned(), format!("{:064}", 2))]
+    );
+    assert_eq!(*edited.borrow(), [format!("{:064}", 2)]);
+}
+
+#[test]
+fn wide_preview_places_a_large_page_beside_the_details() {
+    let app = app();
+    with_library(&app, 1);
+    open_preview(&app, 1, 1);
+    let title_row = labelled(&app, "Open score").expect("Open score is exposed");
+    let details = ElementHandle::find_by_element_type_name(&app, "ScoreDetails")
+        .next()
+        .expect("preview is shown");
+    let preview = ElementHandle::find_by_element_type_name(&app, "PagePreview")
+        .next()
+        .expect("page preview is shown");
+    assert!(
+        preview.size().width >= 300.0 && preview.size().height >= 390.0,
+        "{:?}",
+        preview.size()
+    );
+    assert!(
+        title_row.absolute_position().x > preview.absolute_position().x + preview.size().width,
+        "actions sit beside the page, not under it"
+    );
+    assert!(
+        preview.absolute_position().y + preview.size().height
+            <= details.absolute_position().y + details.size().height
+    );
+}
