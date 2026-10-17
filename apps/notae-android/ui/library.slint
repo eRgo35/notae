@@ -72,12 +72,57 @@ component ItemAction inherits Rectangle {
     }
 }
 
+// Touch target of a card or row. A tap (or Enter/Space) emits `activated`; holding for 500 ms
+// without moving beyond touch slop emits `long-pressed` instead, and that press never also
+// activates. Releasing early, scrolling away, a modal opening or the item disappearing cancel it.
+component ItemInput inherits ActionInput {
+    callback activated();
+    callback long-pressed();
+    private property <bool> holding: false;
+    private property <bool> consumed: false;
+    changed pressed => {
+        if self.pressed {
+            self.consumed = false;
+            self.holding = true;
+        } else {
+            self.holding = false;
+        }
+    }
+    changed enabled => { if !self.enabled { self.holding = false; } }
+    moved => {
+        if self.holding && (abs(self.mouse-x - self.pressed-x) > 10px || abs(self.mouse-y - self.pressed-y) > 10px) {
+            self.holding = false;
+        }
+    }
+    clicked => {
+        if self.consumed {
+            self.consumed = false;
+        } else {
+            self.focus();
+            self.activated();
+        }
+    }
+    Timer {
+        interval: 500ms;
+        running: root.holding && root.enabled;
+        triggered => {
+            root.holding = false;
+            root.consumed = true;
+            root.long-pressed();
+        }
+    }
+}
+
 component ScoreCard inherits Rectangle {
     in property <LibraryRow> score;
     // Tapping opens the PDF itself (Recent); otherwise it opens the preview.
     in property <bool> direct-open;
+    // False while the actions menu is open, so nothing beneath it reacts.
+    in property <bool> interactive: true;
     callback select();
     callback open();
+    callback edit();
+    callback long-pressed();
     border-radius: 20px;
     background: input.pressed ? Theme.field : transparent;
     border-width: input.has-focus ? 2px : 0px;
@@ -85,14 +130,15 @@ component ScoreCard inherits Rectangle {
     accessible-role: button;
     accessible-label: root.score.title;
     accessible-description: root.score.composer_or_artist + (root.score.text_pending ? ". Text unavailable. Run desktop OCR or import a sidecar." : "") + (root.direct-open ? ". Opens the score" : "");
-    accessible-action-default => { if !Theme.modal-open { root.activate(); } }
+    accessible-action-default => { if root.interactive && !Theme.modal-open { root.activate(); } }
     forward-focus: input;
     function activate() {
         if root.direct-open { root.open(); } else { root.select(); }
     }
-    input := ActionInput {
-        enabled: !Theme.modal-open;
-        clicked => { self.focus(); root.activate(); }
+    input := ItemInput {
+        enabled: root.interactive && !Theme.modal-open;
+        activated => { root.activate(); }
+        long-pressed => { root.long-pressed(); }
     }
     VerticalLayout {
         padding: 6px;
@@ -115,10 +161,19 @@ component ScoreCard inherits Rectangle {
             }
         }
     }
+    ItemAction {
+        label: "Edit details";
+        icon: @image-url("material-icons/edit.svg");
+        enabled: root.interactive;
+        x: root.width - self.width - 12px;
+        y: 12px;
+        clicked => { root.edit(); }
+    }
     if root.direct-open : ItemAction {
         label: "Score details";
         icon: @image-url("material-icons/info.svg");
-        x: root.width - self.width - 12px;
+        enabled: root.interactive;
+        x: root.width - 2 * self.width - 18px;
         y: 12px;
         clicked => { root.select(); }
     }
@@ -127,8 +182,11 @@ component ScoreCard inherits Rectangle {
 component ScoreGrid inherits Flickable {
     in property <[LibraryRow]> rows;
     in property <bool> direct-open;
+    in property <bool> items-enabled: true;
     callback select(string);
     callback open(string, string);
+    callback edit(string);
+    callback long-pressed(LibraryRow);
     private property <int> columns: max(1, floor((self.width + 16px) / 192px));
     private property <length> cell-width: (self.width - (self.columns - 1) * 16px) / self.columns;
     private property <length> cell-height: self.cell-width * 1.3 + 64px;
@@ -140,8 +198,11 @@ component ScoreGrid inherits Flickable {
         height: root.cell-height;
         score: row;
         direct-open: root.direct-open;
+        interactive: root.items-enabled;
         select => { root.select(row.note_key); }
         open => { root.open(row.relative_path, row.note_key); }
+        edit => { root.edit(row.note_key); }
+        long-pressed => { root.long-pressed(row); }
     }
 }
 
@@ -149,8 +210,11 @@ component ScoreGrid inherits Flickable {
 export component ScoreRow inherits Rectangle {
     in property <LibraryRow> score;
     in property <bool> direct-open;
+    in property <bool> interactive: true;
     callback select();
     callback open();
+    callback edit();
+    callback long-pressed();
     height: 80px;
     border-radius: 18px;
     background: input.pressed ? Theme.field : transparent;
@@ -159,14 +223,15 @@ export component ScoreRow inherits Rectangle {
     accessible-role: button;
     accessible-label: root.score.title;
     accessible-description: root.score.composer_or_artist + (root.score.text_pending ? ". Text pending" : "") + (root.direct-open ? ". Opens the score" : "");
-    accessible-action-default => { if !Theme.modal-open { root.activate(); } }
+    accessible-action-default => { if root.interactive && !Theme.modal-open { root.activate(); } }
     forward-focus: input;
     function activate() {
         if root.direct-open { root.open(); } else { root.select(); }
     }
-    input := ActionInput {
-        enabled: !Theme.modal-open;
-        clicked => { self.focus(); root.activate(); }
+    input := ItemInput {
+        enabled: root.interactive && !Theme.modal-open;
+        activated => { root.activate(); }
+        long-pressed => { root.long-pressed(); }
     }
     HorizontalLayout {
         padding-left: 14px;
@@ -192,7 +257,17 @@ export component ScoreRow inherits Rectangle {
             ItemAction {
                 label: "Score details";
                 icon: @image-url("material-icons/info.svg");
+                enabled: root.interactive;
                 clicked => { root.select(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            ItemAction {
+                label: "Edit details";
+                icon: @image-url("material-icons/edit.svg");
+                enabled: root.interactive;
+                clicked => { root.edit(); }
             }
         }
     }
@@ -306,6 +381,14 @@ export component LibraryScreen inherits Rectangle {
     in property <bool> rescan-enabled;
     // Recent opens the PDF on tap; its Score details action opens the preview.
     private property <bool> direct-open: root.selected-section == "recent";
+    // Long-press actions menu. The owner binds `menu-open` so Back/Escape can dismiss it.
+    in-out property <bool> menu-open: false;
+    private property <LibraryRow> menu-row;
+    function show-menu(row: LibraryRow) {
+        root.menu-row = row;
+        root.menu-open = true;
+    }
+    init => { root.menu-open = false; }
     callback rescan-clicked();
     callback sidebar-toggle-clicked();
     callback view-toggle-clicked();
@@ -330,6 +413,7 @@ export component LibraryScreen inherits Rectangle {
     callback acknowledge-clicked();
     callback score-selected(string);
     callback score-opened(string, string);
+    callback edit-requested(string);
     // When true, the full-width preview (passed as children) replaces the whole library chrome.
     in property <bool> details-open;
     background: Theme.background;
@@ -429,8 +513,11 @@ export component LibraryScreen inherits Rectangle {
                         height: parent.height - 20px;
                         rows: root.rows;
                         direct-open: root.direct-open;
+                        items-enabled: !root.menu-open;
                         select(key) => { root.score-selected(key); }
                         open(path, key) => { root.score-opened(path, key); }
+                        edit(key) => { root.edit-requested(key); }
+                        long-pressed(row) => { root.show-menu(row); }
                     }
                 }
                 if !root.details-open && root.rows.length > 0 && root.list-view : Card {
@@ -444,8 +531,11 @@ export component LibraryScreen inherits Rectangle {
                         for row in root.rows : ScoreRow {
                             score: row;
                             direct-open: root.direct-open;
+                            interactive: !root.menu-open;
                             select => { root.score-selected(row.note_key); }
                             open => { root.score-opened(row.relative_path, row.note_key); }
+                            edit => { root.edit-requested(row.note_key); }
+                            long-pressed => { root.show-menu(row); }
                         }
                     }
                 }
@@ -483,6 +573,56 @@ export component LibraryScreen inherits Rectangle {
                     width: parent.width;
                     height: parent.height;
                     @children
+                }
+            }
+        }
+    }
+
+    // Actions for a long-pressed score. The scrim swallows pointer input, so dismissing the menu
+    // never activates the item underneath.
+    if root.menu-open : Rectangle {
+        x: 0px;
+        y: 0px;
+        width: root.width;
+        height: root.height;
+        background: #00000066;
+        TouchArea {
+            mouse-cursor: default;
+            accessible-role: none;
+            clicked => { root.menu-open = false; }
+        }
+        menu-card := Rectangle {
+            width: min(340px, root.width - 32px);
+            height: menu-content.preferred-height;
+            x: (root.width - self.width) / 2;
+            y: (root.height - self.height) / 2;
+            background: Theme.card;
+            border-radius: 26px;
+            init => { menu-open-action.focus(); }
+            accessible-role: form;
+            accessible-label: "Actions for " + root.menu-row.title;
+            TouchArea { accessible-role: none; }
+            menu-content := VerticalLayout {
+                padding: 16px;
+                spacing: 8px;
+                Text { text: root.menu-row.title; color: Theme.foreground; font-size: 18px; font-weight: 600; overflow: elide; }
+                menu-open-action := PillButton {
+                    in-dialog: true;
+                    text: "Open score";
+                    primary: true;
+                    clicked => { root.menu-open = false; root.score-opened(root.menu-row.relative_path, root.menu-row.note_key); }
+                }
+                PillButton {
+                    in-dialog: true;
+                    text: "Score details";
+                    tonal: true;
+                    clicked => { root.menu-open = false; root.score-selected(root.menu-row.note_key); }
+                }
+                PillButton {
+                    in-dialog: true;
+                    text: "Edit details";
+                    tonal: true;
+                    clicked => { root.menu-open = false; root.edit-requested(root.menu-row.note_key); }
                 }
             }
         }
