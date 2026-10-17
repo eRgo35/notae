@@ -785,13 +785,6 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
 
     let selected = model.selected_row();
     window.set_details_open(selected.is_some());
-    window.set_selected_key(
-        selected
-            .as_ref()
-            .map(|row| row.note_key.clone())
-            .unwrap_or_default()
-            .into(),
-    );
     let preview_neighbours = model.preview_neighbours();
     window.set_selected_previous_key(
         preview_neighbours

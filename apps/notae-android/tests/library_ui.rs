@@ -261,7 +261,6 @@ fn content_fills_the_window_when_the_sidebar_is_collapsed() {
 
 fn open_preview(app: &AppWindow, index: usize, count: usize) {
     let row = score(index);
-    app.set_selected_key(row.note_key.clone());
     app.set_selected(row);
     app.set_selected_previous_key(if index > 1 {
         score(index - 1).note_key
@@ -493,4 +492,127 @@ fn wide_preview_places_a_large_page_beside_the_details() {
         preview.absolute_position().y + preview.size().height
             <= details.absolute_position().y + details.size().height
     );
+}
+
+#[derive(Default)]
+struct Dispatches {
+    opened: Vec<(String, String)>,
+    previewed: Vec<String>,
+    edited: Vec<String>,
+}
+
+fn record_dispatches(app: &AppWindow) -> Rc<RefCell<Dispatches>> {
+    let seen = Rc::new(RefCell::new(Dispatches::default()));
+    let opened = Rc::clone(&seen);
+    app.on_open_pdf_requested(move |path, key| {
+        opened
+            .borrow_mut()
+            .opened
+            .push((path.to_string(), key.to_string()));
+    });
+    let previewed = Rc::clone(&seen);
+    app.on_score_selected(move |key| previewed.borrow_mut().previewed.push(key.to_string()));
+    let edited = Rc::clone(&seen);
+    app.on_edit_metadata_requested(move |key| edited.borrow_mut().edited.push(key.to_string()));
+    seen
+}
+
+fn click(app: &AppWindow, label: &str, index: usize) {
+    let _ = app;
+    ElementHandle::find_by_accessible_label(app, label)
+        .nth(index)
+        .unwrap_or_else(|| panic!("`{label}` #{index} is exposed"))
+        .mock_single_click(slint::platform::PointerEventButton::Left);
+}
+
+#[test]
+fn recent_tap_opens_the_pdf_without_opening_the_preview() {
+    for list in [false, true] {
+        let app = app();
+        app.set_library_list_view(list);
+        app.set_selected_section("recent".into());
+        with_library(&app, 3);
+        let seen = record_dispatches(&app);
+
+        click(&app, "Score 2", 0);
+        {
+            let seen = seen.borrow();
+            assert_eq!(
+                seen.opened,
+                [("score-2.pdf".to_owned(), format!("{:064}", 2))],
+                "list={list}"
+            );
+            assert!(
+                seen.previewed.is_empty(),
+                "one tap must not also open the preview"
+            );
+        }
+        // Keyboard/accessibility activation takes the same single path.
+        ElementHandle::find_by_accessible_label(&app, "Score 3")
+            .next()
+            .expect("row")
+            .invoke_accessible_default_action();
+        let seen = seen.borrow();
+        assert_eq!(seen.opened.len(), 2);
+        assert!(seen.previewed.is_empty());
+    }
+}
+
+#[test]
+fn recent_items_expose_score_details_as_a_48px_action_for_the_preview() {
+    for list in [false, true] {
+        let app = app();
+        app.set_library_list_view(list);
+        app.set_selected_section("recent".into());
+        with_library(&app, 3);
+        let seen = record_dispatches(&app);
+
+        let details: Vec<_> =
+            ElementHandle::find_by_accessible_label(&app, "Score details").collect();
+        assert_eq!(
+            details.len(),
+            3,
+            "every Recent item has the action, list={list}"
+        );
+        for action in &details {
+            assert!(action.size().width >= 48.0 && action.size().height >= 48.0);
+        }
+        click(&app, "Score details", 1);
+        let seen = seen.borrow();
+        assert_eq!(seen.previewed, [format!("{:064}", 2)]);
+        assert!(
+            seen.opened.is_empty(),
+            "details must not launch the PDF, list={list}"
+        );
+    }
+}
+
+#[test]
+fn other_sections_tap_to_preview_and_have_no_separate_details_action() {
+    for section in [
+        "all",
+        "needs-details",
+        "text-pending",
+        "composer:Composer 1",
+    ] {
+        for list in [false, true] {
+            let app = app();
+            app.set_library_list_view(list);
+            app.set_selected_section(section.into());
+            with_library(&app, 2);
+            let seen = record_dispatches(&app);
+            assert!(
+                labelled(&app, "Score details").is_none(),
+                "{section} list={list}"
+            );
+            click(&app, "Score 1", 0);
+            let seen = seen.borrow();
+            assert_eq!(
+                seen.previewed,
+                [format!("{:064}", 1)],
+                "{section} list={list}"
+            );
+            assert!(seen.opened.is_empty());
+        }
+    }
 }
