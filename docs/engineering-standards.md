@@ -29,7 +29,18 @@ CI explicitly installs `platform-tools`, `platforms;android-34`, and `build-tool
 cargo apk2 check -p notae-android --target aarch64-linux-android
 ```
 
-CI runs the same arm64 target check. Installing and visually reviewing the app on the Galaxy Tab S10 FE+ remains manual; follow [`android-debugging.md`](android-debugging.md).
+CI runs the same arm64 target check; the signed release build runs only from a version tag (see [`android-release.md`](android-release.md)). Installing and visually reviewing the app on the Galaxy Tab S10 FE+ remains manual; follow [`android-debugging.md`](android-debugging.md).
+
+## GitHub workflows
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `ci.yml` | push to `main`, pull requests, manual, reusable | The host gates above and the arm64 compile gate, with `contents: read`. Superseded branch/PR runs are cancelled; `main` runs are not. The host job frees preinstalled runner directories and sets `CARGO_INCREMENTAL=0` because the build fills the runner disk, and prints `df`/`du` diagnostics. No `target/` cache is used for the same reason. |
+| `release.yml` | `v*` tag, manual with a tag | Verifies the tag, reruns `ci.yml` on the tagged commit, builds and signs the arm64 APK from repository secrets, verifies it and attaches it to the GitHub Release. See [`android-release.md`](android-release.md) for the secrets, the release procedure and the debug-key/release-key incompatibility. |
+| `audit.yml` | weekly, manual | `cargo deny check advisories` so new RustSec entries surface without code changes; never blocks a release. |
+| `dependabot.yml` | weekly | Grouped Cargo and GitHub Actions update PRs, merged by hand. |
+
+Third-party actions are pinned by major version. Workflows can be checked locally with `actionlint`.
 
 ## Audit summary
 
