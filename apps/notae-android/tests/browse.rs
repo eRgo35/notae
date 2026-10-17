@@ -1,4 +1,7 @@
-use notae_android::ui::browse::{ComposerCount, LibrarySection, composers, section_rows, sections};
+use notae_android::ui::UiModel;
+use notae_android::ui::browse::{
+    ComposerCount, LibrarySection, composers, neighbours, section_rows, sections,
+};
 use notae_android::ui::search::SearchRow;
 
 fn row(
@@ -129,4 +132,98 @@ fn fixed_sections_report_counts() {
             ("text-pending".to_owned(), 1),
         ]
     );
+}
+
+fn keys(rows: &[SearchRow]) -> Vec<String> {
+    rows.iter().map(|row| row.note_key.clone()).collect()
+}
+
+#[test]
+fn neighbours_follow_row_order_without_wrapping() {
+    let rows = library();
+    let keys = keys(&rows);
+
+    let first = neighbours(&rows, &keys[0]).expect("first row is present");
+    assert_eq!(
+        (first.previous, first.next.as_deref()),
+        (None, Some(&*keys[1]))
+    );
+    assert_eq!((first.position, first.total), (1, 5));
+
+    let middle = neighbours(&rows, &keys[2]).expect("middle row is present");
+    assert_eq!(middle.previous.as_deref(), Some(&*keys[1]));
+    assert_eq!(middle.next.as_deref(), Some(&*keys[3]));
+
+    let last = neighbours(&rows, &keys[4]).expect("last row is present");
+    assert_eq!(
+        (last.previous.as_deref(), last.next),
+        (Some(&*keys[3]), None)
+    );
+    assert_eq!((last.position, last.total), (5, 5));
+}
+
+#[test]
+fn neighbours_of_a_single_or_missing_row() {
+    let rows = library();
+    assert!(neighbours(&[], "a").is_none());
+    assert!(neighbours(&rows, &"z".repeat(64)).is_none());
+    let single = neighbours(&rows[..1], &rows[0].note_key).expect("row is present");
+    assert_eq!((single.previous, single.next), (None, None));
+    assert_eq!((single.position, single.total), (1, 1));
+}
+
+fn model_with_library() -> UiModel {
+    let mut model = UiModel::new();
+    model.set_search_rows(library());
+    model
+}
+
+#[test]
+fn preview_neighbours_follow_the_current_section_not_the_whole_library() {
+    let mut model = model_with_library();
+    model.select_section(LibrarySection::Composer("Gabriel Fauré".to_owned()));
+    let pavane = "d".repeat(64);
+    model.select_note(Some(pavane.clone()));
+    let nav = model
+        .preview_neighbours()
+        .expect("selection is in the section");
+    assert_eq!(nav.previous.as_deref(), Some("b".repeat(64).as_str()));
+    assert_eq!(nav.next, None, "Pavane is last among the Fauré scores");
+    assert_eq!((nav.position, nav.total), (2, 2));
+}
+
+#[test]
+fn preview_neighbours_are_absent_when_the_selection_is_outside_the_section() {
+    // For example a Search result opened while another section is current.
+    let mut model = model_with_library();
+    model.select_section(LibrarySection::TextPending);
+    model.select_note(Some("a".repeat(64)));
+    assert!(
+        model.selected_row().is_some(),
+        "the preview itself still shows"
+    );
+    assert!(model.preview_neighbours().is_none());
+}
+
+#[test]
+fn removed_selection_closes_the_preview_and_is_not_resurrected() {
+    let mut model = model_with_library();
+    let key = "b".repeat(64);
+    model.select_note(Some(key.clone()));
+    let mut remaining = library();
+    remaining.retain(|row| row.note_key != key);
+    model.set_search_rows(remaining);
+    assert!(model.selected_row().is_none());
+    // The score returns after a later scan: the old selection must not reopen on its own.
+    model.set_search_rows(library());
+    assert!(model.selected_row().is_none());
+}
+
+#[test]
+fn empty_library_has_no_preview() {
+    let mut model = model_with_library();
+    model.select_note(Some("a".repeat(64)));
+    model.set_search_rows(Vec::new());
+    assert!(model.selected_row().is_none());
+    assert!(model.preview_neighbours().is_none());
 }

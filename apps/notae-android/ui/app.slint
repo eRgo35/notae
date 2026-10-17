@@ -4,7 +4,7 @@ import { WelcomeScreen, SettingsScreen } from "setup.slint";
 import { Theme, ScreenTransition, PillButton, TextField, IconButton } from "components.slint";
 import { LibraryScreen, LibraryRow, SectionItem, OperationBanner } from "library.slint";
 import { SearchScreen } from "search.slint";
-import { ScoreList, ScoreDetails } from "details.slint";
+import { ScoreDetails } from "details.slint";
 export { Theme, LibraryRow, SectionItem }
 export struct ImportRow {
     path: string,
@@ -99,6 +99,10 @@ export component AppWindow inherits Window {
     in property <string> library_subtitle: "";
     in property <LibraryRow> selected;
     in property <string> selected_key: "";
+    // The previewed score's neighbours in the current section; empty at a boundary.
+    in property <string> selected_previous_key: "";
+    in property <string> selected_next_key: "";
+    in property <string> selected_position: "";
     in property <bool> details_open: false;
     in property <bool> show_search: false;
     in property <string> search_scope: "everything";
@@ -140,8 +144,6 @@ export component AppWindow inherits Window {
     private property <bool> sidebar-visible: root.expanded && !root.sidebar-collapsed;
     // Widths are derived from the window, never from child layouts, so adaptive screens cannot loop.
     private property <length> window-width: root.width - root.safe-area-insets.left - root.safe-area-insets.right;
-    private property <length> details-width: root.window-width < 840px ? root.window-width - 32px
-        : root.window-width < 1280px ? root.window-width - 336px : root.window-width - 752px;
     private property <length> available-height: (root.virtual-keyboard-size.height > 0px ? root.virtual-keyboard-position.y : root.height - root.safe-area-insets.bottom) - root.safe-area-insets.top;
     private property <float> sheet-progress: root.show_metadata_editor || root.show_import_preview ? 1 : 0;
     animate sheet-progress { duration: Theme.motion-medium; easing: ease-in-out; }
@@ -182,6 +184,10 @@ export component AppWindow inherits Window {
                 if root.show_search { root.search_closed(); return accept; }
                 if root.show_settings { root.settings_closed(); return accept; }
                 if root.details_open { root.selection_cleared(); return accept; }
+            }
+            if root.details_open && !root.show_search && !root.show_settings {
+                if event.text == Key.LeftArrow && root.selected_previous_key != "" { root.score_selected(root.selected_previous_key); return accept; }
+                if event.text == Key.RightArrow && root.selected_next_key != "" { root.score_selected(root.selected_next_key); return accept; }
             }
             return reject;
         }
@@ -259,21 +265,16 @@ export component AppWindow inherits Window {
                 subtitle: root.library_subtitle;
                 rows: root.library_rows;
                 selected-key: root.selected_key;
-                HorizontalLayout {
-                    spacing: 16px;
-                    if root.window-width >= 1280px : ScoreList {
-                        width: 400px;
-                        rows: root.library_rows;
-                        selected-key: root.selected_key;
-                        select(key) => { root.score_selected(key); }
-                    }
+                // A layout (not parent.width: `parent` here is LibraryScreen) fills the preview slot.
+                VerticalLayout {
                     ScoreDetails {
-                        horizontal-stretch: 1;
                         score: root.selected;
-                        show-back: root.window-width < 1280px;
-                        content-width: root.details-width - 16px;
-                        narrow: root.details-width < 560px;
+                        position: root.selected_position;
+                        has-previous: root.selected_previous_key != "";
+                        has-next: root.selected_next_key != "";
                         close => { root.selection_cleared(); }
+                        previous => { root.score_selected(root.selected_previous_key); }
+                        next => { root.score_selected(root.selected_next_key); }
                         open => { root.open_pdf_requested(root.selected.relative_path, root.selected.note_key); }
                         edit => { root.edit_metadata_requested(root.selected.note_key); }
                     }

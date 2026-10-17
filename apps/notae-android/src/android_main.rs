@@ -792,6 +792,26 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
             .unwrap_or_default()
             .into(),
     );
+    let preview_neighbours = model.preview_neighbours();
+    window.set_selected_previous_key(
+        preview_neighbours
+            .as_ref()
+            .and_then(|nav| nav.previous.clone())
+            .unwrap_or_default()
+            .into(),
+    );
+    window.set_selected_next_key(
+        preview_neighbours
+            .as_ref()
+            .and_then(|nav| nav.next.clone())
+            .unwrap_or_default()
+            .into(),
+    );
+    window.set_selected_position(
+        preview_neighbours
+            .map_or_else(String::new, |nav| format!("{} of {}", nav.position, nav.total))
+            .into(),
+    );
     if let Some(row) = selected {
         let thumbnail = LIBRARY_ROWS
             .with_borrow_mut(|cache| cache.thumbnail(model.thumbnail_cache(), &row.note_key));
