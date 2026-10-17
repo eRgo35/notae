@@ -949,7 +949,7 @@ fn banner_follows_each_real_phase_in_order() {
     let enumerating = banner(&model);
     assert_eq!(enumerating.text, "Scanning library…");
     assert!(enumerating.busy && enumerating.cancel_enabled);
-    assert_eq!(enumerating.fraction, 0.0, "enumeration has no total");
+    assert_eq!(enumerating.fraction, None, "enumeration has no total");
 
     model
         .apply_operation_event(OperationEvent::Indexing { total: 3 })
@@ -958,16 +958,19 @@ fn banner_follows_each_real_phase_in_order() {
     assert_eq!(indexing.text, "Indexing 3 PDFs…");
     assert!(indexing.busy && !indexing.cancel_enabled);
     assert_eq!(
-        indexing.fraction, 0.0,
+        indexing.fraction, None,
         "reconciliation reports no per-file progress"
     );
 
     model
         .apply_operation_event(OperationEvent::RescanFinalizing { total: 3 })
         .expect("reading text");
+    let started = banner(&model);
+    assert_eq!(started.text, "Reading PDF text and thumbnails: 0 of 3");
     assert_eq!(
-        banner(&model).text,
-        "Reading PDF text and thumbnails: 0 of 3"
+        started.fraction,
+        Some(0.0),
+        "the total is real, so the bar is determinate and empty"
     );
     model
         .apply_operation_event(OperationEvent::Progress {
@@ -977,7 +980,7 @@ fn banner_follows_each_real_phase_in_order() {
         .expect("progress");
     let reading = banner(&model);
     assert_eq!(reading.text, "Reading PDF text and thumbnails: 1 of 3");
-    assert!((reading.fraction - 1.0 / 3.0).abs() < f32::EPSILON);
+    assert_eq!(reading.fraction, Some(1.0 / 3.0));
     assert!(reading.busy && !reading.cancel_enabled);
 
     model
@@ -987,7 +990,7 @@ fn banner_follows_each_real_phase_in_order() {
     assert_eq!(checking.text, "Checking for a desktop sidecar…");
     assert!(checking.busy && !checking.cancel_enabled);
     assert_eq!(
-        checking.fraction, 0.0,
+        checking.fraction, None,
         "no entry-level progress is exposed for the sidecar check"
     );
 }
@@ -1024,7 +1027,7 @@ fn progress_before_the_text_phase_is_rejected_instead_of_faking_a_fraction() {
             })
             .is_err()
     );
-    assert_eq!(banner(&model).fraction, 0.0);
+    assert_eq!(banner(&model).fraction, None);
 }
 
 #[test]
@@ -1186,4 +1189,35 @@ fn rows_without_text_are_counted_but_never_make_the_banner_busy() {
         })
         .expect("completion");
     assert!(!banner(&model).busy);
+}
+
+#[test]
+fn reading_progress_never_moves_backwards() {
+    let mut model = scanning_model();
+    model
+        .apply_operation_event(OperationEvent::Indexing { total: 4 })
+        .expect("indexing");
+    model
+        .apply_operation_event(OperationEvent::RescanFinalizing { total: 4 })
+        .expect("reading text");
+    let mut previous = banner(&model)
+        .fraction
+        .expect("determinate once total is known");
+    for completed in [1, 3, 2, 3, 4, 0] {
+        model
+            .apply_operation_event(OperationEvent::Progress {
+                completed,
+                total: 4,
+            })
+            .expect("progress is accepted or ignored, never an error");
+        let fraction = banner(&model)
+            .fraction
+            .expect("still determinate while reading");
+        assert!(
+            fraction >= previous,
+            "{completed} of 4 moved the bar back from {previous} to {fraction}"
+        );
+        previous = fraction;
+    }
+    assert_eq!(previous, 1.0);
 }

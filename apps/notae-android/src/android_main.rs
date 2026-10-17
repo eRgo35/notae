@@ -780,7 +780,8 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_operation_progress_text(banner.text.into());
     window.set_operation_failed(banner.failed);
     window.set_operation_busy(banner.busy);
-    window.set_operation_fraction(banner.fraction);
+    // Slint reads a negative fraction as "total unknown" (indeterminate).
+    window.set_operation_fraction(banner.fraction.unwrap_or(-1.0));
     let prefs = model.ui_prefs();
     window.set_library_list_view(prefs.library_view == crate::ui_prefs::LibraryView::List);
     window.set_sidebar_collapsed_portrait(prefs.sidebar_collapsed_portrait);

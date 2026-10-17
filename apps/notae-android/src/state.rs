@@ -422,9 +422,20 @@ impl AppController {
             OperationState::Rescan {
                 phase: RescanPhase::ReadingText { .. },
             } if total > 0 => {
+                // A stale or reordered event must not move the bar backwards.
+                let previous = match self.state.operation {
+                    OperationState::Rescan {
+                        phase:
+                            RescanPhase::ReadingText {
+                                completed: previous,
+                                total: previous_total,
+                            },
+                    } if previous_total == total => previous,
+                    _ => 0,
+                };
                 self.state.operation = OperationState::Rescan {
                     phase: RescanPhase::ReadingText {
-                        completed: completed.min(total),
+                        completed: completed.min(total).max(previous),
                         total,
                     },
                 };
