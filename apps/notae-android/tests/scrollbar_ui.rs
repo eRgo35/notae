@@ -382,7 +382,7 @@ fn accessibility_page_actions_move_the_viewport_and_clamp() {
 }
 
 #[test]
-fn library_and_preview_show_no_default_scrollbar_but_untouched_screens_still_do() {
+fn library_preview_and_settings_show_no_default_scrollbar() {
     let app = app_sized(1280, 360); // short: the preview body must scroll
     library(&app, 30);
     app.set_library_list_view(true);
@@ -408,13 +408,33 @@ fn library_and_preview_show_no_default_scrollbar_but_untouched_screens_still_do(
         "the preview body scrolls and shows the themed thumb"
     );
 
-    // Control: a screen that has not adopted the themed bar keeps the std one, proving the query works.
+    // Settings uses the themed bar too: no standard bar, and its thumb appears when it scrolls.
     app.set_details_open(false);
     app.set_show_settings(true);
+    assert_eq!(count(&app, "ScrollBar"), 0, "Settings has no standard bar");
+    let body = only(&app, "ScrollView");
+    wheel(&app, center(&body), -500.0);
+    assert!(thumb_shown(&app), "Settings shows the themed thumb when it scrolls");
+
+    // Control: the modal sheet has not adopted the themed bar, which proves the query works.
+    app.set_show_settings(false);
+    app.set_show_metadata_editor(true);
+    wait(500);
     assert!(
         count(&app, "ScrollBar") > 0,
-        "Settings still uses the standard scrollbar"
+        "the modal sheet still uses the standard scrollbar"
     );
+}
+
+#[test]
+fn welcome_scrolls_with_the_themed_bar_in_a_short_window() {
+    let app = app_sized(1280, 300);
+    app.set_show_setup(true);
+    wait(0);
+    assert_eq!(count(&app, "ScrollBar"), 0, "Welcome has no standard bar");
+    let body = only(&app, "ScrollView");
+    wheel(&app, center(&body), -300.0);
+    assert!(thumb_shown(&app), "Welcome shows the themed thumb when it scrolls");
 }
 
 fn count(app: &AppWindow, type_name: &str) -> usize {

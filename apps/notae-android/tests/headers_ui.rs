@@ -453,8 +453,8 @@ fn welcome_groups_intro_card_and_action_without_oversized_gaps() {
         let card_bottom = card.absolute_position().y + card.size().height;
         let scroll_bottom = scroll.absolute_position().y + scroll.size().height;
         assert!(
-            card_bottom + 12.0 <= scroll_bottom + 0.5,
-            "tall window shows the whole card without scrolling at {width}x{height}: card bottom {card_bottom}, scroll bottom {scroll_bottom} (12 px is the Material ScrollView chrome)"
+            card_bottom <= scroll_bottom + 0.5,
+            "tall window shows the whole card without scrolling at {width}x{height}: card bottom {card_bottom}, scroll bottom {scroll_bottom}"
         );
         let offset = title.absolute_position().y - scroll.absolute_position().y;
         assert!(
