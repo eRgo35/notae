@@ -1,19 +1,63 @@
 # Notae
 
-Notae is a personal music-library manager. The library lives on a
-desktop (a Linux box that runs the indexer); the user reads,
-annotates, and searches it on a tablet (a Galaxy Tab S10 FE+ running
-Android).
+![Notae app icon](docs/images/notae-icon.png)
 
-The desktop and the tablet do not share a file system. They share
-the **sidecar**: a versioned JSON manifest the indexer writes
-beside its SQLite payload, and the Android app reads before
-importing anything.
+Notae keeps a personal sheet-music library organized: index PDFs on a Linux
+desktop, then browse, search, and annotate them on an Android tablet. The
+desktop and tablet need not share a filesystem; they exchange a versioned
+sidecar manifest.
 
-This repository contains the complete Notae workspace: the Linux indexer,
-OCR layer, SQLite store, portable sidecar format, and Android tablet app.
-The desktop writes the sidecar; Android imports it without requiring the
-devices to share a file system.
+[![CI](https://github.com/eRgo35/notae/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eRgo35/notae/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Rust 1.98.1](https://img.shields.io/badge/Rust-1.98.1-orange?logo=rust)](rust-toolchain.toml)
+
+![Notae Library running in an Android emulator](docs/images/library-emulator.png)
+
+*All scores in the Android app. Emulator capture using a non-sensitive fixture library.*
+
+## What Notae does
+
+- **Index on desktop:** catalog PDFs into SQLite and extract text with Tesseract
+  OCR where needed.
+- **Share a portable sidecar:** write a versioned manifest beside the index;
+  transfer it through your preferred file-sharing method.
+- **Browse and search on tablet:** import the sidecar, find scores by title,
+  composer, lyrics, or tags, and read or annotate PDFs on Android.
+
+```mermaid
+flowchart LR
+    D["Linux desktop<br/>PDF library + notae-index"] -->|writes| S[".notae sidecar<br/>index.sqlite + manifest.json"]
+    S -->|transfer files| T["Android tablet<br/>import, browse, search, annotate"]
+```
+
+## Quick start
+
+1. Install Rust 1.98.1 (the workspace-pinned toolchain), `pkg-config`, and
+   Tesseract and Leptonica development libraries plus at least one Tesseract
+   language pack (for example, English). See the [OCR setup
+   guide](crates/notae-ocr/README.md) for platform-specific prerequisites.
+2. Index a directory containing PDFs:
+
+   ```sh
+   cargo run -p notae-index-cli -- /path/to/library
+   ```
+
+   The indexer creates `/path/to/library/.notae/` with `index.sqlite` and
+   `manifest.json`. Use `cargo run -p notae-index-cli -- --help` for the
+   supported options.
+3. Transfer the `.notae/` sidecar and the corresponding PDFs to the tablet,
+   then open Notae and import the sidecar. The files can be transferred by
+   USB or another method you choose; Notae does not sync devices over a
+   network.
+
+The screenshots below show actual emulator captures. They are labeled
+**emulator** because a tablet capture was not available for this README.
+
+### Search (Android emulator)
+
+![Search results in the Android emulator](docs/images/search-emulator.png)
+
+*Search for “Hex” with the non-sensitive fixture score `hex-contents`.*
 
 ## Workspace layout
 
@@ -30,7 +74,6 @@ apps/
   notae-android/    Android application and tablet UI. See
                     docs/android-debugging.md for build and device checks.
 ```
-
 
 ## Build and quality gates
 
@@ -58,17 +101,6 @@ cargo run -p notae-index-cli -- --help
 The Android arm64 target has a separate CI compile gate; installing and
 visually checking the app on the Galaxy Tab S10 FE+ remains a manual step.
 
-## Run
-
-```sh
-PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig \
-  cargo run -p notae-index-cli -- /path/to/library
-```
-
-The binary writes a SQLite index and a sidecar manifest under
-`<library>/.notae/`. See [`apps/notae-index/README.md`](apps/notae-index/README.md)
-for the full usage.
-
 ## Where to read more
 
 * [`apps/notae-index/README.md`](apps/notae-index/README.md) —
@@ -81,6 +113,7 @@ for the full usage.
   capture and native debugging for the Samsung Android app.
 * [`docs/engineering-standards.md`](docs/engineering-standards.md) — local
   quality commands, Android target gate, and standards audit.
+
 ## Target device
 
 The Android side targets the **Samsung Galaxy Tab S10 FE+** with
