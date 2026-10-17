@@ -327,7 +327,7 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         status.indexed_count, 0,
         "row projections do not define the whole-library count"
     );
-    assert_eq!(status.pending_text_count, 1);
+    assert_eq!(status.no_text_count, 1);
 
     model
         .dispatch(UiEvent::PickLibraryRoot {
@@ -377,7 +377,7 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         }
     );
     assert_eq!(model.status().latest_rescan, Some(summary));
-    assert_eq!(model.status().pending_text_count, 1);
+    assert_eq!(model.status().no_text_count, 1);
 
     model
         .apply_operation_event(OperationEvent::ImportPreviewReady {
@@ -1174,17 +1174,8 @@ fn successful_result_clears_itself_but_failures_and_decisions_do_not() {
 }
 
 #[test]
-fn pending_text_explains_the_next_action_without_claiming_work_is_running() {
-    use notae_android::ui::browse::{LibrarySection, PENDING_TEXT_ACTION};
-    assert_eq!(
-        LibrarySection::TextPending.explanation(),
-        Some("Text unavailable — run desktop OCR or import a sidecar")
-    );
-    assert_eq!(
-        PENDING_TEXT_ACTION,
-        "Text unavailable — run desktop OCR or import a sidecar"
-    );
-    assert_eq!(LibrarySection::All.explanation(), None);
+fn rows_without_text_are_counted_but_never_make_the_banner_busy() {
+    // The library keeps image-only PDFs; Settings reports a plain count of them.
     // Rows lacking text never make the banner busy: no pending-only progress.
     let mut model = scanning_model();
     model

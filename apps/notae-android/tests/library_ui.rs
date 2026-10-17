@@ -18,7 +18,6 @@ fn score(index: usize) -> LibraryRow {
         tags: SharedString::from(if index == 1 { "folk, choir" } else { "" }),
         note_key: SharedString::from(format!("{index:064}")),
         relative_path: SharedString::from(format!("score-{index}.pdf")),
-        text_pending: index == 2,
         ..LibraryRow::default()
     }
 }
@@ -86,13 +85,17 @@ fn toggle_is_a_48px_target_in_both_modes() {
 }
 
 #[test]
-fn list_rows_show_every_row_in_order_and_select_by_stable_key() {
+fn list_rows_show_every_row_in_order_and_open_by_stable_key() {
     let app = app();
     app.set_library_list_view(true);
     with_library(&app, 4);
-    let selected = Rc::new(RefCell::new(Vec::new()));
-    let recorded = Rc::clone(&selected);
-    app.on_score_selected(move |key| recorded.borrow_mut().push(key.to_string()));
+    let opened = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&opened);
+    app.on_open_pdf_requested(move |path, key| {
+        recorded
+            .borrow_mut()
+            .push((path.to_string(), key.to_string()))
+    });
 
     let mut previous_y = f32::MIN;
     for index in 1..=4 {
@@ -105,19 +108,25 @@ fn list_rows_show_every_row_in_order_and_select_by_stable_key() {
         previous_y = row.absolute_position().y;
     }
     press(&app, "Score 3");
-    assert_eq!(*selected.borrow(), [format!("{:064}", 3)]);
+    assert_eq!(
+        *opened.borrow(),
+        [("score-3.pdf".to_owned(), format!("{:064}", 3))]
+    );
 }
 
 #[test]
-fn list_row_describes_composer_and_pending_text_like_the_card() {
-    let app = app();
-    app.set_library_list_view(true);
-    with_library(&app, 2);
-    let row = labelled(&app, "Score 2").expect("row is exposed");
-    assert_eq!(
-        row.accessible_description().as_deref(),
-        Some("Composer 2. Text unavailable. Run desktop OCR or import a sidecar.")
-    );
+fn card_and_list_row_describe_composer_and_that_they_open_the_score() {
+    for list in [false, true] {
+        let app = app();
+        app.set_library_list_view(list);
+        with_library(&app, 2);
+        let item = labelled(&app, "Score 2").expect("item is exposed");
+        assert_eq!(
+            item.accessible_description().as_deref(),
+            Some("Composer 2. Opens the score"),
+            "list={list}"
+        );
+    }
 }
 
 #[test]
@@ -525,96 +534,111 @@ fn click(app: &AppWindow, label: &str, index: usize) {
         .mock_single_click(slint::platform::PointerEventButton::Left);
 }
 
-#[test]
-fn recent_tap_opens_the_pdf_without_opening_the_preview() {
-    for list in [false, true] {
-        let app = app();
-        app.set_library_list_view(list);
-        app.set_selected_section("recent".into());
-        with_library(&app, 3);
-        let seen = record_dispatches(&app);
-
-        click(&app, "Score 2", 0);
-        {
-            let seen = seen.borrow();
-            assert_eq!(
-                seen.opened,
-                [("score-2.pdf".to_owned(), format!("{:064}", 2))],
-                "list={list}"
-            );
-            assert!(
-                seen.previewed.is_empty(),
-                "one tap must not also open the preview"
-            );
-        }
-        // Keyboard/accessibility activation takes the same single path.
-        ElementHandle::find_by_accessible_label(&app, "Score 3")
-            .next()
-            .expect("row")
-            .invoke_accessible_default_action();
-        let seen = seen.borrow();
-        assert_eq!(seen.opened.len(), 2);
-        assert!(seen.previewed.is_empty());
-    }
+/// The per-item Score details actions, not the long-press menu's button of the same name.
+fn item_info_actions(app: &AppWindow) -> Vec<ElementHandle> {
+    ElementHandle::find_by_accessible_label(app, "Score details")
+        .filter(|element| element.type_name().as_deref() != Some("PillButton"))
+        .collect()
 }
 
 #[test]
-fn recent_items_expose_score_details_as_a_48px_action_for_the_preview() {
-    for list in [false, true] {
-        let app = app();
-        app.set_library_list_view(list);
-        app.set_selected_section("recent".into());
-        with_library(&app, 3);
-        let seen = record_dispatches(&app);
-
-        let details: Vec<_> =
-            ElementHandle::find_by_accessible_label(&app, "Score details").collect();
-        assert_eq!(
-            details.len(),
-            3,
-            "every Recent item has the action, list={list}"
-        );
-        for action in &details {
-            assert!(action.size().width >= 48.0 && action.size().height >= 48.0);
-        }
-        click(&app, "Score details", 1);
-        let seen = seen.borrow();
-        assert_eq!(seen.previewed, [format!("{:064}", 2)]);
-        assert!(
-            seen.opened.is_empty(),
-            "details must not launch the PDF, list={list}"
-        );
-    }
-}
-
-#[test]
-fn other_sections_tap_to_preview_and_have_no_separate_details_action() {
-    for section in [
-        "all",
-        "needs-details",
-        "text-pending",
-        "composer:Composer 1",
-    ] {
+fn tap_opens_the_pdf_in_every_section_and_layout_without_opening_the_preview() {
+    for section in ["all", "recent", "composer:Composer 1"] {
         for list in [false, true] {
             let app = app();
             app.set_library_list_view(list);
             app.set_selected_section(section.into());
-            with_library(&app, 2);
+            with_library(&app, 3);
             let seen = record_dispatches(&app);
-            assert!(
-                labelled(&app, "Score details").is_none(),
-                "{section} list={list}"
-            );
-            click(&app, "Score 1", 0);
+
+            click(&app, "Score 2", 0);
+            {
+                let seen = seen.borrow();
+                assert_eq!(
+                    seen.opened,
+                    [("score-2.pdf".to_owned(), format!("{:064}", 2))],
+                    "{section} list={list}"
+                );
+                assert!(
+                    seen.previewed.is_empty(),
+                    "one tap must not also open the preview"
+                );
+            }
+            // Keyboard/accessibility activation takes the same single path.
+            ElementHandle::find_by_accessible_label(&app, "Score 3")
+                .next()
+                .expect("row")
+                .invoke_accessible_default_action();
+            let seen = seen.borrow();
+            assert_eq!(seen.opened.len(), 2, "{section} list={list}");
+            assert!(seen.previewed.is_empty());
+        }
+    }
+}
+
+#[test]
+fn every_item_exposes_score_details_as_a_48px_action_for_the_preview() {
+    for section in ["all", "recent", "composer:Composer 1"] {
+        for list in [false, true] {
+            let app = app();
+            app.set_library_list_view(list);
+            app.set_selected_section(section.into());
+            with_library(&app, 3);
+            let seen = record_dispatches(&app);
+
+            let details = item_info_actions(&app);
+            assert_eq!(details.len(), 3, "one per item, {section} list={list}");
+            for action in &details {
+                assert!(action.size().width >= 48.0 && action.size().height >= 48.0);
+            }
+            details[1].mock_single_click(slint::platform::PointerEventButton::Left);
             let seen = seen.borrow();
             assert_eq!(
                 seen.previewed,
-                [format!("{:064}", 1)],
+                [format!("{:064}", 2)],
                 "{section} list={list}"
             );
-            assert!(seen.opened.is_empty());
+            assert!(
+                seen.opened.is_empty(),
+                "details must not launch the PDF, {section} list={list}"
+            );
         }
     }
+}
+
+#[test]
+fn items_show_no_missing_text_badge_or_text_pending_copy() {
+    for list in [false, true] {
+        let app = app();
+        app.set_library_list_view(list);
+        with_library(&app, 3);
+        for label in [
+            "No text yet",
+            "Text pending",
+            "Text unavailable — run desktop OCR or import a sidecar",
+        ] {
+            assert!(labelled(&app, label).is_none(), "{label} list={list}");
+        }
+        open_preview(&app, 2, 3);
+        assert!(
+            labelled(
+                &app,
+                "Text unavailable — run desktop OCR or import a sidecar"
+            )
+            .is_none(),
+            "the preview does not nag about missing text"
+        );
+    }
+}
+
+#[test]
+fn sidebar_offers_only_the_sections_the_app_provides() {
+    let app = app();
+    with_library(&app, 3);
+    for label in ["Needs details", "Text pending"] {
+        assert!(labelled(&app, label).is_none(), "{label}");
+    }
+    assert!(labelled(&app, "Recent").is_some());
 }
 
 fn center(element: &ElementHandle) -> slint::LogicalPosition {
@@ -669,7 +693,7 @@ fn menu_is_open(app: &AppWindow) -> bool {
 }
 
 #[test]
-fn every_item_has_a_48px_edit_action_that_edits_exactly_that_score() {
+fn info_actions_sit_inside_their_item_and_edit_is_not_offered_on_items() {
     for (list, section) in [
         (false, "all"),
         (true, "all"),
@@ -680,44 +704,19 @@ fn every_item_has_a_48px_edit_action_that_edits_exactly_that_score() {
         app.set_library_list_view(list);
         app.set_selected_section(section.into());
         with_library(&app, 3);
-        let seen = record_dispatches(&app);
-
-        let edits: Vec<_> = ElementHandle::find_by_accessible_label(&app, "Edit details").collect();
-        assert_eq!(
-            edits.len(),
-            3,
-            "one per item, list={list} section={section}"
-        );
-        for edit in &edits {
-            assert!(edit.size().width >= 48.0 && edit.size().height >= 48.0);
-        }
-        click(&app, "Edit details", 1);
-        let seen = seen.borrow();
-        assert_eq!(seen.edited, [format!("{:064}", 2)]);
         assert!(
-            seen.opened.is_empty() && seen.previewed.is_empty(),
-            "edit is not also a tap"
+            labelled(&app, "Edit details").is_none(),
+            "editing is reachable from the preview only, list={list} section={section}"
         );
-    }
-}
-
-#[test]
-fn edit_actions_do_not_overlap_the_other_item_action() {
-    for list in [false, true] {
-        let app = app();
-        app.set_library_list_view(list);
-        app.set_selected_section("recent".into());
-        with_library(&app, 1);
-        let edit = labelled(&app, "Edit details").expect("edit action");
-        let details = labelled(&app, "Score details").expect("details action");
-        let (e, d) = (edit.absolute_position(), details.absolute_position());
-        let separated = d.x + details.size().width <= e.x
-            || e.x + edit.size().width <= d.x
-            || d.y + details.size().height <= e.y
-            || e.y + edit.size().height <= d.y;
+        let item = labelled(&app, "Score 2").expect("item");
+        let info = &item_info_actions(&app)[1];
+        let (i, a) = (item.absolute_position(), info.absolute_position());
         assert!(
-            separated,
-            "list={list}: edit {e:?} and details {d:?} overlap"
+            a.x >= i.x
+                && a.y >= i.y
+                && a.x + info.size().width <= i.x + item.size().width
+                && a.y + info.size().height <= i.y + item.size().height,
+            "list={list} section={section}: info {a:?} outside item {i:?}"
         );
     }
 }
@@ -758,11 +757,7 @@ fn long_press_opens_actions_without_also_tapping() {
 
 #[test]
 fn menu_actions_route_the_pressed_score_and_close_the_menu() {
-    for (label, expect) in [
-        ("Open score", "open"),
-        ("Score details", "preview"),
-        ("Edit details", "edit"),
-    ] {
+    for (label, expect) in [("Open score", "open"), ("Score details", "preview")] {
         let app = app();
         with_library(&app, 3);
         let seen = record_dispatches(&app);
@@ -770,6 +765,10 @@ fn menu_actions_route_the_pressed_score_and_close_the_menu() {
         pointer_down(&app, at);
         wait(600);
         pointer_up(&app, at);
+        assert!(
+            menu_action(&app, "Edit details").is_none(),
+            "editing is reachable from the preview only"
+        );
         menu_action(&app, label)
             .expect("menu action")
             .invoke_accessible_default_action();
@@ -779,9 +778,10 @@ fn menu_actions_route_the_pressed_score_and_close_the_menu() {
         match expect {
             "open" => assert_eq!(seen.opened, [("score-3.pdf".to_owned(), key)]),
             "preview" => assert_eq!(seen.previewed, [key]),
-            _ => assert_eq!(seen.edited, [key]),
+            _ => unreachable!("the menu offers Open score and Score details only"),
         }
         assert!(!menu_is_open(&app), "{label} closes the menu");
+        assert!(seen.edited.is_empty(), "{label} does not edit");
     }
 }
 
@@ -799,7 +799,10 @@ fn early_release_is_an_ordinary_tap() {
         !menu_is_open(&app),
         "a released press never opens the menu later"
     );
-    assert_eq!(seen.borrow().previewed, [format!("{:064}", 1)]);
+    assert_eq!(
+        seen.borrow().opened,
+        [("score-1.pdf".to_owned(), format!("{:064}", 1))]
+    );
 }
 
 #[test]
@@ -820,7 +823,10 @@ fn moving_beyond_touch_slop_cancels_the_long_press() {
     );
     pointer_up(&app, slint::LogicalPosition::new(at.x + 40.0, at.y));
     let seen = seen.borrow();
-    assert!(seen.opened.is_empty() && seen.edited.is_empty());
+    // Releasing back over the item is an ordinary click here (on a device the Flickable owns
+    // that gesture); what matters is that the drift never became a long press or an edit.
+    assert!(seen.edited.is_empty());
+    assert!(!menu_is_open(&app));
 }
 
 #[test]
@@ -895,7 +901,9 @@ fn dismissing_the_menu_never_activates_the_item_underneath() {
     labelled(&app, "Score 2")
         .expect("row")
         .invoke_accessible_default_action();
-    click(&app, "Edit details", 0);
+    let details = item_info_actions(&app);
+    assert_eq!(details.len(), 3, "the items stay on screen under the menu");
+    details[0].mock_single_click(slint::platform::PointerEventButton::Left);
     let seen = seen.borrow();
     assert!(
         seen.opened.is_empty() && seen.previewed.is_empty() && seen.edited.is_empty(),

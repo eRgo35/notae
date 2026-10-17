@@ -18,8 +18,6 @@ export global Theme {
     out property <color> on-accent: root.dark ? #06142E : #FFFFFF;
     out property <color> accent-soft: root.dark ? #1C2C4A : #E6EEFE;
     out property <color> on-accent-soft: root.dark ? #B9D2FF : #1A4FB8;
-    out property <color> warn-soft: root.dark ? #3A2610 : #FFF0E0;
-    out property <color> on-warn-soft: root.dark ? #FFB870 : #A14D00;
     out property <color> error: root.dark ? #FF8A80 : #C62828;
     out property <color> paper: root.dark ? #E4E4E8 : #FFFFFF;
     out property <color> paper-edge: root.dark ? #2A2A2E : #E3E3E8;
@@ -51,7 +49,6 @@ export component Glyph inherits Image {
         : root.kind == "library" ? @image-url("material-icons/library.svg")
         : root.kind == "settings" ? @image-url("material-icons/settings.svg")
         : root.kind == "scan" ? @image-url("material-icons/scan.svg")
-        : root.kind == "edit" ? @image-url("material-icons/edit.svg")
         : root.kind == "arrow-back" ? @image-url("material-icons/arrow-back.svg")
         : root.kind == "close" ? @image-url("material-icons/close.svg")
         : root.kind == "document" ? @image-url("material-icons/document.svg")
@@ -59,7 +56,6 @@ export component Glyph inherits Image {
         : root.kind == "check" ? @image-url("material-icons/check.svg")
         : root.kind == "warning" ? @image-url("material-icons/warning.svg")
         : root.kind == "schedule" ? @image-url("material-icons/schedule.svg")
-        : root.kind == "subject" ? @image-url("material-icons/subject.svg")
         : @image-url("material-icons/document.svg");
 }
 
@@ -450,22 +446,6 @@ export component TextField inherits Rectangle {
 export component Card inherits Rectangle {
     background: Theme.card;
     border-radius: 26px;
-}
-
-export component StatusBadge inherits Rectangle {
-    in property <string> text;
-    height: 28px;
-    width: label.preferred-width + 24px;
-    border-radius: 14px;
-    background: Theme.warn-soft;
-    label := Text {
-        text: root.text;
-        color: Theme.on-warn-soft;
-        font-size: 13px;
-        font-weight: 600;
-        vertical-alignment: center;
-        horizontal-alignment: center;
-    }
 }
 
 export component NavRow inherits Rectangle {

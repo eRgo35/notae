@@ -138,6 +138,7 @@ export component SettingsScreen inherits Rectangle {
     in property <length> available-height;
     in property <string> library-display-name;
     in property <string> indexed-count;
+    in property <string> no-text-count;
     in property <string> scan-summary;
     in property <string> scan-conflicts;
     in property <string> scan-failures;
@@ -216,6 +217,7 @@ export component SettingsScreen inherits Rectangle {
                             ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
                         }
                         FactRow { label: "Indexed scores"; value: root.indexed-count; }
+                        FactRow { label: "PDFs without extractable text"; value: root.no-text-count; }
                         FactRow { label: "Last scan"; value: root.scan-summary; }
                         if root.scan-conflicts != "" : FactRow {
                             label: "ID conflicts";

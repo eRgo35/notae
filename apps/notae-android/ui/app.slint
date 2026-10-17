@@ -87,6 +87,7 @@ export component AppWindow inherits Window {
     in property <string> settings_scan_conflicts: "";
     in property <string> settings_scan_failures: "";
     in property <string> settings_indexed_count: "0";
+    in property <string> settings_no_text_count: "0";
     in property <string> app_version: "";
     in property <string> app_build_identity: "unknown";
     in property <string> repository_url: "https://github.com/eRgo35/notae";
@@ -299,7 +300,6 @@ export component AppWindow inherits Window {
                 acknowledge-clicked => { root.acknowledge_clicked(); }
                 score-selected(key) => { root.score_selected(key); }
                 score-opened(path, key) => { root.open_pdf_requested(path, key); }
-                edit-requested(key) => { root.edit_metadata_requested(key); }
                 menu-open <=> root.library_menu_open;
             }
             }
@@ -348,6 +348,7 @@ export component AppWindow inherits Window {
                 available-height: root.available-height;
                 library-display-name: root.library_display_name;
                 indexed-count: root.settings_indexed_count;
+                no-text-count: root.settings_no_text_count;
                 scan-summary: root.settings_scan_summary;
                 scan-conflicts: root.settings_scan_conflicts;
                 scan-failures: root.settings_scan_failures;

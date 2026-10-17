@@ -1,6 +1,6 @@
 // One UI library: side panel, large title, thumbnail grid and operation banner.
 import { ListView } from "std-widgets.slint";
-import { Theme, Glyph, IconButton, ScanButton, PillButton, Card, NavRow, Chip, StatusBadge, ActionInput } from "components.slint";
+import { Theme, Glyph, IconButton, ScanButton, PillButton, Card, NavRow, Chip, ActionInput } from "components.slint";
 import { Scrollbar } from "scrollbar.slint";
 
 export struct LibraryRow {
@@ -11,7 +11,6 @@ export struct LibraryRow {
     status: string,
     note_key: string,
     relative_path: string,
-    text_pending: bool,
     has_thumbnail: bool,
     thumbnail: image,
     title_origin: string,
@@ -116,13 +115,10 @@ component ItemInput inherits ActionInput {
 
 component ScoreCard inherits Rectangle {
     in property <LibraryRow> score;
-    // Tapping opens the PDF itself (Recent); otherwise it opens the preview.
-    in property <bool> direct-open;
     // False while the actions menu is open, so nothing beneath it reacts.
     in property <bool> interactive: true;
     callback select();
     callback open();
-    callback edit();
     callback long-pressed();
     border-radius: 20px;
     background: input.pressed ? Theme.field : transparent;
@@ -130,15 +126,12 @@ component ScoreCard inherits Rectangle {
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: root.score.title;
-    accessible-description: root.score.composer_or_artist + (root.score.text_pending ? ". Text unavailable. Run desktop OCR or import a sidecar." : "") + (root.direct-open ? ". Opens the score" : "");
-    accessible-action-default => { if root.interactive && !Theme.modal-open { root.activate(); } }
+    accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + "Opens the score";
+    accessible-action-default => { if root.interactive && !Theme.modal-open { root.open(); } }
     forward-focus: input;
-    function activate() {
-        if root.direct-open { root.open(); } else { root.select(); }
-    }
     input := ItemInput {
         enabled: root.interactive && !Theme.modal-open;
-        activated => { root.activate(); }
+        activated => { root.open(); }
         long-pressed => { root.long-pressed(); }
     }
     VerticalLayout {
@@ -147,7 +140,6 @@ component ScoreCard inherits Rectangle {
         Rectangle {
             vertical-stretch: 1;
             PagePreview { score: root.score; width: parent.width; height: parent.height; }
-            if root.score.text_pending : StatusBadge { text: "No text yet"; x: 8px; y: parent.height - self.height - 8px; }
         }
         VerticalLayout {
             spacing: 2px;
@@ -163,18 +155,10 @@ component ScoreCard inherits Rectangle {
         }
     }
     ItemAction {
-        label: "Edit details";
-        icon: @image-url("material-icons/edit.svg");
-        enabled: root.interactive;
-        x: root.width - self.width - 12px;
-        y: 12px;
-        clicked => { root.edit(); }
-    }
-    if root.direct-open : ItemAction {
         label: "Score details";
         icon: @image-url("material-icons/info.svg");
         enabled: root.interactive;
-        x: root.width - 2 * self.width - 18px;
+        x: root.width - self.width - 12px;
         y: 12px;
         clicked => { root.select(); }
     }
@@ -182,11 +166,9 @@ component ScoreCard inherits Rectangle {
 
 component ScoreGrid inherits Flickable {
     in property <[LibraryRow]> rows;
-    in property <bool> direct-open;
     in property <bool> items-enabled: true;
     callback select(string);
     callback open(string, string);
-    callback edit(string);
     callback long-pressed(LibraryRow);
     private property <int> columns: max(1, floor((self.width + 16px) / 192px));
     private property <length> cell-width: (self.width - (self.columns - 1) * 16px) / self.columns;
@@ -204,11 +186,9 @@ component ScoreGrid inherits Flickable {
         width: root.cell-width;
         height: root.cell-height;
         score: row;
-        direct-open: root.direct-open;
         interactive: root.items-enabled;
         select => { root.select(row.note_key); }
         open => { root.open(row.relative_path, row.note_key); }
-        edit => { root.edit(row.note_key); }
         long-pressed => { root.long-pressed(row); }
     }
 }
@@ -216,11 +196,9 @@ component ScoreGrid inherits Flickable {
 // Dense alternative to ScoreCard. Fixed height keeps ListView virtualization exact.
 export component ScoreRow inherits Rectangle {
     in property <LibraryRow> score;
-    in property <bool> direct-open;
     in property <bool> interactive: true;
     callback select();
     callback open();
-    callback edit();
     callback long-pressed();
     height: 80px;
     border-radius: 18px;
@@ -229,15 +207,12 @@ export component ScoreRow inherits Rectangle {
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: root.score.title;
-    accessible-description: root.score.composer_or_artist + (root.score.text_pending ? ". Text unavailable. Run desktop OCR or import a sidecar." : "") + (root.direct-open ? ". Opens the score" : "");
-    accessible-action-default => { if root.interactive && !Theme.modal-open { root.activate(); } }
+    accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + "Opens the score";
+    accessible-action-default => { if root.interactive && !Theme.modal-open { root.open(); } }
     forward-focus: input;
-    function activate() {
-        if root.direct-open { root.open(); } else { root.select(); }
-    }
     input := ItemInput {
         enabled: root.interactive && !Theme.modal-open;
-        activated => { root.activate(); }
+        activated => { root.open(); }
         long-pressed => { root.long-pressed(); }
     }
     HorizontalLayout {
@@ -258,23 +233,13 @@ export component ScoreRow inherits Rectangle {
             }
             if root.score.tags != "" : Text { text: root.score.tags; font-size: 13px; overflow: elide; color: Theme.muted; }
         }
-        if root.score.text_pending : VerticalLayout { alignment: center; StatusBadge { text: "No text yet"; } }
-        if root.direct-open : VerticalLayout {
+        VerticalLayout {
             alignment: center;
             ItemAction {
                 label: "Score details";
                 icon: @image-url("material-icons/info.svg");
                 enabled: root.interactive;
                 clicked => { root.select(); }
-            }
-        }
-        VerticalLayout {
-            alignment: center;
-            ItemAction {
-                label: "Edit details";
-                icon: @image-url("material-icons/edit.svg");
-                enabled: root.interactive;
-                clicked => { root.edit(); }
             }
         }
     }
@@ -386,8 +351,6 @@ export component LibraryScreen inherits Rectangle {
     in property <bool> acknowledge-enabled;
     in property <bool> failed;
     in property <bool> rescan-enabled;
-    // Recent opens the PDF on tap; its Score details action opens the preview.
-    private property <bool> direct-open: root.selected-section == "recent";
     // Long-press actions menu. The owner binds `menu-open` so Back/Escape can dismiss it.
     in-out property <bool> menu-open: false;
     private property <LibraryRow> menu-row;
@@ -402,15 +365,11 @@ export component LibraryScreen inherits Rectangle {
     pure function empty-title(key: string) -> string {
         return key == "all" ? "A little space for your scores"
             : key == "recent" ? "No recent scores"
-            : key == "needs-details" ? "Nothing needs details"
-            : key == "text-pending" ? "No text pending"
             : "No scores here";
     }
     pure function empty-detail(key: string) -> string {
         return key == "all" ? "Scan your library folder to add the PDFs it contains."
             : key == "recent" ? "Scores you open appear here."
-            : key == "needs-details" ? "Scores missing a number or composer appear here."
-            : key == "text-pending" ? "Scores without searchable text appear here until desktop OCR or a sidecar import provides it."
             : "No scores by this composer are in the library.";
     }
     callback section-selected(string);
@@ -420,7 +379,6 @@ export component LibraryScreen inherits Rectangle {
     callback acknowledge-clicked();
     callback score-selected(string);
     callback score-opened(string, string);
-    callback edit-requested(string);
     // When true, the full-width preview (passed as children) replaces the whole library chrome.
     in property <bool> details-open;
     background: Theme.background;
@@ -519,11 +477,9 @@ export component LibraryScreen inherits Rectangle {
                         width: parent.width - 40px;
                         height: parent.height - 20px;
                         rows: root.rows;
-                        direct-open: root.direct-open;
                         items-enabled: !root.menu-open;
                         select(key) => { root.score-selected(key); }
                         open(path, key) => { root.score-opened(path, key); }
-                        edit(key) => { root.edit-requested(key); }
                         long-pressed(row) => { root.show-menu(row); }
                     }
                     Scrollbar {
@@ -549,11 +505,9 @@ export component LibraryScreen inherits Rectangle {
                         horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
                         for row in root.rows : ScoreRow {
                             score: row;
-                            direct-open: root.direct-open;
                             interactive: !root.menu-open;
                             select => { root.score-selected(row.note_key); }
                             open => { root.score-opened(row.relative_path, row.note_key); }
-                            edit => { root.edit-requested(row.note_key); }
                             long-pressed => { root.show-menu(row); }
                         }
                     }
@@ -646,12 +600,6 @@ export component LibraryScreen inherits Rectangle {
                     text: "Score details";
                     tonal: true;
                     clicked => { root.menu-open = false; root.score-selected(root.menu-row.note_key); }
-                }
-                PillButton {
-                    in-dialog: true;
-                    text: "Edit details";
-                    tonal: true;
-                    clicked => { root.menu-open = false; root.edit-requested(root.menu-row.note_key); }
                 }
             }
         }
