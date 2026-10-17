@@ -29,6 +29,7 @@ use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::{LibrarySection, section_rows};
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
+use crate::ui_prefs::{LibraryView, UiPrefs};
 
 /// Bridge between the Slint-generated UI types and the [`AppState`].
 ///
@@ -73,6 +74,8 @@ pub struct UiModel {
     section: LibrarySection,
     recent: RecentScores,
     recent_path: Option<PathBuf>,
+    ui_prefs: UiPrefs,
+    ui_prefs_path: Option<PathBuf>,
     selected_note: Option<String>,
     thumbnails: Option<ThumbnailCache>,
     startup_presentation: StartupPresentation,
@@ -101,6 +104,8 @@ impl UiModel {
             section: LibrarySection::All,
             recent: RecentScores::default(),
             recent_path: None,
+            ui_prefs: UiPrefs::default(),
+            ui_prefs_path: None,
             selected_note: None,
             thumbnails: None,
             startup_presentation: StartupPresentation::Restoring,
@@ -215,6 +220,60 @@ impl UiModel {
     pub fn set_recent_path(&mut self, path: PathBuf) {
         self.recent = RecentScores::load(&path);
         self.recent_path = Some(path);
+    }
+
+    /// Loads the UI preferences from, and later saves them to, `path`.
+    pub fn set_ui_prefs_path(&mut self, path: PathBuf) {
+        self.ui_prefs = UiPrefs::load(&path);
+        self.ui_prefs_path = Some(path);
+    }
+
+    /// The current UI preferences.
+    #[must_use]
+    pub fn ui_prefs(&self) -> &UiPrefs {
+        &self.ui_prefs
+    }
+
+    /// Chooses the library layout for every section and persists a change.
+    ///
+    /// # Errors
+    ///
+    /// Returns the I/O error when the preferences cannot be saved; the choice stays in effect.
+    pub fn set_library_view(&mut self, view: LibraryView) -> std::io::Result<()> {
+        if self.ui_prefs.library_view == view {
+            return Ok(());
+        }
+        self.ui_prefs.library_view = view;
+        self.save_ui_prefs()
+    }
+
+    /// Collapses or expands the sidebar for one orientation and persists a change.
+    ///
+    /// # Errors
+    ///
+    /// Returns the I/O error when the preferences cannot be saved; the choice stays in effect.
+    pub fn set_sidebar_collapsed(
+        &mut self,
+        portrait: bool,
+        collapsed: bool,
+    ) -> std::io::Result<()> {
+        let slot = if portrait {
+            &mut self.ui_prefs.sidebar_collapsed_portrait
+        } else {
+            &mut self.ui_prefs.sidebar_collapsed_landscape
+        };
+        if *slot == collapsed {
+            return Ok(());
+        }
+        *slot = collapsed;
+        self.save_ui_prefs()
+    }
+
+    fn save_ui_prefs(&self) -> std::io::Result<()> {
+        match &self.ui_prefs_path {
+            Some(path) => self.ui_prefs.save(path),
+            None => Ok(()),
+        }
     }
 
     /// Uses `cache` to look up row thumbnails.

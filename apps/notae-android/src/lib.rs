@@ -35,6 +35,7 @@ mod android;
 mod android_main;
 
 pub mod ui;
+pub mod ui_prefs;
 
 pub mod operations;
 pub mod pdf_intent;
