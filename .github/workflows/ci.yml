@@ -1,8 +1,26 @@
 name: CI
 
 on:
+  # Branch work is covered by its pull request, so a push to a PR branch does not run twice.
   push:
+    branches: [main]
   pull_request:
+  # Reused as the quality gate of the release workflow; `ref` selects the commit under test.
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref (tag or SHA) to check out; empty means the triggering ref.
+        type: string
+        default: ''
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a branch or PR supersedes the older run; runs on main always finish.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   rust-quality:
@@ -18,6 +36,8 @@ jobs:
           sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
           df -h
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - name: Install native host dependencies
         run: |
           sudo apt-get update
@@ -71,6 +91,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
