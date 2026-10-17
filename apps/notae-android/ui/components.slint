@@ -331,6 +331,7 @@ export component SearchField inherits Rectangle {
                     self.scroll-x = parent.width - position.x - self.text-cursor-width;
                 }
             }
+            edited => { root.edited(self.text); }
         }
     }
     if root.text == "" && editor.preedit-text == "" && root.hardware-keyboard-present : Rectangle {

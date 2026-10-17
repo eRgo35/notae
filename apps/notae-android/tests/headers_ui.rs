@@ -155,6 +155,115 @@ fn search_header_has_no_scan_and_keyboard_hint_is_contextual() {
             .is_none()
     );
 }
+#[test]
+fn search_keycap_tracks_typed_text_and_keyboard_presence_changes() {
+    let app = app_sized(1280, 800);
+    app.set_show_search(true);
+    let keycap = || ElementHandle::find_by_accessible_label(&app, "Ctrl K").next();
+    assert!(keycap().is_none(), "Search begins without a keyboard hint");
+    app.set_hardware_keyboard_present(true);
+    let changed_queries = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let changed_queries_callback = changed_queries.clone();
+    app.on_search_changed(move |query| {
+        changed_queries_callback
+            .borrow_mut()
+            .push(query.to_string());
+    });
+    slint::platform::update_timers_and_animations();
+
+    assert!(keycap().is_some(), "an empty field with a keyboard shows the hint");
+    assert!(
+        ElementHandle::find_by_accessible_label(
+            &app,
+            "Press Ctrl K to open search from anywhere."
+        )
+        .next()
+        .is_none(),
+        "the empty Search message omits the keyboard shortcut sentence"
+    );
+    let field = ElementHandle::find_by_accessible_label(&app, "Search titles, composers, tags or lyrics")
+        .next()
+        .expect("Search field is visible");
+    let field_position = field.absolute_position();
+    let field_size = field.size();
+    let hint = keycap().expect("keyboard hint is visible in the empty field");
+    let hint_position = hint.absolute_position();
+    let hint_size = hint.size();
+    assert!(
+        hint_position.x >= field_position.x
+            && hint_position.y >= field_position.y
+            && hint_position.x + hint_size.width <= field_position.x + field_size.width
+            && hint_position.y + hint_size.height <= field_position.y + field_size.height,
+        "keycap stays within SearchField bounds"
+    );
+    let center = LogicalPosition::new(
+        field_position.x + field_size.width / 2.0,
+        field_position.y + field_size.height / 2.0,
+    );
+    app.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: center });
+    app.window().dispatch_event(WindowEvent::PointerPressed {
+        position: center,
+        button: PointerEventButton::Left,
+    });
+    app.window().dispatch_event(WindowEvent::PointerReleased {
+        position: center,
+        button: PointerEventButton::Left,
+    });
+    for character in "Chopin".chars() {
+        let text = slint::SharedString::from(character.to_string());
+        app.window()
+            .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+        app.window()
+            .dispatch_event(WindowEvent::KeyReleased { text });
+    }
+    slint::platform::update_timers_and_animations();
+
+    assert_eq!(
+        field.accessible_value(),
+        Some(slint::SharedString::from("Chopin")),
+        "key events reach the focused TextInput"
+    );
+    assert!(keycap().is_none(), "typing hides the shortcut hint");
+    assert_eq!(app.get_search_text(), "Chopin");
+    let clear = ElementHandle::find_by_accessible_label(&app, "Clear search")
+        .next()
+        .expect("typed text exposes the clear action");
+    let clear_position = clear.absolute_position();
+    let clear_size = clear.size();
+    assert!(
+        clear_position.x >= field_position.x
+            && clear_position.x + clear_size.width <= field_position.x + field_size.width,
+        "clear action remains within the field bounds"
+    );
+    assert_eq!(
+        changed_queries.borrow().last().map(String::as_str),
+        Some("Chopin"),
+        "typed text reaches the Search query callback"
+    );
+
+    clear.invoke_accessible_default_action();
+    assert_eq!(app.get_search_text(), "");
+    assert_eq!(
+        changed_queries.borrow().last().map(String::as_str),
+        Some(""),
+        "clearing the field sends an empty Search query"
+    );
+    assert!(
+        keycap().is_some(),
+        "clearing an empty field restores the hardware shortcut hint"
+    );
+    app.set_hardware_keyboard_present(false);
+    assert!(
+        keycap().is_none(),
+        "detaching the keyboard hides the hint while Search remains open"
+    );
+    app.set_hardware_keyboard_present(true);
+    assert!(
+        keycap().is_some(),
+        "attaching the keyboard restores the hint without reopening Search"
+    );
+}
 
 fn assert_element_in_viewport(element: &ElementHandle, width: u32, height: u32) {
     let position = element.absolute_position();
