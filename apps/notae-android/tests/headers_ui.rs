@@ -1,7 +1,8 @@
 mod support;
 
 use i_slint_backend_testing::ElementHandle;
-use slint::ComponentHandle;
+use slint::platform::{PointerEventButton, WindowEvent};
+use slint::{ComponentHandle, LogicalPosition};
 use support::{app, app_sized};
 
 #[test]
@@ -344,5 +345,163 @@ fn startup_hides_setup_until_restoration_is_resolved() {
             .next()
             .is_some(),
         "the resolved no-saved-root path presents Welcome"
+    );
+}
+#[test]
+fn search_scope_chip_bounds_stay_fixed_during_pointer_press() {
+    let app = app_sized(1280, 800);
+    app.set_show_search(true);
+    let app_weak = app.as_weak();
+    app.on_search_scope_changed(move |scope| {
+        if let Some(app) = app_weak.upgrade() {
+            app.set_search_scope(scope);
+        }
+    });
+    slint::platform::update_timers_and_animations();
+
+    let chips: Vec<_> = ["All", "Titles", "Composers", "Lyrics", "Tags"]
+        .into_iter()
+        .map(|label| {
+            ElementHandle::find_by_accessible_label(&app, label)
+                .next()
+                .unwrap_or_else(|| panic!("{label} scope chip exists"))
+        })
+        .collect();
+    let row = ElementHandle::find_by_element_type_name(&app, "Flickable")
+        .next()
+        .expect("Search scope row is a Flickable");
+    let chip_bounds = || {
+        chips
+            .iter()
+            .map(|chip| {
+                let position = chip.absolute_position();
+                let size = chip.size();
+                (position.x, position.y, size.width, size.height)
+            })
+            .collect::<Vec<_>>()
+    };
+    let row_bounds = || {
+        let position = row.absolute_position();
+        let size = row.size();
+        (position.x, position.y, size.width, size.height)
+    };
+    let before = chip_bounds();
+    let row_before = row_bounds();
+    let viewport_offset_before = chips[0].absolute_position().x - row_before.0;
+    let titles = &chips[1];
+    let position = titles.absolute_position();
+    let size = titles.size();
+    let press = LogicalPosition::new(
+        position.x + size.width / 2.0,
+        position.y + size.height / 2.0,
+    );
+    app.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: press });
+    app.window().dispatch_event(WindowEvent::PointerPressed {
+        position: press,
+        button: PointerEventButton::Left,
+    });
+    slint::platform::update_timers_and_animations();
+    assert_eq!(chip_bounds(), before, "all chip bounds are stable while pressed");
+    assert_eq!(row_bounds(), row_before);
+    assert_eq!(
+        chips[0].absolute_position().x - row.absolute_position().x,
+        viewport_offset_before
+    );
+
+    app.window().dispatch_event(WindowEvent::PointerReleased {
+        position: press,
+        button: PointerEventButton::Left,
+    });
+    slint::platform::update_timers_and_animations();
+    assert_eq!(app.get_search_scope(), "titles");
+    assert_eq!(chip_bounds(), before, "selection changes no chip geometry");
+    assert_eq!(row_bounds(), row_before);
+    assert_eq!(
+        chips[0].absolute_position().x - row.absolute_position().x,
+        viewport_offset_before
+    );
+}
+
+#[test]
+fn search_scope_chip_bounds_stay_fixed_during_small_pointer_drift() {
+    let app = app_sized(1280, 800);
+    app.set_show_search(true);
+    let app_weak = app.as_weak();
+    app.on_search_scope_changed(move |scope| {
+        if let Some(app) = app_weak.upgrade() {
+            app.set_search_scope(scope);
+        }
+    });
+    slint::platform::update_timers_and_animations();
+
+    let chips: Vec<_> = ["All", "Titles", "Composers", "Lyrics", "Tags"]
+        .into_iter()
+        .map(|label| {
+            ElementHandle::find_by_accessible_label(&app, label)
+                .next()
+                .unwrap_or_else(|| panic!("{label} scope chip exists"))
+        })
+        .collect();
+    let row = ElementHandle::find_by_element_type_name(&app, "Flickable")
+        .next()
+        .expect("Search scope row is a Flickable");
+    let chip_bounds = || {
+        chips
+            .iter()
+            .map(|chip| {
+                let position = chip.absolute_position();
+                let size = chip.size();
+                (position.x, position.y, size.width, size.height)
+            })
+            .collect::<Vec<_>>()
+    };
+    let row_bounds = || {
+        let position = row.absolute_position();
+        let size = row.size();
+        (position.x, position.y, size.width, size.height)
+    };
+    let before = chip_bounds();
+    let row_before = row_bounds();
+    let viewport_offset_before = chips[0].absolute_position().x - row_before.0;
+    let titles = &chips[1];
+    let position = titles.absolute_position();
+    let size = titles.size();
+    let press = LogicalPosition::new(
+        position.x + size.width / 2.0,
+        position.y + size.height / 2.0,
+    );
+    let drift = LogicalPosition::new(press.x + 3.0, press.y);
+    app.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: press });
+    app.window().dispatch_event(WindowEvent::PointerPressed {
+        position: press,
+        button: PointerEventButton::Left,
+    });
+    app.window()
+        .dispatch_event(WindowEvent::PointerMoved { position: drift });
+    slint::platform::update_timers_and_animations();
+    assert_eq!(
+        chip_bounds(),
+        before,
+        "a small pointer drift changes no chip bounds"
+    );
+    assert_eq!(row_bounds(), row_before);
+    assert_eq!(
+        chips[0].absolute_position().x - row.absolute_position().x,
+        viewport_offset_before
+    );
+
+    app.window().dispatch_event(WindowEvent::PointerReleased {
+        position: drift,
+        button: PointerEventButton::Left,
+    });
+    slint::platform::update_timers_and_animations();
+    assert_eq!(app.get_search_scope(), "titles", "small drift still selects the chip");
+    assert_eq!(chip_bounds(), before, "selection changes no chip geometry");
+    assert_eq!(row_bounds(), row_before);
+    assert_eq!(
+        chips[0].absolute_position().x - row.absolute_position().x,
+        viewport_offset_before
     );
 }
