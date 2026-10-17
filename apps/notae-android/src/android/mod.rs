@@ -11,6 +11,7 @@
 //! `#![forbid(unsafe_code)]`.
 
 pub mod pdf_intent;
+pub mod motion;
 pub mod pdf_pages;
 pub mod saf;
 pub mod search_input;

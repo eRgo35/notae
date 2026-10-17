@@ -58,6 +58,10 @@ export component SearchScreen inherits Rectangle {
     in property <bool> failed;
     in property <bool> hardware-keyboard-present;
     in property <bool> voice-available;
+    in property <bool> transition-finished: true;
+    in property <bool> application-active: true;
+    private property <bool> focus-initial-pending: false;
+    private property <length> field-height: field.height;
     callback voice-requested();
     callback cancel();
     callback acknowledge();
@@ -65,30 +69,65 @@ export component SearchScreen inherits Rectangle {
     callback scope-changed(string);
     callback close();
     callback chosen(string);
-    public function focus-field() { field.focus(); }
-    max-height: root.available-height;
     background: Theme.background;
+    public function request-focus-after-layout() {
+        root.focus-initial-pending = root.application-active;
+        if root.transition-finished && root.application-active && field.height == field.preferred-height {
+            root.focus-initial-pending = false;
+            field.focus();
+        }
+    }
 
+    changed transition-finished => {
+        if root.transition-finished && root.application-active && root.focus-initial-pending
+            && field.height == field.preferred-height {
+            root.focus-initial-pending = false;
+            field.focus();
+        }
+    }
+    changed field-height => {
+        if root.application-active && root.transition-finished && root.focus-initial-pending
+            && field.height == field.preferred-height {
+            root.focus-initial-pending = false;
+            field.focus();
+        }
+    }
+    changed application-active => {
+        if !root.application-active {
+            root.focus-initial-pending = false;
+        }
+    }
     VerticalLayout {
         padding: root.available-width < 600px ? 16px : 24px;
         padding-bottom: 16px;
         spacing: 16px;
         HorizontalLayout {
             spacing: 8px;
-            VerticalLayout { alignment: center; IconButton { label: "Back to library"; icon: @image-url("material-icons/arrow-back.svg"); clicked => { root.close(); } } }
+            VerticalLayout { alignment: center; IconButton { label: "Back to library"; icon: @image-url("material-icons/arrow-back.svg"); clicked => { root.focus-initial-pending = false; root.close(); } } }
             field := SearchField {
                 horizontal-stretch: 1;
                 text <=> root.query;
                 placeholder: "Search titles, composers, tags or lyrics";
                 hardware-keyboard-present: root.hardware-keyboard-present;
-                edited(value) => { root.query-edited(value); }
+                focus-state-changed(has-focus) => {
+                    if has-focus {
+                        root.focus-initial-pending = false;
+                    }
+                }
+                edited(value) => {
+                    root.focus-initial-pending = false;
+                    root.query-edited(value);
+                }
             }
             if root.voice-available : VerticalLayout {
                 alignment: center;
                 IconButton {
                     label: "Search by voice";
                     icon: @image-url("material-icons/mic.svg");
-                    clicked => { root.voice-requested(); }
+                    clicked => {
+                        root.focus-initial-pending = false;
+                        root.voice-requested();
+                    }
                 }
             }
         }
@@ -99,8 +138,8 @@ export component SearchScreen inherits Rectangle {
             fraction: root.fraction;
             cancel-enabled: root.cancel-enabled;
             acknowledge-enabled: root.acknowledge-enabled;
-            cancel => { root.cancel(); }
-            acknowledge => { root.acknowledge(); }
+            cancel => { root.focus-initial-pending = false; root.cancel(); }
+            acknowledge => { root.focus-initial-pending = false; root.acknowledge(); }
         }
         Flickable {
             interactive: self.content-width > self.width;
@@ -111,11 +150,11 @@ export component SearchScreen inherits Rectangle {
                 padding-left: 56px;
                 spacing: 8px;
                 alignment: start;
-                Chip { label: "All"; selected: root.scope == "everything"; clicked => { root.scope-changed("everything"); } }
-                Chip { label: "Titles"; selected: root.scope == "titles"; clicked => { root.scope-changed("titles"); } }
-                Chip { label: "Composers"; selected: root.scope == "composers"; clicked => { root.scope-changed("composers"); } }
-                Chip { label: "Lyrics"; selected: root.scope == "text"; clicked => { root.scope-changed("text"); } }
-                Chip { label: "Tags"; selected: root.scope == "tags"; clicked => { root.scope-changed("tags"); } }
+                Chip { label: "All"; selected: root.scope == "everything"; clicked => { root.focus-initial-pending = false; root.scope-changed("everything"); } }
+                Chip { label: "Titles"; selected: root.scope == "titles"; clicked => { root.focus-initial-pending = false; root.scope-changed("titles"); } }
+                Chip { label: "Composers"; selected: root.scope == "composers"; clicked => { root.focus-initial-pending = false; root.scope-changed("composers"); } }
+                Chip { label: "Lyrics"; selected: root.scope == "text"; clicked => { root.focus-initial-pending = false; root.scope-changed("text"); } }
+                Chip { label: "Tags"; selected: root.scope == "tags"; clicked => { root.focus-initial-pending = false; root.scope-changed("tags"); } }
             }
         }
         if root.query != "" && root.rows.length > 0 : Card {
@@ -125,7 +164,7 @@ export component SearchScreen inherits Rectangle {
                 y: 8px;
                 width: parent.width - 16px;
                 height: parent.height - 16px;
-                for score in root.rows : ResultRow { score: score; clicked => { root.chosen(score.note_key); } }
+                for score in root.rows : ResultRow { score: score; clicked => { root.focus-initial-pending = false; root.chosen(score.note_key); } }
             }
         }
         if root.query != "" && root.rows.length == 0 : VerticalLayout {
