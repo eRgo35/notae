@@ -10,7 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TESSDATA_PREFIX: /usr/share/tesseract-ocr/5/tessdata
+      CARGO_INCREMENTAL: "0"
     steps:
+      - name: Free preinstalled runner disk space
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
+          df -h
       - uses: actions/checkout@v4
       - name: Install native host dependencies
         run: |
@@ -28,8 +34,21 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::unwrap_used -A clippy::expect_used
       - name: Enforce production panic policy
         run: cargo clippy --workspace --lib --bins -- -D warnings -D clippy::unwrap_used -D clippy::expect_used
+      - name: Record free disk before tests (diagnostic)
+        if: always()
+        continue-on-error: true
+        run: |
+          df -h || true
+          du -sh target 2>/dev/null || true
       - name: Run tests
         run: cargo test --workspace
+      - name: Disk usage after cargo test (diagnostic)
+        if: always()
+        continue-on-error: true
+        run: |
+          df -h || true
+          du -sh target target/debug target/debug/deps 2>/dev/null || true
+          du -sh target/debug/deps/* 2>/dev/null | sort -rh | head -n 20 || true
       - name: Validate documentation
         env:
           RUSTDOCFLAGS: -D warnings
@@ -40,6 +59,12 @@ jobs:
         run: cargo llvm-cov --workspace --summary-only --fail-under-lines 84
       - name: Smoke-test CLI interface
         run: cargo run -p notae-index-cli -- --help
+      - name: Disk usage at end of job (diagnostic)
+        if: always()
+        continue-on-error: true
+        run: |
+          df -h || true
+          du -sh target 2>/dev/null || true
 
   android-target:
     name: Android arm64 compile
