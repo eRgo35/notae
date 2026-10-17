@@ -1,21 +1,22 @@
 mod support;
 
 use i_slint_backend_testing::ElementHandle;
-use support::app;
 use std::time::Duration;
+use support::app;
 
 #[test]
 fn newly_opened_search_fades_in_with_the_shared_medium_duration() {
     let app = app();
     app.set_show_search(true);
-    let field = ElementHandle::find_by_accessible_label(
-        &app,
-        "Search titles, composers, tags or lyrics",
-    )
-    .next()
-    .expect("Search field is mounted");
+    let field =
+        ElementHandle::find_by_accessible_label(&app, "Search titles, composers, tags or lyrics")
+            .next()
+            .expect("Search field is mounted");
 
-    assert!(field.computed_opacity() < 1.0, "new screen starts its fade-in");
+    assert!(
+        field.computed_opacity() < 1.0,
+        "new screen starts its fade-in"
+    );
     i_slint_backend_testing::mock_elapsed_time(Duration::from_millis(220));
     assert_eq!(field.computed_opacity(), 1.0, "screen reaches full opacity");
 }
@@ -37,9 +38,11 @@ fn dismissing_sheet_keeps_its_modal_surface_until_exit_finishes() {
     assert!(exiting_sheet.computed_opacity() > 0.0);
 
     i_slint_backend_testing::mock_elapsed_time(Duration::from_millis(220));
-    assert!(ElementHandle::find_by_accessible_label(&app, "Score details dialog")
-        .next()
-        .is_none());
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Score details dialog")
+            .next()
+            .is_none()
+    );
 }
 
 #[test]
@@ -47,12 +50,10 @@ fn disabling_motion_reaches_screen_and_sheet_final_states_without_time_advance()
     let app = app();
     app.set_animations_enabled(false);
     app.set_show_search(true);
-    let field = ElementHandle::find_by_accessible_label(
-        &app,
-        "Search titles, composers, tags or lyrics",
-    )
-    .next()
-    .expect("Search field is mounted");
+    let field =
+        ElementHandle::find_by_accessible_label(&app, "Search titles, composers, tags or lyrics")
+            .next()
+            .expect("Search field is mounted");
     assert_eq!(field.computed_opacity(), 1.0);
 
     app.set_show_metadata_editor(true);
@@ -84,15 +85,21 @@ fn rapid_screen_changes_keep_the_latest_logical_destination_visible() {
 
     app.set_show_settings(false);
     app.set_show_search(true);
-    let field = ElementHandle::find_by_accessible_label(
-        &app,
-        "Search titles, composers, tags or lyrics",
-    )
-    .next()
-    .expect("the latest Search destination is mounted");
+    let field =
+        ElementHandle::find_by_accessible_label(&app, "Search titles, composers, tags or lyrics")
+            .next()
+            .expect("the latest Search destination is mounted");
     i_slint_backend_testing::mock_elapsed_time(Duration::from_millis(220));
-    assert_eq!(field.size().height, 52.0, "SearchField has settled geometry after mounting");
-    assert_eq!(field.computed_opacity(), 1.0, "the latest screen finishes its fade-in");
+    assert_eq!(
+        field.size().height,
+        52.0,
+        "SearchField has settled geometry after mounting"
+    );
+    assert_eq!(
+        field.computed_opacity(),
+        1.0,
+        "the latest screen finishes its fade-in"
+    );
     assert_eq!(
         ElementHandle::find_by_accessible_label(&app, "Scan library").count(),
         0,

@@ -9,7 +9,7 @@ use jni::objects::{JObject, JObjectArray, JString};
 use jni::{EnvUnowned, jni_sig, jni_str};
 
 use crate::AppWindow;
-use crate::voice_search::{apply_voice_result, VOICE_REQUEST_CODE};
+use crate::voice_search::{VOICE_REQUEST_CODE, apply_voice_result};
 const RESULT_OK: i32 = -1;
 static WINDOW: OnceLock<Mutex<Option<slint::Weak<AppWindow>>>> = OnceLock::new();
 
@@ -116,11 +116,7 @@ pub extern "system" fn Java_org_notae_android_NotaeActivity_nativeOnVoiceResult<
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 
-    let Some(window) = window_slot()
-        .lock()
-        .ok()
-        .and_then(|slot| slot.clone())
-    else {
+    let Some(window) = window_slot().lock().ok().and_then(|slot| slot.clone()) else {
         return;
     };
     if request_code != VOICE_REQUEST_CODE {

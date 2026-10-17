@@ -1,7 +1,7 @@
 mod support;
 
 use notae_android::AppWindow;
-use notae_android::voice_search::{apply_voice_result, recognized_query, VOICE_REQUEST_CODE};
+use notae_android::voice_search::{VOICE_REQUEST_CODE, apply_voice_result, recognized_query};
 use slint::ComponentHandle;
 
 #[test]

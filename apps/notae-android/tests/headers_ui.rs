@@ -190,19 +190,20 @@ fn search_keycap_tracks_typed_text_and_keyboard_presence_changes() {
     });
     slint::platform::update_timers_and_animations();
 
-    assert!(keycap().is_some(), "an empty field with a keyboard shows the hint");
     assert!(
-        ElementHandle::find_by_accessible_label(
-            &app,
-            "Press Ctrl K to open search from anywhere."
-        )
-        .next()
-        .is_none(),
+        keycap().is_some(),
+        "an empty field with a keyboard shows the hint"
+    );
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Press Ctrl K to open search from anywhere.")
+            .next()
+            .is_none(),
         "the empty Search message omits the keyboard shortcut sentence"
     );
-    let field = ElementHandle::find_by_accessible_label(&app, "Search titles, composers, tags or lyrics")
-        .next()
-        .expect("Search field is visible");
+    let field =
+        ElementHandle::find_by_accessible_label(&app, "Search titles, composers, tags or lyrics")
+            .next()
+            .expect("Search field is visible");
     let field_position = field.absolute_position();
     let field_size = field.size();
     let hint = keycap().expect("keyboard hint is visible in the empty field");
@@ -438,8 +439,8 @@ fn welcome_groups_intro_card_and_action_without_oversized_gaps() {
         let choose = ElementHandle::find_by_accessible_label(&app, "Choose score folder")
             .next()
             .expect("setup action exists");
-        let action_gap = choose.absolute_position().y
-            - (card.absolute_position().y + card.size().height);
+        let action_gap =
+            choose.absolute_position().y - (card.absolute_position().y + card.size().height);
         assert!(
             action_gap <= 48.0,
             "action sits right below the card at {width}x{height}, gap {action_gap}"
@@ -657,7 +658,11 @@ fn search_scope_chip_bounds_stay_fixed_during_pointer_press() {
         button: PointerEventButton::Left,
     });
     slint::platform::update_timers_and_animations();
-    assert_eq!(chip_bounds(), before, "all chip bounds are stable while pressed");
+    assert_eq!(
+        chip_bounds(),
+        before,
+        "all chip bounds are stable while pressed"
+    );
     assert_eq!(row_bounds(), row_before);
     assert_eq!(
         chips[0].absolute_position().x - row.absolute_position().x,
@@ -752,7 +757,11 @@ fn search_scope_chip_bounds_stay_fixed_during_small_pointer_drift() {
         button: PointerEventButton::Left,
     });
     slint::platform::update_timers_and_animations();
-    assert_eq!(app.get_search_scope(), "titles", "small drift still selects the chip");
+    assert_eq!(
+        app.get_search_scope(),
+        "titles",
+        "small drift still selects the chip"
+    );
     assert_eq!(chip_bounds(), before, "selection changes no chip geometry");
     assert_eq!(row_bounds(), row_before);
     assert_eq!(

@@ -476,7 +476,10 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
     {
         let model = Rc::clone(&model);
         window.on_sidebar_collapsed_changed(move |portrait, collapsed| {
-            if let Err(error) = model.borrow_mut().set_sidebar_collapsed(portrait, collapsed) {
+            if let Err(error) = model
+                .borrow_mut()
+                .set_sidebar_collapsed(portrait, collapsed)
+            {
                 eprintln!("notae: cannot save UI preferences: {error}");
             }
         });
@@ -736,9 +739,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_show_recovery(show_recovery);
     window.set_recovery_folder_name(recovery_folder_name.into());
     window.set_setup_error_text(setup_error.into());
-    window.set_startup_ready(
-        model.startup_presentation() == crate::ui::StartupPresentation::Ready,
-    );
+    window.set_startup_ready(model.startup_presentation() == crate::ui::StartupPresentation::Ready);
     let status = model.status();
     let operation = &status.operation;
     window.set_rescan_enabled(model.rescan_enabled());
@@ -748,7 +749,13 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     // The banner reports the running operation or its outcome on every screen. The latest scan
     // result and the pending-text count are standing facts and live in Settings only.
     let (scan_summary, scan_conflicts, scan_failures) = status.latest_rescan.map_or_else(
-        || ("No scan this session".to_owned(), String::new(), String::new()),
+        || {
+            (
+                "No scan this session".to_owned(),
+                String::new(),
+                String::new(),
+            )
+        },
         |summary| {
             (
                 format!(
@@ -802,7 +809,9 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     );
     window.set_selected_position(
         preview_neighbours
-            .map_or_else(String::new, |nav| format!("{} of {}", nav.position, nav.total))
+            .map_or_else(String::new, |nav| {
+                format!("{} of {}", nav.position, nav.total)
+            })
             .into(),
     );
     if let Some(row) = selected {
@@ -1049,9 +1058,9 @@ fn apply_picker_result(
     };
     model.borrow_mut().set_storage(next_state);
     if let Some(reason) = initial_query_error {
-        let _ = model.borrow_mut().apply_operation_event(
-            crate::operations::events::OperationEvent::Failed { reason },
-        );
+        let _ = model
+            .borrow_mut()
+            .apply_operation_event(crate::operations::events::OperationEvent::Failed { reason });
     }
     if let Some(window) = window_weak.upgrade() {
         sync_window(&window, &model.borrow());

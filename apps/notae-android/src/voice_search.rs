@@ -39,4 +39,3 @@ pub fn apply_voice_result(
     app.invoke_search_changed(query);
     true
 }
-

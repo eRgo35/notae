@@ -10,8 +10,7 @@ use jni::{EnvUnowned, jni_sig, jni_str};
 
 use crate::AppWindow;
 
-static WINDOW: LazyLock<Mutex<Option<slint::Weak<AppWindow>>>> =
-    LazyLock::new(|| Mutex::new(None));
+static WINDOW: LazyLock<Mutex<Option<slint::Weak<AppWindow>>>> = LazyLock::new(|| Mutex::new(None));
 
 pub fn bind_window(window: slint::Weak<AppWindow>) {
     if let Ok(mut slot) = WINDOW.lock() {
