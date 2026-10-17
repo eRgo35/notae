@@ -1,0 +1,29 @@
+name: Dependency audit
+
+# New RustSec advisories appear without any code change, so audit on a schedule as well. This
+# workflow is separate from CI and Release: a failure here reports the advisory to the
+# maintainers but never blocks a commit, a pull request or a release.
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit
+  cancel-in-progress: false
+
+jobs:
+  advisories:
+    name: cargo deny advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust toolchain
+        run: rustup show active-toolchain
+      - name: Install pinned cargo-deny
+        run: cargo install --locked --version 0.20.2 cargo-deny
+      - name: Check advisories
+        run: cargo deny check advisories
