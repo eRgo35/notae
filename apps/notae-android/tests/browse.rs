@@ -47,8 +47,6 @@ fn section_keys_round_trip() {
     for section in [
         LibrarySection::All,
         LibrarySection::Recent,
-        LibrarySection::NeedsDetails,
-        LibrarySection::TextPending,
         LibrarySection::Composer("Gabriel Fauré".to_owned()),
     ] {
         assert_eq!(LibrarySection::from_key(&section.key()), section);
@@ -59,6 +57,10 @@ fn section_keys_round_trip() {
 fn unknown_or_empty_keys_fall_back_to_all() {
     assert_eq!(LibrarySection::from_key("nonsense"), LibrarySection::All);
     assert_eq!(LibrarySection::from_key("composer:"), LibrarySection::All);
+    // Keys of the removed sections (for example from an older saved selection) mean All.
+    for removed in ["needs-details", "text-pending"] {
+        assert_eq!(LibrarySection::from_key(removed), LibrarySection::All);
+    }
 }
 
 #[test]
@@ -83,26 +85,19 @@ fn composers_merge_case_variants_and_sort_by_name() {
 }
 
 #[test]
-fn needs_details_means_missing_number_or_composer() {
-    let titles: Vec<String> = section_rows(&library(), &LibrarySection::NeedsDetails, &[])
-        .into_iter()
-        .map(|row| row.title)
-        .collect();
-    assert_eq!(titles, ["Scarborough Fair", "Untitled sketch"]);
-}
-
-#[test]
-fn text_pending_and_composer_sections_filter_rows() {
-    let pending = section_rows(&library(), &LibrarySection::TextPending, &[]);
-    assert_eq!(pending.len(), 1);
-    assert_eq!(pending[0].title, "Cantique");
-
+fn composer_sections_filter_rows_case_insensitively() {
     let faure = section_rows(
         &library(),
         &LibrarySection::Composer("GABRIEL FAURÉ".to_owned()),
         &[],
     );
     assert_eq!(faure.len(), 2);
+}
+
+#[test]
+fn rows_without_a_number_composer_or_text_stay_in_the_library() {
+    let all = section_rows(&library(), &LibrarySection::All, &[]);
+    assert_eq!(all.len(), 5, "no row is hidden for missing details or text");
 }
 
 #[test]
@@ -123,15 +118,7 @@ fn fixed_sections_report_counts() {
         .into_iter()
         .map(|view| (view.key, view.count))
         .collect();
-    assert_eq!(
-        summary,
-        [
-            ("all".to_owned(), 5),
-            ("recent".to_owned(), 1),
-            ("needs-details".to_owned(), 2),
-            ("text-pending".to_owned(), 1),
-        ]
-    );
+    assert_eq!(summary, [("all".to_owned(), 5), ("recent".to_owned(), 1),]);
 }
 
 fn keys(rows: &[SearchRow]) -> Vec<String> {
@@ -196,7 +183,7 @@ fn preview_neighbours_follow_the_current_section_not_the_whole_library() {
 fn preview_neighbours_are_absent_when_the_selection_is_outside_the_section() {
     // For example a Search result opened while another section is current.
     let mut model = model_with_library();
-    model.select_section(LibrarySection::TextPending);
+    model.select_section(LibrarySection::Composer("traditional".to_owned()));
     model.select_note(Some("a".repeat(64)));
     assert!(
         model.selected_row().is_some(),

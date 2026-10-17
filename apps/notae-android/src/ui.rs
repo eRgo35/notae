@@ -58,7 +58,8 @@ pub struct UiStatus {
     pub operation: crate::state::OperationState,
     pub latest_rescan: Option<RescanSummary>,
     pub indexed_count: usize,
-    pub pending_text_count: usize,
+    /// Indexed PDFs with no extractable text; shown in Settings as a plain count.
+    pub no_text_count: usize,
 }
 
 pub struct UiModel {
@@ -518,7 +519,7 @@ impl UiModel {
             operation: self.controller.state().operation().clone(),
             latest_rescan: self.latest_rescan,
             indexed_count: self.indexed_count,
-            pending_text_count: self
+            no_text_count: self
                 .search_rows
                 .iter()
                 .filter(|row| row.text_pending)

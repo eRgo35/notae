@@ -309,6 +309,7 @@ fn settings_without_scan_summary_states_absence_and_hides_result_rows() {
         let app = app_sized(width, height);
         app.set_show_settings(true);
         app.set_settings_indexed_count("42".into());
+        app.set_settings_no_text_count("3".into());
         for label in ["Indexed scores: 42", "Last scan: No scan this session"] {
             let row = ElementHandle::find_by_accessible_label(&app, label)
                 .next()
@@ -320,6 +321,8 @@ fn settings_without_scan_summary_states_absence_and_hides_result_rows() {
             );
         }
         assert!(label_exists(&app, "Last scan: No scan this session"));
+        // A plain count of indexed PDFs without extractable text; no action is offered.
+        assert!(label_exists(&app, "PDFs without extractable text: 3"));
         assert!(!label_exists(&app, "ID conflicts: 0"));
         assert!(!label_exists(&app, "Failures: 0"));
         for removed in ["Local storage and privacy", "Pending text"] {

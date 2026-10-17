@@ -747,7 +747,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_cancel_enabled(banner.cancel_enabled);
     window.set_acknowledge_enabled(banner.acknowledge_enabled);
     // The banner reports the running operation or its outcome on every screen. The latest scan
-    // result and the pending-text count are standing facts and live in Settings only.
+    // result and the no-text count are standing facts and live in Settings only.
     let (scan_summary, scan_conflicts, scan_failures) = status.latest_rescan.map_or_else(
         || {
             (
@@ -771,6 +771,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_settings_scan_conflicts(scan_conflicts.into());
     window.set_settings_scan_failures(scan_failures.into());
     window.set_settings_indexed_count(status.indexed_count.to_string().into());
+    window.set_settings_no_text_count(status.no_text_count.to_string().into());
     window.set_app_version(env!("CARGO_PKG_VERSION").into());
     window.set_app_build_identity(env!("NOTAE_BUILD_ID").into());
     window.set_repository_url("https://github.com/eRgo35/notae".into());
@@ -846,15 +847,11 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_composers(slint::ModelRc::new(slint::VecModel::from(composers)));
     window.set_selected_section(model.section().key().into());
     window.set_library_title(model.section().title().into());
-    let count_text = format!(
-        "{row_count} {}",
-        if row_count == 1 { "score" } else { "scores" }
-    );
     window.set_library_subtitle(
-        match model.section().explanation() {
-            Some(explanation) => format!("{count_text} · {explanation}"),
-            None => count_text,
-        }
+        format!(
+            "{row_count} {}",
+            if row_count == 1 { "score" } else { "scores" }
+        )
         .into(),
     );
     window.set_show_search(matches!(state.screen(), Screen::Search));

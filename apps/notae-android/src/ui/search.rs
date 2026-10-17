@@ -18,7 +18,8 @@ pub struct SearchRow {
     pub relative_path: String,
     /// Stable content key used by open and edit actions.
     pub note_key: String,
-    /// Whether searchable text is still missing (OCR pending or incomplete).
+    /// Whether the PDF has no extractable text (OCR pending or incomplete). It stays in the
+    /// library and is searchable by title and metadata; only the Settings count surfaces it.
     pub text_pending: bool,
     /// Where the title came from, as a short label ("From filename", "From desktop", "Edited").
     pub title_origin: String,
@@ -67,10 +68,15 @@ pub(crate) fn library_row(row: SearchRow, thumbnail: Option<slint::Image>) -> cr
         title: row.title.into(),
         composer_or_artist: row.composer_or_artist.unwrap_or_default().into(),
         tags: row.tags.join(", ").into(),
-        status: row.status.into(),
+        // An image-only PDF is searchable by title and metadata; the library does not nag about it.
+        status: if row.text_pending {
+            String::new()
+        } else {
+            row.status
+        }
+        .into(),
         note_key: row.note_key.into(),
         relative_path: row.relative_path.into(),
-        text_pending: row.text_pending,
         has_thumbnail: thumbnail.is_some(),
         thumbnail: thumbnail.unwrap_or_default(),
         title_origin: row.title_origin.into(),
