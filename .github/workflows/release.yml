@@ -1,0 +1,150 @@
+name: Release
+
+# Cuts a signed Android release from a `vX.Y.Z` tag. Cut one with the steps in
+# docs/android-release.md. The workflow re-runs the CI quality gates on the tagged commit,
+# builds the arm64 APK, signs it with the repository's release key and attaches it to the
+# GitHub Release. It never falls back to the debug key: without the signing secrets it fails.
+# To attach an APK to an existing tag after adding the secrets, run it with `workflow_dispatch`.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and attach, for example v0.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  # Public SHA-256 fingerprint of the release signing certificate (not a secret). The build fails if
+  # the signed APK carries any other certificate. Changing the release key means changing this value.
+  NOTAE_RELEASE_CERT_SHA256: BE:27:CD:78:17:66:C5:C2:8A:9D:B1:06:C0:7B:05:1C:EE:E4:E0:00:31:05:96:45:95:E2:A8:48:F3:71:F6:01
+
+jobs:
+  preflight:
+    name: Verify tag, version and signing secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check that the signing secrets are configured
+        env:
+          NOTAE_KEYSTORE_BASE64: ${{ secrets.NOTAE_KEYSTORE_BASE64 }}
+          NOTAE_KEYSTORE_PASSWORD: ${{ secrets.NOTAE_KEYSTORE_PASSWORD }}
+          NOTAE_KEY_ALIAS: ${{ secrets.NOTAE_KEY_ALIAS }}
+          NOTAE_KEY_PASSWORD: ${{ secrets.NOTAE_KEY_PASSWORD }}
+        run: |
+          missing=()
+          for name in NOTAE_KEYSTORE_BASE64 NOTAE_KEYSTORE_PASSWORD NOTAE_KEY_ALIAS NOTAE_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            echo "::error title=Release signing secrets missing::Add these repository Actions secrets, then re-run this workflow with workflow_dispatch for ${TAG}: ${missing[*]}. See docs/android-release.md. The release build never falls back to the debug key."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - name: Check that the tag is on main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::Tag ${TAG} points at a commit that is not on main. Release only commits that passed CI on main."
+            exit 1
+          fi
+      - name: Check that the tag matches the Cargo version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "notae-android") | .version')
+          if [ "${TAG}" != "v${version}" ]; then
+            echo "::error::Tag ${TAG} does not match the notae-android Cargo version ${version} (expected v${version})."
+            exit 1
+          fi
+
+  gates:
+    name: Quality gates
+    needs: preflight
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ inputs.tag || github.ref_name }}
+
+  release:
+    name: Build, sign and publish APK
+    needs: [preflight, gates]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Free preinstalled runner disk space
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+          df -h
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+      - name: Install Android NDK r26d
+        run: |
+          sdkmanager "ndk;26.3.11579264"
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.3.11579264" >> "$GITHUB_ENV"
+      - name: Install pinned Rust toolchain and target
+        run: |
+          rustup show active-toolchain
+          rustup target add aarch64-linux-android
+      - name: Install pinned cargo-apk2
+        run: cargo install --locked --version 1.4.0 cargo-apk2
+      - name: Prepare the release keystore
+        env:
+          NOTAE_KEYSTORE_BASE64: ${{ secrets.NOTAE_KEYSTORE_BASE64 }}
+          NOTAE_KEYSTORE_PASSWORD: ${{ secrets.NOTAE_KEYSTORE_PASSWORD }}
+          NOTAE_KEY_ALIAS: ${{ secrets.NOTAE_KEY_ALIAS }}
+          NOTAE_KEY_PASSWORD: ${{ secrets.NOTAE_KEY_PASSWORD }}
+        run: |
+          umask 077
+          printf '%s' "$NOTAE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/notae-source.keystore"
+          .github/scripts/prepare-release-keystore.sh "$RUNNER_TEMP/notae-source.keystore" "$RUNNER_TEMP/notae-release.p12"
+          rm -f "$RUNNER_TEMP/notae-source.keystore"
+      - name: Build the signed arm64 release APK
+        env:
+          CARGO_APK_RELEASE_KEYSTORE: ${{ runner.temp }}/notae-release.p12
+          CARGO_APK_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.NOTAE_KEY_PASSWORD }}
+        run: cargo apk2 build -p notae-android --target aarch64-linux-android --release
+      - name: Verify version, signature and checksum
+        run: .github/scripts/verify-release-apk.sh target/release/apk/notae-android.apk "$TAG" dist
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: notae-${{ env.TAG }}-arm64
+          path: dist/*
+          if-no-files-found: error
+      - name: Create the GitHub Release if missing and attach the APK
+        run: |
+          version="${TAG#v}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            notes_args=(--generate-notes)
+            if [ -f "docs/release-notes/${TAG}.md" ]; then
+              notes_args+=(--notes-file "docs/release-notes/${TAG}.md")
+            fi
+            gh release create "$TAG" --title "Notae ${TAG}" --verify-tag "${notes_args[@]}"
+          fi
+          gh release upload "$TAG" "dist/notae-${version}-arm64.apk" "dist/notae-${version}-arm64.apk.sha256" --clobber
+      - name: Delete the keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/notae-source.keystore" "$RUNNER_TEMP/notae-release.p12"
