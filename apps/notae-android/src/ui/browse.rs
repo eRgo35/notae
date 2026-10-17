@@ -60,7 +60,22 @@ impl LibrarySection {
             Self::Composer(name) => name.clone(),
         }
     }
+
+    /// One-line explanation shown under the title, when the section name alone is unclear.
+    ///
+    /// Android never runs OCR: scores in this section lack searchable text until the desktop
+    /// app OCRs them or a sidecar is imported. It is not a running job.
+    #[must_use]
+    pub fn explanation(&self) -> Option<&'static str> {
+        match self {
+            Self::TextPending => Some(PENDING_TEXT_ACTION),
+            _ => None,
+        }
+    }
 }
+
+/// What a score without searchable text is waiting for.
+pub const PENDING_TEXT_ACTION: &str = "Text unavailable — run desktop OCR or import a sidecar";
 
 /// A composer and how many scores carry that name.
 #[derive(Debug, Clone, PartialEq, Eq)]

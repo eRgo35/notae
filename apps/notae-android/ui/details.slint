@@ -1,6 +1,6 @@
 // List-detail pane: the current section on the left, one score's details on the right.
 import { ListView, ScrollView } from "std-widgets.slint";
-import { Theme, IconButton, PillButton, Card, StatusBadge, ActionInput } from "components.slint";
+import { Theme, IconButton, PillButton, Card, ActionInput } from "components.slint";
 import { LibraryRow, PagePreview } from "library.slint";
 
 component ScoreListItem inherits Rectangle {
@@ -81,7 +81,7 @@ component ScoreHeadline inherits VerticalLayout {
     if root.score.id != "" : Text { text: "No. " + root.score.id; color: Theme.accent-text; font-size: 14px; font-weight: 600; horizontal-alignment: root.centered ? center : left; }
     Text { text: root.score.title; color: Theme.foreground; font-size: root.centered ? 26px : 32px; font-weight: 600; wrap: word-wrap; horizontal-alignment: root.centered ? center : left; }
     if root.score.composer_or_artist != "" : Text { text: root.score.composer_or_artist; color: Theme.muted; font-size: 17px; wrap: word-wrap; horizontal-alignment: root.centered ? center : left; }
-    if root.score.text_pending : HorizontalLayout { alignment: root.centered ? center : start; StatusBadge { text: "Lyrics text pending"; } }
+    if root.score.text_pending : Text { text: "Text unavailable — run desktop OCR or import a sidecar"; color: Theme.muted; font-size: 15px; wrap: word-wrap; horizontal-alignment: root.centered ? center : left; }
     HorizontalLayout {
         padding-top: 18px;
         spacing: 10px;

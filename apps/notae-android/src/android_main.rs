@@ -555,6 +555,9 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
                         changed = true;
                     }
                 }
+                changed |= model
+                    .borrow_mut()
+                    .expire_finished_result(std::time::Instant::now());
                 if changed && let Some(window) = window_weak.upgrade() {
                     sync_window(&window, &model.borrow());
                 }
@@ -714,14 +717,11 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     let status = model.status();
     let operation = &status.operation;
     window.set_rescan_enabled(model.rescan_enabled());
-    window.set_cancel_enabled(matches!(operation, OperationState::RescanInProgress { .. }));
-    window.set_acknowledge_enabled(matches!(
-        operation,
-        OperationState::Completed { .. } | OperationState::Failed { .. }
-    ));
+    let banner = crate::ui::OperationBanner::project(operation);
+    window.set_cancel_enabled(banner.cancel_enabled);
+    window.set_acknowledge_enabled(banner.acknowledge_enabled);
     // The banner reports the running operation or its outcome on every screen. The latest scan
     // result and the pending-text count are standing facts and live in Settings only.
-    let status_text = operation_progress_text(operation);
     let scan_summary = status.latest_rescan.map_or_else(
         || "No scan this session".to_owned(),
         |summary| {
@@ -739,23 +739,10 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_repository_url("https://github.com/eRgo35/notae".into());
     window.set_app_license("MIT License".into());
     window.set_sidecar_schema_version(notae_index::SIDECAR_SCHEMA_VERSION.to_string().into());
-    window.set_operation_progress_text(status_text.into());
-    window.set_operation_failed(matches!(operation, OperationState::Failed { .. }));
-    window.set_operation_busy(matches!(
-        operation,
-        OperationState::RescanInProgress { .. }
-            | OperationState::RescanFinalizing { .. }
-            | OperationState::ImportApplying
-    ));
-    window.set_operation_fraction(match operation {
-        OperationState::RescanInProgress { completed, total }
-        | OperationState::RescanFinalizing { completed, total }
-            if *total > 0 =>
-        {
-            (*completed as f32 / *total as f32).clamp(0.0, 1.0)
-        }
-        _ => 0.0,
-    });
+    window.set_operation_progress_text(banner.text.into());
+    window.set_operation_failed(banner.failed);
+    window.set_operation_busy(banner.busy);
+    window.set_operation_fraction(banner.fraction);
     window.set_search_text(state.search().query.as_str().into());
     window.set_search_scope(state.search().scope.key().into());
     window.set_show_settings(matches!(state.screen(), Screen::Settings));
@@ -803,11 +790,15 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_composers(slint::ModelRc::new(slint::VecModel::from(composers)));
     window.set_selected_section(model.section().key().into());
     window.set_library_title(model.section().title().into());
+    let count_text = format!(
+        "{row_count} {}",
+        if row_count == 1 { "score" } else { "scores" }
+    );
     window.set_library_subtitle(
-        format!(
-            "{row_count} {}",
-            if row_count == 1 { "score" } else { "scores" }
-        )
+        match model.section().explanation() {
+            Some(explanation) => format!("{count_text} · {explanation}"),
+            None => count_text,
+        }
         .into(),
     );
     window.set_show_search(matches!(state.screen(), Screen::Search));
@@ -866,27 +857,6 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         })
         .collect();
     window.set_import_rows(slint::ModelRc::new(slint::VecModel::from(import_rows)));
-}
-
-fn operation_progress_text(operation: &OperationState) -> String {
-    match operation {
-        OperationState::Idle => String::new(),
-        OperationState::RescanInProgress { total, .. } if *total == 0 => {
-            "Scanning library…".to_owned()
-        }
-        OperationState::RescanInProgress { completed, total } => {
-            format!("Scanning PDFs: {completed} of {total}")
-        }
-        OperationState::RescanFinalizing { completed, total } => {
-            format!("Extracting PDF text: {completed} of {total}")
-        }
-        OperationState::ImportPreviewPending { candidate_count } => {
-            format!("Review {candidate_count} proposed sidecar changes")
-        }
-        OperationState::ImportApplying => "Applying sidecar import…".to_owned(),
-        OperationState::Completed { summary } => format!("Finished: {summary}"),
-        OperationState::Failed { reason } => reason.clone(),
-    }
 }
 
 fn import_preview_text(summary: &crate::operations::events::ImportPreviewSummary) -> String {

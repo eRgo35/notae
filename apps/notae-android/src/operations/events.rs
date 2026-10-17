@@ -4,20 +4,33 @@ use crate::ui::search::SearchRow;
 /// Events emitted by background library operations.
 #[derive(Debug)]
 pub enum OperationEvent {
-    /// A rescan has started; the total is unknown until the catalog finishes enumerating.
+    /// A rescan has started and the catalog is enumerating PDFs; the total is unknown.
     Started,
-    /// One catalogued PDF has finished reconciliation and text extraction.
+    /// Enumeration found `total` PDFs and the index is being reconciled against them.
+    ///
+    /// The total is known here, but reconciliation reports no per-file progress.
+    Indexing { total: usize },
+    /// One catalogued PDF has finished embedded-text extraction and thumbnail rendering.
+    ///
+    /// Only valid after [`OperationEvent::RescanFinalizing`].
     Progress { completed: usize, total: usize },
-    /// Reconciliation is committed; text extraction is finishing and cannot be canceled.
+    /// Reconciliation is committed; the per-file text and thumbnail pass over `total` PDFs
+    /// starts now and cannot be canceled. Not sent for an empty library.
     RescanFinalizing { total: usize },
+    /// Every PDF is processed; the worker is now looking for a desktop sidecar and, if one
+    /// exists, comparing it with the index. There is no entry-level progress.
+    CheckingDesktopImport,
     /// One PDF was reconciled successfully.
     FileSucceeded { path: String },
     /// One PDF could not be reconciled; other files continue independently.
     FileFailed { path: String, reason: String },
-    /// The scan and index update completed.
+    /// All scan work, including the desktop sidecar check, has finished. This is the last
+    /// event of a successful rescan.
     Completed {
         summary: RescanSummary,
         rows: Vec<SearchRow>,
+        /// What the post-scan sidecar check found.
+        desktop_import: DesktopImportCheck,
     },
     /// Cancellation was observed before any plan updates were applied.
     Canceled,
@@ -37,6 +50,17 @@ pub enum OperationEvent {
     /// A metadata load or save was rejected without changing the index.
     MetadataFailed { reason: String },
     /// An operation failed before it could complete.
+    Failed { reason: String },
+}
+
+/// Outcome of the sidecar check that closes a rescan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DesktopImportCheck {
+    /// The library has no desktop sidecar.
+    NoSidecar,
+    /// A sidecar was compared read-only; the user decides whether to import it.
+    PreviewReady(ImportPreviewSummary),
+    /// The scan itself is committed but the sidecar could not be read or compared.
     Failed { reason: String },
 }
 

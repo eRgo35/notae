@@ -84,7 +84,7 @@ pub enum Transition {
 pub enum EventError {
     /// A second long-running operation started while another was already
     /// in flight. The UI is supposed to disable the rescan button while
-    /// `OperationState::RescanInProgress`, so reaching this branch means
+    /// `OperationState::Rescan`, so reaching this branch means
     /// the wiring let a stale click through.
     #[error("a rescan or import is already in progress")]
     OperationAlreadyInProgress,
@@ -167,18 +167,9 @@ pub enum OperationState {
     /// Nothing is happening. A fresh app is in this state.
     Idle,
     /// A rescan is running against the configured library.
-    RescanInProgress {
-        /// Files classified so far.
-        completed: usize,
-        /// Files found by the catalog.
-        total: usize,
-    },
-    /// A committed rescan is extracting PDF text; cancellation is no longer available.
-    RescanFinalizing {
-        /// Files classified so far.
-        completed: usize,
-        /// Files found by the catalog.
-        total: usize,
+    Rescan {
+        /// The work the worker is actually doing right now.
+        phase: RescanPhase,
     },
     /// A sidecar import is ready for the user to confirm.
     ImportPreviewPending {
@@ -199,6 +190,40 @@ pub enum OperationState {
         /// Short, user-facing reason — not a raw error chain.
         reason: String,
     },
+}
+
+/// The work a running rescan is doing, in the order the worker performs it.
+///
+/// Each phase is entered only by the worker event that starts that work, so the banner
+/// never reports a later phase than the one in progress.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RescanPhase {
+    /// The catalog is enumerating PDFs and the plan is being computed; no total is known.
+    /// The only phase in which the user can cancel.
+    Enumerating,
+    /// The index is being reconciled against `total` PDFs; no per-file progress exists.
+    Indexing {
+        /// Files found by the catalog.
+        total: usize,
+    },
+    /// The committed index is gaining embedded PDF text and thumbnails, one file at a time.
+    ReadingText {
+        /// Files finished so far.
+        completed: usize,
+        /// Files found by the catalog (always greater than zero).
+        total: usize,
+    },
+    /// Every file is processed; the worker is checking for and comparing a desktop sidecar.
+    /// Android never runs OCR, so this is the only phase that follows reading text.
+    CheckingDesktopImport,
+}
+
+impl RescanPhase {
+    /// Whether the user may still cancel without leaving a half-applied scan.
+    #[must_use]
+    pub fn is_cancellable(&self) -> bool {
+        matches!(self, Self::Enumerating)
+    }
 }
 
 /// The full application state.
@@ -378,36 +403,54 @@ impl AppController {
         }
     }
 
-    /// Updates visible rescan progress.
+    /// Moves a running rescan to `phase`; rejected when no rescan is running.
+    pub fn set_rescan_phase(&mut self, phase: RescanPhase) -> Result<(), EventError> {
+        let OperationState::Rescan { .. } = self.state.operation else {
+            return Err(EventError::OperationAlreadyInProgress);
+        };
+        self.state.operation = OperationState::Rescan { phase };
+        Ok(())
+    }
+
+    /// Updates per-file progress; only meaningful while reading text.
     pub fn update_rescan_progress(
         &mut self,
         completed: usize,
         total: usize,
     ) -> Result<(), EventError> {
-        match &self.state.operation {
-            OperationState::RescanInProgress { .. } => {
-                self.state.operation = OperationState::RescanInProgress { completed, total };
+        match self.state.operation {
+            OperationState::Rescan {
+                phase: RescanPhase::ReadingText { .. },
+            } if total > 0 => {
+                self.state.operation = OperationState::Rescan {
+                    phase: RescanPhase::ReadingText {
+                        completed: completed.min(total),
+                        total,
+                    },
+                };
+                Ok(())
             }
-            OperationState::RescanFinalizing { .. } => {
-                self.state.operation = OperationState::RescanFinalizing { completed, total };
-            }
-            _ => return Err(EventError::OperationAlreadyInProgress),
+            _ => Err(EventError::OperationAlreadyInProgress),
         }
-        Ok(())
     }
 
-    /// Marks reconciliation committed and makes the rescan non-cancellable.
+    /// Marks reconciliation committed and starts the non-cancellable per-file text pass.
+    ///
+    /// An empty library has no per-file work, so the phase is left unchanged.
     pub fn begin_rescan_finalization(&mut self, total: usize) -> Result<(), EventError> {
-        if !matches!(
-            self.state.operation,
-            OperationState::RescanInProgress { .. }
-        ) {
+        let OperationState::Rescan { phase } = self.state.operation else {
             return Err(EventError::OperationAlreadyInProgress);
-        }
-        self.state.operation = OperationState::RescanFinalizing {
-            completed: 0,
-            total,
         };
+        if total > 0 {
+            self.state.operation = OperationState::Rescan {
+                phase: RescanPhase::ReadingText {
+                    completed: 0,
+                    total,
+                },
+            };
+        } else {
+            self.state.operation = OperationState::Rescan { phase };
+        }
         Ok(())
     }
 
@@ -420,7 +463,9 @@ impl AppController {
     pub fn cancel_operation(&mut self) -> Result<(), EventError> {
         if !matches!(
             self.state.operation,
-            OperationState::RescanInProgress { .. }
+            OperationState::Rescan {
+                phase: RescanPhase::Enumerating | RescanPhase::Indexing { .. }
+            }
         ) {
             return Err(EventError::OperationAlreadyInProgress);
         }
@@ -453,9 +498,8 @@ impl AppController {
     fn start_rescan(&mut self) -> Result<Transition, EventError> {
         match self.state.operation {
             OperationState::Idle => {
-                self.state.operation = OperationState::RescanInProgress {
-                    completed: 0,
-                    total: 0,
+                self.state.operation = OperationState::Rescan {
+                    phase: RescanPhase::Enumerating,
                 };
                 Ok(Transition::BeginRescan)
             }
@@ -508,9 +552,8 @@ mod tests {
         );
         assert_eq!(
             controller.state().operation(),
-            &OperationState::RescanInProgress {
-                completed: 0,
-                total: 0,
+            &OperationState::Rescan {
+                phase: RescanPhase::Enumerating,
             }
         );
         // A second rescan request must be rejected, not silently

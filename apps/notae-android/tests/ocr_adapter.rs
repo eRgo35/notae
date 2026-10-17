@@ -269,7 +269,7 @@ fn rescan_reports_pdf_text_extraction_failure_and_marks_record_incomplete() {
                 );
                 saw_file_failure = true;
             }
-            Some(OperationEvent::Completed { summary, rows }) => {
+            Some(OperationEvent::Completed { summary, rows, .. }) => {
                 assert!(saw_file_failure);
                 assert_eq!(summary.failures, 1);
                 assert_eq!(rows.len(), 1);

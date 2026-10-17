@@ -7,7 +7,8 @@
 //! machine Linux just exercised.
 
 use notae_android::state::{
-    AppController, AppState, EventError, OperationState, Screen, Setup, Transition, UiEvent,
+    AppController, AppState, EventError, OperationState, RescanPhase, Screen, Setup, Transition,
+    UiEvent,
 };
 use notae_android::storage::{StorageError, StorageState};
 
@@ -60,9 +61,8 @@ fn state_machine_exposes_a_way_to_begin_a_rescan() {
     assert_eq!(transition, Transition::BeginRescan);
     assert_eq!(
         controller.state().operation(),
-        &OperationState::RescanInProgress {
-            completed: 0,
-            total: 0,
+        &OperationState::Rescan {
+            phase: RescanPhase::Enumerating,
         }
     );
 }
