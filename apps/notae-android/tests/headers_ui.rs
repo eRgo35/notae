@@ -84,9 +84,18 @@ fn settings_actions_stay_in_the_screen_and_expose_folder_change() {
         "folder name and Change remain on the same wrapped row: folder={folder_pos:?} {folder_size:?}, Change={change_pos:?} {change_size:?}"
     );
     assert_element_in_viewport(&change, 360, 600);
+    assert!(
+        change_size.height <= 56.0,
+        "Change keeps its compact height instead of stretching: {change_size:?}"
+    );
     let folder_card = ElementHandle::find_by_element_type_name(&app, "Card")
         .next()
         .expect("folder card exists");
+    assert!(
+        folder_card.size().height <= 128.0,
+        "Library folder card is compact: {:?}",
+        folder_card.size()
+    );
     let card_pos = folder_card.absolute_position();
     let card_size = folder_card.size();
     assert!(
@@ -287,45 +296,172 @@ fn assert_element_in_viewport(element: &ElementHandle, width: u32, height: u32) 
     );
 }
 
+fn label_exists(app: &notae_android::AppWindow, label: &str) -> bool {
+    ElementHandle::find_by_accessible_label(app, label)
+        .next()
+        .is_some()
+}
+
 #[test]
-fn settings_shows_absent_and_real_scan_results_and_runs_maintenance_scan() {
+fn settings_without_scan_summary_states_absence_and_hides_result_rows() {
+    for (width, height) in [(360, 600), (1280, 800)] {
+        let app = app_sized(width, height);
+        app.set_show_settings(true);
+        app.set_settings_indexed_count("42".into());
+        for label in ["Indexed scores: 42", "Last scan: No scan this session"] {
+            let row = ElementHandle::find_by_accessible_label(&app, label)
+                .next()
+                .expect("maintenance fact row exists");
+            assert!(
+                row.size().height <= 32.0,
+                "{label} keeps its natural height at {width}x{height}: {:?}",
+                row.size()
+            );
+        }
+        assert!(label_exists(&app, "Last scan: No scan this session"));
+        assert!(!label_exists(&app, "ID conflicts: 0"));
+        assert!(!label_exists(&app, "Failures: 0"));
+        for removed in ["Local storage and privacy", "Pending text"] {
+            assert!(!label_exists(&app, removed), "{removed} is gone");
+        }
+    }
+}
+
+#[test]
+fn settings_shows_conflict_and_failure_rows_and_runs_maintenance_scan() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    for (width, height) in [(360, 600), (1280, 800)] {
+        let app = app_sized(width, height);
+        app.set_show_settings(true);
+        app.set_settings_scan_summary("0 added, 2 updated, 0 moved, 0 deleted".into());
+        app.set_settings_scan_conflicts("1".into());
+        app.set_settings_scan_failures("3".into());
+        assert!(label_exists(
+            &app,
+            "Last scan: 0 added, 2 updated, 0 moved, 0 deleted"
+        ));
+        assert!(label_exists(&app, "ID conflicts: 1"));
+        assert!(label_exists(&app, "Failures: 3"));
+
+        let scanned = Rc::new(Cell::new(0));
+        app.on_rescan_clicked({
+            let scanned = scanned.clone();
+            move || scanned.set(scanned.get() + 1)
+        });
+        app.set_rescan_enabled(true);
+        let scan = ElementHandle::find_by_accessible_label(&app, "Scan library")
+            .next()
+            .expect("maintenance scan is reachable");
+        assert_element_in_viewport(&scan, width, height);
+        scan.invoke_accessible_default_action();
+        assert_eq!(
+            scanned.get(),
+            1,
+            "maintenance Scan invokes the existing rescan operation"
+        );
+
+        let change = ElementHandle::find_by_accessible_label(&app, "Change")
+            .next()
+            .expect("Change is reachable");
+        assert_element_in_viewport(&change, width, height);
+    }
+}
+
+#[test]
+fn disabled_maintenance_scan_does_not_start_a_scan() {
     use std::cell::Cell;
     use std::rc::Rc;
 
     let app = app_sized(360, 600);
     app.set_show_settings(true);
-    assert!(
-        ElementHandle::find_by_accessible_label(&app, "No scan this session")
-            .next()
-            .is_some()
-    );
-
-    app.set_settings_scan_summary(
-        "Latest scan: 0 added, 2 updated, 0 moved, 0 deleted, 1 conflicts, 1 failures".into(),
-    );
-    assert!(
-        ElementHandle::find_by_accessible_label(
-            &app,
-            "Latest scan: 0 added, 2 updated, 0 moved, 0 deleted, 1 conflicts, 1 failures"
-        )
-        .next()
-        .is_some()
-    );
-
     let scanned = Rc::new(Cell::new(false));
     app.on_rescan_clicked({
         let scanned = scanned.clone();
         move || scanned.set(true)
     });
-    app.set_rescan_enabled(true);
+    app.set_rescan_enabled(false);
     ElementHandle::find_by_accessible_label(&app, "Scan library")
         .next()
-        .expect("maintenance scan is reachable")
+        .expect("maintenance scan exists")
         .invoke_accessible_default_action();
-    assert!(
-        scanned.get(),
-        "maintenance Scan invokes the existing rescan operation"
+    assert!(!scanned.get(), "disabled Scan does not run");
+}
+
+#[test]
+fn settings_about_lists_build_facts_in_one_place() {
+    let app = app_sized(360, 600);
+    app.set_show_settings(true);
+    app.set_app_version("9.8.7".into());
+    app.set_app_build_identity("abc1234".into());
+    app.set_sidecar_schema_version("2".into());
+    for label in [
+        "Version: 9.8.7",
+        "Build: abc1234",
+        "License: MIT License",
+        "Repository: https://github.com/eRgo35/notae",
+        "Sidecar schema: 2",
+    ] {
+        assert!(label_exists(&app, label), "About exposes {label}");
+    }
+    assert_eq!(
+        ElementHandle::find_by_accessible_label(&app, "Indexed scores: 0").count(),
+        1,
+        "indexed count appears once, in maintenance"
     );
+}
+
+#[test]
+fn welcome_groups_intro_card_and_action_without_oversized_gaps() {
+    let intro = "Your sheet music, in good order. Notae reads your PDFs where they are and opens them in the PDF app you already use.";
+    for (width, height) in [(360, 800), (1280, 2000)] {
+        let app = app_sized(width, height);
+        app.set_show_setup(true);
+        let paragraph = ElementHandle::find_by_accessible_label(&app, intro)
+            .next()
+            .expect("first-run paragraph exists");
+        let card = ElementHandle::find_by_element_type_name(&app, "Card")
+            .next()
+            .expect("feature card exists");
+        let gap = card.absolute_position().y
+            - (paragraph.absolute_position().y + paragraph.size().height);
+        assert!(
+            (gap - 12.0).abs() < 0.5,
+            "paragraph to card gap is 12 px at {width}x{height}, got {gap}"
+        );
+        assert!(
+            card.size().height <= 200.0,
+            "feature card keeps its natural height at {width}x{height}: {:?}",
+            card.size()
+        );
+        let choose = ElementHandle::find_by_accessible_label(&app, "Choose score folder")
+            .next()
+            .expect("setup action exists");
+        let action_gap = choose.absolute_position().y
+            - (card.absolute_position().y + card.size().height);
+        assert!(
+            action_gap <= 48.0,
+            "action sits right below the card at {width}x{height}, gap {action_gap}"
+        );
+        let title = ElementHandle::find_by_accessible_label(&app, "Welcome to Notae")
+            .next()
+            .expect("title exists");
+        let scroll = ElementHandle::find_by_element_type_name(&app, "ScrollView")
+            .next()
+            .expect("welcome scroll view exists");
+        let card_bottom = card.absolute_position().y + card.size().height;
+        let scroll_bottom = scroll.absolute_position().y + scroll.size().height;
+        assert!(
+            card_bottom + 12.0 <= scroll_bottom + 0.5,
+            "tall window shows the whole card without scrolling at {width}x{height}: card bottom {card_bottom}, scroll bottom {scroll_bottom} (12 px is the Material ScrollView chrome)"
+        );
+        let offset = title.absolute_position().y - scroll.absolute_position().y;
+        assert!(
+            offset <= 64.0 + 96.0 + 20.0 + 0.5,
+            "tall-window top padding is capped at 64 px at {width}x{height}; title offset={offset}"
+        );
+    }
 }
 
 #[test]

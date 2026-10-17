@@ -241,7 +241,10 @@ fn run_worker(
                 query = next_query;
                 scope = next_scope;
                 match project_rows(&local, &query, scope) {
-                    Ok(rows) => send(&events, OperationEvent::SearchRows(rows)),
+                    Ok(rows) => {
+                        send(&events, OperationEvent::SearchRows(rows));
+                        send_indexed_count(&local, &events);
+                    }
                     Err(error) => send(
                         &events,
                         OperationEvent::Failed {
@@ -264,7 +267,10 @@ fn run_worker(
             WorkerCommand::SaveMetadata(metadata) => {
                 match MetadataEditor::new(&local).save(metadata) {
                     Ok(()) => match project_rows(&local, &query, scope) {
-                        Ok(rows) => send(&events, OperationEvent::MetadataSaved { rows }),
+                        Ok(rows) => {
+                            send(&events, OperationEvent::MetadataSaved { rows });
+                            send_indexed_count(&local, &events);
+                        }
                         Err(error) => send(
                             &events,
                             OperationEvent::MetadataFailed {
@@ -312,7 +318,8 @@ fn run_worker(
                         };
                         match project_rows(&local, &query, scope) {
                             Ok(rows) => {
-                                send(&events, OperationEvent::ImportApplied { summary, rows })
+                                send(&events, OperationEvent::ImportApplied { summary, rows });
+                                send_indexed_count(&local, &events);
                             }
                             Err(error) => send(
                                 &events,
@@ -480,6 +487,9 @@ fn run_rescan(
             }
             match project_rows(local, query, scope) {
                 Ok(rows) => {
+                    // Publish the whole-library count before `Completed`, which must stay the last
+                    // event of a successful rescan.
+                    send_indexed_count(local, events);
                     send(events, OperationEvent::CheckingDesktopImport);
                     let desktop_import = check_desktop_import(local, catalog, preview);
                     send(
@@ -594,6 +604,14 @@ fn project_rows(
     view_model.set_query(query.to_owned());
     view_model.set_scope(scope);
     view_model.search()
+}
+
+/// Publishes the whole-library size, which filtered row projections cannot provide.
+fn send_indexed_count(local: &IndexStore, events: &Sender<OperationEvent>) {
+    match local.note_count() {
+        Ok(count) => send(events, OperationEvent::IndexedCount(count)),
+        Err(error) => eprintln!("notae: cannot count indexed scores: {error}"),
+    }
 }
 
 fn send(events: &Sender<OperationEvent>, event: OperationEvent) {

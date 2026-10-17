@@ -51,6 +51,8 @@ pub enum OperationEvent {
     MetadataFailed { reason: String },
     /// An operation failed before it could complete.
     Failed { reason: String },
+    /// The complete library size, independent of the active query or scope.
+    IndexedCount(usize),
 }
 
 /// Outcome of the sidecar check that closes a rescan.

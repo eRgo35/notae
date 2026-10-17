@@ -722,17 +722,22 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_acknowledge_enabled(banner.acknowledge_enabled);
     // The banner reports the running operation or its outcome on every screen. The latest scan
     // result and the pending-text count are standing facts and live in Settings only.
-    let scan_summary = status.latest_rescan.map_or_else(
-        || "No scan this session".to_owned(),
+    let (scan_summary, scan_conflicts, scan_failures) = status.latest_rescan.map_or_else(
+        || ("No scan this session".to_owned(), String::new(), String::new()),
         |summary| {
-            format!(
-                "Latest scan: {} added, {} updated, {} moved, {} deleted, {} conflicts, {} failures",
-                summary.added, summary.updated, summary.moved, summary.deleted,
-                summary.conflicts, summary.failures,
+            (
+                format!(
+                    "{} added, {} updated, {} moved, {} deleted",
+                    summary.added, summary.updated, summary.moved, summary.deleted,
+                ),
+                summary.conflicts.to_string(),
+                summary.failures.to_string(),
             )
         },
     );
     window.set_settings_scan_summary(scan_summary.into());
+    window.set_settings_scan_conflicts(scan_conflicts.into());
+    window.set_settings_scan_failures(scan_failures.into());
     window.set_settings_indexed_count(status.indexed_count.to_string().into());
     window.set_app_version(env!("CARGO_PKG_VERSION").into());
     window.set_app_build_identity(env!("NOTAE_BUILD_ID").into());
