@@ -315,3 +315,34 @@ fn search_scope_chips_scroll_only_when_the_row_overflows() {
         }
     }
 }
+
+#[test]
+fn startup_hides_setup_until_restoration_is_resolved() {
+    let app = app();
+    app.set_show_setup(true);
+    app.set_startup_ready(false);
+
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Loading library")
+            .next()
+            .is_some()
+    );
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Welcome to Notae")
+            .next()
+            .is_none()
+    );
+
+    app.set_startup_ready(true);
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Loading library")
+            .next()
+            .is_none()
+    );
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Welcome to Notae")
+            .next()
+            .is_some(),
+        "the resolved no-saved-root path presents Welcome"
+    );
+}
