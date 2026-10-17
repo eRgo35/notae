@@ -153,12 +153,10 @@ export component SettingsScreen inherits Rectangle {
     in property <float> fraction;
     in property <bool> cancel-enabled;
     in property <bool> acknowledge-enabled;
-    in property <bool> rescan-enabled;
     callback back();
     callback change-library();
     callback cancel();
     callback acknowledge();
-    callback rescan-clicked();
     private property <length> pad: 16px;
     max-height: root.available-height;
     background: Theme.background;
@@ -211,11 +209,7 @@ export component SettingsScreen inherits Rectangle {
                         padding: 16px;
                         alignment: start;
                         spacing: 8px;
-                        HorizontalLayout {
-                            spacing: 8px;
-                            Text { text: "Library maintenance"; color: Theme.foreground; font-size: 18px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
-                            ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
-                        }
+                        Text { text: "Library maintenance"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
                         FactRow { label: "Indexed scores"; value: root.indexed-count; }
                         FactRow { label: "PDFs without extractable text"; value: root.no-text-count; }
                         FactRow { label: "Last scan"; value: root.scan-summary; }
