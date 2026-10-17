@@ -120,12 +120,9 @@ min_sdk_version = 23
 # which is also the latest API the installed NDK can compile against.
 target_sdk_version = 34
 
-# Use the SDK's auto-generated debug keystore for release builds during
-# development. When Notae ships, a real release keystore will land in
-# this slot via the project's release configuration.
-[package.metadata.android.signing.release]
-path = "$HOME/.android/debug.keystore"
-keystore_password = "android"
+# Release signing is deliberately not configured here. `cargo apk2 build --release` takes the
+# key from CARGO_APK_RELEASE_KEYSTORE and CARGO_APK_RELEASE_KEYSTORE_PASSWORD and fails without
+# them; see docs/android-release.md. Debug builds use the SDK's debug keystore.
 
 # The Android crate is the one place in the workspace that has to expose
 # an `extern "C"` symbol — `android_main` — to the
