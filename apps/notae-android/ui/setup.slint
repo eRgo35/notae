@@ -2,6 +2,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Glyph, IconButton, ScanButton, PillButton, Card } from "components.slint";
 import { OperationBanner } from "library.slint";
+import { Scrollbar } from "scrollbar.slint";
 
 component FeatureRow inherits HorizontalLayout {
     in property <string> kind;
@@ -61,12 +62,15 @@ export component WelcomeScreen inherits Rectangle {
         // Tall windows keep the intro, card and action together at the top; none of them stretches.
         alignment: start;
         // Short landscape windows cannot fit the whole introduction, so it scrolls above the fixed action.
-        ScrollView {
+        Rectangle {
             vertical-stretch: 0;
-            // The Material ScrollView reserves a 12 px (8 px bar + 4 px) strip under its viewport even with the bar off.
-            preferred-height: intro.preferred-height + 12px;
-            horizontal-scrollbar-policy: always-off;
-            intro := VerticalLayout {
+            preferred-height: intro.preferred-height;
+            intro-scroll := ScrollView {
+                width: parent.width;
+                height: parent.height;
+                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+                intro := VerticalLayout {
                 width: root.available-width;
                 alignment: start;
                 padding-top: max(16px, min(64px, (root.available-height - 640px) / 6));
@@ -107,6 +111,17 @@ export component WelcomeScreen inherits Rectangle {
                         }
                     }
                 }
+            }
+        }
+            Scrollbar {
+                x: parent.width - self.width;
+                y: 0px;
+                width: 48px;
+                height: parent.height;
+                content-height: intro-scroll.content-height;
+                visible-height: intro-scroll.visible-height;
+                content-y: intro-scroll.content-y;
+                scrolled(y) => { intro-scroll.content-y = y; }
             }
         }
         if root.error-text != "" : Text { text: root.error-text; color: Theme.error; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
@@ -165,9 +180,13 @@ export component SettingsScreen inherits Rectangle {
             cancel => { root.cancel(); }
             acknowledge => { root.acknowledge(); }
         }
-        ScrollView {
+        Rectangle {
             vertical-stretch: 1;
-            horizontal-scrollbar-policy: always-off;
+            body := ScrollView {
+                width: parent.width;
+                height: parent.height;
+                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
+                vertical-scrollbar-policy: ScrollBarPolicy.always-off;
             VerticalLayout {
                 width: min(720px, max(1px, root.available-width - 2 * root.pad));
                 padding-bottom: root.pad;
@@ -224,6 +243,17 @@ export component SettingsScreen inherits Rectangle {
                         Text { text: "Your library stays on this device. Notae does not send data over the network."; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
                     }
                 }
+            }
+        }
+            Scrollbar {
+                x: parent.width - self.width;
+                y: 0px;
+                width: 48px;
+                height: parent.height;
+                content-height: body.content-height;
+                visible-height: body.visible-height;
+                content-y: body.content-y;
+                scrolled(y) => { body.content-y = y; }
             }
         }
     }
