@@ -3497,7 +3497,7 @@ checksum = "0676bb32a98c1a483ce53e500a81ad9c3d5b3f7c920c28c24e9cb0980d0b5bc8"
 
 [[package]]
 name = "notae-android"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "android-activity 0.6.1",
  "atomic-waker",
@@ -3517,7 +3517,7 @@ dependencies = [
 
 [[package]]
 name = "notae-domain"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3526,7 +3526,7 @@ dependencies = [
 
 [[package]]
 name = "notae-index"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "notae-domain",
  "rusqlite",
@@ -3537,7 +3537,7 @@ dependencies = [
 
 [[package]]
 name = "notae-index-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "clap",
  "hayro",
@@ -3552,7 +3552,7 @@ dependencies = [
 
 [[package]]
 name = "notae-ocr"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "image",
  "notae-domain",
