@@ -229,7 +229,7 @@ export component ScoreRow inherits Rectangle {
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: root.score.title;
-    accessible-description: root.score.composer_or_artist + (root.score.text_pending ? ". Text pending" : "") + (root.direct-open ? ". Opens the score" : "");
+    accessible-description: root.score.composer_or_artist + (root.score.text_pending ? ". Text unavailable. Run desktop OCR or import a sidecar." : "") + (root.direct-open ? ". Opens the score" : "");
     accessible-action-default => { if root.interactive && !Theme.modal-open { root.activate(); } }
     forward-focus: input;
     function activate() {
@@ -258,7 +258,7 @@ export component ScoreRow inherits Rectangle {
             }
             if root.score.tags != "" : Text { text: root.score.tags; font-size: 13px; overflow: elide; color: Theme.muted; }
         }
-        if root.score.text_pending : VerticalLayout { alignment: center; StatusBadge { text: "Text pending"; } }
+        if root.score.text_pending : VerticalLayout { alignment: center; StatusBadge { text: "No text yet"; } }
         if root.direct-open : VerticalLayout {
             alignment: center;
             ItemAction {
