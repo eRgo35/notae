@@ -9,9 +9,7 @@ use jni::objects::{JObject, JObjectArray, JString};
 use jni::{EnvUnowned, jni_sig, jni_str};
 
 use crate::AppWindow;
-use crate::voice_search::{recognized_query, voice_result_is_current};
-
-pub const VOICE_REQUEST_CODE: i32 = 0x4e4f;
+use crate::voice_search::{apply_voice_result, VOICE_REQUEST_CODE};
 const RESULT_OK: i32 = -1;
 static WINDOW: OnceLock<Mutex<Option<slint::Weak<AppWindow>>>> = OnceLock::new();
 
@@ -118,24 +116,17 @@ pub extern "system" fn Java_org_notae_android_NotaeActivity_nativeOnVoiceResult<
         })
         .resolve::<jni::errors::ThrowRuntimeExAndDefault>();
 
-    let window = window_slot()
+    let Some(window) = window_slot()
         .lock()
         .ok()
         .and_then(|slot| slot.clone())
-        .filter(|window| window.upgrade().is_some());
-    if !voice_result_is_current(request_code, VOICE_REQUEST_CODE, window.is_some()) {
-        return;
-    }
-    let Some(query) = recognized_query(result_code == RESULT_OK, &phrases).map(str::to_owned)
     else {
         return;
     };
-    if let Some(window) = window {
-        let _ = slint::invoke_from_event_loop(move || {
-            if let Some(window) = window.upgrade() {
-                window.set_search_text(query.clone().into());
-                window.invoke_search_changed(query.into());
-            }
-        });
+    if request_code != VOICE_REQUEST_CODE {
+        return;
     }
+    let _ = window.upgrade_in_event_loop(move |app| {
+        apply_voice_result(&app, request_code, result_code == RESULT_OK, &phrases);
+    });
 }

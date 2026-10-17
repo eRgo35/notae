@@ -1,4 +1,11 @@
-//! Host-testable decisions for results returned by Android speech recognition.
+//! Host-testable routing and application of Android speech-recognition results.
+
+use crate::AppWindow;
+
+/// Reserved in the Activity result-code namespace for voice recognition.
+///
+/// Keep in sync with `NotaeActivity.VOICE_REQUEST_CODE`.
+pub const VOICE_REQUEST_CODE: i32 = 0x4e4f;
 
 /// Returns the first nonblank recognized phrase only for a successful activity result.
 #[must_use]
@@ -12,12 +19,24 @@ pub fn recognized_query(result_ok: bool, results: &[String]) -> Option<&str> {
         .find(|phrase| !phrase.trim().is_empty())
 }
 
-/// Whether a result belongs to the active voice request and a live UI window.
-#[must_use]
-pub fn voice_result_is_current(
+/// Applies a current voice result on the Slint event-loop thread.
+///
+/// Returns `true` only when the query was replaced and search was requested.
+pub fn apply_voice_result(
+    app: &AppWindow,
     request_code: i32,
-    voice_request_code: i32,
-    window_alive: bool,
+    result_ok: bool,
+    results: &[String],
 ) -> bool {
-    request_code == voice_request_code && window_alive
+    if request_code != VOICE_REQUEST_CODE {
+        return false;
+    }
+    let Some(query) = recognized_query(result_ok, results) else {
+        return false;
+    };
+    let query = slint::SharedString::from(query);
+    app.set_search_text(query.clone());
+    app.invoke_search_changed(query);
+    true
 }
+

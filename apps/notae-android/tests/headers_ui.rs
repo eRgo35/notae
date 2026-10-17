@@ -108,7 +108,14 @@ fn settings_actions_stay_in_the_screen_and_expose_folder_change() {
 
 #[test]
 fn search_header_has_no_scan_and_keyboard_hint_is_contextual() {
+    use std::{cell::Cell, rc::Rc};
+
     let app = app_sized(360, 600);
+    let voice_requests = Rc::new(Cell::new(0));
+    let voice_requests_for_callback = Rc::clone(&voice_requests);
+    app.on_voice_search_requested(move || {
+        voice_requests_for_callback.set(voice_requests_for_callback.get() + 1);
+    });
     assert!(
         ElementHandle::find_by_accessible_label(&app, "Scan library")
             .next()
@@ -131,6 +138,9 @@ fn search_header_has_no_scan_and_keyboard_hint_is_contextual() {
         .next()
         .expect("available recognizer exposes voice search");
     assert!(microphone.size().width >= 48.0 && microphone.size().height >= 48.0);
+    microphone.invoke_accessible_default_action();
+    assert_eq!(voice_requests.get(), 1);
+    assert_eq!(app.get_search_text().as_str(), "");
 
     assert_eq!(
         ElementHandle::find_by_accessible_label(&app, "Scan library").count(),
