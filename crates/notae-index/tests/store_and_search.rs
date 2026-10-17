@@ -942,7 +942,7 @@ fn scope_keys_round_trip() {
 }
 
 #[test]
-fn title_search_preserves_polish_letters_and_records_accentless_behavior() {
+fn polish_titles_match_exact_and_case_varied_queries_in_every_scope() {
     let store = IndexStore::open(":memory:").expect("open");
     let polish = note(
         "score.pdf",
@@ -954,18 +954,57 @@ fn title_search_preserves_polish_letters_and_records_accentless_behavior() {
     );
     store.upsert_note(&polish).expect("insert");
 
-    for query in ["łódź", "ŁÓDŹ", "pieśń", "żółta"] {
-        let hits = store
-            .search_in(query, SearchScope::Titles, 10)
-            .expect("search");
-        assert_eq!(hits.len(), 1, "query {query:?}");
-        assert_eq!(hits[0].note.title(), "Łódź — Pieśń żółta");
+    for query in [
+        "Łódź — Pieśń żółta",
+        "łódź",
+        "ŁÓDŹ",
+        "Łódź",
+        "łÓdŹ",
+        "pieśń",
+        "PIEŚŃ",
+        "żółta",
+        "ŻÓŁTA",
+        "ł",
+        "Łó",
+    ] {
+        for scope in [SearchScope::Titles, SearchScope::Everything] {
+            let hits = store.search_in(query, scope, 10).expect("search");
+            assert_eq!(hits.len(), 1, "query {query:?} in {scope:?}");
+            assert_eq!(hits[0].note.title(), "Łódź — Pieśń żółta");
+        }
     }
-    assert!(
-        store
-            .search_in("lodz", SearchScope::Titles, 10)
-            .expect("search")
-            .is_empty(),
-        "FTS accent removal does not fold Ł to l"
+    assert_eq!(store.search("łódź", 10).expect("search").len(), 1);
+}
+
+#[test]
+fn accentless_queries_follow_the_unicode61_folding_rules_without_a_tokenizer_change() {
+    // SQLite FTS5 `unicode61` (the tokenizer in the schema) removes combining
+    // diacritics, so `ó ź ś ń ż ć ą ę` fold to their base letters. `ł`/`Ł` is
+    // a distinct letter with no decomposition and is not folded to `l`.
+    let store = IndexStore::open(":memory:").expect("open");
+    let polish = note(
+        "score.pdf",
+        3,
+        Some(NoteId::new(303)),
+        "Łódź — Pieśń żółta",
+        None,
+        &[],
     );
+    store.upsert_note(&polish).expect("insert");
+    let found = |query: &str| {
+        store
+            .search_in(query, SearchScope::Titles, 10)
+            .expect("search")
+            .len()
+    };
+
+    // Matches: only the diacritics that decompose are folded.
+    assert_eq!(found("łodz"), 1, "ł kept, ó and ź folded");
+    assert_eq!(found("ŁODZ"), 1);
+    assert_eq!(found("piesn"), 1, "ś and ń fold");
+    assert_eq!(found("zołta"), 1, "ż and ó fold, ł kept");
+    // Documented limitation: no fold of ł -> l.
+    assert_eq!(found("lodz"), 0, "ł does not fold to l");
+    assert_eq!(found("Lodz"), 0);
+    assert_eq!(found("zolta"), 0, "ł does not fold to l");
 }
