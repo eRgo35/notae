@@ -9,7 +9,7 @@ use notae_index::{
     IndexStore, OcrText, PdfFile, Reconciler, SearchScope, SidecarImporter, SidecarManifest,
 };
 
-use crate::operations::events::{ImportSummary, OperationEvent, RescanSummary};
+use crate::operations::events::{DesktopImportCheck, ImportSummary, OperationEvent, RescanSummary};
 use crate::operations::import::ImportPreviewViewModel;
 use crate::storage::LibraryCatalog;
 use crate::thumbnails::ThumbnailCache;
@@ -392,6 +392,7 @@ fn run_rescan(
         return;
     }
 
+    send(events, OperationEvent::Indexing { total: files.len() });
     let failures: std::collections::HashMap<_, _> = plan
         .failures()
         .iter()
@@ -419,10 +420,12 @@ fn run_rescan(
     }
     match Reconciler::apply(plan, local) {
         Ok(report) => {
-            send(
-                events,
-                OperationEvent::RescanFinalizing { total: files.len() },
-            );
+            if !files.is_empty() {
+                send(
+                    events,
+                    OperationEvent::RescanFinalizing { total: files.len() },
+                );
+            }
             let mut summary = RescanSummary {
                 added: report.additions().len(),
                 updated: report.updates().len(),
@@ -477,35 +480,16 @@ fn run_rescan(
             }
             match project_rows(local, query, scope) {
                 Ok(rows) => {
-                    send(events, OperationEvent::Completed { summary, rows });
-                    match catalog.sidecar_manifest() {
-                        Ok(Some(manifest)) => {
-                            match SidecarImporter::preview(local, &manifest, catalog) {
-                                Ok(sidecar_preview) => {
-                                    preview.load(sidecar_preview);
-                                    if let Some(summary) = preview.summary() {
-                                        send(
-                                            events,
-                                            OperationEvent::ImportPreviewReady { summary },
-                                        );
-                                    }
-                                }
-                                Err(error) => send(
-                                    events,
-                                    OperationEvent::Failed {
-                                        reason: error.to_string(),
-                                    },
-                                ),
-                            }
-                        }
-                        Ok(None) => {}
-                        Err(error) => send(
-                            events,
-                            OperationEvent::Failed {
-                                reason: error.to_string(),
-                            },
-                        ),
-                    }
+                    send(events, OperationEvent::CheckingDesktopImport);
+                    let desktop_import = check_desktop_import(local, catalog, preview);
+                    send(
+                        events,
+                        OperationEvent::Completed {
+                            summary,
+                            rows,
+                            desktop_import,
+                        },
+                    );
                 }
                 Err(error) => send(
                     events,
@@ -523,6 +507,35 @@ fn run_rescan(
         ),
     }
     busy.store(false, Ordering::Release);
+}
+
+/// Looks for a desktop sidecar and prepares its read-only preview.
+fn check_desktop_import(
+    local: &IndexStore,
+    catalog: &dyn LibraryCatalog,
+    preview: &mut ImportPreviewViewModel,
+) -> DesktopImportCheck {
+    let manifest = match catalog.sidecar_manifest() {
+        Ok(Some(manifest)) => manifest,
+        Ok(None) => return DesktopImportCheck::NoSidecar,
+        Err(error) => {
+            return DesktopImportCheck::Failed {
+                reason: error.to_string(),
+            };
+        }
+    };
+    match SidecarImporter::preview(local, &manifest, catalog) {
+        Ok(sidecar_preview) => {
+            preview.load(sidecar_preview);
+            match preview.summary() {
+                Some(summary) => DesktopImportCheck::PreviewReady(summary),
+                None => DesktopImportCheck::NoSidecar,
+            }
+        }
+        Err(error) => DesktopImportCheck::Failed {
+            reason: error.to_string(),
+        },
+    }
 }
 
 fn stop_if_cancelled(

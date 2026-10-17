@@ -18,10 +18,12 @@ use std::rc::Rc;
 use std::sync::Mutex;
 
 use crate::operations::events::{
-    ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
+    DesktopImportCheck, ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
 };
 use crate::recent::RecentScores;
-use crate::state::{AppController, AppState, EventError, Transition, UiEvent};
+use crate::state::{
+    AppController, AppState, EventError, OperationState, RescanPhase, Transition, UiEvent,
+};
 use crate::storage::StorageState;
 use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::{LibrarySection, section_rows};
@@ -74,7 +76,11 @@ pub struct UiModel {
     selected_note: Option<String>,
     thumbnails: Option<ThumbnailCache>,
     startup_presentation: StartupPresentation,
+    result_shown_at: Option<std::time::Instant>,
 }
+
+/// How long a successful operation result stays in the banner before it clears itself.
+pub const RESULT_VISIBLE_FOR: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl UiModel {
     /// Builds a `UiModel` around the supplied controller and storage
@@ -98,6 +104,7 @@ impl UiModel {
             selected_note: None,
             thumbnails: None,
             startup_presentation: StartupPresentation::Restoring,
+            result_shown_at: None,
         }
     }
 
@@ -319,16 +326,28 @@ impl UiModel {
     /// Applies a worker event to the UI-owned state and row projection.
     pub fn apply_operation_event(&mut self, event: OperationEvent) -> Result<(), EventError> {
         match event {
-            OperationEvent::Started => self.controller.update_rescan_progress(0, 0)?,
+            OperationEvent::Started => {
+                self.controller.set_rescan_phase(RescanPhase::Enumerating)?
+            }
+            OperationEvent::Indexing { total } => self
+                .controller
+                .set_rescan_phase(RescanPhase::Indexing { total })?,
             OperationEvent::RescanFinalizing { total } => {
                 self.controller.begin_rescan_finalization(total)?;
             }
+            OperationEvent::CheckingDesktopImport => self
+                .controller
+                .set_rescan_phase(RescanPhase::CheckingDesktopImport)?,
             OperationEvent::Progress { completed, total } => {
                 self.controller.update_rescan_progress(completed, total)?;
             }
             OperationEvent::FileSucceeded { .. } | OperationEvent::FileFailed { .. } => {}
             OperationEvent::Canceled => self.controller.cancel_operation()?,
-            OperationEvent::Completed { summary, rows } => {
+            OperationEvent::Completed {
+                summary,
+                rows,
+                desktop_import,
+            } => {
                 self.latest_rescan = Some(summary);
                 self.indexed_count = self
                     .indexed_count
@@ -336,7 +355,22 @@ impl UiModel {
                     .saturating_sub(summary.deleted);
                 self.search_rows = rows;
                 self.startup_presentation = StartupPresentation::Ready;
-                self.controller.complete_operation(rescan_summary(&summary));
+                match desktop_import {
+                    DesktopImportCheck::NoSidecar => {
+                        self.controller.complete_operation(rescan_summary(&summary));
+                    }
+                    DesktopImportCheck::PreviewReady(preview) => {
+                        let candidate_count = preview.new + preview.changed;
+                        self.import_preview_summary = Some(preview);
+                        self.controller.import_preview_ready(candidate_count);
+                    }
+                    DesktopImportCheck::Failed { reason } => {
+                        self.controller.fail_operation(format!(
+                            "Scan finished ({}), but the desktop sidecar check failed: {reason}",
+                            rescan_summary(&summary)
+                        ));
+                    }
+                }
             }
             OperationEvent::ImportPreviewReady { summary } => {
                 let candidate_count = summary.new + summary.changed;
@@ -372,6 +406,29 @@ impl UiModel {
             }
         }
         Ok(())
+    }
+
+    /// Clears a successful result once it has been visible for [`RESULT_VISIBLE_FOR`].
+    ///
+    /// `now` is sampled by the caller; the first call that sees a result starts its clock.
+    /// Failures and pending decisions are never cleared here. Returns whether the banner
+    /// changed.
+    pub fn expire_finished_result(&mut self, now: std::time::Instant) -> bool {
+        if !matches!(
+            self.controller.state().operation(),
+            OperationState::Completed { .. }
+        ) {
+            self.result_shown_at = None;
+            return false;
+        }
+        let shown_at = *self.result_shown_at.get_or_insert(now);
+        if now.saturating_duration_since(shown_at) < RESULT_VISIBLE_FOR {
+            return false;
+        }
+        self.result_shown_at = None;
+        self.controller
+            .dispatch(UiEvent::AcknowledgeOperation)
+            .is_ok()
     }
 
     /// Whether a new library scan can be started from shared app chrome.
@@ -422,6 +479,72 @@ impl UiModel {
 impl Default for UiModel {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// What the shared operation banner shows, projected once from [`OperationState`] so
+/// Library, Search and Settings always agree.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OperationBanner {
+    /// One-line description of the work or outcome; empty when idle.
+    pub text: String,
+    /// Whether work is in progress.
+    pub busy: bool,
+    /// Whether the banner reports a failure.
+    pub failed: bool,
+    /// Determinate progress in `0.0..=1.0`; `0.0` means indeterminate.
+    pub fraction: f32,
+    /// Whether the user can still cancel.
+    pub cancel_enabled: bool,
+    /// Whether the user can dismiss an outcome.
+    pub acknowledge_enabled: bool,
+}
+
+impl OperationBanner {
+    /// Projects `operation` into banner fields.
+    #[must_use]
+    pub fn project(operation: &OperationState) -> Self {
+        let text = match operation {
+            OperationState::Idle => String::new(),
+            OperationState::Rescan { phase } => match phase {
+                RescanPhase::Enumerating => "Scanning library…".to_owned(),
+                RescanPhase::Indexing { total: 1 } => "Indexing 1 PDF…".to_owned(),
+                RescanPhase::Indexing { total } => format!("Indexing {total} PDFs…"),
+                RescanPhase::ReadingText { completed, total } => {
+                    format!("Reading PDF text and thumbnails: {completed} of {total}")
+                }
+                RescanPhase::CheckingDesktopImport => "Checking for a desktop sidecar…".to_owned(),
+            },
+            OperationState::ImportPreviewPending { candidate_count } => {
+                format!("Review {candidate_count} proposed sidecar changes")
+            }
+            OperationState::ImportApplying => "Applying sidecar import…".to_owned(),
+            OperationState::Completed { summary } => format!("Finished: {summary}"),
+            OperationState::Failed { reason } => reason.clone(),
+        };
+        let fraction = match operation {
+            OperationState::Rescan {
+                phase: RescanPhase::ReadingText { completed, total },
+            } if *total > 0 => (*completed as f32 / *total as f32).clamp(0.0, 1.0),
+            _ => 0.0,
+        };
+        Self {
+            text,
+            busy: matches!(
+                operation,
+                OperationState::Rescan { .. } | OperationState::ImportApplying
+            ),
+            failed: matches!(operation, OperationState::Failed { .. }),
+            fraction,
+            cancel_enabled: matches!(
+                operation,
+                OperationState::Rescan { phase } if phase.is_cancellable()
+            ),
+            acknowledge_enabled: matches!(
+                operation,
+                OperationState::Completed { .. } | OperationState::Failed { .. }
+            ),
+        }
     }
 }
 

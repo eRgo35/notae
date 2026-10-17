@@ -60,7 +60,7 @@ component ScoreCard inherits Rectangle {
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: root.score.title;
-    accessible-description: root.score.composer_or_artist + (root.score.text_pending ? ". Text pending" : "");
+    accessible-description: root.score.composer_or_artist + (root.score.text_pending ? ". Text unavailable. Run desktop OCR or import a sidecar." : "");
     accessible-action-default => { if !Theme.modal-open { root.clicked(); } }
     forward-focus: input;
     VerticalLayout {
@@ -69,7 +69,7 @@ component ScoreCard inherits Rectangle {
         Rectangle {
             vertical-stretch: 1;
             PagePreview { score: root.score; width: parent.width; height: parent.height; }
-            if root.score.text_pending : StatusBadge { text: "Text pending"; x: 8px; y: parent.height - self.height - 8px; }
+            if root.score.text_pending : StatusBadge { text: "No text yet"; x: 8px; y: parent.height - self.height - 8px; }
         }
         VerticalLayout {
             spacing: 2px;
@@ -225,7 +225,7 @@ export component LibraryScreen inherits Rectangle {
         return key == "all" ? "Scan your library folder to add the PDFs it contains."
             : key == "recent" ? "Scores you open appear here."
             : key == "needs-details" ? "Scores missing a number or composer appear here."
-            : key == "text-pending" ? "Scores still waiting for searchable text appear here."
+            : key == "text-pending" ? "Scores without searchable text appear here until desktop OCR or a sidecar import provides it."
             : "No scores by this composer are in the library.";
     }
     callback section-selected(string);
