@@ -98,7 +98,6 @@ export component AppWindow inherits Window {
     in property <string> library_title: "All scores";
     in property <string> library_subtitle: "";
     in property <LibraryRow> selected;
-    in property <string> selected_key: "";
     // The previewed score's neighbours in the current section; empty at a boundary.
     in property <string> selected_previous_key: "";
     in property <string> selected_next_key: "";
@@ -264,7 +263,6 @@ export component AppWindow inherits Window {
                 title: root.library_title;
                 subtitle: root.library_subtitle;
                 rows: root.library_rows;
-                selected-key: root.selected_key;
                 // A layout (not parent.width: `parent` here is LibraryScreen) fills the preview slot.
                 VerticalLayout {
                     ScoreDetails {
@@ -295,6 +293,7 @@ export component AppWindow inherits Window {
                 cancel-clicked => { root.cancel_rescan_clicked(); }
                 acknowledge-clicked => { root.acknowledge_clicked(); }
                 score-selected(key) => { root.score_selected(key); }
+                score-opened(path, key) => { root.open_pdf_requested(path, key); }
             }
             }
             if root.configured && root.startup-ready && root.show_search : ScreenTransition {
