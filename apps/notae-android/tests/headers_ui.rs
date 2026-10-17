@@ -110,8 +110,8 @@ fn settings_actions_stay_in_the_screen_and_expose_folder_change() {
     );
     assert_eq!(
         ElementHandle::find_by_accessible_label(&app, "Scan library").count(),
-        1,
-        "Settings has one maintenance Scan action and no header Scan action"
+        0,
+        "Settings has no Scan action; the Library header owns Scan (#29)"
     );
 }
 
@@ -133,7 +133,8 @@ fn search_header_has_no_scan_and_keyboard_hint_is_contextual() {
     app.set_show_settings(true);
     assert_eq!(
         ElementHandle::find_by_accessible_label(&app, "Scan library").count(),
-        1
+        0,
+        "Settings has no Scan action"
     );
     app.set_show_settings(false);
     app.set_show_search(true);
@@ -332,10 +333,7 @@ fn settings_without_scan_summary_states_absence_and_hides_result_rows() {
 }
 
 #[test]
-fn settings_shows_conflict_and_failure_rows_and_runs_maintenance_scan() {
-    use std::cell::Cell;
-    use std::rc::Rc;
-
+fn settings_shows_conflict_and_failure_rows_without_a_scan_action() {
     for (width, height) in [(360, 600), (1280, 800)] {
         let app = app_sized(width, height);
         app.set_show_settings(true);
@@ -348,22 +346,9 @@ fn settings_shows_conflict_and_failure_rows_and_runs_maintenance_scan() {
         ));
         assert!(label_exists(&app, "ID conflicts: 1"));
         assert!(label_exists(&app, "Failures: 3"));
-
-        let scanned = Rc::new(Cell::new(0));
-        app.on_rescan_clicked({
-            let scanned = scanned.clone();
-            move || scanned.set(scanned.get() + 1)
-        });
-        app.set_rescan_enabled(true);
-        let scan = ElementHandle::find_by_accessible_label(&app, "Scan library")
-            .next()
-            .expect("maintenance scan is reachable");
-        assert_element_in_viewport(&scan, width, height);
-        scan.invoke_accessible_default_action();
-        assert_eq!(
-            scanned.get(),
-            1,
-            "maintenance Scan invokes the existing rescan operation"
+        assert!(
+            !label_exists(&app, "Scan library"),
+            "Settings has no Scan action at {width}x{height}"
         );
 
         let change = ElementHandle::find_by_accessible_label(&app, "Change")
@@ -374,23 +359,63 @@ fn settings_shows_conflict_and_failure_rows_and_runs_maintenance_scan() {
 }
 
 #[test]
-fn disabled_maintenance_scan_does_not_start_a_scan() {
-    use std::cell::Cell;
-    use std::rc::Rc;
+fn maintenance_card_keeps_the_density_of_the_other_settings_cards() {
+    for (width, height) in [(360, 800), (1280, 800)] {
+        let app = app_sized(width, height);
+        app.set_show_settings(true);
+        app.set_settings_indexed_count("70".into());
+        app.set_settings_scan_summary("3 added, 2 updated, 1 moved, 4 deleted".into());
+        app.set_settings_scan_conflicts("1".into());
+        app.set_settings_scan_failures("3".into());
+        let maintenance = card_containing(&app, "Indexed scores: 70");
+        let folder = card_containing(&app, "Change");
+        let about = card_containing(&app, "License: MIT License");
+        let rows: f32 = [
+            "Indexed scores: 70",
+            "Last scan: 3 added, 2 updated, 1 moved, 4 deleted",
+            "ID conflicts: 1",
+            "Failures: 3",
+        ]
+        .iter()
+        .map(|label| {
+            ElementHandle::find_by_accessible_label(&app, label)
+                .next()
+                .unwrap_or_else(|| panic!("{label} exists"))
+                .size()
+                .height
+        })
+        .sum();
+        // 16 px padding twice, one title line and 8 px between the five children: any more is a
+        // stretched card (#29).
+        let natural = 32.0 + 30.0 + rows + 8.0 * 4.0;
+        assert!(
+            maintenance.size().height <= natural,
+            "{width}x{height}: maintenance card hugs its rows ({natural}): {:?}",
+            maintenance.size()
+        );
+        assert!(folder.size().height <= 128.0);
+        assert_eq!(maintenance.size().width, folder.size().width);
+        assert_eq!(maintenance.size().width, about.size().width);
+    }
+}
 
-    let app = app_sized(360, 600);
-    app.set_show_settings(true);
-    let scanned = Rc::new(Cell::new(false));
-    app.on_rescan_clicked({
-        let scanned = scanned.clone();
-        move || scanned.set(true)
-    });
-    app.set_rescan_enabled(false);
-    ElementHandle::find_by_accessible_label(&app, "Scan library")
+/// The smallest `Card` whose bounds contain the element with this accessible label.
+fn card_containing(app: &notae_android::AppWindow, label: &str) -> ElementHandle {
+    let target = ElementHandle::find_by_accessible_label(app, label)
         .next()
-        .expect("maintenance scan exists")
-        .invoke_accessible_default_action();
-    assert!(!scanned.get(), "disabled Scan does not run");
+        .unwrap_or_else(|| panic!("{label} exists"));
+    let at = target.absolute_position();
+    ElementHandle::find_by_element_type_name(app, "Card")
+        .filter(|card| {
+            let origin = card.absolute_position();
+            let size = card.size();
+            at.x >= origin.x
+                && at.y >= origin.y
+                && at.x < origin.x + size.width
+                && at.y < origin.y + size.height
+        })
+        .min_by(|a, b| a.size().height.total_cmp(&b.size().height))
+        .unwrap_or_else(|| panic!("a Card contains {label}"))
 }
 
 #[test]
@@ -469,14 +494,17 @@ fn welcome_groups_intro_card_and_action_without_oversized_gaps() {
 }
 
 #[test]
-fn maintenance_scan_is_available_when_settings_is_open() {
+fn settings_has_no_maintenance_scan_while_library_keeps_exactly_one() {
     let app = app();
+    assert_eq!(
+        ElementHandle::find_by_element_type_name(&app, "ScanButton").count(),
+        1,
+        "the Library header owns the only Scan action"
+    );
     app.set_show_settings(true);
-
-    assert!(
-        ElementHandle::find_by_accessible_label(&app, "Scan library")
-            .next()
-            .is_some()
+    assert_eq!(
+        ElementHandle::find_by_element_type_name(&app, "ScanButton").count(),
+        0
     );
 }
 

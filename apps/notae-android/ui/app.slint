@@ -363,8 +363,6 @@ export component AppWindow inherits Window {
                 fraction: root.operation_fraction;
                 cancel-enabled: root.cancel_enabled;
                 acknowledge-enabled: root.acknowledge_enabled;
-                rescan-enabled: root.rescan_enabled;
-                rescan-clicked => { root.rescan_clicked(); }
                 cancel => { root.cancel_rescan_clicked(); }
                 acknowledge => { root.acknowledge_clicked(); }
                 change-library => { root.setup_chosen(); }

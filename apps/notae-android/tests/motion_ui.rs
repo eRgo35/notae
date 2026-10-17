@@ -78,7 +78,7 @@ fn rapid_screen_changes_keep_the_latest_logical_destination_visible() {
     app.set_show_search(false);
     app.set_show_settings(true);
     assert_eq!(
-        ElementHandle::find_by_accessible_label(&app, "Scan library").count(),
+        ElementHandle::find_by_accessible_label(&app, "Indexed scores: 0").count(),
         1,
         "Settings is the logical destination"
     );
