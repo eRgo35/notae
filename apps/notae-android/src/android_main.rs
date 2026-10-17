@@ -106,6 +106,9 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
     model
         .borrow_mut()
         .set_recent_path(index_dir.join("recent.txt"));
+    model
+        .borrow_mut()
+        .set_ui_prefs_path(index_dir.join("ui-prefs.txt"));
     let operations = Rc::new(RefCell::new(None::<OperationController>));
 
     // Sanity-check the contract on a fresh install. If the smoke test
@@ -459,6 +462,28 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
 
     {
         let model = Rc::clone(&model);
+        window.on_library_view_changed(move |view| {
+            let view = if view.as_str() == "list" {
+                crate::ui_prefs::LibraryView::List
+            } else {
+                crate::ui_prefs::LibraryView::Grid
+            };
+            if let Err(error) = model.borrow_mut().set_library_view(view) {
+                eprintln!("notae: cannot save UI preferences: {error}");
+            }
+        });
+    }
+    {
+        let model = Rc::clone(&model);
+        window.on_sidebar_collapsed_changed(move |portrait, collapsed| {
+            if let Err(error) = model.borrow_mut().set_sidebar_collapsed(portrait, collapsed) {
+                eprintln!("notae: cannot save UI preferences: {error}");
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
         let window_weak = window.as_weak();
         window.on_score_selected(move |key| {
             model.borrow_mut().select_note(Some(key.to_string()));
@@ -748,6 +773,10 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_operation_failed(banner.failed);
     window.set_operation_busy(banner.busy);
     window.set_operation_fraction(banner.fraction);
+    let prefs = model.ui_prefs();
+    window.set_library_list_view(prefs.library_view == crate::ui_prefs::LibraryView::List);
+    window.set_sidebar_collapsed_portrait(prefs.sidebar_collapsed_portrait);
+    window.set_sidebar_collapsed_landscape(prefs.sidebar_collapsed_landscape);
     window.set_search_text(state.search().query.as_str().into());
     window.set_search_scope(state.search().scope.key().into());
     window.set_show_settings(matches!(state.screen(), Screen::Settings));
