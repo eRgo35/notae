@@ -37,12 +37,12 @@ mod android_main;
 pub mod ui;
 pub mod ui_prefs;
 
+pub mod motion;
 pub mod operations;
 pub mod pdf_intent;
 pub mod pdf_pages;
 pub mod thumbnails;
 pub mod voice_search;
-pub mod motion;
 
 // Pull in the Slint-generated bindings for `app.slint`. The build script
 // in `build.rs` writes this file as `$OUT_DIR/app.rs`; the path uses

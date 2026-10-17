@@ -456,7 +456,10 @@ mod tests {
         let state = PickerState::new();
         for _ in 0..=VOICE_REQUEST_CODE {
             let code = state.next_request_code();
-            assert_ne!(code, VOICE_REQUEST_CODE, "voice recognition reserves this code");
+            assert_ne!(
+                code, VOICE_REQUEST_CODE,
+                "voice recognition reserves this code"
+            );
         }
     }
 }

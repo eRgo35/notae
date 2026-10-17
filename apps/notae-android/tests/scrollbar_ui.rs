@@ -414,7 +414,10 @@ fn library_preview_and_settings_show_no_default_scrollbar() {
     assert_eq!(count(&app, "ScrollBar"), 0, "Settings has no standard bar");
     let body = only(&app, "ScrollView");
     wheel(&app, center(&body), -500.0);
-    assert!(thumb_shown(&app), "Settings shows the themed thumb when it scrolls");
+    assert!(
+        thumb_shown(&app),
+        "Settings shows the themed thumb when it scrolls"
+    );
 
     // Control: the modal sheet has not adopted the themed bar, which proves the query works.
     app.set_show_settings(false);
@@ -434,7 +437,10 @@ fn welcome_scrolls_with_the_themed_bar_in_a_short_window() {
     assert_eq!(count(&app, "ScrollBar"), 0, "Welcome has no standard bar");
     let body = only(&app, "ScrollView");
     wheel(&app, center(&body), -300.0);
-    assert!(thumb_shown(&app), "Welcome shows the themed thumb when it scrolls");
+    assert!(
+        thumb_shown(&app),
+        "Welcome shows the themed thumb when it scrolls"
+    );
 }
 
 fn count(app: &AppWindow, type_name: &str) -> usize {
