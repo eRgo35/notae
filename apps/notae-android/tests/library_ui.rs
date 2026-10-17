@@ -116,7 +116,7 @@ fn list_row_describes_composer_and_pending_text_like_the_card() {
     let row = labelled(&app, "Score 2").expect("row is exposed");
     assert_eq!(
         row.accessible_description().as_deref(),
-        Some("Composer 2. Text pending")
+        Some("Composer 2. Text unavailable. Run desktop OCR or import a sidecar.")
     );
 }
 
