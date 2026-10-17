@@ -50,6 +50,7 @@ use std::task::{Context, Poll};
 use atomic_waker::AtomicWaker;
 
 use crate::storage::{LibraryRoot, LibraryRootId, StorageError};
+use crate::voice_search::VOICE_REQUEST_CODE;
 
 const RESULT_OK: i32 = -1;
 const RESULT_CANCELED: i32 = 0;
@@ -166,9 +167,8 @@ pub fn new_picker_state() -> PickerState {
 }
 
 impl PickerState {
-    /// Builds a fresh, empty state. The hash maps start empty, the
-    /// counter starts at `1` (so a request code of `0` — `RESULT_CANCELED`
-    /// in Java — never accidentally collides).
+    /// Builds a fresh, empty state. Picker request codes start at `1`,
+    /// leaving `0` reserved and never allocating the voice-recognition code.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -180,10 +180,15 @@ impl PickerState {
         }
     }
 
-    /// Reserves a fresh request code, returning the value to use in
-    /// the JNI `startActivityForResult` call. Starts at `1`.
+    /// Reserves a fresh request code for `startActivityForResult`.
+    /// The voice-recognition code is reserved for the separate JNI route.
     pub fn next_request_code(&self) -> i32 {
-        self.inner.next_code.fetch_add(1, Ordering::Relaxed)
+        loop {
+            let code = self.inner.next_code.fetch_add(1, Ordering::Relaxed);
+            if code != VOICE_REQUEST_CODE {
+                return code;
+            }
+        }
     }
 
     /// Records the waker the future registered under `request_code`.
@@ -444,5 +449,14 @@ mod tests {
         assert!(first >= 1);
         assert!(second > first);
         assert!(third > second);
+    }
+
+    #[test]
+    fn request_codes_do_not_collide_with_voice_recognition() {
+        let state = PickerState::new();
+        for _ in 0..=VOICE_REQUEST_CODE {
+            let code = state.next_request_code();
+            assert_ne!(code, VOICE_REQUEST_CODE, "voice recognition reserves this code");
+        }
     }
 }
