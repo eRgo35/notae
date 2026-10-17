@@ -102,6 +102,10 @@ export component AppWindow inherits Window {
     in property <bool> details_open: false;
     in property <bool> show_search: false;
     in property <string> search_scope: "everything";
+    // Persisted by Rust (`UiPrefs`); toggled here so the layout reacts at once.
+    in-out property <bool> library_list_view: false;
+    in-out property <bool> sidebar_collapsed_portrait: true;
+    in-out property <bool> sidebar_collapsed_landscape: false;
     callback settings_clicked();
     callback settings_closed();
     callback setup_chosen();
@@ -122,12 +126,18 @@ export component AppWindow inherits Window {
     callback search_scope_changed(string);
     callback search_result_chosen(string);
     callback voice_search_requested();
+    callback library_view_changed(string);
+    callback sidebar_collapsed_changed(bool, bool);
     callback score_selected(string);
     in property <bool> operation_failed: false;
     in property <bool> animations-enabled: true;
     in property <bool> application-active: true;
     private property <bool> configured: !root.show_setup && !root.show_recovery;
     private property <bool> expanded: root.window-width >= 840px;
+    // Portrait is a logical window taller than wide; each orientation keeps its own sidebar choice.
+    private property <bool> portrait: root.height > root.width;
+    private property <bool> sidebar-collapsed: root.portrait ? root.sidebar_collapsed_portrait : root.sidebar_collapsed_landscape;
+    private property <bool> sidebar-visible: root.expanded && !root.sidebar-collapsed;
     // Widths are derived from the window, never from child layouts, so adaptive screens cannot loop.
     private property <length> window-width: root.width - root.safe-area-insets.left - root.safe-area-insets.right;
     private property <length> details-width: root.window-width < 840px ? root.window-width - 32px
@@ -227,6 +237,21 @@ export component AppWindow inherits Window {
                 available-width: root.window-width;
                 vertical-stretch: 1;
                 expanded: root.expanded;
+                sidebar-visible: root.sidebar-visible;
+                list-view: root.library_list_view;
+                sidebar-toggle-clicked => {
+                    if root.portrait {
+                        root.sidebar_collapsed_portrait = !root.sidebar_collapsed_portrait;
+                        root.sidebar_collapsed_changed(true, root.sidebar_collapsed_portrait);
+                    } else {
+                        root.sidebar_collapsed_landscape = !root.sidebar_collapsed_landscape;
+                        root.sidebar_collapsed_changed(false, root.sidebar_collapsed_landscape);
+                    }
+                }
+                view-toggle-clicked => {
+                    root.library_list_view = !root.library_list_view;
+                    root.library_view_changed(root.library_list_view ? "list" : "grid");
+                }
                 sections: root.sections;
                 composers: root.composers;
                 selected-section: root.selected_section;
