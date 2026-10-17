@@ -3,9 +3,9 @@
 ![Notae app icon](docs/images/notae-icon.png)
 
 Notae keeps a personal sheet-music library organized: index PDFs on a Linux
-desktop, then browse, search, and annotate them on an Android tablet. The
-desktop and tablet need not share a filesystem; they exchange a versioned
-sidecar manifest.
+desktop, then browse and search them on an Android tablet. Open PDFs in an
+external Android viewer to read or annotate them. The desktop and tablet need
+not share a filesystem; they exchange a versioned sidecar manifest.
 
 [![CI](https://github.com/eRgo35/notae/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eRgo35/notae/actions/workflows/ci.yml)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -21,13 +21,14 @@ sidecar manifest.
   OCR where needed.
 - **Share a portable sidecar:** write a versioned manifest beside the index;
   transfer it through your preferred file-sharing method.
-- **Browse and search on tablet:** import the sidecar, find scores by title,
-  composer, lyrics, or tags, and read or annotate PDFs on Android.
+- **Browse and search on tablet:** import the sidecar and find scores by title,
+  composer, lyrics, or tags. Open PDFs in an external Android viewer to read
+  or annotate them.
 
 ```mermaid
 flowchart LR
     D["Linux desktop<br/>PDF library + notae-index"] -->|writes| S[".notae sidecar<br/>index.sqlite + manifest.json"]
-    S -->|transfer files| T["Android tablet<br/>import, browse, search, annotate"]
+    S -->|transfer files| T["Android tablet<br/>import, browse, search, open in external viewer"]
 ```
 
 ## Quick start
