@@ -8,7 +8,7 @@ The UI follows a fixed One UI palette (not wallpaper-derived): background is `#F
 
 The launcher icon is the blue folded score page with a music note (source `apps/notae-android/android/icon-source.png`): a light-blue (`#EAF1FF`) adaptive background, a transparent foreground PNG sized for the safe zone, a note-and-sheet monochrome mask for themed icons, and the same art as the in-app logo (`ui/assets/notae.png`). `android/res` contains legacy density PNGs, API-26 adaptive resources, and an API-33 monochrome themed icon. Cargo's Android resource metadata, not the reference manifest alone, packages them.
 
-The redesigned UI has no animated transitions or state effects. Controls respond immediately to input, modal sheets open and close immediately, and progress changes only when worker events report new progress.
+The UI now uses shared 120ms and 220ms transitions for screens, sheets and state effects; Android animator scale zero disables motion. `motion_ui` covers intermediate/final states and zero-scale behavior, and the API 35 AVD was smoke-tested for Search entry with scale 1 and 0. Tablet visual acceptance in both themes, on-device sheet/section transitions and dropped-frame review remain pending.
 
 ## Window insets and the "app offset downward" report
 
