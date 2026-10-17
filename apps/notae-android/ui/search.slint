@@ -2,6 +2,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Glyph, IconButton, SearchField, Card, Chip, ActionInput } from "components.slint";
 import { OperationBanner } from "library.slint";
+import { Scrollbar } from "scrollbar.slint";
 import { LibraryRow, PagePreview } from "library.slint";
 
 component ResultRow inherits Rectangle {
@@ -159,12 +160,24 @@ export component SearchScreen inherits Rectangle {
         }
         if root.query != "" && root.rows.length > 0 : Card {
             vertical-stretch: 1;
-            ListView {
+            results := ListView {
                 x: 8px;
                 y: 8px;
                 width: parent.width - 16px;
                 height: parent.height - 16px;
+                vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+                horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
                 for score in root.rows : ResultRow { score: score; clicked => { root.focus-initial-pending = false; root.chosen(score.note_key); } }
+            }
+            Scrollbar {
+                x: parent.width - self.width;
+                y: results.y;
+                width: 48px;
+                height: results.height;
+                content-height: results.content-height;
+                visible-height: results.visible-height;
+                content-y: results.content-y;
+                scrolled(y) => { results.content-y = y; }
             }
         }
         if root.query != "" && root.rows.length == 0 : VerticalLayout {

@@ -389,7 +389,7 @@ fn previous_and_next_follow_the_neighbours_and_disable_at_boundaries() {
             Some(false)
         );
     }
-    assert_eq!(labelled(&app, "Score 1 of 1").is_some(), true);
+    assert!(labelled(&app, "Score 1 of 1").is_some());
 }
 
 #[test]
@@ -876,13 +876,11 @@ fn dismissing_the_menu_never_activates_the_item_underneath() {
 
     // Android Back / Escape.
     open_menu(&app);
-    for key in [Key::Escape] {
-        let text: SharedString = key.into();
-        app.window()
-            .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
-        app.window()
-            .dispatch_event(WindowEvent::KeyReleased { text });
-    }
+    let text: SharedString = Key::Escape.into();
+    app.window()
+        .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+    app.window()
+        .dispatch_event(WindowEvent::KeyReleased { text });
     assert!(!menu_is_open(&app));
     assert!(!app.get_library_menu_open());
 

@@ -1,0 +1,101 @@
+// One themed, draggable, auto-hiding scrollbar for every long surface (Library grid/list,
+// score preview, Search results).
+//
+// The owner keeps the single source of truth: it binds `content-y` one way from its scrolling
+// element and applies the value requested through `scrolled` when the thumb is dragged. The
+// thumb therefore never chases the viewport through a two-way binding.
+import { Theme } from "components.slint";
+
+export component Scrollbar inherits Rectangle {
+    // Total scrollable content height and the visible part of it (Slint 1.18 `content-*` naming).
+    in property <length> content-height;
+    in property <length> visible-height;
+    // Scroll offset as Slint reports it: 0 at the top, negative when scrolled down.
+    in property <length> content-y;
+    in property <length> min-thumb-height: 48px;
+    // The requested new `content-y` while the thumb is dragged, or after a page step.
+    callback scrolled(length);
+
+    // Geometry. All inputs are logical lengths; the track is this element's own height.
+    out property <length> scroll-range: max(root.content-height - root.visible-height, 0px);
+    out property <length> thumb-height: min(root.height, max(root.min-thumb-height,
+        root.height * (root.visible-height / max(root.content-height, 1px))));
+    out property <length> thumb-range: max(root.height - root.thumb-height, 0px);
+    out property <length> thumb-y: root.scroll-range <= 0px ? 0px
+        : clamp(-root.content-y / root.scroll-range, 0, 1) * root.thumb-range;
+    // Fades out 1.2 s after the last movement, but never while it is dragged or hovered.
+    out property <bool> dragging: thumb.pressed;
+    out property <bool> shown: root.scroll-range > 0px && (root.active || root.dragging || thumb.has-hover);
+    private property <bool> active: false;
+
+    changed content-y => {
+        root.active = true;
+        idle.restart();
+    }
+
+    function request-thumb-y(target: length) {
+        if root.thumb-range <= 0px {
+            root.scrolled(0px);
+        } else {
+            root.scrolled(-clamp(target / root.thumb-range, 0, 1) * root.scroll-range);
+        }
+    }
+
+    idle := Timer {
+        interval: 1200ms;
+        running: root.active && !root.dragging;
+        triggered => { root.active = false; }
+    }
+
+    // The thin visible thumb.
+    Rectangle {
+        x: root.width - self.width - 4px;
+        y: root.thumb-y + 6px;
+        width: root.dragging ? 8px : 4px;
+        height: max(root.thumb-height - 12px, 0px);
+        border-radius: self.width / 2;
+        background: root.dragging ? Theme.accent : Theme.muted;
+        opacity: root.shown ? 1 : 0;
+        animate opacity { duration: Theme.motion-short; easing: ease-in-out; }
+        animate width { duration: Theme.motion-short; easing: ease-in-out; }
+    }
+
+    // The 48 px wide touch target, exactly as tall as the thumb (never shorter than 48 px).
+    thumb := TouchArea {
+        property <length> start-thumb-y;
+        property <length> start-pointer-y;
+        x: root.width - self.width;
+        y: root.thumb-y;
+        width: 48px;
+        height: root.thumb-height;
+        enabled: root.shown;
+        mouse-cursor: default;
+        accessible-role: slider;
+        accessible-label: "Scroll position";
+        accessible-enabled: root.shown;
+        accessible-value: root.thumb-range <= 0px ? 0 : round(root.thumb-y / root.thumb-range * 100);
+        accessible-value-minimum: 0;
+        accessible-value-maximum: 100;
+        accessible-value-step: 10;
+        accessible-action-increment => { root.scrolled(max(root.content-y - root.visible-height * 0.9, -root.scroll-range)); }
+        accessible-action-decrement => { root.scrolled(min(root.content-y + root.visible-height * 0.9, 0px)); }
+        // Pointer events (not `changed pressed`) are delivered synchronously, so a drag can never
+        // start from stale coordinates.
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down {
+                // Pointer position in the scrollbar's own coordinates, so the thumb moving under
+                // the finger cannot change what a drag means.
+                self.start-thumb-y = root.thumb-y;
+                self.start-pointer-y = root.thumb-y + self.mouse-y;
+            } else if event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel {
+                root.active = true;
+                idle.restart();
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.request-thumb-y(self.start-thumb-y + (root.thumb-y + self.mouse-y) - self.start-pointer-y);
+            }
+        }
+    }
+}
