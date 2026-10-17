@@ -25,6 +25,7 @@ pub fn app_sized(width: u32, height: u32) -> AppWindow {
         .set_size(slint::LogicalSize::new(width as f32, height as f32));
     app.set_show_setup(false);
     app.set_show_recovery(false);
+    app.set_startup_ready(true);
     app.set_library_display_name("Test library".into());
     app
 }

@@ -3,6 +3,9 @@ import { Palette } from "std-widgets.slint";
 
 export global Theme {
     in-out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    in-out property <bool> animations-enabled: true;
+    out property <duration> motion-short: root.animations-enabled ? 120ms : 0ms;
+    out property <duration> motion-medium: root.animations-enabled ? 220ms : 0ms;
     out property <color> background: root.dark ? #000000 : #F3F3F5;
     out property <color> card: root.dark ? #17171A : #FFFFFF;
     out property <color> field: root.dark ? #26262B : #EBEBEF;
@@ -23,6 +26,17 @@ export global Theme {
     in-out property <bool> modal-open: false;
 }
 
+export component ScreenTransition inherits Rectangle {
+    in property <bool> animations-enabled: Theme.animations-enabled;
+    private property <float> progress: root.animations-enabled ? 0 : 1;
+    background: transparent;
+    opacity: root.animations-enabled ? root.progress : 1;
+    animate progress { duration: root.animations-enabled ? Theme.motion-medium : 0ms; easing: ease-in-out; }
+    init => { root.progress = 1; }
+    out property <bool> finished: root.progress >= 1;
+    @children
+}
+
 export component Glyph inherits Image {
     in property <string> kind;
     in property <color> ink: Theme.muted;
@@ -30,6 +44,7 @@ export component Glyph inherits Image {
     height: 24px;
     image-fit: contain;
     colorize: root.ink;
+    animate colorize { duration: Theme.motion-short; easing: ease-in-out; }
     accessible-role: none;
     source: root.kind == "search" ? @image-url("material-icons/search.svg")
         : root.kind == "folder" ? @image-url("material-icons/folder.svg")
@@ -95,6 +110,7 @@ export component PillButton inherits Rectangle {
     callback clicked();
     private property <color> ink: !root.enabled ? Theme.muted
         : root.primary ? Theme.on-accent : Theme.foreground;
+    animate ink { duration: Theme.motion-short; easing: ease-in-out; }
 
     min-width: max(52px, content.min-width);
     preferred-width: self.min-width;
@@ -106,6 +122,7 @@ export component PillButton inherits Rectangle {
     background: !root.enabled ? Theme.field
         : root.primary ? Theme.accent
         : root.tonal ? Theme.field : transparent;
+    animate background { duration: Theme.motion-short; easing: ease-in-out; }
     border-width: 0px;
     forward-focus: input;
     accessible-role: button;
@@ -120,6 +137,7 @@ export component PillButton inherits Rectangle {
         background: root.ink;
         opacity: !root.enabled ? 0 : input.pressed || input.keyboard-pressed ? 0.12
             : input.has-hover ? 0.08 : 0;
+        animate opacity { duration: Theme.motion-short; easing: ease-in-out; }
     }
     content := HorizontalLayout {
         padding-left: 28px;
@@ -184,6 +202,8 @@ export component IconButton inherits Rectangle {
     vertical-stretch: 0;
     border-radius: 24px;
     background: root.selected && root.enabled ? Theme.accent-soft : transparent;
+    animate ink { duration: Theme.motion-short; easing: ease-in-out; }
+    animate background { duration: Theme.motion-short; easing: ease-in-out; }
     border-width: input.has-focus && root.enabled ? 2px : 0px;
     border-color: Theme.accent;
     forward-focus: input;
@@ -199,6 +219,7 @@ export component IconButton inherits Rectangle {
         background: root.ink;
         opacity: !root.enabled ? 0 : input.pressed || input.keyboard-pressed ? 0.12
             : input.has-hover ? 0.08 : 0;
+        animate opacity { duration: Theme.motion-short; easing: ease-in-out; }
     }
     Image {
         x: 12px;
@@ -237,6 +258,8 @@ export component SearchField inherits Rectangle {
     in property <bool> hardware-keyboard-present: false;
     private property <bool> effective-enabled: root.enabled && (!Theme.modal-open || root.in-dialog);
     callback edited(string);
+    callback focus-state-changed(bool);
+    out property <bool> has-focus: editor.has-focus;
 
     min-width: 160px;
     min-height: 52px;
@@ -245,6 +268,7 @@ export component SearchField inherits Rectangle {
     border-radius: 26px;
     background: Theme.field;
     border-width: editor.has-focus ? 2px : 0px;
+    changed has-focus => { root.focus-state-changed(root.has-focus); }
     border-color: Theme.accent;
     clip: true;
     forward-focus: editor;
@@ -300,7 +324,6 @@ export component SearchField inherits Rectangle {
             selection-foreground-color: Theme.on-accent;
             vertical-alignment: center;
             horizontal-alignment: left;
-            accessible-role: none;
             cursor-position-changed(position) => {
                 if position.x + self.scroll-x < 0px {
                     self.scroll-x = -position.x;
@@ -308,7 +331,6 @@ export component SearchField inherits Rectangle {
                     self.scroll-x = parent.width - position.x - self.text-cursor-width;
                 }
             }
-            edited => { root.edited(self.text); }
         }
     }
     if root.text == "" && editor.preedit-text == "" && root.hardware-keyboard-present : Rectangle {
@@ -456,6 +478,7 @@ export component NavRow inherits Rectangle {
     background: root.selected ? Theme.accent-soft
         : input.pressed ? Theme.field : transparent;
     border-width: input.has-focus ? 2px : 0px;
+    animate background { duration: Theme.motion-short; easing: ease-in-out; }
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: root.label;
@@ -483,12 +506,14 @@ export component NavRow inherits Rectangle {
             font-size: 16px;
             font-weight: root.selected ? 600 : 400;
             color: root.selected ? Theme.on-accent-soft : Theme.foreground;
+            animate color { duration: Theme.motion-short; easing: ease-in-out; }
         }
         if root.count >= 0 : Text {
             text: root.count;
             vertical-alignment: center;
             font-size: 14px;
             color: root.selected ? Theme.on-accent-soft : Theme.muted;
+            animate color { duration: Theme.motion-short; easing: ease-in-out; }
         }
     }
     input := ActionInput {
@@ -517,6 +542,7 @@ export component Chip inherits Rectangle {
         height: 40px;
         border-radius: 20px;
         background: root.selected ? Theme.accent : Theme.card;
+        animate background { duration: Theme.motion-short; easing: ease-in-out; }
         border-width: input.has-focus ? 2px : 0px;
         border-color: root.selected ? Theme.on-accent : Theme.accent;
         label-text := Text {
@@ -524,6 +550,7 @@ export component Chip inherits Rectangle {
             font-size: 15px;
             font-weight: 500;
             color: root.selected ? Theme.on-accent : Theme.foreground;
+            animate color { duration: Theme.motion-short; easing: ease-in-out; }
             vertical-alignment: center;
             horizontal-alignment: center;
         }

@@ -12,6 +12,7 @@ import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.os.ParcelFileDescriptor;
 import android.view.View;
 import android.view.Window;
@@ -26,6 +27,8 @@ public final class NotaeActivity extends NativeActivity {
 
     private native void nativeOnVoiceResult(int requestCode, int resultCode, String[] results);
     private native void nativeOnKeyboardConfigurationChanged(boolean present);
+    private native void nativeOnAnimatorDurationScaleChanged(float scale);
+    private native void nativeOnApplicationActiveChanged(boolean active);
 
     public boolean hasVoiceRecognizer() {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -52,6 +55,12 @@ public final class NotaeActivity extends NativeActivity {
         Configuration configuration = getResources().getConfiguration();
         return configuration.keyboard == Configuration.KEYBOARD_QWERTY
             && configuration.hardKeyboardHidden == Configuration.HARDKEYBOARDHIDDEN_NO;
+    }
+    public float readAnimatorDurationScale() {
+        return Settings.Global.getFloat(
+            getContentResolver(),
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1.0f);
     }
 
     private native void nativeOnActivityResult(
@@ -103,6 +112,19 @@ public final class NotaeActivity extends NativeActivity {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         nativeOnKeyboardConfigurationChanged(hasHardwareKeyboard());
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        nativeOnApplicationActiveChanged(true);
+        nativeOnAnimatorDurationScaleChanged(readAnimatorDurationScale());
+    }
+
+    @Override
+    protected void onPause() {
+        nativeOnApplicationActiveChanged(false);
+        super.onPause();
     }
 
 
