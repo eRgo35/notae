@@ -106,6 +106,7 @@ export component AppWindow inherits Window {
     in property <bool> show_search: false;
     in property <string> search_scope: "everything";
     // Persisted by Rust (`UiPrefs`); toggled here so the layout reacts at once.
+    in-out property <bool> library_menu_open: false;
     in-out property <bool> library_list_view: false;
     in-out property <bool> sidebar_collapsed_portrait: true;
     in-out property <bool> sidebar_collapsed_landscape: false;
@@ -175,6 +176,10 @@ export component AppWindow inherits Window {
         height: root.height;
         key-pressed(event) => {
             if root.modal-open || !root.configured { return reject; }
+            if root.library_menu_open {
+                if event.text == Key.Escape || event.text == Key.Back { root.library_menu_open = false; return accept; }
+                return reject;
+            }
             if event.modifiers.control && (event.text == "k" || event.text == "K") {
                 if !root.show_search { root.search_opened(); }
                 return accept;
@@ -294,6 +299,8 @@ export component AppWindow inherits Window {
                 acknowledge-clicked => { root.acknowledge_clicked(); }
                 score-selected(key) => { root.score_selected(key); }
                 score-opened(path, key) => { root.open_pdf_requested(path, key); }
+                edit-requested(key) => { root.edit_metadata_requested(key); }
+                menu-open <=> root.library_menu_open;
             }
             }
             if root.configured && root.startup-ready && root.show_search : ScreenTransition {
