@@ -12,7 +12,7 @@ This document records where the project actually stands so work can resume witho
 - [Milestone v0.2.0](https://github.com/eRgo35/notae/milestone/1) contains the twenty tablet-feedback issues (#1–#20) plus [CI repair #21](https://github.com/eRgo35/notae/issues/21).
 - [Release implementation plan](plans/2026-10-15-notae-v0.2.0-release.md) defines sequencing, shared interfaces, all issue acceptance gates and publication checks.
 - Product implementation is in progress on the isolated feature branch. Issue #1 startup work is implemented and locally verified; no version bump, tag or published release is claimed.
-- #1: cold-start on disposable API 35 AVD reached a populated Library without a Welcome/empty-Library frame; generated state/UI tests cover loading and no-root Welcome. See `docs/android-debugging.md`.
+- #1: commit `7c8cd0e` implements startup state and passes focused state/UI/storage/smoke tests (33 total) plus x86_64/arm64 APK builds. Cold-start evidence and the no-root Welcome regression are recorded in `docs/android-debugging.md`.
 - #2: reproduced on the scratch AVD with first-focus field height 640 logical px before settling to 52 px after IME viewport change; no fix selected/implemented yet. Physical first-caret acceptance remains open. #13 Samsung Keyboard/Polish-layout acceptance remains untested and open.
 - #17 requires actual TalkBack acceptance; accessible labels/host tests do not establish operability on Android.
 - CI repair #21 remains under its existing status below; no issue closure or release action is claimed.
