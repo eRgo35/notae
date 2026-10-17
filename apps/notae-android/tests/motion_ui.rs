@@ -1,7 +1,6 @@
 mod support;
 
 use i_slint_backend_testing::ElementHandle;
-use slint::ComponentHandle;
 use support::app;
 use std::time::Duration;
 
