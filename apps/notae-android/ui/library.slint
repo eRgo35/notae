@@ -1,6 +1,7 @@
 // One UI library: side panel, large title, thumbnail grid and operation banner.
 import { ListView } from "std-widgets.slint";
 import { Theme, Glyph, IconButton, ScanButton, PillButton, Card, NavRow, Chip, StatusBadge, ActionInput } from "components.slint";
+import { Scrollbar } from "scrollbar.slint";
 
 export struct LibraryRow {
     id: string,
@@ -191,6 +192,12 @@ component ScoreGrid inherits Flickable {
     private property <length> cell-width: (self.width - (self.columns - 1) * 16px) / self.columns;
     private property <length> cell-height: self.cell-width * 1.3 + 64px;
     content-height: ceil(root.rows.length / root.columns) * (self.cell-height + 20px);
+    // Content shrinking (filters, rotation) must not leave the viewport scrolled past the end.
+    function clamp-scroll() {
+        root.content-y = clamp(root.content-y, -max(root.content-height - root.height, 0px), 0px);
+    }
+    changed content-height => { root.clamp-scroll(); }
+    changed height => { root.clamp-scroll(); }
     for row[index] in root.rows : ScoreCard {
         x: mod(index, root.columns) * (root.cell-width + 16px);
         y: floor(index / root.columns) * (root.cell-height + 20px);
@@ -506,7 +513,7 @@ export component LibraryScreen inherits Rectangle {
                 if !root.details-open && root.rows.length > 0 && !root.list-view : Card {
                     width: parent.width;
                     height: parent.height;
-                    ScoreGrid {
+                    grid := ScoreGrid {
                         x: 20px;
                         y: 20px;
                         width: parent.width - 40px;
@@ -519,15 +526,27 @@ export component LibraryScreen inherits Rectangle {
                         edit(key) => { root.edit-requested(key); }
                         long-pressed(row) => { root.show-menu(row); }
                     }
+                    Scrollbar {
+                        x: parent.width - self.width;
+                        y: grid.y;
+                        width: 48px;
+                        height: grid.height;
+                        content-height: grid.content-height;
+                        visible-height: grid.height;
+                        content-y: grid.content-y;
+                        scrolled(y) => { grid.content-y = y; }
+                    }
                 }
                 if !root.details-open && root.rows.length > 0 && root.list-view : Card {
                     width: parent.width;
                     height: parent.height;
-                    ListView {
+                    list := ListView {
                         x: 8px;
                         y: 8px;
                         width: parent.width - 16px;
                         height: parent.height - 16px;
+                        vertical-scrollbar-policy: ScrollBarPolicy.always-off;
+                        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
                         for row in root.rows : ScoreRow {
                             score: row;
                             direct-open: root.direct-open;
@@ -537,6 +556,16 @@ export component LibraryScreen inherits Rectangle {
                             edit => { root.edit-requested(row.note_key); }
                             long-pressed => { root.show-menu(row); }
                         }
+                    }
+                    Scrollbar {
+                        x: parent.width - self.width;
+                        y: list.y;
+                        width: 48px;
+                        height: list.height;
+                        content-height: list.content-height;
+                        visible-height: list.visible-height;
+                        content-y: list.content-y;
+                        scrolled(y) => { list.content-y = y; }
                     }
                 }
                 if !root.details-open && root.rows.length == 0 : Card {
