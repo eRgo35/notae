@@ -4,6 +4,9 @@ targets = ["x86_64-unknown-linux-gnu", "aarch64-linux-android"]
 ignore = [
     { id = "RUSTSEC-2024-0436", reason = "paste is a transitive dependency of Slint's image/AVIF stack; cargo-deny reports no safe upgrade." },
     { id = "RUSTSEC-2026-0192", reason = "ttf-parser is a transitive dependency of Slint's desktop accessibility stack; cargo-deny reports no safe upgrade." },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant_derive is an unmaintained-notice transitive dependency of Slint's desktop accessibility stack (accesskit_unix via i-slint-backend-winit); absent from the aarch64-linux-android graph; cargo-deny reports no safe upgrade." },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names is an unmaintained-notice transitive dependency of Slint's desktop accessibility stack (accesskit_unix via i-slint-backend-winit); absent from the aarch64-linux-android graph; cargo-deny reports no safe upgrade." },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant is an unmaintained-notice transitive dependency of Slint's desktop accessibility stack (accesskit_unix via i-slint-backend-winit); absent from the aarch64-linux-android graph; cargo-deny reports no safe upgrade." },
 ]
 [licenses]
 confidence-threshold = 0.8
