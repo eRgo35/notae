@@ -52,13 +52,22 @@ flowchart LR
    network.
 
 The screenshots below show actual emulator captures. They are labeled
-**emulator** because a tablet capture was not available for this README.
+**emulator** because they were taken on an Android emulator, not a physical
+tablet; tablet captures may replace them after on-device verification.
 
 ### Search (Android emulator)
 
 ![Search results in the Android emulator](docs/images/search-emulator.png)
 
 *Search for “Hex” with the non-sensitive fixture score `hex-contents`.*
+
+### Score preview (Android emulator)
+
+![Full-width score preview in the Android emulator](docs/images/preview-emulator.png)
+
+*Full-width preview of the non-sensitive fixture score “Autumn Leaves”, with
+previous/next browsing. Android emulator capture, not a tablet screenshot.
+Notae shows the preview and details; the PDF opens in an external viewer.*
 
 ## Workspace layout
 
