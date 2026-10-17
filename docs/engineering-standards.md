@@ -35,7 +35,7 @@ CI runs the same arm64 target check; the signed release build runs only from a v
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `ci.yml` | push to `main`, pull requests, manual, reusable | The host gates above and the arm64 compile gate, with `contents: read`. Superseded branch/PR runs are cancelled; `main` runs are not. The host job frees preinstalled runner directories and sets `CARGO_INCREMENTAL=0` because the build fills the runner disk, and prints `df`/`du` diagnostics. No `target/` cache is used for the same reason. |
+| `ci.yml` | push to `main`, pull requests, manual, reusable | The host gates above and the arm64 compile gate, with `contents: read`. Superseded branch/PR runs are cancelled; `main` runs are not. The host job frees preinstalled runner directories and sets `CARGO_INCREMENTAL=0` because the build fills the runner disk, and prints `df`/`du` diagnostics. A `cargo clean` step runs before `cargo llvm-cov`, which rebuilds the workspace instrumented in `target/llvm-cov-target` and otherwise exhausts the disk (`ld: Bus error`, run 39052021642). No `target/` cache is used for the same reason. |
 | `release.yml` | `v*` tag, manual with a tag | Verifies the tag, reruns `ci.yml` on the tagged commit, builds and signs the arm64 APK from repository secrets, verifies it and attaches it to the GitHub Release. See [`android-release.md`](android-release.md) for the secrets, the release procedure and the debug-key/release-key incompatibility. |
 | `audit.yml` | weekly, manual | `cargo deny check advisories` so new RustSec entries surface without code changes; never blocks a release. |
 | `dependabot.yml` | weekly | Grouped Cargo and GitHub Actions update PRs, merged by hand. |
