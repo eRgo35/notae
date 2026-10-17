@@ -1,8 +1,8 @@
 # Notae Implementation State
 
-**As of:** 2026-10-15
-**Branch:** `main`
-**Implementation baseline:** `4876f98` (Android Settings/Search layout, Back and thumbnails); documentation baseline `13869a2`.
+**As of:** 2026-10-17
+**Branch:** `feat/v0.2.0-work` (`$HOME/Work/notae/.worktrees/notae-v0.2.0-work`)
+**Implementation baseline:** `d69f73f` (local worktree setup based on the release branch); documentation baseline `13869a2`.
 **Remote:** `https://github.com/eRgo35/notae.git`
 
 This document records where the project actually stands so work can resume without re-deriving context. It is a status record, not a design document.
@@ -11,11 +11,12 @@ This document records where the project actually stands so work can resume witho
 
 - [Milestone v0.2.0](https://github.com/eRgo35/notae/milestone/1) contains the twenty tablet-feedback issues (#1–#20) plus [CI repair #21](https://github.com/eRgo35/notae/issues/21).
 - [Release implementation plan](plans/2026-10-15-notae-v0.2.0-release.md) defines sequencing, shared interfaces, all issue acceptance gates and publication checks.
-- Application work remains preparation-only: no UI fixes, version bump, tag or release are claimed. CI repair #21 is now in implementation at the maintainer's request.
-- CI repair #21: host Fontconfig setup, supported Android SDK packages, deterministic directory-replacement fixture, and installed English Tesseract data are implemented locally. The latest CI run is still blocked on the missing tessdata prerequisite; focused CLI tests pass locally. Push and successful Actions completion remain outstanding, so #21 stays open.
-- #2 (first-focus Android caret) and #13 (Polish IME input) are tablet-led investigations. #17 requires actual TalkBack acceptance; Slint Android accessibility support must be verified, not inferred from accessible labels.
-- New issue requirements supersede earlier “no animations”, “Scan in every header”, split-preview and Settings pending/privacy instructions. See the release plan for the final contracts.
-- The sections below are historical implementation records; their old branch/build references are not the current release baseline.
+- Product implementation is in progress on the isolated feature branch. Issue #1 startup work is implemented and locally verified; no version bump, tag or published release is claimed.
+- #1: cold-start on disposable API 35 AVD reached a populated Library without a Welcome/empty-Library frame; generated state/UI tests cover loading and no-root Welcome. See `docs/android-debugging.md`.
+- #2: reproduced on the scratch AVD with first-focus field height 640 logical px before settling to 52 px after IME viewport change; no fix selected/implemented yet. Physical first-caret acceptance remains open. #13 Samsung Keyboard/Polish-layout acceptance remains untested and open.
+- #17 requires actual TalkBack acceptance; accessible labels/host tests do not establish operability on Android.
+- CI repair #21 remains under its existing status below; no issue closure or release action is claimed.
+- New issue requirements supersede earlier “no animations”, “Scan in every header”, split-preview and Settings pending/privacy instructions. See the release plan for final contracts.
 
 ## Documents
 
@@ -25,7 +26,7 @@ This document records where the project actually stands so work can resume witho
 | Core plan (Tasks 1-5) | `docs/superpowers/plans/2026-10-09-notae-core-index-plan.md` | Complete |
 | Linux indexer plan (Tasks 1-5) | `docs/superpowers/plans/2026-10-09-notae-linux-indexer-plan.md` | Complete |
 | Android app plan (Tasks 1-7) | `docs/superpowers/plans/2026-10-09-notae-android-plan.md` | Complete |
-| v0.2.0 tablet-feedback release plan | `docs/superpowers/plans/2026-10-15-notae-v0.2.0-release.md` | Prepared; implementation not started |
+| v0.2.0 tablet-feedback release plan | `docs/superpowers/plans/2026-10-15-notae-v0.2.0-release.md` | In progress; #1 locally complete; remaining issues and device/release gates open |
 
 ## Product decisions already settled
 

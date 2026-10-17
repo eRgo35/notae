@@ -69,6 +69,11 @@ cargo apk2 build -p notae-android --target x86_64-linux-android
 - [ ] Run the focused tests and Android x86_64/arm64 build checks named by existing Task 4. Exercise the changed paths in portrait/landscape and light/dark emulator configurations; capture screenshots/logs and update `docs/android-debugging.md`.
 - [ ] Keep Samsung Keyboard and first-caret acceptance explicitly open if it cannot be reproduced on this API 35 AVD; do not close #2 or #13 based on Gboard/host-only behavior.
 
+Issue-level progress:
+- [x] #1 saved-root startup: implementation, transition tests, generated no-root Welcome gate, cold-start AVD evidence, docs and focused checks completed; see `docs/android-debugging.md`.
+- [ ] #2 first-focus caret: AVD geometry diagnosis recorded; Opus-reviewed fix and physical Samsung caret acceptance remain outstanding.
+- [ ] #3 chip geometry and #13 Polish IME: current-surface verification remains outstanding; #13 requires Samsung Keyboard/hardware-layout evidence.
+
 ### Task 2: Shared accessible motion (#10)
 
 **Files:** Existing plan Task 5 file list and C2 interface in `docs/superpowers/plans/2026-10-15-notae-v0.2.0-release.md`.

@@ -38,6 +38,17 @@ use crate::ui::search::SearchRow;
 /// They are kept distinct so the storage layer can be swapped (host
 /// test vs. device) without touching the state machine the UI
 /// consumes.
+/// What the app may present while a previously selected library is restored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StartupPresentation {
+    /// The saved library permission has not been checked yet.
+    Restoring,
+    /// Storage is ready, but the first worker row projection has not arrived.
+    LoadingRows,
+    /// Setup, recovery, the library, or an actionable error may be presented.
+    Ready,
+}
+
 /// A UI-facing snapshot of operation and library status.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiStatus {
@@ -62,6 +73,7 @@ pub struct UiModel {
     recent_path: Option<PathBuf>,
     selected_note: Option<String>,
     thumbnails: Option<ThumbnailCache>,
+    startup_presentation: StartupPresentation,
 }
 
 impl UiModel {
@@ -85,6 +97,7 @@ impl UiModel {
             recent_path: None,
             selected_note: None,
             thumbnails: None,
+            startup_presentation: StartupPresentation::Restoring,
         }
     }
 
@@ -115,10 +128,30 @@ impl UiModel {
         &mut self.controller
     }
 
+    /// The current startup presentation gate.
+    #[must_use]
+    pub fn startup_presentation(&self) -> StartupPresentation {
+        self.startup_presentation
+    }
+
+    /// Shows setup after the platform confirms there is no saved library root.
+    pub fn finish_startup_without_library(&mut self) {
+        if self.startup_presentation == StartupPresentation::Restoring {
+            self.startup_presentation = StartupPresentation::Ready;
+        }
+    }
+
     /// Updates the storage state in place.
     // Storage state is UI-thread-owned; this lock protects brief, callback-free access.
     #[allow(clippy::expect_used)]
     pub fn set_storage(&mut self, state: StorageState) {
+        if self.startup_presentation == StartupPresentation::Restoring {
+            self.startup_presentation = if matches!(&state, StorageState::Ready(_)) {
+                StartupPresentation::LoadingRows
+            } else {
+                StartupPresentation::Ready
+            };
+        }
         if matches!(
             self.controller.state().screen(),
             crate::state::Screen::Setup(_)
@@ -302,6 +335,7 @@ impl UiModel {
                     .saturating_add(summary.added)
                     .saturating_sub(summary.deleted);
                 self.search_rows = rows;
+                self.startup_presentation = StartupPresentation::Ready;
                 self.controller.complete_operation(rescan_summary(&summary));
             }
             OperationEvent::ImportPreviewReady { summary } => {
@@ -318,6 +352,7 @@ impl UiModel {
                 if self.controller.state().search().query.is_empty() {
                     self.indexed_count = rows.len();
                 }
+                self.startup_presentation = StartupPresentation::Ready;
                 self.search_rows = rows;
             }
             OperationEvent::MetadataLoaded(metadata) => {
@@ -331,7 +366,10 @@ impl UiModel {
             OperationEvent::MetadataFailed { reason } => {
                 self.metadata_error = Some(reason);
             }
-            OperationEvent::Failed { reason } => self.controller.fail_operation(reason),
+            OperationEvent::Failed { reason } => {
+                self.controller.fail_operation(reason);
+                self.startup_presentation = StartupPresentation::Ready;
+            }
         }
         Ok(())
     }

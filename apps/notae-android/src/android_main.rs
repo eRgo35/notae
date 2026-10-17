@@ -559,7 +559,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         );
     }
 
-    // Reopen the folder chosen in a previous run so the library survives restarts.
+    // Keep the initial frame neutral while a persisted folder and its first rows are restored.
     if let Some(root) = provider.persisted_root() {
         apply_picker_result(
             &model,
@@ -570,6 +570,9 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
             &thumbnails,
             Ok(root),
         );
+    } else {
+        model.borrow_mut().finish_startup_without_library();
+        sync_window(&window, &model.borrow());
     }
 
     // 5. UI loop. Returns `Ok(())` when the activity is destroyed by the
@@ -702,6 +705,9 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_show_recovery(show_recovery);
     window.set_recovery_folder_name(recovery_folder_name.into());
     window.set_setup_error_text(setup_error.into());
+    window.set_startup_ready(
+        model.startup_presentation() == crate::ui::StartupPresentation::Ready,
+    );
     let status = model.status();
     let operation = &status.operation;
     window.set_rescan_enabled(model.rescan_enabled());
@@ -973,6 +979,7 @@ fn apply_picker_result(
     thumbnails: &ThumbnailCache,
     result: Result<crate::storage::LibraryRoot, StorageError>,
 ) {
+    let mut initial_query_error = None;
     let next_state = match result {
         Ok(root) => match provider.reopen(&root) {
             Ok(source) => match IndexStore::open(index_path) {
@@ -989,7 +996,7 @@ fn apply_picker_result(
                             if let Some(controller) = operations.borrow().as_ref()
                                 && let Err(error) = controller.set_query(query)
                             {
-                                eprintln!("notae: initial library query failed: {error}");
+                                initial_query_error = Some(error.to_string());
                             }
                             StorageState::Ready(source)
                         }
@@ -1021,6 +1028,11 @@ fn apply_picker_result(
         }
     };
     model.borrow_mut().set_storage(next_state);
+    if let Some(reason) = initial_query_error {
+        let _ = model.borrow_mut().apply_operation_event(
+            crate::operations::events::OperationEvent::Failed { reason },
+        );
+    }
     if let Some(window) = window_weak.upgrade() {
         sync_window(&window, &model.borrow());
     }

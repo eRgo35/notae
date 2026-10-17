@@ -7,6 +7,7 @@ import android.content.ActivityNotFoundException;
 import android.speech.RecognizerIntent;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
 import android.os.Build;
@@ -74,6 +75,8 @@ public final class NotaeActivity extends NativeActivity {
         }
         boolean night = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
             == Configuration.UI_MODE_NIGHT_YES;
+        getWindow().setBackgroundDrawable(new ColorDrawable(
+            night ? Color.BLACK : Color.rgb(243, 243, 245)));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController controller = getWindow().getInsetsController();
             if (controller != null) {

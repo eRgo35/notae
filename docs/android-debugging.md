@@ -121,12 +121,12 @@ Build artifacts and runtime behavior must come from the same source revision. Ca
 
 ## Emulator setup
 
-The API 35 Google APIs x86_64 system image and `notae-api35-tablet` AVD are installed under `$HOME/Android/Sdk`; the AVD uses a 2560×1600 tablet display and KVM acceleration. SDK licenses have been accepted. The current emulator is `emulator-5554`. To start the existing AVD:
+The API 35 Google APIs x86_64 image is installed with two tablet AVDs: `notae-api35-tablet` contains an existing library with 70 scores and must be preserved; `notae-test-api35` is the disposable scratch AVD for product testing. The scratch AVD uses a 2560×1600 display and KVM acceleration; in this session it ran as `emulator-5554`. SDK licenses have been accepted. Start only the scratch AVD for app interaction:
 
 ```sh
 export ANDROID_SDK_ROOT=$HOME/Android/Sdk
 export PATH="$ANDROID_SDK_ROOT/emulator:$ANDROID_SDK_ROOT/platform-tools:$PATH"
-emulator -avd notae-api35-tablet
+emulator -avd notae-test-api35
 ```
 
 On a fresh SDK, install the command-line tools, review and accept licenses interactively, then install the image and create the AVD:
@@ -151,7 +151,15 @@ Redesign smoke checks: in light and dark (`adb shell cmd uimode night yes|no`) c
 
 Build separately with `--target x86_64-linux-android` for the emulator and `--target aarch64-linux-android` for the Samsung tablet. Both builds overwrite `target/release/apk/notae-android.apk`; keep a separate copy before building the other architecture.
 
-Prior debugging notes: the following emulator/tablet observations predate the current One UI redesign and must not be taken as its verification. They record earlier picker, search, metadata, and Settings behavior only. No current redesign emulator or tablet visual checks have been performed; both remain deferred pending user go-ahead.
+## v0.2.0 Task 1 startup evidence (#1)
+
+Captured 2026-10-17 on the disposable `notae-test-api35` AVD (`emulator-5554`): Android API 35, x86_64, 2560×1600 physical at 320 dpi (1280×800 logical). The installed development APK cold-started into a populated Library with one non-sensitive fixture row; the recording shows the Android splash followed by Library and no Welcome or empty-library frame. Evidence is `target/emulator-evidence/task-1/cold-start.mp4` (ignored). ADB crash-buffer inspection found no Notae crash; an unrelated Nexus Launcher entry is not attributed to Notae.
+
+The generated UI regression keeps the loading state visible and Welcome hidden while a no-root restore is unresolved, then asserts that resolving to no saved root shows Welcome. The startup-state target separately covers a saved root through loading and empty first rows, no saved root, a revoked grant, a failed initial query, and a storage error.
+
+Issue #2 is separately reproduced on the scratch AVD: Search's first focus observed the field at y=48 logical px with height 640; after the IME request and viewport resize it settled at y=48, height 52. The caret glyph appeared near physical y=150 while the blue cursor handle was around y=800. This establishes a focus-before-final-layout condition for the emulator; a diagnosed fix and physical Samsung Keyboard acceptance are still outstanding. Issue #13 has not been tested with Samsung Keyboard or a hardware Polish layout and remains a physical gate. No ADB text injection is used as IME acceptance evidence. No real Galaxy Tab data or app state was accessed.
+
+Task 4A (#1) is implemented and smoke-tested in the local v0.2.0 worktree on 2026-10-17. Scratch AVD evidence and still-open device gates are recorded below; the other redesign flows have not yet been qualified.
 
 Use the full JDK above for APK builds. The Java target/source settings are needed for the bundled D8 version; SDK manager can use the same JDK.
 
