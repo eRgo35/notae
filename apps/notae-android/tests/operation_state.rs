@@ -323,7 +323,10 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         .expect("rows event");
     let status = model.status();
     assert_eq!(status.latest_rescan, None);
-    assert_eq!(status.indexed_count, 1);
+    assert_eq!(
+        status.indexed_count, 0,
+        "row projections do not define the whole-library count"
+    );
     assert_eq!(status.pending_text_count, 1);
 
     model
@@ -420,38 +423,63 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
     assert_eq!(model.status().latest_rescan, Some(summary));
 }
 #[test]
-fn settings_indexed_count_is_not_replaced_by_filtered_search_rows() {
-    use notae_android::state::UiEvent;
-    use notae_android::ui::UiModel;
-    use notae_android::ui::search::SearchRow;
+fn settings_indexed_count_comes_from_worker_whole_library_count_not_filtered_rows() {
+    use notae_android::operations::events::OperationEvent;
+    use notae_index::SearchScope;
 
-    let row = SearchRow {
-        id: None,
-        title: "Score".to_owned(),
-        composer_or_artist: None,
-        tags: vec![],
-        status: "Ready".to_owned(),
-        note_key: "score".to_owned(),
-        relative_path: "score.pdf".to_owned(),
-        text_pending: false,
-        title_origin: String::new(),
-        composer_origin: String::new(),
-        text_snippet: None,
-    };
-    let mut model = UiModel::new();
-    model
-        .apply_operation_event(OperationEvent::SearchRows(vec![row.clone(), row.clone()]))
-        .expect("full library rows");
-    model
-        .dispatch(UiEvent::UpdateSearchQuery {
-            query: "filtered".to_owned(),
-        })
-        .expect("update query");
-    model
-        .apply_operation_event(OperationEvent::SearchRows(vec![row]))
-        .expect("filtered search rows");
+    let store = IndexStore::open(":memory:").expect("open test index");
+    for (id, title) in [
+        (1u32, "Autumn Leaves"),
+        (2, "Blue Bossa"),
+        (3, "Cantaloupe"),
+    ] {
+        let bytes = format!("%PDF-1.4\n{title}").into_bytes();
+        let mut metadata =
+            NoteMetadata::new(title, None, Vec::<String>::new()).expect("valid metadata");
+        metadata.assign_id(Some(NoteId::new(id)), MetadataOrigin::FilenameDerived);
+        store
+            .reindex_note(&IndexedNote::new(
+                RelativePdfPath::new(format!("{id} - {title}.pdf")).expect("valid path"),
+                PdfFingerprint::new(
+                    Sha256Digest::from_bytes(Sha256::digest(&bytes).into()),
+                    u64::try_from(bytes.len()).expect("fixture fits in u64"),
+                    None,
+                ),
+                metadata,
+            ))
+            .expect("insert test note");
+    }
+    let controller = OperationController::new(
+        store,
+        Box::new(StaticCatalog {
+            files: Vec::new(),
+            entered: None,
+            release: None,
+        }),
+    )
+    .expect("start test worker");
 
-    assert_eq!(model.status().indexed_count, 2);
+    controller
+        .set_search("Autumn".to_owned(), SearchScope::Everything)
+        .expect("filtered query");
+    let mut model = notae_android::ui::UiModel::new();
+    let mut filtered_rows = None;
+    for _ in 0..2 {
+        match next_event(&controller) {
+            OperationEvent::SearchRows(rows) => {
+                filtered_rows = Some(rows.len());
+                model
+                    .apply_operation_event(OperationEvent::SearchRows(rows))
+                    .expect("rows");
+            }
+            event @ OperationEvent::IndexedCount(_) => {
+                model.apply_operation_event(event).expect("count");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+    assert_eq!(filtered_rows, Some(1), "the query filters visible rows");
+    assert_eq!(model.status().indexed_count, 3);
 }
 
 #[test]
@@ -807,6 +835,7 @@ fn names(events: &[OperationEvent]) -> Vec<&'static str> {
             OperationEvent::RescanFinalizing { .. } => "reading-text",
             OperationEvent::Progress { .. } => "progress",
             OperationEvent::FileSucceeded { .. } | OperationEvent::FileFailed { .. } => "file",
+            OperationEvent::IndexedCount(_) => "indexed-count",
             OperationEvent::CheckingDesktopImport => "checking-import",
             OperationEvent::Completed { .. } => "completed",
             OperationEvent::Failed { .. } => "failed",
@@ -832,6 +861,8 @@ fn completion_is_not_reported_while_the_sidecar_check_is_outstanding() {
             "reading-text",
             "file",
             "progress",
+            // The whole-library count is published before the check, never after `Completed`.
+            "indexed-count",
             "checking-import"
         ]
     );
@@ -869,7 +900,7 @@ fn empty_library_skips_the_per_file_phase() {
     let (before, after) = scan_with_gated_sidecar(Vec::new(), SidecarAnswer::Absent);
     assert_eq!(
         names(&before),
-        ["started", "indexing", "checking-import"],
+        ["started", "indexing", "indexed-count", "checking-import"],
         "no per-file phase or progress for zero files"
     );
     assert_eq!(names(&after), ["completed"]);

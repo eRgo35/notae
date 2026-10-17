@@ -84,6 +84,8 @@ export component AppWindow inherits Window {
     in property <string> pdf_launch_error_text: "";
     in property <string> library_display_name: "";
     in property <string> settings_scan_summary: "No scan this session";
+    in property <string> settings_scan_conflicts: "";
+    in property <string> settings_scan_failures: "";
     in property <string> settings_indexed_count: "0";
     in property <string> app_version: "";
     in property <string> app_build_identity: "unknown";
@@ -315,6 +317,8 @@ export component AppWindow inherits Window {
                 library-display-name: root.library_display_name;
                 indexed-count: root.settings_indexed_count;
                 scan-summary: root.settings_scan_summary;
+                scan-conflicts: root.settings_scan_conflicts;
+                scan-failures: root.settings_scan_failures;
                 version: root.app_version;
                 build-identity: root.app_build_identity;
                 repository: root.repository_url;

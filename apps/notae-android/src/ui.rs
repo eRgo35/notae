@@ -349,10 +349,6 @@ impl UiModel {
                 desktop_import,
             } => {
                 self.latest_rescan = Some(summary);
-                self.indexed_count = self
-                    .indexed_count
-                    .saturating_add(summary.added)
-                    .saturating_sub(summary.deleted);
                 self.search_rows = rows;
                 self.startup_presentation = StartupPresentation::Ready;
                 match desktop_import {
@@ -383,12 +379,10 @@ impl UiModel {
                 self.controller.complete_operation(import_summary(&summary));
             }
             OperationEvent::SearchRows(rows) => {
-                if self.controller.state().search().query.is_empty() {
-                    self.indexed_count = rows.len();
-                }
                 self.startup_presentation = StartupPresentation::Ready;
                 self.search_rows = rows;
             }
+            OperationEvent::IndexedCount(count) => self.indexed_count = count,
             OperationEvent::MetadataLoaded(metadata) => {
                 self.metadata_error = None;
                 self.metadata_editor = Some(metadata);

@@ -27,6 +27,24 @@ component FeatureRow inherits HorizontalLayout {
     }
 }
 
+component FactRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <color> value-color: Theme.foreground;
+    spacing: 12px;
+    Text { text: root.label; color: Theme.muted; font-size: 15px; vertical-alignment: top; }
+    Text {
+        text: root.value;
+        color: root.value-color;
+        font-size: 15px;
+        wrap: word-wrap;
+        horizontal-alignment: right;
+        horizontal-stretch: 1;
+        accessible-role: text;
+        accessible-label: root.label + ": " + root.value;
+    }
+}
+
 export component WelcomeScreen inherits Rectangle {
     in property <length> available-width;
     in property <length> available-height;
@@ -40,12 +58,17 @@ export component WelcomeScreen inherits Rectangle {
     VerticalLayout {
         padding-bottom: 24px;
         spacing: 20px;
+        // Tall windows keep the intro, card and action together at the top; none of them stretches.
+        alignment: start;
         // Short landscape windows cannot fit the whole introduction, so it scrolls above the fixed action.
         ScrollView {
-            vertical-stretch: 1;
+            vertical-stretch: 0;
+            // The Material ScrollView reserves a 12 px (8 px bar + 4 px) strip under its viewport even with the bar off.
+            preferred-height: intro.preferred-height + 12px;
             horizontal-scrollbar-policy: always-off;
-            VerticalLayout {
+            intro := VerticalLayout {
                 width: root.available-width;
+                alignment: start;
                 padding-top: max(16px, min(64px, (root.available-height - 640px) / 6));
                 spacing: 20px;
                 HorizontalLayout { alignment: center; Image { source: @image-url("assets/notae.png"); image-fit: contain; width: 96px; height: 96px; accessible-role: none; } }
@@ -53,22 +76,26 @@ export component WelcomeScreen inherits Rectangle {
                     text: root.recovery ? "Reconnect your library" : "Welcome to Notae";
                     color: Theme.foreground; font-size: root.available-width < 420px ? 32px : 40px; font-weight: 600; horizontal-alignment: center; wrap: word-wrap; accessible-role: text; accessible-label: root.recovery ? "Reconnect your library" : "Welcome to Notae";
                 }
-                VerticalLayout { spacing: 12px;
+                // Paragraph and feature card read as one group: 12 px apart, unlike the 20 px between other blocks.
+                VerticalLayout {
+                    spacing: 12px;
+                    alignment: start;
                     HorizontalLayout {
-                    alignment: center;
-                    Text {
-                        width: root.column;
-                        text: root.recovery
-                            ? "Notae no longer has access to “" + root.folder + "”. Choose it again to reconnect your scores."
-                            : "Your sheet music, in good order. Notae reads your PDFs where they are and opens them in the PDF app you already use.";
-                        color: Theme.muted; font-size: 17px; horizontal-alignment: center; wrap: word-wrap;
+                        alignment: center;
+                        Text {
+                            width: root.column;
+                            text: root.recovery
+                                ? "Notae no longer has access to “" + root.folder + "”. Choose it again to reconnect your scores."
+                                : "Your sheet music, in good order. Notae reads your PDFs where they are and opens them in the PDF app you already use.";
+                            color: Theme.muted; font-size: 17px; horizontal-alignment: center; wrap: word-wrap;
+                        }
                     }
-                }
                     HorizontalLayout {
                         alignment: center;
                         Card {
                             width: root.column;
                             VerticalLayout {
+                                alignment: start;
                                 padding-left: 24px;
                                 padding-right: 24px;
                                 padding-top: 8px;
@@ -97,6 +124,8 @@ export component SettingsScreen inherits Rectangle {
     in property <string> library-display-name;
     in property <string> indexed-count;
     in property <string> scan-summary;
+    in property <string> scan-conflicts;
+    in property <string> scan-failures;
     in property <string> version;
     in property <string> build-identity;
     in property <string> repository;
@@ -143,38 +172,56 @@ export component SettingsScreen inherits Rectangle {
                 width: min(720px, max(1px, root.available-width - 2 * root.pad));
                 padding-bottom: root.pad;
                 spacing: 12px;
+                alignment: start;
                 Card {
                     VerticalLayout {
                         padding: 16px;
-                        spacing: 8px;
+                        alignment: start;
+                        spacing: 4px;
+                        Text { text: "Library folder"; color: Theme.muted; font-size: 13px; }
                         HorizontalLayout {
                             spacing: 12px;
-                            Text { text: root.library-display-name; color: Theme.foreground; font-size: 15px; wrap: word-wrap; horizontal-stretch: 1; accessible-role: text; accessible-label: root.library-display-name; }
-                            PillButton { text: "Change"; tonal: true; clicked => { root.change-library(); } }
+                            Text { text: root.library-display-name; color: Theme.foreground; font-size: 15px; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; accessible-role: text; accessible-label: root.library-display-name; }
+                            VerticalLayout { alignment: center; PillButton { text: "Change"; tonal: true; clicked => { root.change-library(); } } }
                         }
                     }
                 }
                 Card {
                     VerticalLayout {
                         padding: 16px;
+                        alignment: start;
                         spacing: 8px;
-                        Text { text: "Library maintenance"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
-                        Text { text: root.indexed-count + " scores indexed"; color: Theme.muted; font-size: 15px; wrap: word-wrap; accessible-role: text; accessible-label: root.indexed-count + " scores indexed"; }
-                        Text { text: root.scan-summary; color: Theme.muted; font-size: 15px; wrap: word-wrap; accessible-role: text; accessible-label: root.scan-summary; }
-                        HorizontalLayout { alignment: start; ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } } }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text { text: "Library maintenance"; color: Theme.foreground; font-size: 18px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+                            ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
+                        }
+                        FactRow { label: "Indexed scores"; value: root.indexed-count; }
+                        FactRow { label: "Last scan"; value: root.scan-summary; }
+                        if root.scan-conflicts != "" : FactRow {
+                            label: "ID conflicts";
+                            value: root.scan-conflicts;
+                            value-color: root.scan-conflicts == "0" ? Theme.foreground : Theme.error;
+                        }
+                        if root.scan-failures != "" : FactRow {
+                            label: "Failures";
+                            value: root.scan-failures;
+                            value-color: root.scan-failures == "0" ? Theme.foreground : Theme.error;
+                        }
                     }
                 }
                 Card {
                     VerticalLayout {
                         padding: 16px;
+                        alignment: start;
                         spacing: 8px;
-                        Text { text: "About"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
-                        Text { text: "Notae " + root.version; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
-                        Text { text: "Build " + root.build-identity; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
-                        Text { text: root.license; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
-                        Text { text: root.repository; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
-                        Text { text: "Sidecar schema " + root.schema-version; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
-                        Text { text: "Your library stays on this device. Notae does not send data over the network."; color: Theme.muted; font-size: 15px; wrap: word-wrap; }
+                        Text { text: "About Notae"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
+                        FactRow { label: "Version"; value: root.version; }
+                        FactRow { label: "Build"; value: root.build-identity; }
+                        FactRow { label: "License"; value: root.license; }
+                        FactRow { label: "Repository"; value: root.repository; }
+                        FactRow { label: "Sidecar schema"; value: root.schema-version; }
+                        Text { text: "Your library stays on this device. Notae does not send data over the network."; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
                     }
                 }
             }

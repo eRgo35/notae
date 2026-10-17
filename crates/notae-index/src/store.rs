@@ -449,6 +449,18 @@ impl IndexStore {
         Ok(notes)
     }
 
+    /// Returns the number of indexed notes without loading them.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database cannot be read.
+    pub fn note_count(&self) -> Result<usize, IndexError> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM notes", [], |row| row.get(0))?;
+        Ok(usize::try_from(count).unwrap_or_default())
+    }
+
     /// Deletes every record whose path is not in `paths`.
     ///
     /// The pruned rows leave the FTS index in the same transaction, so a
