@@ -569,8 +569,9 @@ pub struct OperationBanner {
     pub busy: bool,
     /// Whether the banner reports a failure.
     pub failed: bool,
-    /// Determinate progress in `0.0..=1.0`; `0.0` means indeterminate.
-    pub fraction: f32,
+    /// Determinate progress in `0.0..=1.0` derived from worker counts; `None` while no real
+    /// total exists (the bar is then indeterminate). `Some(0.0)` is a known, empty `0 of N`.
+    pub fraction: Option<f32>,
     /// Whether the user can still cancel.
     pub cancel_enabled: bool,
     /// Whether the user can dismiss an outcome.
@@ -602,8 +603,8 @@ impl OperationBanner {
         let fraction = match operation {
             OperationState::Rescan {
                 phase: RescanPhase::ReadingText { completed, total },
-            } if *total > 0 => (*completed as f32 / *total as f32).clamp(0.0, 1.0),
-            _ => 0.0,
+            } if *total > 0 => Some((*completed as f32 / *total as f32).clamp(0.0, 1.0)),
+            _ => None,
         };
         Self {
             text,

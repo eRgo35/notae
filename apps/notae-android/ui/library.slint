@@ -310,22 +310,37 @@ export component OperationBanner inherits Card {
             if root.cancel-enabled : PillButton { text: "Cancel"; tonal: true; clicked => { root.cancel(); } }
             if root.acknowledge-enabled : PillButton { text: "Dismiss"; tonal: true; clicked => { root.acknowledge(); } }
         }
-        if root.busy : Rectangle {
+        // `fraction < 0` means the total is unknown: the bar is an empty track with a moving
+        // segment (a moving segment cannot be read as a value; with motion off the track stays empty).
+        // `0..=1` is a real count and fills exactly that share.
+        if root.busy : track := Rectangle {
             height: 4px;
             border-radius: 2px;
             background: Theme.field;
             clip: true;
             accessible-role: progress-indicator;
             accessible-label: root.text;
-            accessible-value: root.fraction > 0 ? root.fraction : "";
+            accessible-value: root.fraction >= 0 ? root.fraction : "";
             accessible-value-minimum: 0;
             accessible-value-maximum: 1;
-            Rectangle {
-                width: parent.width * (root.fraction > 0 ? root.fraction : 0.3);
+            fill := Rectangle {
+                width: parent.width * min(1, max(0, root.fraction));
                 x: 0px;
                 height: 4px;
                 border-radius: 2px;
                 background: Theme.accent;
+                animate width { duration: Theme.motion-short; easing: ease-in-out; }
+            }
+            if root.fraction < 0 && Theme.animations-enabled : sweep := Rectangle {
+                private property <length> travel: -parent.width * 0.3;
+                width: parent.width * 0.3;
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.accent;
+                x: self.travel;
+                animate travel { duration: 1100ms; easing: ease-in-out; iteration-count: -1; }
+                // Assigned (not bound) so the loop starts from the evaluated off-track position.
+                init => { self.travel = parent.width; }
             }
         }
     }
