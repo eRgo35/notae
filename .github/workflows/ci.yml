@@ -75,6 +75,11 @@ jobs:
         run: cargo doc --workspace --no-deps
       - name: Audit dependencies
         run: cargo deny check
+      # cargo-llvm-cov builds the whole workspace again, instrumented, in target/llvm-cov-target. The
+      # runner has about 30 GB free after the cleanup above and the earlier gates leave 16 GB of
+      # target/, so without this step the coverage build runs out of disk (ld: Bus error).
+      - name: Reclaim build output before coverage
+        run: cargo clean
       - name: Enforce coverage floor
         run: cargo llvm-cov --workspace --summary-only --fail-under-lines 84
       - name: Smoke-test CLI interface
