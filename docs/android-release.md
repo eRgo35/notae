@@ -102,3 +102,7 @@ Verify an APK with `.github/scripts/verify-release-apk.sh target/release/apk/not
 ## Debug-key and release-key installs are incompatible
 
 The Galaxy Tab S10 FE+ currently has a **debug-key** install of Notae. Android refuses to update an app with a different signing key, so installing the release-signed APK requires uninstalling the debug build first, and uninstalling **deletes the app's private data**: preferences, the SAF folder grant and the local index. The index can be rebuilt by scanning again and the PDFs are untouched, but export or back up anything you need first (note edits live only in the app index until a sidecar is exported). Never `adb install -r` a release APK over the debug install; keep emulator experiments on a scratch AVD. After the move to the release key, upgrades between release builds work in place.
+
+## Release tags and the commit signature rewrite
+
+The commits of `main` after v0.2.0 (the v0.2.1 work and the first v0.2.2 fix) were first pushed unsigned and were later re-signed on 2026-10-18 (same trees, new hashes). The tag `v0.2.1` still points at the original, pre-signature commit `6f939d8`, which is no longer on `main`'s history: moving a release tag would re-run the release workflow and replace the signed assets. Its tree equals the tree of the re-signed `chore(release): v0.2.1` commit, so the released APK corresponds exactly to the source on `main`. The tag `v0.2.0` is unaffected (its commits were signed from the start). Future release tags must point at commits on `main`.
