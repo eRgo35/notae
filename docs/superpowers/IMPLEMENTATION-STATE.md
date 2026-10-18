@@ -1,11 +1,20 @@
 # Notae Implementation State
 
-**As of:** 2026-10-17
+**As of:** 2026-10-18
 **Branch:** `feat/v0.2.0-work` (`$HOME/Work/notae/.worktrees/notae-v0.2.0-work`)
 **Implementation baseline:** `d69f73f` (local worktree setup based on the release branch); documentation baseline `13869a2`.
 **Remote:** `https://github.com/eRgo35/notae.git`
 
 This document records where the project actually stands so work can resume without re-deriving context. It is a status record, not a design document.
+
+## Current release cycle: v0.2.1
+
+- [Milestone v0.2.1](https://github.com/eRgo35/notae/milestone/2) follows v0.2.0 with the first tablet feedback: #10 (reopened) and #31 motion, #17 TalkBack, #26 Info icon and open on tap, #27 Needs details removal, #29 Settings Scan removal and density, #30 scan progress bar, #32 hardware-keyboard Polish letters, #33 Text pending removal (interim), #28 on-device OCR (design proposal only; `docs/adr/0001-on-device-ocr.md`).
+- Plans: `plans/2026-10-18-notae-v0.2.1.md` (motion, #29, #30) and `plans/2026-10-18-notae-v0.2.1-library.md` (#26, #27, #33). Per-issue contracts, root causes and emulator evidence are in `docs/android-debugging.md`; the release text is `docs/release-notes/v0.2.1.md`.
+- Integration: the work was done on separate local branches (`feat/v0.2.1-library`, `-motion`, `-ocr`, `-readme`, `-keyboard`, `-a11y`) and integrated, with conflicts resolved by behaviour, on `feat/v0.2.1-work`. The Library preview entry (Info) and the Motion preview layer work together (`library_ui::info_opens_the_animated_preview_and_back_returns`). Settings has no Scan action; the Library header has exactly one. `OperationState::Rescan{phase}`, `IndexedCount` before `Completed` and `Completed` last are unchanged.
+- #32 is carried by a vendored copy of `i-slint-backend-android-activity` 1.18.1 with upstream Slint PR #13112 applied (`[patch.crates-io]`, `vendor/README.md`); remove it when a Slint release contains the fix.
+- #17: `NotaeAccessibility.java` plus `src/accessibility.rs` and `src/android/accessibility.rs` publish Slint's accessibility tree; every Java entry point is wrapped so a failure is logged and the app continues.
+- **Open gates (device acceptance, Galaxy Tab S10 FE+):** all of the above are verified on host tests and the API 35 x86_64 emulator only. Motion (#10, #31) is unconfirmed on the tablet, including its animator scale (the app logs `notae: motion animator_duration_scale=... animations_enabled=...`); the "enormous card" of #29 was never reproduced; TalkBack output and Polish input with Samsung Keyboard/Gboard are unverified. Issues stay open until the maintainer closes them after testing.
 
 ## Current release cycle: v0.2.0
 
