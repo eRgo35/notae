@@ -25,6 +25,8 @@ public final class NotaeActivity extends NativeActivity {
     }
     private static final int VOICE_REQUEST_CODE = 0x4e4f;
 
+    private volatile NotaeAccessibility accessibility;
+
     private native void nativeOnVoiceResult(int requestCode, int resultCode, String[] results);
     private native void nativeOnKeyboardConfigurationChanged(boolean present);
     private native void nativeOnAnimatorDurationScaleChanged(float scale);
@@ -106,6 +108,21 @@ public final class NotaeActivity extends NativeActivity {
             getWindow().getDecorView().setSystemUiVisibility(flags);
         }
         nativeOnKeyboardConfigurationChanged(hasHardwareKeyboard());
+        accessibility = NotaeAccessibility.install(this);
+    }
+
+    // Read by the Rust accessibility controller to publish the Slint accessibility tree.
+    public NotaeAccessibility notaeAccessibility() {
+        return accessibility;
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (accessibility != null) {
+            accessibility.uninstall();
+            accessibility = null;
+        }
+        super.onDestroy();
     }
 
     @Override

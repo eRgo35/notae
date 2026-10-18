@@ -28,6 +28,13 @@ sha2 = "0.10"
 # the consumer wakes it, so nothing is lost across the platform
 # callback's thread boundary.
 atomic-waker = "1"
+# Slint's Android backend publishes no accessibility tree, so `accessibility.rs` walks the
+# item tree itself through i-slint-core's accessibility API (the calls the desktop AccessKit
+# adapter uses). Same crate and version `slint` already resolves, so no new package; the
+# exact pin matches the pinned Slint stack because this API is not semver-stable. Host tests
+# also use it to build the `InternalKeyEvent` composition events the Android backend
+# dispatches.
+i-slint-core = "=1.18.1"
 
 # `notae-index-cli` is the Linux indexer binary crate. It pulls in C/C++
 # deps (hayro, image, Tesseract via `notae-ocr`) that don't cross-compile,
@@ -68,10 +75,6 @@ slint-build = "1.18"
 tempfile = "3"
 pollster = "0.4"
 i-slint-backend-testing = "=1.18.1"
-# Builds the same `InternalKeyEvent` composition events the Android backend
-# dispatches, so host tests exercise the IME text path (same crate/version
-# `slint` already resolves; no new package).
-i-slint-core = "=1.18.1"
 # `cargo-apk2` compiles the Java result adapter and generates the
 # launcher manifest from the metadata below.
 [package.metadata.android]
