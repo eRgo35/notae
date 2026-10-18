@@ -35,7 +35,7 @@ Constraints from #28 and the product: fully local, no telemetry, no network, no 
 
 ## Interim behaviour until OCR lands (#33)
 
-No "Text pending" section and no "No text yet" badge anywhere. The scan summary still states how many PDFs have no extractable text, so removing the UI does not remove the only signal. On API 23-34 the app does not read text layers at all, so the interim wording for those devices must say text was not read rather than that none exists (the maintainer's tablet runs API 35). When OCR lands, the same summary line becomes "N PDFs waiting for text recognition" and the banner carries the live phase.
+No "Text pending" section and no "No text yet" badge anywhere. Settings → Library maintenance shows **PDFs without extractable text** as a plain count, so removing the badge does not remove the only signal. On API 23-34 the app does not read text layers at all, so the interim wording for those devices must say text was not read rather than that none exists (the maintainer's tablet runs API 35). When OCR lands, the same Settings line becomes "N PDFs waiting for text recognition" and the banner carries the live phase.
 
 ## Invariants this decision adds (each to be enforced by a check)
 
