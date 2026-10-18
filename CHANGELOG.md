@@ -18,11 +18,27 @@ Follow-up to v0.2.0 from the first tablet feedback (issues
 [#29](https://github.com/eRgo35/notae/issues/29),
 [#30](https://github.com/eRgo35/notae/issues/30),
 [#31](https://github.com/eRgo35/notae/issues/31),
+[#32](https://github.com/eRgo35/notae/issues/32),
+[#17](https://github.com/eRgo35/notae/issues/17),
 [#33](https://github.com/eRgo35/notae/issues/33)). Verified with host tests and
 an Android API 35 x86_64 tablet emulator; **the issues above are awaiting
 verification on the Galaxy Tab S10 FE+** and stay open until the maintainer has
 tested them. See [`docs/release-notes/v0.2.1.md`](docs/release-notes/v0.2.1.md)
 for the full text, including known limitations.
+
+### Added
+
+- TalkBack support ([#17](https://github.com/eRgo35/notae/issues/17)): Notae
+  now publishes Slint's accessibility tree to Android (an
+  `AccessibilityNodeProvider` on the activity's content view), so TalkBack and
+  `uiautomator` see labelled buttons, the Search field, Settings rows and the
+  other controls, and their actions (click, focus, set text, selection,
+  scroll) reach the app. Nothing is tracked while no accessibility service is
+  connected, and any failure in the bridge is logged and ignored instead of
+  affecting the app.
+- On-device OCR for image-only PDFs: a design proposal only so far
+  ([#28](https://github.com/eRgo35/notae/issues/28), `docs/adr/0001-on-device-ocr.md`).
+  No OCR runs on Android.
 
 ### Changed
 
@@ -54,6 +70,13 @@ for the full text, including known limitations.
   track with a moving segment until "Reading PDF text and thumbnails: N of M"
   has a total.
 
+- Hardware keyboard ([#32](https://github.com/eRgo35/notae/issues/32)): text
+  typed on a physical keyboard now honours the active keyboard layout, so the
+  Polish letters (AltGr and Shift+AltGr) can be typed. Slint 1.18.1 ignored the
+  layout and modifiers. The fix is upstream Slint pull request #13112, applied
+  as a vendored copy of `i-slint-backend-android-activity` 1.18.1 under
+  `vendor/` (see `vendor/README.md`, which also lists the removal condition).
+
 ### Removed
 
 - The "Needs details" section, sidebar item, chip and count
@@ -79,6 +102,14 @@ for the full text, including known limitations.
   emulator; the only excess height found (the 48 px Scan icon) is removed.
 - On-device OCR ([#28](https://github.com/eRgo35/notae/issues/28)) is a design
   proposal only (`docs/adr/0001-on-device-ocr.md`); nothing runs OCR on Android.
+- Polish input from a hardware keyboard ([#32](https://github.com/eRgo35/notae/issues/32))
+  is verified on the emulator with the Polish layout only; Samsung Keyboard,
+  Gboard and the keyboard cover on the Galaxy Tab S10 FE+ are not.
+- TalkBack ([#17](https://github.com/eRgo35/notae/issues/17)) is verified
+  through `uiautomator` and accessibility actions on the emulator, not with
+  TalkBack on the tablet. There is no TalkBack action for a long press, so the
+  long-press menu is not reachable that way; its two actions are available as
+  the card's default action (open) and its Info button.
 
 ## [0.2.0] - 2026-10-17
 
