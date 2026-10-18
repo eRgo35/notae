@@ -147,7 +147,9 @@ fn click_runs_the_slint_default_action_of_exactly_that_card_and_its_info_button(
     let previewed = Rc::new(RefCell::new(Vec::new()));
     let recorded = Rc::clone(&opened);
     app.on_open_pdf_requested(move |path, key| {
-        recorded.borrow_mut().push((path.to_string(), key.to_string()));
+        recorded
+            .borrow_mut()
+            .push((path.to_string(), key.to_string()));
     });
     let recorded = Rc::clone(&previewed);
     app.on_score_selected(move |key| recorded.borrow_mut().push(key.to_string()));
