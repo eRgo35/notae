@@ -92,14 +92,14 @@ annotate scores itself: it hands each PDF to the viewer you already use.
     <td width="50%">
       <img src="docs/images/screenshot-library-dark.png"
            alt="Notae Library in the dark theme with the sidebar and four score cards">
-      <br><sub><b>Dark theme</b> (older capture; the UI has since changed).</sub>
+      <br><sub><b>Dark theme</b> follows the system setting.</sub>
     </td>
   </tr>
 </table>
 
 <sub>All screenshots are real captures from an Android 15 tablet **emulator**
-(2560×1600) showing sample scores, not from a physical tablet. Some predate
-the latest UI changes.</sub>
+(2560×1600) of the v0.2.1 development build, showing sample scores, not from a
+physical tablet.</sub>
 
 ## How it works
 
