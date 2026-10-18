@@ -108,7 +108,13 @@ public final class NotaeActivity extends NativeActivity {
             getWindow().getDecorView().setSystemUiVisibility(flags);
         }
         nativeOnKeyboardConfigurationChanged(hasHardwareKeyboard());
-        accessibility = NotaeAccessibility.install(this);
+        // Fail open: the accessibility bridge is optional and must never stop the app starting.
+        try {
+            accessibility = NotaeAccessibility.install(this);
+        } catch (Throwable error) {
+            accessibility = null;
+            android.util.Log.e("NotaeA11y", "install failed; continuing without it", error);
+        }
     }
 
     // Read by the Rust accessibility controller to publish the Slint accessibility tree.
@@ -118,10 +124,14 @@ public final class NotaeActivity extends NativeActivity {
 
     @Override
     protected void onDestroy() {
-        if (accessibility != null) {
-            accessibility.uninstall();
-            accessibility = null;
+        try {
+            if (accessibility != null) {
+                accessibility.uninstall();
+            }
+        } catch (Throwable error) {
+            android.util.Log.e("NotaeA11y", "uninstall failed", error);
         }
+        accessibility = null;
         super.onDestroy();
     }
 
