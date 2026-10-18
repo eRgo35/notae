@@ -1,7 +1,7 @@
 // Notae's adaptive score library. Rust remains authoritative for library operations.
 import { ListView, ScrollView } from "std-widgets.slint";
 import { WelcomeScreen, SettingsScreen } from "setup.slint";
-import { Theme, ScreenTransition, PillButton, TextField, IconButton } from "components.slint";
+import { Theme, ScreenTransition, ViewPresence, PillButton, TextField, IconButton } from "components.slint";
 import { LibraryScreen, LibraryRow, SectionItem, OperationBanner } from "library.slint";
 import { SearchScreen } from "search.slint";
 import { ScoreDetails } from "details.slint";
@@ -152,6 +152,16 @@ export component AppWindow inherits Window {
         ? root.sheet-progress : ((root.show_metadata_editor || root.show_import_preview) ? 1 : 0);
     private property <bool> modal-open: root.show_metadata_editor || root.show_import_preview;
     private property <bool> sheet-import-content: false;
+    // One presence per top-level view: the logical destination is active at once, while a view
+    // that was just left stays mounted (and blocked) until its exit has played.
+    private property <bool> welcome-active: !root.configured && root.startup-ready;
+    private property <bool> library-active: root.configured && root.startup-ready && !root.show_settings && !root.show_search;
+    private property <bool> search-active: root.configured && root.startup-ready && root.show_search;
+    private property <bool> settings-active: root.configured && root.startup-ready && root.show_settings;
+    welcome-presence := ViewPresence { active: root.welcome-active; }
+    library-presence := ViewPresence { active: root.library-active; }
+    search-presence := ViewPresence { active: root.search-active; }
+    settings-presence := ViewPresence { active: root.settings-active; }
     init => {
         Theme.animations-enabled = root.animations-enabled;
         Theme.modal-open = root.modal-open;
@@ -207,13 +217,17 @@ export component AppWindow inherits Window {
         padding-left: root.safe-area-insets.left;
         padding-right: root.safe-area-insets.right;
         spacing: 0px;
-        VerticalLayout {
-            // Every configured screen owns its header (including the Scan action) and its own padding.
-            padding: root.configured ? 0px : root.expanded ? 28px : 16px;
-            spacing: 0px;
+        // Views stack in one host instead of a layout, so a view that is leaving can stay mounted
+        // beneath the one that is arriving. Every configured screen owns its header (including the
+        // Scan action) and its own padding.
+        Rectangle {
+            vertical-stretch: 1;
+            horizontal-stretch: 1;
+            clip: true;
             if !root.startup-ready : Rectangle {
                 background: Theme.background;
-                vertical-stretch: 1;
+                width: parent.width;
+                height: parent.height;
                 Text {
                     text: "Loading library…";
                     color: Theme.muted;
@@ -223,13 +237,17 @@ export component AppWindow inherits Window {
                     accessible-label: "Loading library";
                 }
             }
-            if !root.configured && root.startup-ready : ScreenTransition {
-                animations-enabled: root.animations-enabled;
-                width: root.window-width;
-                vertical-stretch: 1;
+            if welcome-presence.mounted : ScreenTransition {
+                presence: welcome-presence.value;
+                active: root.welcome-active;
+                direction: -1;
+                width: parent.width;
+                height: parent.height;
                 WelcomeScreen {
-                    width: parent.width;
-                    height: parent.height;
+                    x: root.expanded ? 28px : 16px;
+                    y: root.expanded ? 28px : 16px;
+                    width: parent.width - (root.expanded ? 56px : 32px);
+                    height: parent.height - (root.expanded ? 56px : 32px);
                     available-width: root.window-width - (root.expanded ? 56px : 32px);
                     available-height: root.available-height;
                     recovery: root.show_recovery;
@@ -238,10 +256,12 @@ export component AppWindow inherits Window {
                     accepted => { root.setup_chosen(); }
                 }
             }
-            if root.configured && root.startup-ready && !root.show_settings && !root.show_search : ScreenTransition {
-                animations-enabled: root.animations-enabled;
-                width: root.window-width;
-                vertical-stretch: 1;
+            if library-presence.mounted : ScreenTransition {
+                presence: library-presence.value;
+                active: root.library-active;
+                direction: -1;
+                width: parent.width;
+                height: parent.height;
                 LibraryScreen {
                     width: parent.width;
                     height: parent.height;
@@ -303,10 +323,12 @@ export component AppWindow inherits Window {
                 menu-open <=> root.library_menu_open;
             }
             }
-            if root.configured && root.startup-ready && root.show_search : ScreenTransition {
-                animations-enabled: root.animations-enabled;
-                width: root.window-width;
-                vertical-stretch: 1;
+            if search-presence.mounted : ScreenTransition {
+                presence: search-presence.value;
+                active: root.search-active;
+                direction: 1;
+                width: parent.width;
+                height: parent.height;
                 SearchScreen {
                     width: parent.width;
                     height: parent.height;
@@ -336,10 +358,12 @@ export component AppWindow inherits Window {
                 chosen(key) => { root.search_result_chosen(key); }
             }
             }
-            if root.configured && root.startup-ready && root.show_settings : ScreenTransition {
-                animations-enabled: root.animations-enabled;
-                width: root.window-width;
-                vertical-stretch: 1;
+            if settings-presence.mounted : ScreenTransition {
+                presence: settings-presence.value;
+                active: root.settings-active;
+                direction: 1;
+                width: parent.width;
+                height: parent.height;
                 SettingsScreen {
                     width: parent.width;
                     height: parent.height;

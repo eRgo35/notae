@@ -19,9 +19,15 @@ pub fn bind_window(window: slint::Weak<AppWindow>) {
 }
 
 pub fn read_animations_enabled(app: &AndroidApp) -> bool {
-    read_animator_scale(app)
-        .map(crate::motion::animations_enabled_for_scale)
-        .unwrap_or(true)
+    let scale = read_animator_scale(app);
+    let enabled = scale
+        .as_ref()
+        .map(|scale| crate::motion::animations_enabled_for_scale(*scale))
+        .unwrap_or(true);
+    // Visible with `adb logcat -s RustStdoutStderr`: tells a "no animations" report apart from a
+    // disabled-by-scale device without a special build.
+    eprintln!("notae: motion animator_duration_scale={scale:?} animations_enabled={enabled}");
+    enabled
 }
 
 fn read_animator_scale(app: &AndroidApp) -> Result<f32, jni::errors::Error> {
@@ -44,6 +50,10 @@ pub extern "system" fn Java_org_notae_android_NotaeActivity_nativeOnAnimatorDura
     _activity: JObject<'_>,
     scale: f32,
 ) {
+    eprintln!(
+        "notae: motion animator_duration_scale changed to {scale} animations_enabled={}",
+        crate::motion::animations_enabled_for_scale(scale)
+    );
     let window = WINDOW.lock().ok().and_then(|slot| slot.clone());
     if let Some(window) = window {
         let _ = slint::invoke_from_event_loop(move || {

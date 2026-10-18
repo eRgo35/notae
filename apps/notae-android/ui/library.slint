@@ -1,6 +1,6 @@
 // One UI library: side panel, large title, thumbnail grid and operation banner.
 import { ListView } from "std-widgets.slint";
-import { Theme, Glyph, IconButton, ScanButton, PillButton, Card, NavRow, Chip, ActionInput } from "components.slint";
+import { Theme, Motion, ViewPresence, Glyph, IconButton, ScanButton, PillButton, Card, NavRow, Chip, ActionInput } from "components.slint";
 import { Scrollbar } from "scrollbar.slint";
 
 export struct LibraryRow {
@@ -397,22 +397,48 @@ export component LibraryScreen inherits Rectangle {
     // When true, the full-width preview (passed as children) replaces the whole library chrome.
     in property <bool> details-open;
     background: Theme.background;
+    // The browsing chrome and the preview are two layers of one library view. Each stays mounted
+    // while it is leaving; the sidebar has its own presence inside the chrome.
+    chrome-presence := ViewPresence { active: !root.details-open; }
+    preview-presence := ViewPresence { active: root.details-open; }
+    sidebar-presence := ViewPresence { active: root.sidebar-visible; }
+    // Sidebar width plus the gap between it and the content column.
+    private property <length> sidebar-slot: 288px + 16px;
 
-    HorizontalLayout {
-        padding: 16px;
-        spacing: 16px;
-        if root.sidebar-visible && !root.details-open : SidePanel {
+    if chrome-presence.mounted : Rectangle {
+        x: 16px - (1 - chrome-presence.value) * Motion.shift;
+        y: 16px;
+        width: parent.width - 32px;
+        height: parent.height - 32px;
+        opacity: chrome-presence.value;
+        z: root.details-open ? 1 : 2;
+        clip: true;
+        // The column is laid out once at its final width and only translated while the sidebar
+        // enters or leaves, so the grid never re-flows (and never changes column count) mid-way.
+        if sidebar-presence.mounted : Rectangle {
+            x: -(1 - sidebar-presence.value) * Motion.shift;
             width: 288px;
-            sections: root.sections;
-            composers: root.composers;
-            selected-key: root.selected-section;
-            section-selected(key) => { root.section-selected(key); }
-            settings-clicked => { root.settings-clicked(); }
+            height: parent.height;
+            opacity: sidebar-presence.value;
+            z: root.sidebar-visible ? 2 : 1;
+            SidePanel {
+                width: parent.width;
+                height: parent.height;
+                sections: root.sections;
+                composers: root.composers;
+                selected-key: root.selected-section;
+                section-selected(key) => { root.section-selected(key); }
+                settings-clicked => { root.settings-clicked(); }
+            }
+            if !root.sidebar-visible : TouchArea { }
         }
         VerticalLayout {
-            horizontal-stretch: 1;
+            x: root.sidebar-slot * sidebar-presence.value;
+            y: 0px;
+            width: parent.width - (root.sidebar-visible ? root.sidebar-slot : 0px);
+            height: parent.height;
             spacing: 12px;
-            if !root.details-open : HorizontalLayout {
+            HorizontalLayout {
                 padding-top: 8px;
                 padding-left: 8px;
                 spacing: 4px;
@@ -447,8 +473,9 @@ export component LibraryScreen inherits Rectangle {
                     }
                 }
             }
-            if !root.sidebar-visible && !root.details-open : Flickable {
-                min-height: 48px; max-height: 48px;
+            if sidebar-presence.value < 1 : Flickable {
+                min-height: 48px * (1 - sidebar-presence.value); max-height: 48px * (1 - sidebar-presence.value);
+                opacity: 1 - sidebar-presence.value;
                 // A Flickable reports its viewport width as its maximum, which would cap the whole column.
                 max-width: 100000px;
                 interactive: self.content-width > self.width;
@@ -479,11 +506,9 @@ export component LibraryScreen inherits Rectangle {
                 acknowledge => { root.acknowledge-clicked(); }
             }
             if root.pdf-error != "" : Text { text: root.pdf-error; color: Theme.error; font-size: 15px; wrap: word-wrap; }
-            // The preview (passed as children) replaces the grid. Slint does not allow
-            // @children inside a conditional element, so the slot is always present and hidden.
             Rectangle {
                 vertical-stretch: 1;
-                if !root.details-open && root.rows.length > 0 && !root.list-view : Card {
+                if root.rows.length > 0 && !root.list-view : Card {
                     width: parent.width;
                     height: parent.height;
                     grid := ScoreGrid {
@@ -508,7 +533,7 @@ export component LibraryScreen inherits Rectangle {
                         scrolled(y) => { grid.content-y = y; }
                     }
                 }
-                if !root.details-open && root.rows.length > 0 && root.list-view : Card {
+                if root.rows.length > 0 && root.list-view : Card {
                     width: parent.width;
                     height: parent.height;
                     list := ListView {
@@ -537,7 +562,7 @@ export component LibraryScreen inherits Rectangle {
                         scrolled(y) => { list.content-y = y; }
                     }
                 }
-                if !root.details-open && root.rows.length == 0 : Card {
+                if root.rows.length == 0 : Card {
                     width: parent.width;
                     height: parent.height;
                     VerticalLayout {
@@ -566,19 +591,47 @@ export component LibraryScreen inherits Rectangle {
                         }
                     }
                 }
-                Rectangle {
-                    visible: root.details-open;
-                    width: parent.width;
-                    height: parent.height;
-                    @children
-                }
             }
         }
+    }
+
+    // The full-width preview (passed as children) replaces the browsing chrome. Slint does not
+    // allow @children inside a conditional element, so the layer is always present and is only
+    // visible while the preview is present or leaving.
+    Rectangle {
+        x: 16px + (1 - preview-presence.value) * Motion.shift;
+        y: 16px;
+        width: parent.width - 32px;
+        height: parent.height - 32px;
+        opacity: preview-presence.value;
+        visible: preview-presence.mounted;
+        z: root.details-open ? 2 : 1;
+        VerticalLayout {
+            spacing: 12px;
+            if root.progress-text != "" : OperationBanner {
+                vertical-stretch: 0;
+                text: root.progress-text;
+                busy: root.busy;
+                failed: root.failed;
+                fraction: root.fraction;
+                cancel-enabled: root.cancel-enabled;
+                acknowledge-enabled: root.acknowledge-enabled;
+                cancel => { root.cancel-clicked(); }
+                acknowledge => { root.acknowledge-clicked(); }
+            }
+            if root.pdf-error != "" : Text { text: root.pdf-error; color: Theme.error; font-size: 15px; wrap: word-wrap; }
+            Rectangle {
+                vertical-stretch: 1;
+                @children
+            }
+        }
+        if !root.details-open : TouchArea { }
     }
 
     // Actions for a long-pressed score. The scrim swallows pointer input, so dismissing the menu
     // never activates the item underneath.
     if root.menu-open : Rectangle {
+        z: 10;
         x: 0px;
         y: 0px;
         width: root.width;
