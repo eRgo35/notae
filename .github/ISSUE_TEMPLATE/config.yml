@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/eRgo35/notae/security/advisories/new
+    about: Report security problems privately. Please do not open a public issue.
+  - name: Documentation
+    url: https://github.com/eRgo35/notae#documentation
+    about: Install, quick start, build and debugging guides.
+  - name: Android debugging guide (capturing a crash log)
+    url: https://github.com/eRgo35/notae/blob/main/docs/android-debugging.md
+    about: How to capture a crash log with adb or Android Studio before reporting a crash.

@@ -1,0 +1,80 @@
+name: Bug report
+description: Something in Notae (the Android app or the notae-index indexer) does not work as expected.
+title: "bug: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please do not attach scores or PDFs from a private library, and remove file names,
+        `content://` URIs and other personal details from logs. Security problems: do **not** file them here, see
+        [SECURITY.md](https://github.com/eRgo35/notae/blob/main/SECURITY.md).
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Android app
+        - notae-index (Linux indexer)
+        - Sidecar import/export
+        - Documentation
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Notae version
+      description: Android, Settings, About. Indexer, `notae-index --version`. Say "built from main" with the commit if you built it yourself.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How was Notae installed?
+      options:
+        - Signed APK from GitHub Releases
+        - Built from source (debug build)
+        - Built from source (release build)
+        - Not applicable (indexer)
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      description: Say whether this is a physical device or an emulator.
+      placeholder: "Samsung Galaxy Tab S10 FE+, Android 15 (physical)"
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead. Screenshots are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Notae ...
+        2. Tap ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: library
+    attributes:
+      label: Library details
+      description: |
+        Roughly how many PDFs, where the folder lives (internal storage, SD card, other provider), whether a
+        `.notae/` sidecar was imported, and whether the PDFs are scans or have a text layer. Do not share file names you consider private.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        For a crash, the `adb logcat -b crash -v threadtime` block (see docs/android-debugging.md). For the indexer, the
+        command you ran and its stderr. Remove personal identifiers first.
+      render: text
