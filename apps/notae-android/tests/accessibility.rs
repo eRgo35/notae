@@ -140,17 +140,39 @@ fn text_only_groups_are_not_nodes_and_order_follows_the_tree() {
 }
 
 #[test]
-fn click_runs_the_slint_default_action_of_exactly_that_card() {
+fn click_runs_the_slint_default_action_of_exactly_that_card_and_its_info_button() {
     let app = app();
     with_library(&app, 3);
-    let selected = Rc::new(RefCell::new(Vec::new()));
-    let recorded = Rc::clone(&selected);
+    let opened = Rc::new(RefCell::new(Vec::new()));
+    let previewed = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&opened);
+    app.on_open_pdf_requested(move |path, key| {
+        recorded.borrow_mut().push((path.to_string(), key.to_string()));
+    });
+    let recorded = Rc::clone(&previewed);
     app.on_score_selected(move |key| recorded.borrow_mut().push(key.to_string()));
     let (snapshot, registry) = snapshot(&app);
 
+    // A card opens the PDF (#26); it does not open the preview.
     let id = labelled(&snapshot, "Score 2").id;
     accessibility::perform(app.window(), &registry, id, &Action::Click).expect("card clicks");
-    assert_eq!(*selected.borrow(), [format!("{:064}", 2)]);
+    assert_eq!(
+        *opened.borrow(),
+        [("score-2.pdf".to_owned(), format!("{:064}", 2))]
+    );
+    assert!(previewed.borrow().is_empty());
+
+    // Its Info button opens the preview of exactly that score and does not launch the PDF.
+    let info: Vec<i32> = snapshot
+        .nodes
+        .iter()
+        .filter(|node| node.label == "Score details")
+        .map(|node| node.id)
+        .collect();
+    accessibility::perform(app.window(), &registry, info[1], &Action::Click)
+        .expect("info button clicks");
+    assert_eq!(*previewed.borrow(), [format!("{:064}", 2)]);
+    assert_eq!(opened.borrow().len(), 1);
 }
 
 #[test]
@@ -268,14 +290,41 @@ fn dangling_description_separators_are_trimmed() {
     let app = app();
     let mut row = score(1);
     row.composer_or_artist = "".into();
-    row.text_pending = true;
     app.set_library_rows(ModelRc::new(VecModel::from(vec![row])));
     let (snapshot, _) = snapshot(&app);
     let card = labelled(&snapshot, "Score 1");
+    assert_eq!(
+        card.description, "Opens the score",
+        "no leading separator when the composer is empty"
+    );
+}
+
+/// The per-card Info action (#26) is a labelled, clickable button of its own, there is one per
+/// score, and there is no Edit action on a card.
+#[test]
+fn every_card_has_a_labelled_info_button_and_no_edit_button() {
+    let app = app();
+    with_library(&app, 3);
+    let (snapshot, _) = snapshot(&app);
+
+    let details: Vec<&Node> = snapshot
+        .nodes
+        .iter()
+        .filter(|node| node.label == "Score details")
+        .collect();
+    assert_eq!(details.len(), 3, "one Score details button per score");
+    for node in details {
+        assert_eq!(node.role, Role::Button);
+        assert!(node.has(FLAG_CLICK) && node.has(FLAG_ENABLED));
+        let [left, top, right, bottom] = node.bounds;
+        assert!(right > left && bottom > top, "{node:?} has an area");
+    }
     assert!(
-        card.description.starts_with("Text unavailable"),
-        "{:?}",
-        card.description
+        !snapshot
+            .nodes
+            .iter()
+            .any(|node| node.label.contains("Edit details")),
+        "cards expose no Edit action"
     );
 }
 
