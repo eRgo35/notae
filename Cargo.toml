@@ -30,3 +30,10 @@ unsafe_code = "forbid"
 all = { level = "warn", priority = -1 }
 unwrap_used = "warn"
 expect_used = "warn"
+
+# Interim fix for #32 (Polish letters from a hardware keyboard): Slint 1.18.1's Android backend
+# maps hardware keys through an ASCII table. This is the published 1.18.1 crate plus the
+# upstream fix (slint-ui/slint#13112). Remove it, and `vendor/`, once a released Slint contains
+# that PR. See vendor/README.md.
+[patch.crates-io]
+i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
