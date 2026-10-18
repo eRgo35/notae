@@ -109,7 +109,7 @@ One migration (the `schema_migrations` mechanism exists) adds `ocr_source TEXT` 
 
 ### 4.5 Interim state (#33) and API 23-34
 
-`#33` removes the section and the badge now. The scan summary reports the number of PDFs with no extractable text (needed until P3). On API 23-34 the app does not read text layers, so the interim wording must be "text not read" for that population, otherwise the summary claims born-digital PDFs have no text. On the maintainer's API 35 tablet the plain wording is correct. When P3 lands the summary line becomes "N PDFs waiting for text recognition".
+`#33` removes the section and the badge now. Settings → Library maintenance reports the number of PDFs without extractable text as a plain count (needed until P3). On API 23-34 the app does not read text layers, so the interim wording must be "text not read" for that population, otherwise the summary claims born-digital PDFs have no text. On the maintainer's API 35 tablet the plain wording is correct. When P3 lands the summary line becomes "N PDFs waiting for text recognition".
 
 ### 4.6 Background execution
 
