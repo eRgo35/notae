@@ -73,7 +73,7 @@ slint-build = "1.18"
 [dev-dependencies]
 # `tempfile` is what the host tests build a temporary library root out of.
 tempfile = "3"
-pollster = "0.4"
+pollster = "1.0"
 i-slint-backend-testing = "=1.18.1"
 # `cargo-apk2` compiles the Java result adapter and generates the
 # launcher manifest from the metadata below.
