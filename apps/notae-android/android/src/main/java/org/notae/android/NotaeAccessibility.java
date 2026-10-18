@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.util.SparseIntArray;
 import android.view.MotionEvent;
 import android.view.View;
@@ -94,6 +95,21 @@ final class NotaeAccessibility extends View.AccessibilityDelegate {
     private static final int SCREEN_CHANGE_KEPT_PERCENT = 40;
     private static final int TITLE_SEARCH_NODES = 3;
 
+    private static final String TAG = "NotaeA11y";
+
+    /**
+     * The bridge is optional: whatever goes wrong here (a missing native symbol, a framework
+     * quirk, a bug) is logged and swallowed so it can never stop the app from starting or
+     * crash it. Every entry point Android or Rust can call is wrapped with this.
+     */
+    private static void failOpen(String where, Throwable error) {
+        try {
+            Log.e(TAG, where + " failed; continuing without it", error);
+        } catch (Throwable ignored) {
+            // Logging must not throw either.
+        }
+    }
+
     private static native void nativeSetActive(boolean active);
 
     private static native void nativePerformAction(
@@ -165,54 +181,78 @@ final class NotaeAccessibility extends View.AccessibilityDelegate {
         new AccessibilityManager.AccessibilityStateChangeListener() {
             @Override
             public void onAccessibilityStateChanged(boolean enabled) {
-                setActive(enabled);
+                try {
+                    setActive(enabled);
+                } catch (Throwable error) {
+                    failOpen("onAccessibilityStateChanged", error);
+                }
             }
         };
 
     private final AccessibilityNodeProvider provider = new AccessibilityNodeProvider() {
         @Override
         public AccessibilityNodeInfo createAccessibilityNodeInfo(int virtualViewId) {
-            activateOnFirstQuery();
-            if (virtualViewId == HOST_VIEW_ID) {
-                return createHostInfo();
+            try {
+                activateOnFirstQuery();
+                if (virtualViewId == HOST_VIEW_ID) {
+                    return createHostInfo();
+                }
+                Node node = current.byId(virtualViewId);
+                return node == null ? null : createNodeInfo(node);
+            } catch (Throwable error) {
+                failOpen("createAccessibilityNodeInfo", error);
+                return null;
             }
-            Node node = current.byId(virtualViewId);
-            return node == null ? null : createNodeInfo(node);
         }
 
         @Override
         public boolean performAction(int virtualViewId, int action, Bundle arguments) {
-            if (virtualViewId == HOST_VIEW_ID) {
-                return NotaeAccessibility.super.performAccessibilityAction(host, action, arguments);
+            try {
+                if (virtualViewId == HOST_VIEW_ID) {
+                    return NotaeAccessibility.super.performAccessibilityAction(
+                        host, action, arguments);
+                }
+                Node node = current.byId(virtualViewId);
+                return node != null && performNodeAction(node, action, arguments);
+            } catch (Throwable error) {
+                failOpen("performAction", error);
+                return false;
             }
-            Node node = current.byId(virtualViewId);
-            return node != null && performNodeAction(node, action, arguments);
         }
 
         @Override
         public List<AccessibilityNodeInfo> findAccessibilityNodeInfosByText(
                 String text, int virtualViewId) {
             ArrayList<AccessibilityNodeInfo> found = new ArrayList<>();
-            if (text == null || text.isEmpty()) {
-                return found;
-            }
-            String needle = text.toLowerCase();
-            for (Node node : current.nodes) {
-                if (spoken(node).toLowerCase().contains(needle)) {
-                    found.add(createNodeInfo(node));
+            try {
+                if (text == null || text.isEmpty()) {
+                    return found;
                 }
+                String needle = text.toLowerCase();
+                for (Node node : current.nodes) {
+                    if (spoken(node).toLowerCase().contains(needle)) {
+                        found.add(createNodeInfo(node));
+                    }
+                }
+            } catch (Throwable error) {
+                failOpen("findAccessibilityNodeInfosByText", error);
             }
             return found;
         }
 
         @Override
         public AccessibilityNodeInfo findFocus(int focus) {
-            if (focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) {
-                Node node = current.byId(accessibilityFocusedId);
+            try {
+                if (focus == AccessibilityNodeInfo.FOCUS_ACCESSIBILITY) {
+                    Node node = current.byId(accessibilityFocusedId);
+                    return node == null ? null : createNodeInfo(node);
+                }
+                Node node = current.byId(current.focusedId);
                 return node == null ? null : createNodeInfo(node);
+            } catch (Throwable error) {
+                failOpen("findFocus", error);
+                return null;
             }
-            Node node = current.byId(current.focusedId);
-            return node == null ? null : createNodeInfo(node);
         }
     };
 
@@ -225,6 +265,20 @@ final class NotaeAccessibility extends View.AccessibilityDelegate {
 
     /** Installs the bridge on the activity's content view; call after `super.onCreate`. */
     static NotaeAccessibility install(Activity activity) {
+        NotaeAccessibility bridge = null;
+        try {
+            bridge = installUnguarded(activity);
+            return bridge;
+        } catch (Throwable error) {
+            failOpen("install", error);
+            if (bridge != null) {
+                bridge.uninstall();
+            }
+            return null;
+        }
+    }
+
+    private static NotaeAccessibility installUnguarded(Activity activity) {
         ViewGroup content = activity.findViewById(android.R.id.content);
         View host = content != null && content.getChildCount() > 0 ? content.getChildAt(0) : null;
         if (host == null) {
@@ -257,8 +311,13 @@ final class NotaeAccessibility extends View.AccessibilityDelegate {
         content.setOnHierarchyChangeListener(new ViewGroup.OnHierarchyChangeListener() {
             @Override
             public void onChildViewAdded(View parent, View child) {
-                if (child != host) {
-                    child.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                try {
+                    if (child != host) {
+                        child.setImportantForAccessibility(
+                            View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                    }
+                } catch (Throwable error) {
+                    failOpen("onChildViewAdded", error);
                 }
             }
 
@@ -270,6 +329,14 @@ final class NotaeAccessibility extends View.AccessibilityDelegate {
 
     /** Detaches the bridge; the snapshot is dropped and Slint stops tracking the tree. */
     void uninstall() {
+        try {
+            uninstallUnguarded();
+        } catch (Throwable error) {
+            failOpen("uninstall", error);
+        }
+    }
+
+    private void uninstallUnguarded() {
         installed = false;
         if (manager != null) {
             manager.removeAccessibilityStateChangeListener(stateListener);
@@ -320,6 +387,14 @@ final class NotaeAccessibility extends View.AccessibilityDelegate {
 
     /** Receives one encoded snapshot from Rust (see `Snapshot::encode`). */
     void publish(int[] ints, String[] strings) {
+        try {
+            publishUnguarded(ints, strings);
+        } catch (Throwable error) {
+            failOpen("publish", error);
+        }
+    }
+
+    private void publishUnguarded(int[] ints, String[] strings) {
         if (!installed || ints == null || strings == null || ints.length < HEADER_INTS
                 || ints[0] != WIRE_VERSION) {
             return;
@@ -377,6 +452,14 @@ final class NotaeAccessibility extends View.AccessibilityDelegate {
     // ---- Change events (UI thread) -----------------------------------------------------------
 
     private void deliverChanges() {
+        try {
+            deliverChangesUnguarded();
+        } catch (Throwable error) {
+            failOpen("deliverChanges", error);
+        }
+    }
+
+    private void deliverChangesUnguarded() {
         synchronized (this) {
             contentChangePosted = false;
         }
@@ -514,6 +597,15 @@ final class NotaeAccessibility extends View.AccessibilityDelegate {
     // ---- Hover (explore by touch) --------------------------------------------------------------
 
     private boolean onHover(View view, MotionEvent event) {
+        try {
+            return onHoverUnguarded(event);
+        } catch (Throwable error) {
+            failOpen("onHover", error);
+            return false;
+        }
+    }
+
+    private boolean onHoverUnguarded(MotionEvent event) {
         if (manager == null || !manager.isEnabled() || !manager.isTouchExplorationEnabled()) {
             return false;
         }
