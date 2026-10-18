@@ -396,6 +396,7 @@ fn library_preview_and_settings_show_no_default_scrollbar() {
     app.set_selected(row);
     app.set_selected_position("1 of 30".into());
     app.set_details_open(true);
+    wait(500); // the leaving Library list unmounts
     assert_eq!(
         count(&app, "ScrollBar"),
         0,
@@ -411,6 +412,7 @@ fn library_preview_and_settings_show_no_default_scrollbar() {
     // Settings uses the themed bar too: no standard bar, and its thumb appears when it scrolls.
     app.set_details_open(false);
     app.set_show_settings(true);
+    wait(500); // the leaving screens unmount
     assert_eq!(count(&app, "ScrollBar"), 0, "Settings has no standard bar");
     let body = only(&app, "ScrollView");
     wheel(&app, center(&body), -500.0);

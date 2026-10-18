@@ -24,15 +24,45 @@ export global Theme {
     in-out property <bool> modal-open: false;
 }
 
+// How far a view slides while it enters or leaves (shared-axis transition).
+export global Motion {
+    out property <length> shift: 24px;
+}
+
+// Presence of one view or layer: 0 = absent, 1 = fully shown. Bound to `active` (never assigned),
+// so a reversal in mid-flight turns around from the current value. A view enters over the
+// medium token and leaves over the short one; with animations disabled it jumps to its final
+// state. `mounted` stays true while the view is still visible, so the owner can keep it alive
+// for its exit.
+export component ViewPresence inherits Rectangle {
+    in property <bool> active;
+    private property <float> animated: root.active ? 1 : 0;
+    animate animated {
+        duration: root.active ? Theme.motion-medium : Theme.motion-short;
+        easing: ease-in-out;
+    }
+    out property <float> value: Theme.animations-enabled ? root.animated : (root.active ? 1 : 0);
+    out property <bool> mounted: root.active || root.value > 0;
+    width: 0px;
+    height: 0px;
+}
+
+// One view inside a transition host. It fades and slides by `Motion.shift` along the horizontal
+// axis as `presence` moves between 0 and 1: `direction` is +1 for views deeper in the
+// navigation (Search, Settings, preview), which come from and return to the right, and -1 for
+// the views they sit on top of. The active view is always above a leaving one, so it receives
+// input at once; a leaving view is covered by a blocker so it cannot be tapped.
 export component ScreenTransition inherits Rectangle {
-    in property <bool> animations-enabled: Theme.animations-enabled;
-    private property <float> progress: root.animations-enabled ? 0 : 1;
+    in property <float> presence;
+    in property <bool> active: true;
+    in property <int> direction: 1;
+    out property <bool> finished: root.presence >= 1;
     background: transparent;
-    opacity: root.animations-enabled ? root.progress : 1;
-    animate progress { duration: root.animations-enabled ? Theme.motion-medium : 0ms; easing: ease-in-out; }
-    init => { root.progress = 1; }
-    out property <bool> finished: root.progress >= 1;
+    opacity: root.presence;
+    x: (1 - root.presence) * root.direction * Motion.shift;
+    z: root.active ? 2 : 1;
     @children
+    if !root.active : TouchArea { }
 }
 
 export component Glyph inherits Image {

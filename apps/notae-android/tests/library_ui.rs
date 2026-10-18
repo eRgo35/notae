@@ -37,6 +37,11 @@ fn with_library(app: &AppWindow, count: usize) {
     ])));
 }
 
+/// Lets every transition finish so leaving views are unmounted.
+fn settle() {
+    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(500));
+}
+
 fn count(app: &AppWindow, type_name: &str) -> usize {
     ElementHandle::find_by_element_type_name(app, type_name).count()
 }
@@ -170,12 +175,14 @@ fn landscape_defaults_to_a_visible_sidebar_that_can_be_hidden_and_restored() {
     assert_eq!((count(&app, "SidePanel"), count(&app, "Chip")), (1, 0));
 
     press(&app, "Hide sidebar");
+    settle();
     assert_eq!((count(&app, "SidePanel"), count(&app, "Chip")), (0, 2));
     assert!(
         labelled(&app, "Settings").is_some(),
         "Settings stays reachable from the header"
     );
     press(&app, "Show sidebar");
+    settle();
     assert_eq!((count(&app, "SidePanel"), count(&app, "Chip")), (1, 0));
     assert_eq!(*changes.borrow(), [(false, true), (false, false)]);
 }
