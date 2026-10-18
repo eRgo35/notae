@@ -364,6 +364,7 @@ fn maintenance_card_keeps_the_density_of_the_other_settings_cards() {
         let app = app_sized(width, height);
         app.set_show_settings(true);
         app.set_settings_indexed_count("70".into());
+        app.set_settings_no_text_count("3".into());
         app.set_settings_scan_summary("3 added, 2 updated, 1 moved, 4 deleted".into());
         app.set_settings_scan_conflicts("1".into());
         app.set_settings_scan_failures("3".into());
@@ -372,6 +373,7 @@ fn maintenance_card_keeps_the_density_of_the_other_settings_cards() {
         let about = card_containing(&app, "License: MIT License");
         let rows: f32 = [
             "Indexed scores: 70",
+            "PDFs without extractable text: 3",
             "Last scan: 3 added, 2 updated, 1 moved, 4 deleted",
             "ID conflicts: 1",
             "Failures: 3",
@@ -385,9 +387,9 @@ fn maintenance_card_keeps_the_density_of_the_other_settings_cards() {
                 .height
         })
         .sum();
-        // 16 px padding twice, one title line and 8 px between the five children: any more is a
-        // stretched card (#29).
-        let natural = 32.0 + 30.0 + rows + 8.0 * 4.0;
+        // 16 px padding twice, one title line and 8 px between the six children (title, indexed,
+        // no-text, last scan, conflicts, failures): any more is a stretched card (#29).
+        let natural = 32.0 + 30.0 + rows + 8.0 * 5.0;
         assert!(
             maintenance.size().height <= natural,
             "{width}x{height}: maintenance card hugs its rows ({natural}): {:?}",
