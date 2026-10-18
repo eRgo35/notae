@@ -134,9 +134,9 @@ tablet builds its own private index from it. There is no on-device OCR yet
 ## Install
 
 > [!NOTE]
-> Notae is young. v0.2.0 is verified with host tests and an Android emulator
+> Notae is young. v0.2.1 is verified with host tests and an Android emulator
 > but has **not yet been accepted on a physical tablet** (see the
-> [release notes](docs/release-notes/v0.2.0.md)). Please report anything odd.
+> [release notes](docs/release-notes/v0.2.1.md)). Please report anything odd.
 
 Notae ships one Android artifact: a signed **arm64** APK for Android 6.0 (API
 23) or newer. The desktop indexer is built from source; see
@@ -148,7 +148,7 @@ Notae ships one Android artifact: a signed **arm64** APK for Android 6.0 (API
    check is what proves the APK came from the Notae release key.
 
    ```sh
-   V=0.2.0
+   V=0.2.1
    sha256sum -c "notae-$V-arm64.apk.sha256"
    apksigner verify --print-certs "notae-$V-arm64.apk" \
      | grep -i 'SHA-256 digest: be27cd781766c5c28a9db106c07b051ceee4e0003105964595e2a848f371f601'

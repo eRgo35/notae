@@ -17,8 +17,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 slint = { version = "1.18", features = ["backend-android-activity-06"] }
 thiserror = { workspace = true }
-notae-domain = { path = "../../crates/notae-domain", version = "0.2" }
-notae-index = { path = "../../crates/notae-index", version = "0.2" }
+notae-domain = { path = "../../crates/notae-domain", version = "0.2.1" }
+notae-index = { path = "../../crates/notae-index", version = "0.2.1" }
 sha2 = "0.10"
 # `atomic-waker` is the standard library the SAF picker handshake
 # uses to bridge the Slint main thread (where `select_root` is
@@ -43,7 +43,7 @@ i-slint-core = "=1.18.1"
 # storage-state tests; on Android the SAF adapter in
 # `src/android/saf.rs` plays the same role.
 [target.'cfg(not(target_os = "android"))'.dependencies]
-notae-index-cli = { path = "../notae-index", version = "0.2" }
+notae-index-cli = { path = "../notae-index", version = "0.2.1" }
 
 # `jni` and `android-activity` are direct deps only on Android.
 # `android-activity` is the runtime the `android_main` FFI shim already
