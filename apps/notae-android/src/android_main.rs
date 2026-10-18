@@ -145,6 +145,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
     let window = AppWindow::new().map_err(|error| format!("Slint window: {error}"))?;
     crate::android::search_input::bind_window(window.as_weak());
     crate::android::motion::bind_window(window.as_weak());
+    crate::android::accessibility::bind(app.clone(), window.as_weak());
     window.set_hardware_keyboard_present(hardware_keyboard_present);
     window.set_animations_enabled(animations_enabled);
     window.set_voice_search_available(voice_available);
