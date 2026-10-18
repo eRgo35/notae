@@ -27,7 +27,7 @@ component SupportingText inherits Label {
     color: Theme.muted;
     font-size: 14px;
 }
-component ImportEntry inherits Rectangle {
+component ImportCard inherits Rectangle {
     in property <ImportRow> item;
     background: Theme.background;
     border-radius: 20px;
@@ -40,9 +40,19 @@ component ImportEntry inherits Rectangle {
             SupportingText { text: root.item.change; color: Theme.accent-text; }
         }
         Text { text: "On device: " + root.item.local_metadata; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+        Rectangle { height: 1px; background: Theme.divider; }
         Text { text: "From desktop: " + root.item.proposed_metadata; color: Theme.foreground; font-size: 14px; wrap: word-wrap; }
         Text { text: root.item.fields + root.item.ocr; color: Theme.muted; font-size: 13px; wrap: word-wrap; }
         if root.item.conflict != "" : Text { text: root.item.conflict; color: Theme.error; font-size: 14px; wrap: word-wrap; }
+    }
+}
+
+// A `ListView` stacks its rows without spacing, so each row carries its own gap below the card.
+component ImportEntry inherits Rectangle {
+    in property <ImportRow> item;
+    VerticalLayout {
+        padding-bottom: 8px;
+        ImportCard { item: root.item; }
     }
 }
 

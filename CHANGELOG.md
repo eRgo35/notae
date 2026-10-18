@@ -9,6 +9,12 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+### Fixed
+
+- Import review ([#34](https://github.com/eRgo35/notae/issues/34)): the entries
+  of the "Review desktop import" sheet are separated by a gap, and a divider
+  separates the "On device" and "From desktop" values inside each entry.
+
 ## [0.2.1] - 2026-10-18
 
 Follow-up to v0.2.0 from the first tablet feedback (issues

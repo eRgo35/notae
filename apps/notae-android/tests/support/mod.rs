@@ -14,6 +14,7 @@ fn initialize_backend() {
     });
 }
 
+#[allow(dead_code)] // Shared by every test binary; some only need `app_sized`.
 pub fn app() -> AppWindow {
     app_sized(1280, 800)
 }
