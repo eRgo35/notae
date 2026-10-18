@@ -9,46 +9,76 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
-> **Work in progress for v0.2.1.** Nothing in this section is released, and
-> some items are not merged to `main` yet. The milestone is
-> [v0.2.1](https://github.com/eRgo35/notae/milestone/2); entries are named by
-> issue number and will be reworded when the release notes are written.
+## [0.2.1] - 2026-10-18
 
-### Added
-
-- On-device OCR for image-only PDFs: a design proposal only so far, tracked in
-  [#28](https://github.com/eRgo35/notae/issues/28). No OCR runs on Android yet.
+Follow-up to v0.2.0 from the first tablet feedback (issues
+[#10](https://github.com/eRgo35/notae/issues/10),
+[#26](https://github.com/eRgo35/notae/issues/26),
+[#27](https://github.com/eRgo35/notae/issues/27),
+[#29](https://github.com/eRgo35/notae/issues/29),
+[#30](https://github.com/eRgo35/notae/issues/30),
+[#31](https://github.com/eRgo35/notae/issues/31),
+[#33](https://github.com/eRgo35/notae/issues/33)). Verified with host tests and
+an Android API 35 x86_64 tablet emulator; **the issues above are awaiting
+verification on the Galaxy Tab S10 FE+** and stay open until the maintainer has
+tested them. See [`docs/release-notes/v0.2.1.md`](docs/release-notes/v0.2.1.md)
+for the full text, including known limitations.
 
 ### Changed
 
-- Library ([#26](https://github.com/eRgo35/notae/issues/26)): open the PDF
-  directly from every section, and replace the card Edit icon with an Info icon
-  that opens the score details.
-- Settings ([#29](https://github.com/eRgo35/notae/issues/29)): remove the
-  Library maintenance Scan button and fix the oversized maintenance card.
-- Sidebar ([#31](https://github.com/eRgo35/notae/issues/31)): add a transition
-  when the sidebar is expanded or collapsed. This follows up
-  [#10](https://github.com/eRgo35/notae/issues/10), whose view-change
-  transitions were not visible on the tablet.
+- Library ([#26](https://github.com/eRgo35/notae/issues/26)): tapping a card or
+  row opens the PDF directly in every section and in both layouts, and the card
+  Edit (pencil) icon is replaced by an **Info** icon that opens the full-width
+  score preview. Metadata is edited from the preview's **Edit details**; the
+  long-press menu offers **Open score** and **Score details**.
+- Settings ([#29](https://github.com/eRgo35/notae/issues/29)): the Library
+  maintenance Scan button is gone (the Library header owns the only Scan
+  action) and the maintenance card has the same density as the other Settings
+  cards.
+- Motion ([#31](https://github.com/eRgo35/notae/issues/31), follow-up to
+  [#10](https://github.com/eRgo35/notae/issues/10)): changing between Welcome,
+  Library, Search and Settings is a fade-through with a short shared-axis
+  slide, the preview and the Library cross-fade, and the sidebar slides and
+  fades when it is expanded or collapsed. The leaving view stays visible while
+  it fades out and cannot be tapped. Disabled when Android animations are off.
+- Image-only PDFs ([#33](https://github.com/eRgo35/notae/issues/33)): interim
+  behaviour until on-device OCR is decided. They stay in the library and are
+  searchable by title and metadata; the "No text yet" badge and the
+  "Text unavailable" copy are gone, and Settings → Library maintenance shows
+  **PDFs without extractable text** as a plain count.
 
 ### Fixed
 
 - Scan progress ([#30](https://github.com/eRgo35/notae/issues/30)): the bar no
-  longer jumps to 33% as soon as a scan starts. Follow-up to the phase-accurate
-  scan status of [#18](https://github.com/eRgo35/notae/issues/18).
-- Polish letters cannot be typed with a physical keyboard
-  ([#32](https://github.com/eRgo35/notae/issues/32)).
+  longer shows a pre-filled stretch before real counts exist; it is an empty
+  track with a moving segment until "Reading PDF text and thumbnails: N of M"
+  has a total.
 
 ### Removed
 
-- The "Needs details" section ([#27](https://github.com/eRgo35/notae/issues/27)).
+- The "Needs details" section, sidebar item, chip and count
+  ([#27](https://github.com/eRgo35/notae/issues/27)).
 - The "Text pending" section and the "No text yet" badge
   ([#33](https://github.com/eRgo35/notae/issues/33)).
 
 ### Documentation
 
-- README presentation layer, `CONTRIBUTING.md`, `SECURITY.md`, issue and pull
-  request templates ([#6](https://github.com/eRgo35/notae/issues/6)).
+- README presentation layer with refreshed emulator screenshots,
+  `CONTRIBUTING.md`, `SECURITY.md`, issue and pull request templates
+  ([#6](https://github.com/eRgo35/notae/issues/6)).
+- Release notes for v0.2.1, an implementation state update and the Library,
+  Settings and motion contracts in `docs/android-debugging.md`.
+
+### Known limitations
+
+- Motion on the tablet is unconfirmed: the emulator shows the transitions, but
+  the Galaxy Tab S10 FE+ has not been checked, including whether its animator
+  scale is non-zero (the app logs `notae: motion animator_duration_scale=...
+  animations_enabled=...` at startup for this).
+- The "enormous" maintenance card of #29 could not be reproduced on the
+  emulator; the only excess height found (the 48 px Scan icon) is removed.
+- On-device OCR ([#28](https://github.com/eRgo35/notae/issues/28)) is a design
+  proposal only (`docs/adr/0001-on-device-ocr.md`); nothing runs OCR on Android.
 
 ## [0.2.0] - 2026-10-17
 
@@ -118,5 +148,6 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/eRgo35/notae/releases/tag/v0.2.1
 [0.2.0]: https://github.com/eRgo35/notae/releases/tag/v0.2.0
