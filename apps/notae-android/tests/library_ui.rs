@@ -357,6 +357,68 @@ fn preview_back_returns_with_the_same_layout_and_section() {
     assert_eq!(app.get_selected_section(), "recent");
 }
 
+/// The Info action (#26) and the animated preview layer (#10, #31) work as one flow: tapping Info
+/// cross-fades into the preview, and Back cross-fades to the same Library again.
+#[test]
+fn info_opens_the_animated_preview_and_back_returns() {
+    let app = app();
+    app.set_library_list_view(true);
+    with_library(&app, 3);
+    settle();
+    let weak = app.as_weak();
+    app.on_score_selected(move |key| {
+        if let Some(app) = weak.upgrade() {
+            app.set_selected(LibraryRow {
+                title: "Score 2".into(),
+                note_key: key,
+                relative_path: "score-2.pdf".into(),
+                ..LibraryRow::default()
+            });
+            app.set_details_open(true);
+        }
+    });
+    let weak = app.as_weak();
+    app.on_selection_cleared(move || {
+        if let Some(app) = weak.upgrade() {
+            app.set_details_open(false);
+        }
+    });
+    let tick = |milliseconds: u64| {
+        i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(milliseconds));
+        slint::platform::update_timers_and_animations();
+    };
+
+    item_info_actions(&app)[1].mock_single_click(slint::platform::PointerEventButton::Left);
+    assert!(app.get_details_open());
+    tick(60);
+    let preview = ElementHandle::find_by_element_type_name(&app, "ScoreDetails")
+        .next()
+        .expect("preview mounts as soon as Info is tapped");
+    assert!(
+        preview.computed_opacity() > 0.0 && preview.computed_opacity() < 1.0,
+        "the preview fades in rather than snapping: {}",
+        preview.computed_opacity()
+    );
+    tick(500);
+    assert_eq!(preview.computed_opacity(), 1.0);
+    assert_eq!(count(&app, "ScoreRow"), 0, "the Library chrome has left");
+
+    labelled(&app, "Back to library")
+        .expect("Back is available")
+        .invoke_accessible_default_action();
+    tick(60);
+    assert!(
+        ElementHandle::find_by_element_type_name(&app, "ScoreDetails")
+            .next()
+            .expect("preview stays while it leaves")
+            .computed_opacity()
+            < 1.0
+    );
+    tick(500);
+    assert_eq!(count(&app, "ScoreRow"), 3, "list layout is restored");
+    assert_eq!(count(&app, "ScoreDetails"), 0, "the preview has unmounted");
+}
+
 #[test]
 fn compact_preview_also_offers_back() {
     let app = app_sized(360, 640);
