@@ -8,7 +8,6 @@ Run with FIXTURE_DIR set to this directory:
 """
 
 import os
-import struct
 import zlib
 
 OUT = os.environ["FIXTURE_DIR"]
@@ -49,6 +48,11 @@ def stream(dict_body, data, compress=False):
     return b"<< " + dict_body + b" /Length %d >>\nstream\n" % len(data) + data + b"\nendstream"
 
 
+def write_fixture(name, data, mode="wb"):
+    with open(os.path.join(OUT, name), mode) as handle:
+        handle.write(data)
+
+
 def text_page_mediabox(box):
     content = b"BT /F1 18 Tf 24 40 Td (Notae fixture) Tj ET"
     return content, box
@@ -59,12 +63,12 @@ content = b"BT /F1 12 Tf 24 40 Td (Notae searchable text layer) Tj ET"
 objects = [
     b"<< /Type /Catalog /Pages 2 0 R >>",
     b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
-    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+     b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
     stream(b"", content),
     b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
 ]
-open(os.path.join(OUT, "text-layer.pdf"), "wb").write(build(objects, 1))
+write_fixture("text-layer.pdf", build(objects, 1))
 
 # --- image-only.pdf: one page carrying a JPEG, no text operators ----------
 # A 64x32 RGB gradient, stored as a Flate-compressed raw image XObject.
@@ -82,12 +86,12 @@ image = stream(
 objects = [
     b"<< /Type /Catalog /Pages 2 0 R >>",
     b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
-    b" /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>",
+    (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+     b" /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>"),
     stream(b"", b"q 200 0 0 100 0 0 cm /Im0 Do Q"),
     image,
 ]
-open(os.path.join(OUT, "image-only.pdf"), "wb").write(build(objects, 1))
+write_fixture("image-only.pdf", build(objects, 1))
 
 # --- multi-page.pdf: three pages, each with a text layer -----------------
 kids = b"[3 0 R 5 0 R 7 0 R]"
@@ -104,17 +108,19 @@ for number, letter in enumerate(b"ABC", start=1):
         stream(b"", b"BT /F1 12 Tf 24 40 Td (Notae page %d) Tj ET" % number)
     )
 objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
-open(os.path.join(OUT, "multi-page.pdf"), "wb").write(build(objects, 1))
+write_fixture("multi-page.pdf", build(objects, 1))
 
 # --- corrupt.pdf: a plausible header followed by nothing usable ----------
 corrupt = bytearray(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
 corrupt += b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
 corrupt += b"trailer\n<< /Root 1 0 R >>\nstartxref\n999999\n%%EOF\n"
-open(os.path.join(OUT, "corrupt.pdf"), "wb").write(bytes(corrupt))
+write_fixture("corrupt.pdf", bytes(corrupt))
 
 # --- not-a-pdf.pdf: plain text wearing a .pdf name ----------------------
-open(os.path.join(OUT, "not-a-pdf.pdf"), "w").write(
-    "This file is plain text, not a PDF, but its name ends in .pdf.\n"
+write_fixture(
+    "not-a-pdf.pdf",
+    "This file is plain text, not a PDF, but its name ends in .pdf.\n",
+    "w",
 )
 
 # --- damaged-contents.pdf: a valid page tree whose /Contents is corrupt --
@@ -126,12 +132,12 @@ damaged = stream(b"/Filter /ASCIIHexDecode", b"this is not hexadecimal ZZZ")
 objects = [
     b"<< /Type /Catalog /Pages 2 0 R >>",
     b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
-    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+     b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
     damaged,
     b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
 ]
-open(os.path.join(OUT, "damaged-contents.pdf"), "wb").write(build(objects, 1))
+write_fixture("damaged-contents.pdf", build(objects, 1))
 
 # --- hex-contents.pdf: the same unusual-but-valid filter, intact --------
 # ASCIIHexDecode is a perfectly ordinary PDF filter. This page proves that
@@ -141,12 +147,12 @@ hexed = stream(b"/Filter /ASCIIHexDecode", content.hex().encode())
 objects = [
     b"<< /Type /Catalog /Pages 2 0 R >>",
     b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
-    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+     b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
     hexed,
     b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
 ]
-open(os.path.join(OUT, "hex-contents.pdf"), "wb").write(build(objects, 1))
+write_fixture("hex-contents.pdf", build(objects, 1))
 
 # --- no-header.pdf: PDF-shaped objects with no %PDF- header at all ------
 # The cross-reference table, the objects and the trailer are all valid; only
@@ -155,20 +161,18 @@ open(os.path.join(OUT, "hex-contents.pdf"), "wb").write(build(objects, 1))
 objects = [
     b"<< /Type /Catalog /Pages 2 0 R >>",
     b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
-    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+     b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
     stream(b"", b"BT /F1 12 Tf 24 40 Td (Notae no header) Tj ET"),
     b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
 ]
-open(
-    os.path.join(OUT, "no-header.pdf"),
-    "wb",
-).write(
+write_fixture(
+    "no-header.pdf",
     build(
         objects,
         1,
         header=b"NOT-A-PDF-HEADER, just some bytes that happen to parse.\n",
-    )
+    ),
 )
 
 # --- leading-junk.pdf: the same document behind 32 bytes of junk -------
@@ -179,15 +183,15 @@ open(
 objects = [
     b"<< /Type /Catalog /Pages 2 0 R >>",
     b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
-    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+     b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
     stream(b"", b"BT /F1 12 Tf 24 40 Td (Notae leading junk) Tj ET"),
     b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
 ]
-open(
-    os.path.join(OUT, "leading-junk.pdf"),
-    "wb",
-).write(build(objects, 1, header=b"junk from an archive stub!!!!\n" + HEADER))
+write_fixture(
+    "leading-junk.pdf",
+    build(objects, 1, header=b"junk from an archive stub!!!!\n" + HEADER),
+)
 
 # --- word-spacing.pdf: word boundaries carried by TJ, not by spaces -----
 # `[(Notae) -250 (searchable)] TJ` is how a typesetter says "these two
@@ -196,15 +200,15 @@ open(
 objects = [
     b"<< /Type /Catalog /Pages 2 0 R >>",
     b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-    b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
-    b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+    (b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100]"
+     b" /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>"),
     stream(
         b"",
         b"BT /F1 12 Tf 24 40 Td [(Notae) -250 (searchable)] TJ ET",
     ),
     b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
 ]
-open(os.path.join(OUT, "word-spacing.pdf"), "wb").write(build(objects, 1))
+write_fixture("word-spacing.pdf", build(objects, 1))
 
 for name in sorted(os.listdir(OUT)):
     print(name, os.path.getsize(os.path.join(OUT, name)))
