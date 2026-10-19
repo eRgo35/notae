@@ -60,13 +60,14 @@ export component Scrollbar inherits Rectangle {
         animate width { duration: Theme.motion-short; easing: ease-in-out; }
     }
 
-    // The 48 px wide touch target, exactly as tall as the thumb (never shorter than 48 px).
+    // The touch target, exactly as tall as the thumb (never shorter than 48 px); as wide as the
+    // scrollbar itself, 48 px unless an owner narrows it to keep controls beside it tappable.
     thumb := TouchArea {
         property <length> start-thumb-y;
         property <length> start-pointer-y;
         x: root.width - self.width;
         y: root.thumb-y;
-        width: 48px;
+        width: root.width;
         height: root.thumb-height;
         enabled: root.shown;
         mouse-cursor: default;
