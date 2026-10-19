@@ -17,6 +17,7 @@ use notae_domain::{
 use rusqlite::{Connection, OptionalExtension, Row, ToSql, params, params_from_iter};
 use thiserror::Error;
 
+use crate::fold::fold_l_stroke;
 use crate::schema;
 use crate::search::{SearchHit, SearchScope};
 
@@ -74,7 +75,9 @@ pub enum IndexError {
 ///
 /// Case folding is deliberately not applied: the FTS5 `unicode61` tokenizer
 /// already matches case-insensitively, so storing the text as recognized keeps
-/// it readable and directly comparable.
+/// it readable and directly comparable. The same holds for the `ł`→`l` fold of
+/// `crate::fold`: it is applied to the derived `notes_fts` row only, never to
+/// the stored text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OcrText {
     text: String,
@@ -663,17 +666,19 @@ fn write_fts_row(
     ocr_text: &str,
 ) -> Result<(), rusqlite::Error> {
     conn.execute("DELETE FROM notes_fts WHERE rowid = ?1", [row_id])?;
+    // Every indexed column goes through the same fold the query uses; see
+    // `crate::fold`. The canonical `notes` row keeps the original spelling.
     conn.execute(
         "INSERT INTO notes_fts (rowid, note_id, title, composer, tags, filename, ocr_text)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             row_id,
             note.id().map(|id| i64::from(id.get())),
-            note.title(),
-            note.metadata().composer_or_artist(),
-            tags_text(note),
-            file_name(note.path()),
-            ocr_text,
+            fold_l_stroke(note.title()),
+            note.metadata().composer_or_artist().map(fold_l_stroke),
+            fold_l_stroke(&tags_text(note)),
+            fold_l_stroke(&file_name(note.path())),
+            fold_l_stroke(ocr_text),
         ],
     )?;
     Ok(())

@@ -65,6 +65,7 @@
 //! [`SidecarManifest::validate`] runs before any mutation, so a malformed or
 //! unsupported sidecar leaves the library untouched.
 
+mod fold;
 mod import;
 mod provenance;
 mod reconcile;
