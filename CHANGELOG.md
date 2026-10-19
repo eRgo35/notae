@@ -14,6 +14,21 @@ The hand-written release notes for each version live in
 - Import review ([#34](https://github.com/eRgo35/notae/issues/34)): the entries
   of the "Review desktop import" sheet are separated by a gap, and a divider
   separates the "On device" and "From desktop" values inside each entry.
+- Search ([#35](https://github.com/eRgo35/notae/issues/35)): the Polish letters
+  `ł` and `Ł` now match `l` and `L`, so `palka`, `Galuszka`, `czesci stale`,
+  `zmartwychwstal` and `lodz` find `Pałka`, `Gałuszka`, `części stałe`,
+  `zmartwychwstał` and `Łódź` in titles, composers, tags and lyrics, in every
+  Search scope. Queries typed with the diacritics keep working, and titles and
+  lyric snippets are still shown in their original spelling. `l` and `ł` are
+  now one letter for search, so `lodz` also finds a score titled `Lodz`.
+
+### Changed
+
+- Index schema version 2 ([#35](https://github.com/eRgo35/notae/issues/35)):
+  the search index folds `ł`/`Ł` to `l`/`L` as it is written, and existing
+  indexes are migrated in place the first time this build opens them. The
+  upgrade is forward-only: older builds refuse a version 2 index. The sidecar
+  format is unchanged (`SIDECAR_SCHEMA_VERSION` stays `2`).
 
 ## [0.2.1] - 2026-10-18
 

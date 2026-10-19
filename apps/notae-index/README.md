@@ -29,6 +29,11 @@ The indexer writes two files inside `<library>/.notae/`:
 * `manifest.json` — the versioned, JSON-encoded description of the library
   the Android app reads. This is the cross-platform contract.
 
+`index.sqlite` is upgraded in place by the first build that knows a newer schema
+version (version 2 folds the Polish `ł`/`Ł` in its search table, issue #35); the
+upgrade is forward-only, so an older `notae-index` refuses the file. The
+`manifest.json` format is unchanged.
+
 ## Prerequisites
 
 The binary is Linux-only because it links Tesseract and Leptonica
