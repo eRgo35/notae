@@ -1,6 +1,6 @@
 # On-device OCR for image-only PDFs: design and feasibility
 
-Status: proposal for maintainer approval. The decision record is [ADR 0001](../../adr/0001-on-device-ocr.md); this document holds the evidence, the risks and the phased plan. Issue: #28 (companion #33, related #18). Nothing in the app crates was changed to produce it.
+Status: accepted 2026-10-19 (maintainer decision on #28). The run mode is narrowed: OCR is started manually from Settings and runs in the foreground. It is not automatic, and there is no foreground service (see [ADR 0001](../../adr/0001-on-device-ocr.md), "Acceptance"). This document holds the evidence, the risks and the phased plan. Issue: #28 (companion #33, related #18). Nothing in the app crates was changed to produce it.
 
 How to read the evidence. Every fact carries a tag.
 
@@ -97,9 +97,9 @@ All work is under `/tmp/ocr-spike` (not in the repo). Host: Fedora 44, 16 cores,
 
 - New `RescanPhase::RecognizingText { files_done, files_total, page, pages }`. It is cancellable (every document commits atomically, so there is no half-applied state, unlike `ReadingText`). `is_cancellable()` changes accordingly.
 - New events: `RecognitionStarted { files_total }`, `RecognitionPage { path, file_index, files_total, page, pages }`, `RecognitionFileSucceeded { path }`, `RecognitionFileFailed { path, reason }`, `RecognitionFinished { recognized, failed }`; cancel reuses `Canceled` after the current page.
-- Sequencing (recommended, "option A"): `Completed { summary, rows, desktop_import }` keeps its contract and fires first so the scan summary appears at once. When the sidecar decision is resolved (none, applied or dismissed) the controller enqueues a `RecognizeText` worker command and the banner moves to `Rescan { RecognizingText }`. Rejected "option B": run recognition before `Completed`; that delays the scan result by minutes or hours and breaks the #18 rule that `Completed` follows the sidecar check.
-- Queue = all notes with `status == OcrPending`, in stable order (path). No queue table. A cancel or an app exit leaves the remaining notes `OcrPending`, so resume is automatic.
-- `ocr_attempting` crash marker per document; hash re-check before commit; pause on `onStop`/`onStart`, battery saver, battery below 20 % unless charging, thermal SEVERE or worse (API 29+). The banner reads for example "Recognising text · 3 of 120 files · page 2 of 6" with Pause and Cancel; no time estimate until three pages have been measured.
+- Sequencing: `Completed { summary, rows, desktop_import }` keeps its contract and fires first, so the scan summary appears at once and the #18 rule (`Completed` follows the sidecar check) holds. Neither the scan nor the sidecar decision starts recognition. The user starts it from Settings → Library maintenance; the controller then enqueues a `RecognizeText` worker command and the banner moves to `Rescan { RecognizingText }`. Considered and rejected: running recognition before `Completed`, which would delay the scan result by minutes or hours.
+- Queue = all notes with `status == OcrPending`, in stable order (path). No queue table. A cancel or an app exit leaves the remaining notes `OcrPending`, so the next run started from Settings resumes them.
+- `ocr_attempting` crash marker per document; hash re-check before commit; foreground-only, paused on `onStop`/`onStart`, battery saver, battery below 20 % unless charging, thermal SEVERE or worse (API 29+). The banner reads for example "Recognising text · 3 of 120 files · page 2 of 6" with Cancel only, as the library scan has (no Pause). No time estimate until three pages have been measured.
 - Statuses: success with text → `Ready`, `ocr_language = "pol+eng"`; success with no usable words → `OcrIncomplete`; renderer/engine failure → `OcrIncomplete` plus a `FileFailed` line. No automatic retry; retry is an explicit user action.
 - After this lands the comments that claim "Android never runs OCR" (`state.rs` 217, `ui/browse.rs` 66) and the Settings sentence must change.
 
@@ -113,8 +113,8 @@ One migration (the `schema_migrations` mechanism exists) adds `ocr_source TEXT` 
 
 ### 4.6 Background execution
 
-- Phase 1: in-app only. A Rust thread keeps running after `onStop` until the system freezes the process, so pausing on `onStop` is explicit, not implied. Nothing survives the process being killed except the `OcrPending` set, which is the point of the queue design.
-- WorkManager is `androidx` and unavailable without Gradle. A foreground `Service` (declarable in `cargo-apk2` metadata, class compiled from `java_sources`, needs a notification and a `foregroundServiceType` on target 34 and `POST_NOTIFICATIONS` on 33+) is the realistic way to continue off-screen; its permission and timeout rules under Android 14/15 must be checked when that issue is written. `JobScheduler` is a framework alternative with execution limits. Recommended: separate follow-up issue, not part of acceptance.
+- Phase 1: foreground only, started by the user. Recognition runs only after the user starts it from Settings, and only while the app is in the foreground. A Rust thread would keep running after `onStop` until the system freezes the process, so pausing on `onStop` is explicit, not implied. Nothing survives the process being killed except the `OcrPending` set, which is the point of the queue design.
+- No off-screen continuation. WorkManager is `androidx` and unavailable without Gradle. The foreground `Service` (declarable in `cargo-apk2` metadata; needs a notification, a `foregroundServiceType` on target 34 and `POST_NOTIFICATIONS` on 33+) and `JobScheduler` were the candidates for continuing off-screen. Both are dropped: the maintainer decided on 2026-10-19 that OCR is foreground-only and user-started (ADR 0001).
 
 ### 4.7 Threads and memory
 
@@ -125,7 +125,7 @@ One recognition worker thread by default (the library worker is already serialis
 - **Host unit (no engine):** fake `OcrProvider` and fake `PageRaster` in the `ocr_adapter.rs` style: queue order; cancel between pages leaves remaining notes `OcrPending`; failure → `OcrIncomplete`; resume after restart; hash change discards the result; crash marker converts to `OcrIncomplete`; precedence matrix for `text_layer`/`sidecar`/`device`; phase and event ordering; progress never ahead of work; `Completed` still last for the scan.
 - **Host with the real engine:** reuse the committed `crates/notae-ocr/tests/tessdata` (`pol`, `eng`, `lat`, `osd`) and `tests/fixtures/{polish,english}.png`; add a generated image-only PDF fixture with Polish text (extend `apps/notae-index/tests/fixtures/generate.py`) and assert the diacritic words come out through the same adapter code path, with the DPI set.
 - **Link/packaging checks in CI:** the `readelf`/`nm` assertions, no `INTERNET` in the packaged manifest, APK size budget.
-- **Emulator (x86_64 API 35):** the existing fixture directory `/sdcard/Download/NotaeOps` has two text PDFs and two "Scanned" PDFs. Pulled read-only and inspected [O]: each is one 930×1315.5 pt page holding a single 1240×1754 gray image (96 ppi as stored) of one English sentence, and host Tesseract reads them as `Scanned page - image only` and `Another scanned page`. They are valid English smoke fixtures but contain no Polish and no staves. Add a real image-only fixture with known Polish words, scan, wait for the banner to leave `RecognizingText`, and search for one word (and for its diacritic-free spelling, see the FTS note in `docs/android-debugging.md`). The emulator proves integration only; its timing is not evidence for the tablet. Needs an x86_64 build of the native prefix.
+- **Emulator (x86_64 API 35):** the existing fixture directory `/sdcard/Download/NotaeOps` has two text PDFs and two "Scanned" PDFs. Pulled read-only and inspected [O]: each is one 930×1315.5 pt page holding a single 1240×1754 gray image (96 ppi as stored) of one English sentence, and host Tesseract reads them as `Scanned page - image only` and `Another scanned page`. They are valid English smoke fixtures but contain no Polish and no staves. Add a real image-only fixture with known Polish words, start recognition from Settings, wait for the banner to leave `RecognizingText`, and search for one word (and for its diacritic-free spelling, see the FTS note in `docs/android-debugging.md`). The emulator proves integration only; its timing is not evidence for the tablet. Needs an x86_64 build of the native prefix.
 - **Device (Galaxy Tab S10 FE+, maintainer):** P0 spike and a final acceptance pass with about 30 real scanned pages: seconds per page, RSS, temperature, battery drain over a 50-file backlog, cancel latency.
 
 ## 6. CI impact
@@ -154,26 +154,102 @@ One recognition worker thread by default (the library worker is already serialis
 
 ## 8. Phased plan
 
-Order follows the review by Claude Opus (see section 10): spike first, provenance before the worker, adapter merged with the worker, service split off.
+Order follows the review by Claude Opus (see section 10): spike first, provenance before the worker, adapter merged with the worker. The foreground-service split is dropped (decided 2026-10-19).
 
 | Phase | Content | Output / gate |
 | --- | --- | --- |
-| **P0. Device spike** (throwaway, maintainer-run or explicitly approved) | Load the cross-built library on the tablet, recognise about 30 real scanned pages; compare PSM 3 and sparse modes, `pol` vs `pol+eng`, `fast` vs `best`, dpi 150/200/300; record seconds per page, RSS, temperature, garbage-token rate, a confidence threshold. | Numbers appended to this document; ADR acceptance depends on them. |
+| **P0. Device spike** (throwaway, maintainer-run or explicitly approved) | Load the cross-built library on the tablet, recognise about 30 real scanned pages; compare PSM 3 and sparse modes, `pol` vs `pol+eng`, `fast` vs `best`, dpi 150/200/300; record seconds per page, RSS, temperature, garbage-token rate, a confidence threshold. | Numbers appended to this document; they gate the P3 tablet pass and the ADR revert triggers. Owner not yet decided. |
 | **P1. Build infrastructure** | Script, pinned sources, cache, x86_64 + arm64, link and manifest assertions, developer docs, no behaviour change. | CI green; `.so` assertions pass; APK size delta recorded. |
 | **P2. Provenance schema** | Migration `ocr_source`/`ocr_engine`; sidecar precedence; desktop sidecar import writes `sidecar`; text-layer writes `text_layer`. Useful even before OCR. | Host tests for the precedence matrix. |
-| **P3. Adapter + worker** | Android `OcrProvider`, Java page renderer, tessdata installer, `RecognizingText` phase and events, pause/cancel/resume, crash marker, hash re-check, `onStop` pause, setting, banner, scan summary line, About notices. | Host tests; emulator fixture search passes; tablet acceptance pass. |
+| **P3. Adapter + worker** | Android `OcrProvider`, Java page renderer, tessdata installer, `RecognizingText` phase and events, Start and Cancel in Settings → Library maintenance (no Pause), cancel and resume, crash marker, hash re-check, `onStop` pause, banner, scan summary line, About notices. Started only by the user. | Host tests; emulator fixture search passes; tablet acceptance pass. |
 | **P4. Docs and release** | Update `android-debugging.md`, the design spec and code comments; release notes; APK size check. | Release candidate. |
-| **P5. Foreground service** (separate issue) | Off-screen continuation, notification, service type decision. | Only if the maintainer asks. |
 
 `#33` ships ahead of all of this. P1 and P2 can run in parallel after P0.
 
-## 9. Open questions for the maintainer
+## Follow-up issues (drafts, not filed)
 
-1. Accept Tesseract on-device and about 6 MB of APK growth?
-2. Automatic and foreground-only with a setting (recommended), or opt-in?
-3. Who runs P0 on the tablet (the tablet holds user library data and was not touched)?
-4. Disable `allowBackup` in the same release?
-5. Is a foreground service wanted at all?
+Drafted 2026-10-19 for the maintainer to review. No GitHub issues have been created. P5 (foreground service) is dropped and has no draft. Each draft gives a title, scope, acceptance criteria and dependencies.
+
+### P0. Device spike on real scans (Galaxy Tab S10 FE+)
+
+**Scope.** Load the cross-built `libnotae_android.so` on the tablet and recognise about 30 real scanned pages (Polish and English, with staves). Compare PSM 3 with sparse modes, `pol` against `pol+eng`, `fast` against `best`, and 150, 200 and 300 dpi. Record seconds per page, RSS, temperature, garbage-token rate and a word-confidence threshold. Throwaway code; no product change. Owner: not decided (open question 4).
+
+**Acceptance**
+
+- The library loads on the tablet (no `dlopen` or undefined-symbol failure).
+- A results table with per-page seconds, RSS and temperature for every configuration tested is appended to this document (section 3 or 8).
+- The dpi and confidence threshold are chosen from the measurements, or a revert trigger in ADR 0001 is hit and recorded.
+
+**Dependencies.** None in the repo. Plan order (section 8): P1 and P2 start after P0. Gates the P3 tablet pass.
+
+### P1. Pinned Android OCR native prefix and link checks
+
+**Scope.** Add `scripts/build-android-ocr-deps.sh`, which builds SHA-256-pinned Tesseract 5.5.3, Leptonica 1.87.0 and google/cpu_features 0.10.1 for `arm64-v8a` and `x86_64` with NDK r26d into a prefix with corrected `.pc` files. Point the target-suffixed `PKG_CONFIG_*` and `BINDGEN_EXTRA_CLANG_ARGS_*` variables at that prefix in `.cargo/config.toml`, and add the link flags (`c++_static`, `c++abi`, `ndk_compat`, `cpu_features`, `--exclude-libs,ALL`, `-z max-page-size=16384`) in `notae-android`'s `build.rs`. Add a CI cache keyed on script hash and NDK version, and CI assertions on the packaged `.so` (NEEDED limited to `libc`, `libm`, `libdl`, `liblog`; no `_ZNSt` or `__cxa` undefined symbols) and on the manifest (no `INTERNET`). No app behaviour change; host builds unchanged.
+
+**Acceptance**
+
+- The script rebuilds the prefix from pinned hashes; a changed source hash makes it fail.
+- Android arm64 and x86_64 APK builds link against the prefix; host configuration is unchanged.
+- The `.so` and manifest assertions pass on the real build and fail on a deliberately broken link (shown once).
+- The APK size delta is recorded in the PR.
+- The upgrade procedure is documented in the script header.
+
+**Dependencies.** P0 (plan order: the library must load on the tablet first). Runs in parallel with P2.
+
+### P2. Provenance schema: `ocr_source` and `ocr_engine`
+
+**Scope.** One migration in `crates/notae-index` (tracked in `schema_migrations`) adds `ocr_source` (`text_layer` | `sidecar` | `device`, `NULL` for rows that predate it) and `ocr_engine`. Precedence is `text_layer` > `sidecar` > `device`: text-layer extraction writes `text_layer`; sidecar import writes `sidecar` and may replace device text once; device OCR never replaces the other two. Useful before any OCR runs. Keep the sidecar manifest version unchanged unless open question 6 is answered yes.
+
+**Acceptance**
+
+- The migration applies to existing databases; rows without provenance read as `NULL` with no data loss (test).
+- Host tests cover the precedence matrix for `text_layer`, `sidecar` and `device` against each existing source.
+- Re-importing an unchanged sidecar does not flip provenance back and forth (test).
+- No user-visible change.
+
+**Dependencies.** #33 shipped (no "Text pending" section or badge). Plan order: after P0, in parallel with P1. Open question 6 (sidecar manifest export).
+
+### P3. Android OCR adapter and worker, started from Settings
+
+**Scope.** Android `OcrProvider` over the `tesseract`/`leptonica` bindings: fixed `pol+eng`, PSM 3, `SetSourceResolution` always set, word-level confidence filter at the P0 threshold, letters-only tokens. Java page renderer (`renderNotaePageGray`) with a pixel cap and one page open at a time. Tessdata installer into `internal_data_path()/ocr/<hash>/` with size and hash checks. `RescanPhase::RecognizingText { files_done, files_total, page, pages }` with its events. A worker processes `OcrPending` notes one at a time, writes an `ocr_attempting` marker, re-checks the content hash, and commits each document atomically with `reindex_note_with_ocr`. Start and Cancel in Settings → Library maintenance (no Pause); banner and scan summary wording ("N PDFs waiting for text recognition"); About notices for Tesseract, Leptonica, cpu_features and tessdata. Recognition never starts by itself: not after a scan, a sidecar import or launch.
+
+**Acceptance**
+
+- Host tests with a fake `OcrProvider` and `PageRaster`: queue order; cancel between pages leaves the rest `OcrPending`; failure gives `OcrIncomplete`; resume after restart; hash change discards the result; crash marker becomes `OcrIncomplete` on startup; event ordering; `Completed` still last for the scan.
+- Host test with the real engine, using the committed `crates/notae-ocr/tests/tessdata` and a generated image-only Polish PDF (fixture added to `apps/notae-index/tests/fixtures/generate.py`): diacritic words are recovered with the resolution set.
+- Emulator (x86_64, API 35): start from Settings, the banner leaves `RecognizingText`, and a Polish word is found by search.
+- Tablet pass (P0 owner): about 30 real scans; seconds per page, RSS, temperature, battery over a 50-file backlog, cancel latency.
+- No recognition starts after a scan, a sidecar import or launch (checked by test or manual run).
+- Progress counters change only on completed pages or files; no time estimate before three measured pages.
+
+**Dependencies.** P0 (threshold, dpi, tablet numbers), P1 (the `.so` must link), P2 (provenance), #33.
+
+### P4. Docs, notices and release
+
+**Scope.** Update the Android section of `docs/android-debugging.md` (its "Android never runs OCR" note), the design spec's OCR paragraph and status, and the code that states the old decision (`apps/notae-android/src/state.rs` `RescanPhase::CheckingDesktopImport` doc, `apps/notae-android/src/ui/browse.rs` Text pending explanation, the `Cargo.toml` comment on `notae-ocr`). Also release notes and the APK size check. Release notes must say OCR is started manually from Settings and runs in the foreground.
+
+**Acceptance**
+
+- No file in the repo says Android never runs OCR (grep check).
+- The release APK is at most about 18 MB, and `aapt2 dump badging` shows no `uses-permission` entries.
+- The About screen notices from P3 are present in the release build.
+- Release notes state the manual, foreground-only run mode.
+- ADR 0001's status records the implementing release.
+
+**Dependencies.** P3 merged; P1 size measurement.
+
+## 9. Decisions and open questions
+
+Decided on 2026-10-19 (ADR 0001, "Acceptance"):
+
+1. Tesseract on-device, with about 6 MB of APK growth: accepted.
+2. Run mode: started manually from Settings, foreground only, same progress and cancel UX as the library scan. Not automatic (the issue's "automatic" is narrowed); not a background or foreground service.
+3. Foreground service (former P5): dropped.
+
+Still open (not decided; do not treat as settled):
+
+4. Who runs P0 on the tablet (the tablet holds user library data and was not touched), and whether the spike is approved.
+5. Disable `allowBackup` in the same release?
 6. Should the sidecar manifest export `ocr_source` (schema bump) or stay as is?
 
 ## 10. Review notes
