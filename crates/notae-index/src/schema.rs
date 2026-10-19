@@ -19,7 +19,7 @@ use crate::store::IndexError;
 ///
 /// Version 2 folds the Polish `ł`/`Ł` in `notes_fts` (migration
 /// `0002_fold_l_stroke.sql`). A database at version 2 is refused by builds that
-/// only know version 1; see [`migrate`].
+/// only know version 1: the upgrade is forward-only.
 pub const SCHEMA_VERSION: u32 = 2;
 
 /// The bookkeeping table recording applied migrations.
