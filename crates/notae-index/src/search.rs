@@ -13,11 +13,17 @@
 //! the reported [`SearchHit::rank`] negates it and adds the two exact-match
 //! bonuses, which are far larger than any relevance score SQLite produces. A
 //! higher rank is always a better result.
+//!
+//! The index holds text with `ł`/`Ł` folded to `l`/`L` (see `crate::fold`), so
+//! the query is folded the same way before it is split into terms, the
+//! exact-title bonus compares folded titles, and the lyric snippet — which
+//! `snippet()` cuts from the folded column — is mapped back onto the stored
+//! page text before it is returned.
 
 use notae_domain::{IndexedNote, NoteId};
 use rusqlite::Connection;
 
-use crate::fold::fold_l_stroke;
+use crate::fold::{fold_l_stroke, has_l_stroke, restore_l_stroke};
 use crate::store::IndexError;
 
 /// Rank bonus for a record whose numeric ID equals the query.
@@ -96,9 +102,14 @@ pub struct SearchHit {
     /// corpus and the query.
     pub rank: f64,
     /// Page-text excerpt around the match, with the matched terms between
-    /// `\u{2}` and `\u{3}`; `None` when the page text did not match.
+    /// `\u{2}` and `\u{3}`, in the spelling of the stored text (`ł` stays `ł`
+    /// although the index folds it); `None` when the page text did not match.
     pub text_snippet: Option<String>,
 }
+
+/// Text `snippet()` puts at a cut end of its window; also what
+/// `restore_l_stroke` must strip before it locates the window.
+const SNIPPET_ELLIPSIS: &str = "…";
 
 /// Selects every record whose indexed text mentions the query.
 ///
@@ -107,7 +118,7 @@ pub struct SearchHit {
 /// text so a record titled with the search term beats one that merely prints it.
 const SEARCH_SQL: &str = "\
 SELECT bm25(notes_fts, 8.0, 10.0, 6.0, 5.0, 4.0, 1.0) AS relevance, notes.*,
-       snippet(notes_fts, 5, char(2), char(3), '…', 12) AS text_snippet
+       snippet(notes_fts, 5, char(2), char(3), ?5, 12) AS text_snippet
 FROM notes_fts
 JOIN notes ON notes.row_id = notes_fts.rowid
 WHERE notes_fts MATCH ?1
@@ -153,10 +164,14 @@ pub(crate) fn search(
             exact_id,
             exact_title,
             i64::try_from(limit).unwrap_or(i64::MAX),
+            SNIPPET_ELLIPSIS,
         ],
         |row| {
             let relevance: f64 = row.get(0)?;
-            let snippet: Option<String> = row.get("text_snippet")?;
+            let snippet = match row.get::<_, Option<String>>("text_snippet")? {
+                Some(text) if text.contains('\u{2}') => Some(with_original_spelling(row, text)?),
+                _ => None,
+            };
             let note = crate::store::note_from_row(row)?;
             Ok((relevance, snippet, note))
         },
@@ -181,7 +196,7 @@ pub(crate) fn search(
             };
         hits.push(SearchHit {
             rank: exact_id_match + exact_title_match - relevance,
-            text_snippet: snippet.filter(|text| text.contains('\u{2}')),
+            text_snippet: snippet,
             note,
         });
     }
@@ -227,4 +242,23 @@ fn match_expression(query: &str, scope: SearchScope) -> String {
         (true, _) | (false, None) => body,
         (false, Some(columns)) => format!("{{{columns}}} : ({body})"),
     }
+}
+
+/// Returns `snippet`, cut from the folded FTS column, with the stored text's
+/// own spelling.
+///
+/// `notes.*` already carries the stored page text, so it is read in place
+/// (`get_ref`, no copy) and only inspected when it contains `ł`/`Ł`; every other
+/// hit keeps the snippet as SQLite produced it.
+fn with_original_spelling(row: &rusqlite::Row<'_>, snippet: String) -> rusqlite::Result<String> {
+    let original = match row.get_ref("ocr_text")? {
+        rusqlite::types::ValueRef::Text(bytes) => std::str::from_utf8(bytes).ok(),
+        _ => None,
+    };
+    Ok(match original {
+        Some(original) if has_l_stroke(original) => {
+            restore_l_stroke(&snippet, SNIPPET_ELLIPSIS, original)
+        }
+        _ => snippet,
+    })
 }
