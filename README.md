@@ -55,8 +55,9 @@ annotate scores itself: it hands each PDF to the viewer you already use.
 - **Search** titles, composers, tags and lyrics (the printed text), narrowed by
   scope chips, with highlighted lyric snippets. `Ctrl K` focuses search when a
   hardware keyboard is attached; a microphone action appears when Android
-  provides a speech recognizer. FTS5 folds combining diacritics, so
-  `ą ć ę ń ó ś ź ż` match their plain letters; `ł` does **not** match `l`.
+  provides a speech recognizer. Search ignores case and Polish diacritics:
+  `ą ć ę ń ó ś ź ż` match their plain letters and `ł`/`Ł` match `l`/`L`, so
+  `lodz` finds `Łódź` in titles, composers, tags and lyrics.
 - **Edit details** (number, title, composer, tags). Manual edits are kept when
   you import a sidecar again.
 - **Import preview** for sidecars: see what is new, changed or missing before
