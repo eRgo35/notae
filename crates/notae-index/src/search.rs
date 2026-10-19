@@ -17,6 +17,7 @@
 use notae_domain::{IndexedNote, NoteId};
 use rusqlite::Connection;
 
+use crate::fold::fold_l_stroke;
 use crate::store::IndexError;
 
 /// Rank bonus for a record whose numeric ID equals the query.
@@ -112,7 +113,7 @@ JOIN notes ON notes.row_id = notes_fts.rowid
 WHERE notes_fts MATCH ?1
 ORDER BY
     (CASE WHEN ?2 IS NULL THEN 0 WHEN notes.note_id = ?2 THEN 1 ELSE 0 END) DESC,
-    (CASE WHEN lower(notes.title) = ?3 THEN 1 ELSE 0 END) DESC,
+    (CASE WHEN lower(notes_fts.title) = ?3 THEN 1 ELSE 0 END) DESC,
     relevance ASC,
     notes.path ASC
 LIMIT ?4";
@@ -142,7 +143,9 @@ pub(crate) fn search(
         .parse::<NoteId>()
         .ok()
         .map(|id| i64::from(id.get()));
-    let exact_title = query.trim().to_lowercase();
+    // The same fold as the indexed text and the match expression, so an exact
+    // title is exact up to case and the stroke of `ł`.
+    let exact_title = fold_l_stroke(&query.trim().to_lowercase()).into_owned();
     let mut statement = conn.prepare(SEARCH_SQL)?;
     let rows = statement.query_map(
         rusqlite::params![
@@ -170,11 +173,12 @@ pub(crate) fn search(
             } else {
                 0.0
             };
-        let exact_title_match = if exact_title == note.title().to_lowercase() {
-            EXACT_TITLE_BONUS
-        } else {
-            0.0
-        };
+        let exact_title_match =
+            if fold_l_stroke(&note.title().to_lowercase()) == exact_title.as_str() {
+                EXACT_TITLE_BONUS
+            } else {
+                0.0
+            };
         hits.push(SearchHit {
             rank: exact_id_match + exact_title_match - relevance,
             text_snippet: snippet.filter(|text| text.contains('\u{2}')),
@@ -199,6 +203,9 @@ pub(crate) fn search(
 /// matching incomplete words as they are typed. Terms are combined with the
 /// implicit `AND`, so a hit matches every query term.
 fn match_expression(query: &str, scope: SearchScope) -> String {
+    // Indexed text is folded as it is written (`write_fts_row`), so the query
+    // must be folded the same way before it is split into terms.
+    let query = fold_l_stroke(query);
     let mut terms = Vec::new();
     let mut current = String::new();
     for character in query.chars() {

@@ -977,35 +977,244 @@ fn polish_titles_match_exact_and_case_varied_queries_in_every_scope() {
     assert_eq!(store.search("łódź", 10).expect("search").len(), 1);
 }
 
-#[test]
-fn accentless_queries_follow_the_unicode61_folding_rules_without_a_tokenizer_change() {
-    // SQLite FTS5 `unicode61` (the tokenizer in the schema) removes combining
-    // diacritics, so `ó ź ś ń ż ć ą ę` fold to their base letters. `ł`/`Ł` is
-    // a distinct letter with no decomposition and is not folded to `l`.
-    let store = IndexStore::open(":memory:").expect("open");
-    let polish = note(
-        "score.pdf",
-        3,
-        Some(NoteId::new(303)),
-        "Łódź — Pieśń żółta",
-        None,
-        &[],
-    );
-    store.upsert_note(&polish).expect("insert");
-    let found = |query: &str| {
-        store
-            .search_in(query, SearchScope::Titles, 10)
-            .expect("search")
-            .len()
-    };
+const LODZ_TITLE: &str = "Łódź — Pieśń żółta";
+const LODZ_LYRICS: &str =
+    "Pałka zagrała kołysankę dla Gałuszki. Części stałe mszy: zmartwychwstał Pan.";
 
-    // Matches: only the diacritics that decompose are folded.
-    assert_eq!(found("łodz"), 1, "ł kept, ó and ź folded");
-    assert_eq!(found("ŁODZ"), 1);
-    assert_eq!(found("piesn"), 1, "ś and ń fold");
-    assert_eq!(found("zołta"), 1, "ż and ó fold, ł kept");
-    // Documented limitation: no fold of ł -> l.
-    assert_eq!(found("lodz"), 0, "ł does not fold to l");
-    assert_eq!(found("Lodz"), 0);
-    assert_eq!(found("zolta"), 0, "ł does not fold to l");
+/// The real-store fixture of issue #35: one score whose title, composer, tag and
+/// lyrics all contain `ł`, and one control score without any.
+fn lodz_store() -> IndexStore {
+    let store = IndexStore::open(":memory:").expect("open");
+    store
+        .upsert_note_with_ocr(
+            &note(
+                "score.pdf",
+                3,
+                Some(NoteId::new(303)),
+                LODZ_TITLE,
+                Some("Stanisław Moniuszko"),
+                &["kołysanka"],
+            ),
+            Some(&OcrText::new(LODZ_LYRICS)),
+        )
+        .expect("insert");
+    store
+        .upsert_note_with_ocr(
+            &note(
+                "ave.pdf",
+                4,
+                Some(NoteId::new(13)),
+                "Ave Maria",
+                Some("Schubert"),
+                &["solo"],
+            ),
+            Some(&OcrText::new("Ave Maria gratia plena")),
+        )
+        .expect("insert");
+    store
+}
+
+fn titles(store: &IndexStore, query: &str, scope: SearchScope) -> Vec<String> {
+    store
+        .search_in(query, scope, 10)
+        .expect("search")
+        .iter()
+        .map(|hit| hit.note.title().to_owned())
+        .collect()
+}
+
+#[test]
+fn queries_with_and_without_the_stroke_find_polish_text_in_every_scope() {
+    let store = lodz_store();
+    let cases: [(SearchScope, &[&str]); 5] = [
+        (
+            SearchScope::Titles,
+            &[
+                // Without the stroke or the other diacritics.
+                "lodz",
+                "Lodz",
+                "LODZ",
+                "zolta",
+                "zolta piesn",
+                "piesn",
+                // As typed on a Polish keyboard, any case.
+                "łódź",
+                "Łódź",
+                "ŁÓDŹ",
+                "łÓdŹ",
+                "żółta",
+                "ŻÓŁTA",
+                "Łódź — Pieśń żółta",
+                // Mixed: stroke kept, other diacritics dropped, and the reverse.
+                "łodz",
+                "ŁODZ",
+                "lódź",
+                "zołta",
+            ],
+        ),
+        (
+            SearchScope::Composers,
+            &[
+                "stanislaw",
+                "Stanislaw",
+                "STANISLAW",
+                "Stanisław",
+                "STANISŁAW",
+                "moniuszko",
+            ],
+        ),
+        (
+            SearchScope::Tags,
+            &["kolysanka", "Kolysanka", "kołysanka", "KOŁYSANKA", "kolys"],
+        ),
+        (
+            SearchScope::Text,
+            &[
+                "palka",
+                "Palka",
+                "Pałka",
+                "galuszki",
+                "Galuszki",
+                "Gałuszki",
+                "czesci stale",
+                "części stałe",
+                "Czesci Stale",
+                "zmartwychwstal",
+                "zmartwychwstał",
+                "ZMARTWYCHWSTAŁ",
+            ],
+        ),
+        (
+            SearchScope::Everything,
+            &[
+                "lodz",
+                "ŁÓDŹ",
+                "stanislaw",
+                "Stanisław",
+                "kolysanka",
+                "palka",
+                "Pałka",
+                "czesci stale",
+            ],
+        ),
+    ];
+    for (scope, queries) in cases {
+        for query in queries {
+            assert_eq!(
+                titles(&store, query, scope),
+                [LODZ_TITLE],
+                "query {query:?} in {scope:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_examples_of_issue_35_find_their_scores() {
+    let store = IndexStore::open(":memory:").expect("open");
+    let titles_and_queries = [
+        ("Pałka", "palka"),
+        ("Gałuszka", "Galuszka"),
+        ("Części stałe", "czesci stale"),
+        ("Zmartwychwstał", "zmartwychwstal"),
+        ("Łódź", "lodz"),
+    ];
+    for (seed, (title, _)) in (1_u8..).zip(titles_and_queries) {
+        store
+            .upsert_note(&note(&format!("s{seed}.pdf"), seed, None, title, None, &[]))
+            .expect("insert");
+    }
+    for (title, query) in titles_and_queries {
+        assert_eq!(
+            titles(&store, query, SearchScope::Everything),
+            [title],
+            "{query:?}"
+        );
+        assert_eq!(
+            titles(&store, title, SearchScope::Everything),
+            [title],
+            "{title:?}"
+        );
+    }
+}
+
+#[test]
+fn plain_l_and_stroke_l_are_one_letter_in_both_directions() {
+    let store = IndexStore::open(":memory:").expect("open");
+    store
+        .upsert_note(&note("a.pdf", 1, None, "Lodz", None, &[]))
+        .expect("insert");
+    store
+        .upsert_note(&note("b.pdf", 2, None, "Łódź", None, &[]))
+        .expect("insert");
+    for query in ["lodz", "Lodz", "łodz", "Łódź", "ŁÓDŹ"] {
+        let mut found = titles(&store, query, SearchScope::Titles);
+        found.sort();
+        assert_eq!(found, ["Lodz", "Łódź"], "{query:?}");
+    }
+}
+
+#[test]
+fn scopes_stay_separate_after_folding() {
+    let store = lodz_store();
+    assert!(titles(&store, "lodz", SearchScope::Composers).is_empty());
+    assert!(titles(&store, "palka", SearchScope::Titles).is_empty());
+    assert!(titles(&store, "stanislaw", SearchScope::Tags).is_empty());
+    assert!(titles(&store, "kolysanka", SearchScope::Text).is_empty());
+    assert_eq!(
+        titles(&store, "ave", SearchScope::Everything),
+        ["Ave Maria"]
+    );
+}
+
+#[test]
+fn the_exact_title_bonus_ignores_the_stroke() {
+    // Only the stroke differs between the query and the exact title: the exact
+    // title bonus has never folded the other diacritics.
+    let store = IndexStore::open(":memory:").expect("open");
+    store
+        .upsert_note(&note("a.pdf", 1, None, "Łaska łaskawa", None, &[]))
+        .expect("insert");
+    store
+        .upsert_note(&note("b.pdf", 2, None, "Łaska", None, &[]))
+        .expect("insert");
+    for query in ["laska", "Laska", "łaska", "ŁASKA", " Łaska "] {
+        let hits = store
+            .search_in(query, SearchScope::Titles, 10)
+            .expect("search");
+        assert_eq!(hits.len(), 2, "{query:?}");
+        assert_eq!(hits[0].note.title(), "Łaska", "{query:?}");
+        assert!(
+            hits[0].rank > 50.0,
+            "exact title bonus for {query:?}: {}",
+            hits[0].rank
+        );
+        assert!(
+            hits[1].rank < 50.0,
+            "no bonus for the longer title: {}",
+            hits[1].rank
+        );
+        let limited = store
+            .search_in(query, SearchScope::Titles, 1)
+            .expect("search");
+        assert_eq!(limited[0].note.title(), "Łaska", "limit 1 for {query:?}");
+    }
+}
+
+#[test]
+fn only_the_l_stroke_is_folded() {
+    // Scope of issue #35: `ł`/`Ł` only. These letters have no decomposition either
+    // and stay distinct until a separate change decides otherwise.
+    let store = IndexStore::open(":memory:").expect("open");
+    for (seed, title) in (1_u8..).zip(["Øre", "Đorđe", "Cœli", "Cæli", "Straße"]) {
+        store
+            .upsert_note(&note(&format!("s{seed}.pdf"), seed, None, title, None, &[]))
+            .expect("insert");
+    }
+    for query in ["ore", "dorde", "coeli", "caeli", "strasse"] {
+        assert!(
+            titles(&store, query, SearchScope::Titles).is_empty(),
+            "{query:?} must not match yet"
+        );
+    }
 }
