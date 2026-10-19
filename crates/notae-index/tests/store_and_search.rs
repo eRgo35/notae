@@ -2,13 +2,15 @@
 #![allow(clippy::expect_used)] // Test fixtures and assertions may panic on setup failure.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use notae_domain::{
     EpochTimestamp, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId, NoteMetadata,
     PdfFingerprint, RelativePdfPath, Sha256Digest,
 };
-use notae_index::{IndexError, IndexStore, OcrText, ReindexOutcome, SCHEMA_VERSION, SearchScope};
+use notae_index::{
+    IndexError, IndexStore, MIGRATIONS, OcrText, ReindexOutcome, SCHEMA_VERSION, SearchScope,
+};
 
 fn digest(seed: u8) -> Sha256Digest {
     Sha256Digest::from_bytes([seed; 32])
@@ -750,35 +752,40 @@ fn a_duplicate_id_is_still_refused_after_a_same_path_replacement() {
 }
 
 #[test]
-fn opening_a_database_that_claims_the_version_without_the_schema_is_refused() {
-    let file = temp_db("hollow");
-    let conn = rusqlite::Connection::open(&file).expect("create raw");
-    conn.execute_batch(
-        "CREATE TABLE schema_migrations (
-             version INTEGER PRIMARY KEY,
-             applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-         );
-         INSERT INTO schema_migrations (version) VALUES (1);",
-    )
-    .expect("seed the bookkeeping only");
-    drop(conn);
+fn opening_a_database_that_claims_a_version_without_the_schema_is_refused() {
+    for recorded in 1..=SCHEMA_VERSION {
+        let file = temp_db(&format!("hollow-{recorded}"));
+        let conn = rusqlite::Connection::open(&file).expect("create raw");
+        let versions: String = (1..=recorded)
+            .map(|version| format!("INSERT INTO schema_migrations (version) VALUES ({version});"))
+            .collect();
+        conn.execute_batch(&format!(
+            "CREATE TABLE schema_migrations (
+                 version INTEGER PRIMARY KEY,
+                 applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+             );
+             {versions}"
+        ))
+        .expect("seed the bookkeeping only");
+        drop(conn);
 
-    let error = IndexStore::open(&file)
-        .expect_err("a version row without the schema it names must not be trusted");
-    match error {
-        IndexError::IncompleteSchema {
-            version,
-            ref missing,
-        } => {
-            assert_eq!(version, SCHEMA_VERSION);
-            assert!(
-                missing.contains("notes") && missing.contains("notes_fts"),
-                "the missing objects must be named: {missing}"
-            );
+        let error = IndexStore::open(&file)
+            .expect_err("a version row without the schema it names must not be trusted");
+        match error {
+            IndexError::IncompleteSchema {
+                version,
+                ref missing,
+            } => {
+                assert_eq!(version, recorded);
+                assert!(
+                    missing.contains("notes") && missing.contains("notes_fts"),
+                    "the missing objects must be named: {missing}"
+                );
+            }
+            other => panic!("unexpected error at recorded version {recorded}: {other}"),
         }
-        other => panic!("unexpected error: {other}"),
+        let _ = std::fs::remove_file(&file);
     }
-    let _ = std::fs::remove_file(&file);
 }
 
 #[test]
@@ -1217,4 +1224,143 @@ fn only_the_l_stroke_is_folded() {
             "{query:?} must not match yet"
         );
     }
+}
+
+#[test]
+fn the_schema_version_is_the_newest_migration() {
+    let versions: Vec<u32> = MIGRATIONS
+        .iter()
+        .map(|migration| migration.version)
+        .collect();
+    assert!(
+        versions.windows(2).all(|pair| pair[0] < pair[1]),
+        "{versions:?}"
+    );
+    assert_eq!(versions.last().copied(), Some(SCHEMA_VERSION));
+    assert_eq!(SCHEMA_VERSION, 2, "the ł/Ł fold is schema version 2");
+}
+
+/// One SQL expression per `notes_fts` row, comparable across databases.
+fn fts_dump(file: &Path) -> Vec<String> {
+    let conn = rusqlite::Connection::open(file).expect("open raw");
+    let mut statement = conn
+        .prepare(
+            "SELECT rowid || '|' || quote(CAST(note_id AS TEXT)) || '|' || quote(title)
+                    || '|' || quote(composer) || '|' || quote(tags) || '|' || quote(filename)
+                    || '|' || quote(ocr_text)
+             FROM notes_fts ORDER BY rowid",
+        )
+        .expect("prepare");
+    statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .expect("query")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("rows")
+}
+
+fn upgrade_fixture() -> (IndexedNote, OcrText) {
+    (
+        note(
+            "Pałka.pdf",
+            5,
+            Some(NoteId::new(35)),
+            LODZ_TITLE,
+            Some("Stanisław Moniuszko"),
+            &["kołysanka"],
+        ),
+        OcrText::new(LODZ_LYRICS),
+    )
+}
+
+#[test]
+fn a_version_1_index_is_folded_in_place_when_it_is_opened() {
+    // Put a current database back into the state a version 1 build left behind:
+    // unfolded FTS rows and no version 2 row in the bookkeeping.
+    let legacy = temp_db("legacy-v1");
+    let (record, ocr) = upgrade_fixture();
+    let store = IndexStore::open(&legacy).expect("create");
+    store
+        .upsert_note_with_ocr(&record, Some(&ocr))
+        .expect("insert");
+    drop(store);
+    let conn = rusqlite::Connection::open(&legacy).expect("open raw");
+    conn.execute_batch(
+        "DELETE FROM schema_migrations WHERE version = 2;
+         UPDATE notes_fts SET
+             title    = (SELECT title FROM notes WHERE notes.row_id = notes_fts.rowid),
+             composer = (SELECT composer_or_artist FROM notes WHERE notes.row_id = notes_fts.rowid),
+             tags     = (SELECT tags FROM notes WHERE notes.row_id = notes_fts.rowid),
+             filename = (SELECT path FROM notes WHERE notes.row_id = notes_fts.rowid),
+             ocr_text = (SELECT ocr_text FROM notes WHERE notes.row_id = notes_fts.rowid);",
+    )
+    .expect("rewrite the rows the way version 1 stored them");
+    let unfolded: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM notes_fts WHERE notes_fts MATCH '\"lodz\"*'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count");
+    assert_eq!(unfolded, 0, "the simulated version 1 rows must be unfolded");
+    drop(conn);
+
+    let upgraded = IndexStore::open(&legacy).expect("opening migrates");
+    assert_eq!(upgraded.schema_version().expect("version"), SCHEMA_VERSION);
+    for query in [
+        "lodz",
+        "palka",
+        "stanislaw",
+        "kolysanka",
+        "czesci stale",
+        "Pałka",
+    ] {
+        assert_eq!(
+            upgraded.search(query, 10).expect("search").len(),
+            1,
+            "{query:?}"
+        );
+    }
+    // Canonical data is untouched: only the derived index was folded.
+    let kept = upgraded
+        .get_by_hash(&digest(5))
+        .expect("read")
+        .expect("record present");
+    assert_eq!(kept.title(), LODZ_TITLE);
+    assert_eq!(
+        upgraded
+            .ocr_text(&digest(5))
+            .expect("ocr")
+            .expect("text")
+            .text(),
+        LODZ_LYRICS
+    );
+    drop(upgraded);
+
+    // The frozen SQL in the migration and the Rust writer produce the same rows.
+    let fresh = temp_db("fresh-v2");
+    let store = IndexStore::open(&fresh).expect("create");
+    store
+        .upsert_note_with_ocr(&record, Some(&ocr))
+        .expect("insert");
+    drop(store);
+    let migrated = fts_dump(&legacy);
+    assert_eq!(migrated, fts_dump(&fresh));
+    assert!(migrated[0].contains("'Palka.pdf'"), "{migrated:?}");
+    let _ = std::fs::remove_file(&legacy);
+    let _ = std::fs::remove_file(&fresh);
+}
+
+#[test]
+fn reopening_a_migrated_index_does_not_change_it() {
+    let file = temp_db("migrated-twice");
+    let (record, ocr) = upgrade_fixture();
+    let store = IndexStore::open(&file).expect("create");
+    store
+        .upsert_note_with_ocr(&record, Some(&ocr))
+        .expect("insert");
+    drop(store);
+    let first = fts_dump(&file);
+    drop(IndexStore::open(&file).expect("reopen"));
+    assert_eq!(fts_dump(&file), first);
+    let _ = std::fs::remove_file(&file);
 }
