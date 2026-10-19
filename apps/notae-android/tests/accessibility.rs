@@ -140,7 +140,7 @@ fn text_only_groups_are_not_nodes_and_order_follows_the_tree() {
 }
 
 #[test]
-fn click_runs_the_slint_default_action_of_exactly_that_card_and_its_info_button() {
+fn click_runs_the_slint_default_action_of_exactly_that_card_and_its_overflow_sheet() {
     let app = app();
     with_library(&app, 3);
     let opened = Rc::new(RefCell::new(Vec::new()));
@@ -164,15 +164,28 @@ fn click_runs_the_slint_default_action_of_exactly_that_card_and_its_info_button(
     );
     assert!(previewed.borrow().is_empty());
 
-    // Its Info button opens the preview of exactly that score and does not launch the PDF.
-    let info: Vec<i32> = snapshot
+    // Its overflow button (the TalkBack route to the actions) opens the sheet for exactly that
+    // score; the sheet's Score details then previews it without launching the PDF.
+    let more = labelled(&snapshot, "More actions for Score 2").id;
+    accessibility::perform(app.window(), &registry, more, &Action::Click)
+        .expect("overflow button clicks");
+    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(500));
+    assert!(
+        previewed.borrow().is_empty(),
+        "opening the sheet previews nothing"
+    );
+    let mut registry = Registry::default();
+    let open_snapshot = accessibility::build(app.window(), &mut registry);
+    let sheet = labelled(&open_snapshot, "Score actions dialog");
+    assert_eq!(sheet.role, Role::Pane);
+    let details = open_snapshot
         .nodes
         .iter()
-        .filter(|node| node.label == "Score details")
-        .map(|node| node.id)
-        .collect();
-    accessibility::perform(app.window(), &registry, info[1], &Action::Click)
-        .expect("info button clicks");
+        .find(|node| node.label == "Score details")
+        .expect("the sheet offers Score details")
+        .id;
+    accessibility::perform(app.window(), &registry, details, &Action::Click)
+        .expect("sheet action clicks");
     assert_eq!(*previewed.borrow(), [format!("{:064}", 2)]);
     assert_eq!(opened.borrow().len(), 1);
 }
@@ -301,21 +314,16 @@ fn dangling_description_separators_are_trimmed() {
     );
 }
 
-/// The per-card Info action (#26) is a labelled, clickable button of its own, there is one per
-/// score, and there is no Edit action on a card.
+/// The per-item overflow button is a labelled, clickable button of its own, there is one per
+/// score, and neither the Info icon nor an Edit action is on an item.
 #[test]
-fn every_card_has_a_labelled_info_button_and_no_edit_button() {
+fn every_card_has_a_labelled_overflow_button_and_no_info_or_edit_button() {
     let app = app();
     with_library(&app, 3);
     let (snapshot, _) = snapshot(&app);
 
-    let details: Vec<&Node> = snapshot
-        .nodes
-        .iter()
-        .filter(|node| node.label == "Score details")
-        .collect();
-    assert_eq!(details.len(), 3, "one Score details button per score");
-    for node in details {
+    for index in 1..=3 {
+        let node = labelled(&snapshot, &format!("More actions for Score {index}"));
         assert_eq!(node.role, Role::Button);
         assert!(node.has(FLAG_CLICK) && node.has(FLAG_ENABLED));
         let [left, top, right, bottom] = node.bounds;
@@ -325,8 +333,8 @@ fn every_card_has_a_labelled_info_button_and_no_edit_button() {
         !snapshot
             .nodes
             .iter()
-            .any(|node| node.label.contains("Edit details")),
-        "cards expose no Edit action"
+            .any(|node| node.label.contains("Edit details") || node.label == "Score details"),
+        "items expose neither an Info nor an Edit action"
     );
 }
 

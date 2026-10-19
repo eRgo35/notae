@@ -357,10 +357,10 @@ fn preview_back_returns_with_the_same_layout_and_section() {
     assert_eq!(app.get_selected_section(), "recent");
 }
 
-/// The Info action (#26) and the animated preview layer (#10, #31) work as one flow: tapping Info
-/// cross-fades into the preview, and Back cross-fades to the same Library again.
+/// The sheet's Score details action (#26) and the animated preview layer (#10, #31) work as one
+/// flow: choosing it cross-fades into the preview, and Back cross-fades to the same Library again.
 #[test]
-fn info_opens_the_animated_preview_and_back_returns() {
+fn score_details_opens_the_animated_preview_and_back_returns() {
     let app = app();
     app.set_library_list_view(true);
     with_library(&app, 3);
@@ -388,12 +388,19 @@ fn info_opens_the_animated_preview_and_back_returns() {
         slint::platform::update_timers_and_animations();
     };
 
-    item_info_actions(&app)[1].mock_single_click(slint::platform::PointerEventButton::Left);
+    labelled(&app, "More actions for Score 2")
+        .expect("overflow button")
+        .mock_single_click(slint::platform::PointerEventButton::Left);
+    settle();
+    ElementHandle::find_by_accessible_label(&app, "Score details")
+        .find(|element| element.type_name().as_deref() == Some("SheetAction"))
+        .expect("the sheet offers Score details")
+        .mock_single_click(slint::platform::PointerEventButton::Left);
     assert!(app.get_details_open());
     tick(60);
     let preview = ElementHandle::find_by_element_type_name(&app, "ScoreDetails")
         .next()
-        .expect("preview mounts as soon as Info is tapped");
+        .expect("preview mounts as soon as Score details is chosen");
     assert!(
         preview.computed_opacity() > 0.0 && preview.computed_opacity() < 1.0,
         "the preview fades in rather than snapping: {}",
@@ -603,13 +610,6 @@ fn click(app: &AppWindow, label: &str, index: usize) {
         .mock_single_click(slint::platform::PointerEventButton::Left);
 }
 
-/// The per-item Score details actions, not the long-press menu's button of the same name.
-fn item_info_actions(app: &AppWindow) -> Vec<ElementHandle> {
-    ElementHandle::find_by_accessible_label(app, "Score details")
-        .filter(|element| element.type_name().as_deref() != Some("PillButton"))
-        .collect()
-}
-
 #[test]
 fn tap_opens_the_pdf_in_every_section_and_layout_without_opening_the_preview() {
     for section in ["all", "recent", "composer:Composer 1"] {
@@ -641,36 +641,6 @@ fn tap_opens_the_pdf_in_every_section_and_layout_without_opening_the_preview() {
             let seen = seen.borrow();
             assert_eq!(seen.opened.len(), 2, "{section} list={list}");
             assert!(seen.previewed.is_empty());
-        }
-    }
-}
-
-#[test]
-fn every_item_exposes_score_details_as_a_48px_action_for_the_preview() {
-    for section in ["all", "recent", "composer:Composer 1"] {
-        for list in [false, true] {
-            let app = app();
-            app.set_library_list_view(list);
-            app.set_selected_section(section.into());
-            with_library(&app, 3);
-            let seen = record_dispatches(&app);
-
-            let details = item_info_actions(&app);
-            assert_eq!(details.len(), 3, "one per item, {section} list={list}");
-            for action in &details {
-                assert!(action.size().width >= 48.0 && action.size().height >= 48.0);
-            }
-            details[1].mock_single_click(slint::platform::PointerEventButton::Left);
-            let seen = seen.borrow();
-            assert_eq!(
-                seen.previewed,
-                [format!("{:064}", 2)],
-                "{section} list={list}"
-            );
-            assert!(
-                seen.opened.is_empty(),
-                "details must not launch the PDF, {section} list={list}"
-            );
         }
     }
 }
@@ -708,279 +678,6 @@ fn sidebar_offers_only_the_sections_the_app_provides() {
         assert!(labelled(&app, label).is_none(), "{label}");
     }
     assert!(labelled(&app, "Recent").is_some());
-}
-
-fn center(element: &ElementHandle) -> slint::LogicalPosition {
-    let position = element.absolute_position();
-    let size = element.size();
-    slint::LogicalPosition::new(
-        position.x + size.width / 2.0,
-        position.y + size.height / 2.0,
-    )
-}
-
-fn item_center(app: &AppWindow, title: &str) -> slint::LogicalPosition {
-    // The item's own accessible element is its card or row, not the actions on it.
-    center(&labelled(app, title).unwrap_or_else(|| panic!("`{title}` is exposed")))
-}
-
-fn pointer_down(app: &AppWindow, at: slint::LogicalPosition) {
-    use slint::platform::{PointerEventButton, WindowEvent};
-    app.window()
-        .dispatch_event(WindowEvent::PointerMoved { position: at });
-    app.window().dispatch_event(WindowEvent::PointerPressed {
-        position: at,
-        button: PointerEventButton::Left,
-    });
-}
-
-fn pointer_move(app: &AppWindow, to: slint::LogicalPosition) {
-    app.window()
-        .dispatch_event(slint::platform::WindowEvent::PointerMoved { position: to });
-}
-
-fn pointer_up(app: &AppWindow, at: slint::LogicalPosition) {
-    use slint::platform::{PointerEventButton, WindowEvent};
-    app.window().dispatch_event(WindowEvent::PointerReleased {
-        position: at,
-        button: PointerEventButton::Left,
-    });
-}
-
-fn wait(milliseconds: u64) {
-    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(milliseconds));
-    slint::platform::update_timers_and_animations();
-}
-
-fn menu_action(app: &AppWindow, label: &str) -> Option<ElementHandle> {
-    ElementHandle::find_by_accessible_label(app, label)
-        .find(|element| element.type_name().as_deref() == Some("PillButton"))
-}
-
-fn menu_is_open(app: &AppWindow) -> bool {
-    menu_action(app, "Open score").is_some()
-}
-
-#[test]
-fn info_actions_sit_inside_their_item_and_edit_is_not_offered_on_items() {
-    for (list, section) in [
-        (false, "all"),
-        (true, "all"),
-        (false, "recent"),
-        (true, "recent"),
-    ] {
-        let app = app();
-        app.set_library_list_view(list);
-        app.set_selected_section(section.into());
-        with_library(&app, 3);
-        assert!(
-            labelled(&app, "Edit details").is_none(),
-            "editing is reachable from the preview only, list={list} section={section}"
-        );
-        let item = labelled(&app, "Score 2").expect("item");
-        let info = &item_info_actions(&app)[1];
-        let (i, a) = (item.absolute_position(), info.absolute_position());
-        assert!(
-            a.x >= i.x
-                && a.y >= i.y
-                && a.x + info.size().width <= i.x + item.size().width
-                && a.y + info.size().height <= i.y + item.size().height,
-            "list={list} section={section}: info {a:?} outside item {i:?}"
-        );
-    }
-}
-
-#[test]
-fn long_press_opens_actions_without_also_tapping() {
-    for (list, section) in [
-        (false, "all"),
-        (true, "all"),
-        (false, "recent"),
-        (true, "recent"),
-    ] {
-        let app = app();
-        app.set_library_list_view(list);
-        app.set_selected_section(section.into());
-        with_library(&app, 3);
-        let seen = record_dispatches(&app);
-        let at = item_center(&app, "Score 2");
-
-        pointer_down(&app, at);
-        wait(499);
-        assert!(!menu_is_open(&app), "not before 500 ms");
-        wait(2);
-        assert!(menu_is_open(&app), "list={list} section={section}");
-        pointer_up(&app, at);
-
-        let seen = seen.borrow();
-        assert!(
-            seen.opened.is_empty() && seen.previewed.is_empty() && seen.edited.is_empty(),
-            "the consumed press does not tap: list={list} section={section}"
-        );
-        assert!(
-            labelled(&app, "Actions for Score 2").is_some(),
-            "the menu names the pressed score"
-        );
-    }
-}
-
-#[test]
-fn menu_actions_route_the_pressed_score_and_close_the_menu() {
-    for (label, expect) in [("Open score", "open"), ("Score details", "preview")] {
-        let app = app();
-        with_library(&app, 3);
-        let seen = record_dispatches(&app);
-        let at = item_center(&app, "Score 3");
-        pointer_down(&app, at);
-        wait(600);
-        pointer_up(&app, at);
-        assert!(
-            menu_action(&app, "Edit details").is_none(),
-            "editing is reachable from the preview only"
-        );
-        menu_action(&app, label)
-            .expect("menu action")
-            .invoke_accessible_default_action();
-
-        let seen = seen.borrow();
-        let key = format!("{:064}", 3);
-        match expect {
-            "open" => assert_eq!(seen.opened, [("score-3.pdf".to_owned(), key)]),
-            "preview" => assert_eq!(seen.previewed, [key]),
-            _ => unreachable!("the menu offers Open score and Score details only"),
-        }
-        assert!(!menu_is_open(&app), "{label} closes the menu");
-        assert!(seen.edited.is_empty(), "{label} does not edit");
-    }
-}
-
-#[test]
-fn early_release_is_an_ordinary_tap() {
-    let app = app();
-    with_library(&app, 3);
-    let seen = record_dispatches(&app);
-    let at = item_center(&app, "Score 1");
-    pointer_down(&app, at);
-    wait(300);
-    pointer_up(&app, at);
-    wait(1_000);
-    assert!(
-        !menu_is_open(&app),
-        "a released press never opens the menu later"
-    );
-    assert_eq!(
-        seen.borrow().opened,
-        [("score-1.pdf".to_owned(), format!("{:064}", 1))]
-    );
-}
-
-#[test]
-fn moving_beyond_touch_slop_cancels_the_long_press() {
-    let app = app();
-    with_library(&app, 3);
-    let seen = record_dispatches(&app);
-    let at = item_center(&app, "Score 1");
-    pointer_down(&app, at);
-    wait(200);
-    pointer_move(&app, slint::LogicalPosition::new(at.x + 4.0, at.y + 3.0));
-    wait(100);
-    pointer_move(&app, slint::LogicalPosition::new(at.x + 40.0, at.y));
-    wait(1_000);
-    assert!(
-        !menu_is_open(&app),
-        "drifting a long way is a scroll or drag, not a long press"
-    );
-    pointer_up(&app, slint::LogicalPosition::new(at.x + 40.0, at.y));
-    let seen = seen.borrow();
-    // Releasing back over the item is an ordinary click here (on a device the Flickable owns
-    // that gesture); what matters is that the drift never became a long press or an edit.
-    assert!(seen.edited.is_empty());
-    assert!(!menu_is_open(&app));
-}
-
-#[test]
-fn small_finger_drift_still_long_presses() {
-    let app = app();
-    with_library(&app, 3);
-    let at = item_center(&app, "Score 1");
-    pointer_down(&app, at);
-    pointer_move(&app, slint::LogicalPosition::new(at.x + 4.0, at.y - 3.0));
-    wait(600);
-    assert!(menu_is_open(&app));
-}
-
-#[test]
-fn a_sheet_opening_or_the_item_disappearing_cancels_the_pending_long_press() {
-    let app = app();
-    with_library(&app, 3);
-    let at = item_center(&app, "Score 1");
-    pointer_down(&app, at);
-    wait(200);
-    app.set_show_metadata_editor(true);
-    wait(1); // let the app publish the modal state before time jumps ahead
-    wait(1_000);
-    assert!(!menu_is_open(&app), "a modal opening cancels");
-    app.set_show_metadata_editor(false);
-    pointer_up(&app, at);
-
-    let app = self::app();
-    with_library(&app, 3);
-    let at = item_center(&app, "Score 1");
-    pointer_down(&app, at);
-    wait(200);
-    app.set_library_rows(ModelRc::new(VecModel::from(Vec::<LibraryRow>::new())));
-    // Rendering refreshes repeaters every frame; do it explicitly in the headless window.
-    assert_eq!(count(&app, "ScoreCard"), 0);
-    wait(1_000);
-    assert!(!menu_is_open(&app), "a removed item cannot open a menu");
-}
-
-#[test]
-fn dismissing_the_menu_never_activates_the_item_underneath() {
-    use slint::platform::{Key, WindowEvent};
-    let app = app();
-    with_library(&app, 3);
-    let seen = record_dispatches(&app);
-    let at = item_center(&app, "Score 1");
-    let open_menu = |app: &AppWindow| {
-        pointer_down(app, at);
-        wait(600);
-        pointer_up(app, at);
-        assert!(menu_is_open(app));
-    };
-
-    // Android Back / Escape.
-    open_menu(&app);
-    let text: SharedString = Key::Escape.into();
-    app.window()
-        .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
-    app.window()
-        .dispatch_event(WindowEvent::KeyReleased { text });
-    assert!(!menu_is_open(&app));
-    assert!(!app.get_library_menu_open());
-
-    // Tapping the scrim over the item.
-    open_menu(&app);
-    pointer_down(&app, at);
-    pointer_up(&app, at);
-    assert!(!menu_is_open(&app));
-
-    // While open, the items beneath ignore accessibility activation too.
-    open_menu(&app);
-    labelled(&app, "Score 2")
-        .expect("row")
-        .invoke_accessible_default_action();
-    let details = item_info_actions(&app);
-    assert_eq!(details.len(), 3, "the items stay on screen under the menu");
-    details[0].mock_single_click(slint::platform::PointerEventButton::Left);
-    let seen = seen.borrow();
-    assert!(
-        seen.opened.is_empty() && seen.previewed.is_empty() && seen.edited.is_empty(),
-        "nothing dispatched: {:?} {:?} {:?}",
-        seen.opened,
-        seen.previewed,
-        seen.edited
-    );
 }
 
 #[test]

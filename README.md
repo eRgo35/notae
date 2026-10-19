@@ -48,7 +48,8 @@ annotate scores itself: it hands each PDF to the viewer you already use.
 
 **Android app (tablet-first)**
 
-- **Browse** as a card grid or a dense list, with a collapsible sidebar, a
+- **Browse** as a card grid (two columns on a phone, like the Drive app) or a
+  dense list, with a collapsible sidebar, a
   **Recent** section and a full-width **preview** with previous/next buttons.
   Light and dark themes follow the system setting. Scans are manual; Notae
   never scans in the background.
@@ -205,10 +206,13 @@ import preview; confirm it to import the OCR text and metadata.
 - **Browse:** use the sidebar (or the chip row on a narrow window) for All
   scores and Recent, and the header buttons for grid/list and for hiding the
   sidebar. Both choices are remembered.
-- **Open:** tap a score to open it in your PDF viewer or to see its details,
-  depending on where you are; details show the first page and metadata.
+- **Open:** tap a score to open it in your PDF viewer. The **⋮** (More
+  actions) button on every card and row opens a bottom sheet with **Open
+  score**, **Score details** (the first page and metadata) and **Edit
+  details**.
 - **Search:** tap the search icon (or `Ctrl K`), type, and narrow by scope chip.
-- **Edit:** change number, title, composer and tags from a score's details.
+- **Edit:** change number, title, composer and tags from the **⋮** sheet's
+  **Edit details** or from a score's details.
   Edits live in Notae's private index and never rename the PDF.
 - **Rescan** from the Library header after adding files.
 
