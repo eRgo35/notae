@@ -30,6 +30,8 @@ The hand-written release notes for each version live in
   upgrade is forward-only: older builds refuse a version 2 index. The sidecar
   format is unchanged (`SIDECAR_SCHEMA_VERSION` stays `2`).
 
+- On-device OCR ([#28](https://github.com/eRgo35/notae/issues/28)) is accepted in `docs/adr/0001-on-device-ocr.md` (2026-10-19) as a manual, foreground step started from Settings. It is not implemented yet; no OCR runs on Android.
+
 ## [0.2.1] - 2026-10-18
 
 Follow-up to v0.2.0 from the first tablet feedback (issues

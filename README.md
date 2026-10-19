@@ -129,8 +129,8 @@ flowchart LR
 ```
 
 Notae never syncs or uploads anything: you move the folder yourself, and the
-tablet builds its own private index from it. There is no on-device OCR yet
-([#28](https://github.com/eRgo35/notae/issues/28) proposes it).
+tablet builds its own private index from it. There is no on-device OCR yet;
+[ADR 0001](docs/adr/0001-on-device-ocr.md) accepts it as a manual, foreground step ([#28](https://github.com/eRgo35/notae/issues/28)), not yet built.
 
 ## Install
 
@@ -358,8 +358,8 @@ milestones; the next one is
   accessibility tree, so TalkBack cannot operate item actions and menus
   ([#17](https://github.com/eRgo35/notae/issues/17)).
 - **No on-device OCR.** Scanned PDFs get searchable text from the desktop
-  indexer; an automatic, local option is proposed in
-  [#28](https://github.com/eRgo35/notae/issues/28).
+  indexer. On-device OCR, started manually from Settings and run in the
+  foreground, is accepted in [ADR 0001](docs/adr/0001-on-device-ocr.md) and not yet built ([#28](https://github.com/eRgo35/notae/issues/28)).
 - **Physical-keyboard Polish input** is tracked in
   [#32](https://github.com/eRgo35/notae/issues/32).
 - **Platforms:** the Android release is arm64 only (minSdk 23); the indexer is
