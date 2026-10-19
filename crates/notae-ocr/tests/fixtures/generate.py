@@ -22,7 +22,6 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-
 FONT_PATH = Path("/tmp/DejaVuSans.ttf")
 FONT_BOLD_PATH = Path("/tmp/DejaVuSans-Bold.ttf")
 PADDING = 24
