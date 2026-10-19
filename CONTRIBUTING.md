@@ -197,7 +197,7 @@ The maintainer triages with these labels (see
 The usual GitHub labels (`bug`, `enhancement`, `documentation`,
 `good first issue`, `help wanted`, `accessibility`) are also used. Planned work
 is grouped into milestones such as
-[v0.2.1](https://github.com/eRgo35/notae/milestone/2).
+[v0.2.2](https://github.com/eRgo35/notae/milestone/3).
 
 When reporting a bug, include the Notae version (Settings, About), the device
 and Android version, whether you ran on a physical tablet or an emulator, and

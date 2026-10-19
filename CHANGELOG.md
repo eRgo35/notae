@@ -9,6 +9,25 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-19
+
+Follow-up to v0.2.1: Polish `ł`/`Ł` search
+([#35](https://github.com/eRgo35/notae/issues/35)), import review spacing
+([#34](https://github.com/eRgo35/notae/issues/34)), a phone-friendly library
+grid and a ⋮ overflow action sheet. Verified with host tests and software
+renders; **not yet run on a phone or emulator**, and the issues above are
+awaiting verification on the Galaxy Tab S10 FE+. See
+[`docs/release-notes/v0.2.2.md`](docs/release-notes/v0.2.2.md) for the full text,
+including known limitations.
+
+### Added
+
+- `.github/scripts/build-apk.sh [release|dev]` builds the arm64 APK locally and
+  prints its path and size: `release` runs the exact command of the Release
+  workflow (release key required), `dev` is a quicker debug-signed build with
+  the new `apk-dev` Cargo profile. The shipped `release` profile is unchanged.
+  See [`docs/android-release.md`](docs/android-release.md).
+
 ### Changed
 
 - Library on phones: the grid shows two outlined cards per row (three only on a
@@ -20,6 +39,15 @@ The hand-written release notes for each version live in
   score**, **Score details** and **Edit details**. It replaces both the Info
   icon (#26) and the long-press menu, which is removed; the button is also the
   route TalkBack users had no gesture for. Tapping a card still opens the PDF.
+- Index schema version 2 ([#35](https://github.com/eRgo35/notae/issues/35)):
+  the search index folds `ł`/`Ł` to `l`/`L` as it is written, and existing
+  indexes are migrated in place the first time this build opens them. The
+  upgrade is forward-only: older builds refuse a version 2 index. The sidecar
+  format is unchanged (`SIDECAR_SCHEMA_VERSION` stays `2`).
+- On-device OCR ([#28](https://github.com/eRgo35/notae/issues/28)) is accepted
+  in `docs/adr/0001-on-device-ocr.md` (2026-10-19) as a manual, foreground step
+  started from Settings. Documentation only: it is not implemented, and no OCR
+  runs on Android.
 
 ### Fixed
 
@@ -33,16 +61,6 @@ The hand-written release notes for each version live in
   Search scope. Queries typed with the diacritics keep working, and titles and
   lyric snippets are still shown in their original spelling. `l` and `ł` are
   now one letter for search, so `lodz` also finds a score titled `Lodz`.
-
-### Changed
-
-- Index schema version 2 ([#35](https://github.com/eRgo35/notae/issues/35)):
-  the search index folds `ł`/`Ł` to `l`/`L` as it is written, and existing
-  indexes are migrated in place the first time this build opens them. The
-  upgrade is forward-only: older builds refuse a version 2 index. The sidecar
-  format is unchanged (`SIDECAR_SCHEMA_VERSION` stays `2`).
-
-- On-device OCR ([#28](https://github.com/eRgo35/notae/issues/28)) is accepted in `docs/adr/0001-on-device-ocr.md` (2026-10-19) as a manual, foreground step started from Settings. It is not implemented yet; no OCR runs on Android.
 
 ## [0.2.1] - 2026-10-18
 
@@ -214,6 +232,7 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/eRgo35/notae/releases/tag/v0.2.2
 [0.2.1]: https://github.com/eRgo35/notae/releases/tag/v0.2.1
 [0.2.0]: https://github.com/eRgo35/notae/releases/tag/v0.2.0
