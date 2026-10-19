@@ -10,6 +10,10 @@
 //! image-only, multi-page, and corrupt fixtures exist already, and the
 //! pipeline tests build libraries by copying those files into a fresh
 //! temporary directory.
+#![allow(
+    clippy::expect_used,
+    reason = "integration tests use expect for fixture setup and assertions, per the project test policy"
+)]
 
 use std::collections::VecDeque;
 use std::fs;

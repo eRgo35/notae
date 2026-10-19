@@ -4,6 +4,7 @@
 //! [`SidecarImporter`]: `preview` is checked first because it is the read-only
 //! view the Android import screen renders, and `apply` afterwards because
 //! nothing is written until the user confirms.
+#![allow(clippy::expect_used)]
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

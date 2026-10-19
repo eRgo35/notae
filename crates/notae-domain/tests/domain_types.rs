@@ -1,4 +1,5 @@
 #![allow(missing_docs)]
+#![allow(clippy::unwrap_used)]
 
 use std::collections::BTreeSet;
 use std::time::{Duration, UNIX_EPOCH};

@@ -634,8 +634,10 @@ mod tests {
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
-    fn identity(path: &std::path::Path) -> super::Identity {
-        identity_of(&fs::symlink_metadata(path).expect("stat the entry"))
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+    fn identity(path: &std::path::Path) -> std::io::Result<super::Identity> {
+        Ok(identity_of(&fs::symlink_metadata(path)?))
     }
 
     /// The spellings Linux resolves away before it stats anything.
@@ -684,39 +686,43 @@ mod tests {
     /// has to notice it. Both are the same code path the walk takes, so a
     /// regression in either shows up here.
     #[test]
-    fn fingerprint_refuses_an_entry_replaced_under_the_vetted_identity() {
-        let dir = TempDir::new().expect("temporary directory");
+    fn fingerprint_refuses_an_entry_replaced_under_the_vetted_identity() -> TestResult {
+        let dir = TempDir::new()?;
         let path = dir.path().join("book.pdf");
-        fs::write(&path, "original").expect("write the original");
-        let vetted = identity(&path);
+        fs::write(&path, "original")?;
+        let vetted = identity(&path)?;
 
         let replacement = dir.path().join("replacement.pdf");
-        fs::write(&replacement, "substituted").expect("write the substitute");
-        fs::rename(&replacement, &path).expect("swap the file under the same name");
+        fs::write(&replacement, "substituted")?;
+        fs::rename(&replacement, &path)?;
 
-        let error = fingerprint(&path, vetted).expect_err("the substitute is not the vetted file");
+        let Err(error) = fingerprint(&path, vetted) else {
+            panic!("the substitute is not the vetted file");
+        };
         assert!(
             error.to_string().contains("changed identity"),
             "the refusal says the entry was replaced: {error}"
         );
+        Ok(())
     }
 
     #[test]
-    fn fingerprint_still_reads_the_entry_its_own_identity_names() {
-        let dir = TempDir::new().expect("temporary directory");
+    fn fingerprint_still_reads_the_entry_its_own_identity_names() -> TestResult {
+        let dir = TempDir::new()?;
         let path = dir.path().join("book.pdf");
-        fs::write(&path, "content").expect("write the file");
+        fs::write(&path, "content")?;
 
-        let fingerprint = fingerprint(&path, identity(&path)).expect("the vetted file is read");
+        let fingerprint = fingerprint(&path, identity(&path)?)?;
         assert_eq!(fingerprint.byte_len(), 7);
+        Ok(())
     }
 
     #[test]
-    fn a_subdirectory_is_not_opened_once_it_is_replaced() {
-        let dir = TempDir::new().expect("temporary directory");
+    fn a_subdirectory_is_not_opened_once_it_is_replaced() -> TestResult {
+        let dir = TempDir::new()?;
         let nested = dir.path().join("nested");
-        fs::create_dir(&nested).expect("create the directory");
-        let vetted = identity(&nested);
+        fs::create_dir(&nested)?;
+        let vetted = identity(&nested)?;
 
         assert!(
             open_subdirectory(&nested, vetted).is_ok(),
@@ -724,8 +730,8 @@ mod tests {
         );
         // Keep the original inode allocated so the replacement cannot reuse its identity.
         let moved = dir.path().join("original");
-        fs::rename(&nested, &moved).expect("move the original directory aside");
-        fs::create_dir(&nested).expect("create another directory at the same name");
+        fs::rename(&nested, &moved)?;
+        fs::create_dir(&nested)?;
 
         let Err(error) = open_subdirectory(&nested, vetted) else {
             panic!("a different directory behind the same name must be refused");
@@ -734,21 +740,22 @@ mod tests {
             error.to_string().contains("changed identity"),
             "the refusal says the directory was replaced: {error}"
         );
+        Ok(())
     }
 
     #[cfg(unix)]
     #[test]
-    fn a_subdirectory_is_not_opened_once_it_becomes_a_link() {
-        let dir = TempDir::new().expect("temporary directory");
+    fn a_subdirectory_is_not_opened_once_it_becomes_a_link() -> TestResult {
+        let dir = TempDir::new()?;
         let nested = dir.path().join("nested");
-        fs::create_dir(&nested).expect("create the directory");
-        let vetted = identity(&nested);
+        fs::create_dir(&nested)?;
+        let vetted = identity(&nested)?;
 
         let target = dir.path().join("target");
-        fs::create_dir(&target).expect("create the link target");
-        fs::write(target.join("secret.pdf"), "outside").expect("write behind the link");
-        fs::remove_dir(&nested).expect("remove the directory");
-        std::os::unix::fs::symlink(&target, &nested).expect("replace it with a link");
+        fs::create_dir(&target)?;
+        fs::write(target.join("secret.pdf"), "outside")?;
+        fs::remove_dir(&nested)?;
+        std::os::unix::fs::symlink(&target, &nested)?;
 
         let Err(error) = open_subdirectory(&nested, vetted) else {
             panic!("a link is refused on its own identity rather than followed");
@@ -757,14 +764,15 @@ mod tests {
             error.to_string().contains("changed identity"),
             "the refusal says the entry was replaced: {error}"
         );
+        Ok(())
     }
 
     #[test]
-    fn verify_root_refuses_a_name_that_no_longer_denotes_the_opened_directory() {
-        let dir = TempDir::new().expect("temporary directory");
+    fn verify_root_refuses_a_name_that_no_longer_denotes_the_opened_directory() -> TestResult {
+        let dir = TempDir::new()?;
         let root = dir.path().join("library");
-        fs::create_dir(&root).expect("create the root");
-        let vetted = identity(&root);
+        fs::create_dir(&root)?;
+        let vetted = identity(&root)?;
 
         assert!(
             verify_root(&root, vetted).is_ok(),
@@ -772,10 +780,12 @@ mod tests {
         );
 
         let moved = dir.path().join("moved");
-        fs::rename(&root, &moved).expect("move the root aside");
-        fs::create_dir(&root).expect("create another directory at the root name");
+        fs::rename(&root, &moved)?;
+        fs::create_dir(&root)?;
 
-        let error = verify_root(&root, vetted).expect_err("the substituted root is refused");
+        let Err(error) = verify_root(&root, vetted) else {
+            panic!("the substituted root is refused");
+        };
         let message = error.to_string();
         assert!(
             message.contains(&root.display().to_string()),
@@ -785,5 +795,6 @@ mod tests {
             message.contains("no longer the directory this run opened"),
             "the refusal says the root changed under the run: {message}"
         );
+        Ok(())
     }
 }

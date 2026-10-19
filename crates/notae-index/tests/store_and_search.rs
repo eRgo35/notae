@@ -1,4 +1,5 @@
 //! Integration tests for the SQLite schema, record CRUD, and FTS5 search.
+#![allow(clippy::expect_used)] // Test fixtures and assertions may panic on setup failure.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
