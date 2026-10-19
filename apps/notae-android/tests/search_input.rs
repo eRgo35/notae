@@ -14,11 +14,10 @@ use std::{cell::RefCell, rc::Rc};
 use i_slint_backend_testing::ElementHandle;
 use i_slint_core::input::{InternalKeyEvent, KeyEvent, KeyEventType};
 use notae_android::AppWindow;
-use slint::platform::{PointerEventButton, WindowEvent};
-use slint::{ComponentHandle, LogicalPosition, SharedString};
-use support::{app, app_sized};
+use slint::platform::WindowEvent;
+use slint::{ComponentHandle, SharedString};
+use support::{SEARCH_LABEL, app, app_sized, focus_search_field};
 
-const SEARCH_LABEL: &str = "Search titles, composers, tags or lyrics";
 const POLISH_LOWER: &str = "ąćęłńóśźż";
 const POLISH_UPPER: &str = "ĄĆĘŁŃÓŚŹŻ";
 
@@ -37,25 +36,7 @@ fn focus_search(app: AppWindow) -> (AppWindow, Rc<RefCell<Vec<String>>>) {
     app.on_search_changed(move |query| queries_for_callback.borrow_mut().push(query.to_string()));
     slint::platform::update_timers_and_animations();
 
-    let field = ElementHandle::find_by_accessible_label(&app, SEARCH_LABEL)
-        .next()
-        .expect("Search field is mounted");
-    let position = field.absolute_position();
-    let size = field.size();
-    let center = LogicalPosition::new(
-        position.x + size.width / 2.0,
-        position.y + size.height / 2.0,
-    );
-    app.window()
-        .dispatch_event(WindowEvent::PointerMoved { position: center });
-    app.window().dispatch_event(WindowEvent::PointerPressed {
-        position: center,
-        button: PointerEventButton::Left,
-    });
-    app.window().dispatch_event(WindowEvent::PointerReleased {
-        position: center,
-        button: PointerEventButton::Left,
-    });
+    focus_search_field(&app);
     (app, queries)
 }
 

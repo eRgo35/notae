@@ -56,8 +56,11 @@ impl SearchRow {
     }
 }
 
-#[cfg(target_os = "android")]
-pub(crate) fn library_row(row: SearchRow, thumbnail: Option<slint::Image>) -> crate::LibraryRow {
+/// Projects a search result onto the Slint row the Library and Search screens show.
+///
+/// `android_main` calls this for every row it publishes; host tests call it to
+/// drive the generated UI with the real projection.
+pub fn library_row(row: SearchRow, thumbnail: Option<slint::Image>) -> crate::LibraryRow {
     let (before, hit, after) = row
         .text_snippet
         .as_deref()
