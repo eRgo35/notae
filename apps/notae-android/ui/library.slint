@@ -50,78 +50,23 @@ export component PagePreview inherits Rectangle {
     }
 }
 
-// A 48 px action on a card or row. The round backing keeps the icon readable over a page thumbnail.
-component ItemAction inherits Rectangle {
-    in property <string> label;
-    in property <image> icon;
-    in property <bool> enabled: true;
-    callback clicked();
-    width: 48px;
-    height: 48px;
-    border-radius: 24px;
-    background: Theme.card;
-    border-width: 1px;
-    border-color: Theme.divider;
-    IconButton {
-        x: 0px;
-        y: 0px;
-        label: root.label;
-        icon: root.icon;
-        enabled: root.enabled;
-        clicked => { root.clicked(); }
-    }
-}
-
-// Touch target of a card or row. A tap (or Enter/Space) emits `activated`; holding for 500 ms
-// without moving beyond touch slop emits `long-pressed` instead, and that press never also
-// activates. Releasing early, scrolling away, a modal opening or the item disappearing cancel it.
-component ItemInput inherits ActionInput {
-    callback activated();
-    callback long-pressed();
-    private property <bool> holding: false;
-    private property <bool> consumed: false;
-    changed pressed => {
-        if self.pressed {
-            self.consumed = false;
-            self.holding = true;
-        } else {
-            self.holding = false;
-        }
-    }
-    changed enabled => { if !self.enabled { self.holding = false; } }
-    moved => {
-        if self.holding && (abs(self.mouse-x - self.pressed-x) > 10px || abs(self.mouse-y - self.pressed-y) > 10px) {
-            self.holding = false;
-        }
-    }
-    clicked => {
-        if self.consumed {
-            self.consumed = false;
-        } else {
-            self.focus();
-            self.activated();
-        }
-    }
-    Timer {
-        interval: 500ms;
-        running: root.holding && root.enabled;
-        triggered => {
-            root.holding = false;
-            root.consumed = true;
-            root.long-pressed();
-        }
-    }
+// The visible route to a score's actions: three vertical dots at the end of a card's title row
+// or a list row. It is the only way to the actions sheet, so it carries the score's title in its
+// accessible name and is a full 48 px target.
+component MoreActions inherits IconButton {
+    in property <string> title;
+    label: "More actions for " + root.title;
+    icon: @image-url("material-icons/more-vertical.svg");
 }
 
 component ScoreCard inherits Rectangle {
     in property <LibraryRow> score;
-    // False while the actions menu is open, so nothing beneath it reacts.
+    // False while the actions sheet is open, so nothing beneath it reacts.
     in property <bool> interactive: true;
     // Phone cards: smaller type and an outline, like a Drive grid item.
     in property <bool> compact: false;
-    callback select();
     callback open();
-    callback long-pressed();
+    callback more();
     border-radius: root.compact ? 16px : 20px;
     background: input.pressed ? Theme.field : transparent;
     border-width: input.has-focus ? 2px : root.compact ? 1px : 0px;
@@ -131,10 +76,12 @@ component ScoreCard inherits Rectangle {
     accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + "Opens the score";
     accessible-action-default => { if root.interactive && !Theme.modal-open { root.open(); } }
     forward-focus: input;
-    input := ItemInput {
+    input := ActionInput {
         enabled: root.interactive && !Theme.modal-open;
-        activated => { root.open(); }
-        long-pressed => { root.long-pressed(); }
+        clicked => {
+            self.focus();
+            root.open();
+        }
     }
     VerticalLayout {
         padding: 6px;
@@ -146,7 +93,8 @@ component ScoreCard inherits Rectangle {
         VerticalLayout {
             spacing: 2px;
             padding-left: 4px;
-            padding-right: 4px;
+            // The overflow button sits over the end of this block.
+            padding-right: 44px;
             Text { text: root.score.title; color: Theme.foreground; font-size: root.compact ? 15px : 16px; font-weight: 600; overflow: elide; }
             Text {
                 text: (root.score.id != "" && root.score.composer_or_artist != "" ? root.score.id + " · " + root.score.composer_or_artist : root.score.id + root.score.composer_or_artist);
@@ -156,24 +104,22 @@ component ScoreCard inherits Rectangle {
             }
         }
     }
-    ItemAction {
-        label: "Score details";
-        icon: @image-url("material-icons/info.svg");
+    MoreActions {
+        title: root.score.title;
         enabled: root.interactive;
-        x: root.width - self.width - 12px;
-        y: 12px;
-        clicked => { root.select(); }
+        x: root.width - self.width - 2px;
+        y: root.height - self.height - 2px;
+        clicked => { root.more(); }
     }
 }
 
 component ScoreGrid inherits Flickable {
     in property <[LibraryRow]> rows;
     in property <bool> items-enabled: true;
-    callback select(string);
-    callback open(string, string);
-    callback long-pressed(LibraryRow);
     // Phones: at least two cards per row with a fixed rhythm instead of width-filling tiles.
     in property <bool> compact: false;
+    callback open(string, string);
+    callback more(LibraryRow);
     private property <length> gap: self.compact ? 12px : 16px;
     private property <length> row-gap: self.compact ? 12px : 20px;
     // Compact cards are at least 160 px wide; three fit only from 504 px of grid width.
@@ -197,9 +143,8 @@ component ScoreGrid inherits Flickable {
         score: row;
         compact: root.compact;
         interactive: root.items-enabled;
-        select => { root.select(row.note_key); }
         open => { root.open(row.relative_path, row.note_key); }
-        long-pressed => { root.long-pressed(row); }
+        more => { root.more(row); }
     }
 }
 
@@ -207,9 +152,8 @@ component ScoreGrid inherits Flickable {
 export component ScoreRow inherits Rectangle {
     in property <LibraryRow> score;
     in property <bool> interactive: true;
-    callback select();
     callback open();
-    callback long-pressed();
+    callback more();
     height: 80px;
     border-radius: 18px;
     background: input.pressed ? Theme.field : transparent;
@@ -220,10 +164,12 @@ export component ScoreRow inherits Rectangle {
     accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + "Opens the score";
     accessible-action-default => { if root.interactive && !Theme.modal-open { root.open(); } }
     forward-focus: input;
-    input := ItemInput {
+    input := ActionInput {
         enabled: root.interactive && !Theme.modal-open;
-        activated => { root.open(); }
-        long-pressed => { root.long-pressed(); }
+        clicked => {
+            self.focus();
+            root.open();
+        }
     }
     HorizontalLayout {
         padding-left: 14px;
@@ -245,13 +191,42 @@ export component ScoreRow inherits Rectangle {
         }
         VerticalLayout {
             alignment: center;
-            ItemAction {
-                label: "Score details";
-                icon: @image-url("material-icons/info.svg");
+            MoreActions {
+                title: root.score.title;
                 enabled: root.interactive;
-                clicked => { root.select(); }
+                clicked => { root.more(); }
             }
         }
+    }
+}
+
+// One row of the actions sheet: icon and label, a 56 px target.
+component SheetAction inherits Rectangle {
+    in property <string> label;
+    in property <image> icon;
+    callback clicked();
+    height: 56px;
+    border-radius: 16px;
+    background: input.pressed || input.keyboard-pressed ? Theme.field : transparent;
+    animate background { duration: Theme.motion-short; easing: ease-in-out; }
+    border-width: input.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-action-default => { root.clicked(); }
+    forward-focus: input;
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 20px;
+        VerticalLayout {
+            alignment: center;
+            Image { source: root.icon; width: 24px; height: 24px; image-fit: contain; colorize: Theme.foreground; accessible-role: none; }
+        }
+        Text { text: root.label; color: Theme.foreground; font-size: 16px; vertical-alignment: center; accessible-role: none; }
+    }
+    input := ActionInput {
+        clicked => { self.focus(); root.clicked(); }
     }
 }
 
@@ -376,7 +351,7 @@ export component LibraryScreen inherits Rectangle {
     in property <bool> acknowledge-enabled;
     in property <bool> failed;
     in property <bool> rescan-enabled;
-    // Long-press actions menu. The owner binds `menu-open` so Back/Escape can dismiss it.
+    // The score actions sheet. The owner binds `menu-open` so Back/Escape can dismiss it.
     in-out property <bool> menu-open: false;
     private property <LibraryRow> menu-row;
     function show-menu(row: LibraryRow) {
@@ -384,6 +359,7 @@ export component LibraryScreen inherits Rectangle {
         root.menu-open = true;
     }
     init => { root.menu-open = false; }
+    actions-presence := ViewPresence { active: root.menu-open; }
     callback rescan-clicked();
     callback sidebar-toggle-clicked();
     callback view-toggle-clicked();
@@ -404,6 +380,7 @@ export component LibraryScreen inherits Rectangle {
     callback acknowledge-clicked();
     callback score-selected(string);
     callback score-opened(string, string);
+    callback score-edit-requested(string);
     // Phones (a compact window width, or a landscape phone's short height) get two-column
     // outlined cards; wider and taller windows keep the tablet grid exactly.
     private property <bool> compact-grid: root.available-width < 600px || root.height < 480px;
@@ -532,9 +509,8 @@ export component LibraryScreen inherits Rectangle {
                         rows: root.rows;
                         compact: root.compact-grid;
                         items-enabled: !root.menu-open;
-                        select(key) => { root.score-selected(key); }
                         open(path, key) => { root.score-opened(path, key); }
-                        long-pressed(row) => { root.show-menu(row); }
+                        more(row) => { root.show-menu(row); }
                     }
                     Scrollbar {
                         x: parent.width - self.width;
@@ -556,13 +532,11 @@ export component LibraryScreen inherits Rectangle {
                         width: parent.width - 16px;
                         height: parent.height - 16px;
                         vertical-scrollbar-policy: ScrollBarPolicy.always-off;
-                        horizontal-scrollbar-policy: ScrollBarPolicy.always-off;
                         for row in root.rows : ScoreRow {
                             score: row;
                             interactive: !root.menu-open;
-                            select => { root.score-selected(row.note_key); }
                             open => { root.score-opened(row.relative_path, row.note_key); }
-                            long-pressed => { root.show-menu(row); }
+                            more => { root.show-menu(row); }
                         }
                     }
                     Scrollbar {
@@ -642,46 +616,80 @@ export component LibraryScreen inherits Rectangle {
         if !root.details-open : TouchArea { }
     }
 
-    // Actions for a long-pressed score. The scrim swallows pointer input, so dismissing the menu
-    // never activates the item underneath.
-    if root.menu-open : Rectangle {
+    // Drive-style actions sheet for the score whose overflow button was pressed. The scrim swallows
+    // pointer input, so dismissing the sheet never activates the item underneath; Back and Escape
+    // dismiss it through `menu-open` (see app.slint).
+    if actions-presence.mounted : Rectangle {
         z: 10;
         x: 0px;
         y: 0px;
         width: root.width;
         height: root.height;
-        background: #00000066;
-        TouchArea {
-            mouse-cursor: default;
-            accessible-role: none;
-            clicked => { root.menu-open = false; }
+        Rectangle {
+            background: #000000;
+            opacity: actions-presence.value * 0.4;
+            TouchArea {
+                mouse-cursor: default;
+                accessible-role: none;
+                clicked => { root.menu-open = false; }
+            }
         }
-        menu-card := Rectangle {
-            width: min(340px, root.width - 32px);
-            height: menu-content.preferred-height;
+        sheet-card := Rectangle {
+            width: min(root.width, 640px);
+            height: sheet-content.preferred-height;
             x: (root.width - self.width) / 2;
-            y: (root.height - self.height) / 2;
+            y: root.height - self.height + (1 - actions-presence.value) * 48px;
+            opacity: actions-presence.value;
             background: Theme.card;
-            border-radius: 26px;
-            init => { menu-open-action.focus(); }
+            border-top-left-radius: 28px;
+            border-top-right-radius: 28px;
+            init => { sheet-open-action.focus(); }
             accessible-role: form;
-            accessible-label: "Actions for " + root.menu-row.title;
+            accessible-label: "Score actions dialog";
+            accessible-description: "Modal sheet. Press Back to close.";
             TouchArea { accessible-role: none; }
-            menu-content := VerticalLayout {
-                padding: 16px;
-                spacing: 8px;
-                Text { text: root.menu-row.title; color: Theme.foreground; font-size: 18px; font-weight: 600; overflow: elide; }
-                menu-open-action := PillButton {
-                    in-dialog: true;
-                    text: "Open score";
-                    primary: true;
+            sheet-content := VerticalLayout {
+                padding: 8px;
+                padding-bottom: 16px;
+                HorizontalLayout {
+                    alignment: center;
+                    padding-bottom: 8px;
+                    Rectangle { width: 32px; height: 4px; border-radius: 2px; background: Theme.divider; }
+                }
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-bottom: 12px;
+                    spacing: 16px;
+                    VerticalLayout { alignment: center; PagePreview { score: root.menu-row; width: 44px; height: 58px; border-radius: 6px; } }
+                    VerticalLayout {
+                        horizontal-stretch: 1;
+                        alignment: center;
+                        spacing: 2px;
+                        Text { text: root.menu-row.title; color: Theme.foreground; font-size: 18px; font-weight: 600; overflow: elide; }
+                        Text {
+                            text: (root.menu-row.id != "" && root.menu-row.composer_or_artist != "" ? root.menu-row.id + " · " + root.menu-row.composer_or_artist : root.menu-row.id + root.menu-row.composer_or_artist);
+                            color: Theme.muted;
+                            font-size: 14px;
+                            overflow: elide;
+                        }
+                    }
+                }
+                Rectangle { height: 1px; background: Theme.divider; }
+                sheet-open-action := SheetAction {
+                    label: "Open score";
+                    icon: @image-url("material-icons/external-link.svg");
                     clicked => { root.menu-open = false; root.score-opened(root.menu-row.relative_path, root.menu-row.note_key); }
                 }
-                PillButton {
-                    in-dialog: true;
-                    text: "Score details";
-                    tonal: true;
+                SheetAction {
+                    label: "Score details";
+                    icon: @image-url("material-icons/info.svg");
                     clicked => { root.menu-open = false; root.score-selected(root.menu-row.note_key); }
+                }
+                SheetAction {
+                    label: "Edit details";
+                    icon: @image-url("material-icons/edit.svg");
+                    clicked => { root.menu-open = false; root.score-edit-requested(root.menu-row.note_key); }
                 }
             }
         }

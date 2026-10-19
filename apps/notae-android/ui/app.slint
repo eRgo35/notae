@@ -330,6 +330,7 @@ export component AppWindow inherits Window {
                 acknowledge-clicked => { root.acknowledge_clicked(); }
                 score-selected(key) => { root.score_selected(key); }
                 score-opened(path, key) => { root.open_pdf_requested(path, key); }
+                score-edit-requested(key) => { root.edit_metadata_requested(key); }
                 menu-open <=> root.library_menu_open;
             }
             }

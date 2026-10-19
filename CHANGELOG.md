@@ -9,6 +9,18 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+### Changed
+
+- Library on phones: the grid shows two outlined cards per row (three only on a
+  wider screen) with a thumbnail, title and number · composer, like the Google
+  Drive app, instead of one tile as large as the whole screen. Windows 600 px
+  wide or more, such as the tablet, keep their layout.
+- Item actions: every card and list row, including Recent, ends with a visible
+  48 px **More actions** (⋮) button that opens a bottom sheet with **Open
+  score**, **Score details** and **Edit details**. It replaces both the Info
+  icon (#26) and the long-press menu, which is removed; the button is also the
+  route TalkBack users had no gesture for. Tapping a card still opens the PDF.
+
 ### Fixed
 
 - Import review ([#34](https://github.com/eRgo35/notae/issues/34)): the entries
