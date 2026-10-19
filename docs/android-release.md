@@ -64,7 +64,7 @@ cargo-apk2 1.4.0 reads the release key from `CARGO_APK_RELEASE_KEYSTORE` (path) 
 
 ## Cutting a release
 
-1. On `main`, bump `[workspace.package] version` in the root `Cargo.toml` and regenerate the lockfile (`cargo update --workspace`). cargo-apk2 derives the Android `versionName` from that version and `versionCode` as `(1 << 24) | major << 16 | minor << 8 | patch`, so the code rises with every semantic-version increase; do not set either in `apps/notae-android/Cargo.toml` (cargo-apk2 rejects it). Version 0.1.0 is `16777472`, 0.2.0 is `16777728`.
+1. On `main`, bump `[workspace.package] version` in the root `Cargo.toml` and regenerate the lockfile (`cargo update --workspace`). cargo-apk2 derives the Android `versionName` from that version and `versionCode` as `(1 << 24) | major << 16 | minor << 8 | patch`, so the code rises with every semantic-version increase; do not set either in `apps/notae-android/Cargo.toml` (cargo-apk2 rejects it). Version 0.1.0 is `16777472`, 0.2.0 is `16777728`, 0.2.2 is `16777730`.
 2. Add `docs/release-notes/vX.Y.Z.md`. It becomes the hand-written section of the GitHub Release; GitHub's generated notes are appended after it. State what was and was not verified on a physical device.
 3. Commit, push `main`, and wait for the **CI** run on that exact commit to pass both jobs.
 4. Tag that commit and push the tag:
@@ -77,17 +77,27 @@ cargo-apk2 1.4.0 reads the release key from `CARGO_APK_RELEASE_KEYSTORE` (path) 
 5. The **Release** workflow runs. It fails early with an error naming the missing secrets if any are absent, if the tag commit is not on `main`, or if the tag does not equal `v` plus the Cargo version. After the gates pass it builds `cargo apk2 build -p notae-android --target aarch64-linux-android --release`, then `.github/scripts/verify-release-apk.sh` checks `versionName`, `versionCode`, `apksigner verify` (v2 scheme) and that the certificate is not the Android debug certificate and equals the pinned fingerprint, and writes `notae-X.Y.Z-arm64.apk` plus `.sha256`. It uploads both as workflow artifacts and attaches them to the GitHub Release, creating the release (hand-written notes plus generated notes) only if it does not exist.
 6. To attach the APK to a tag that was pushed before the secrets existed, add the secrets and run the workflow manually: `gh workflow run release.yml --repo eRgo35/notae -f tag=vX.Y.Z`. Re-running replaces the assets of the same name.
 
-### Local release build
+### Local builds
+
+One script builds the arm64 APK on this machine and prints its path, size and SHA-256:
 
 ```sh
+# Shippable: the exact command the Release workflow runs (stock `release` profile, release key).
 export CARGO_APK_RELEASE_KEYSTORE=/secure/path/notae-release.p12
 export CARGO_APK_RELEASE_KEYSTORE_PASSWORD=...
-cargo apk2 build -p notae-android --target aarch64-linux-android --release
+.github/scripts/build-apk.sh release   # -> target/release/apk/notae-android.apk
+
+# Quick dev build: `apk-dev` profile (opt-level 1, incremental), debug key. Never ship it.
+.github/scripts/build-apk.sh dev       # -> target/apk-dev/apk/notae-android.apk
 ```
 
-Create the single-entry `.p12` with `NOTAE_KEYSTORE_PASSWORD=... NOTAE_KEY_ALIAS=... NOTAE_KEY_PASSWORD=... .github/scripts/prepare-release-keystore.sh notae-release.jks notae-release.p12`. Debug builds (`cargo apk2 build` without `--release`) keep using the SDK's `~/.android/debug.keystore`.
+`release` is `cargo apk2 build -p notae-android --target aarch64-linux-android --release` and fails without the keystore variables instead of falling back to the debug key. `dev` uses the `[profile.apk-dev]` table in the root `Cargo.toml`, which inherits `release` and lowers optimisation; it does not touch the `release` profile, so the shippable artifact is unchanged. The script defaults `ANDROID_HOME` to `~/Android/Sdk` and `ANDROID_NDK_ROOT` to its `ndk/android-ndk-r26d` directory, and compiles the Java sources as Java 17 (`JDK_JAVAC_OPTIONS`), because the bundled D8 rejects the class files of a newer default JDK (JDK 25 fails with "Unsupported class file major version 69"). Both builds reuse `target/` (or `CARGO_TARGET_DIR`), so repeat builds are incremental.
 
-Verify an APK with `.github/scripts/verify-release-apk.sh target/release/apk/notae-android.apk vX.Y.Z dist`, or manually with `aapt2 dump badging`, `apksigner verify --print-certs` and `sha256sum`.
+Measured on the maintainer workstation (16 threads, NDK r26d, Rust 1.98.1, v0.2.2): cold `release` 114 s, `release` with nothing changed 6 s, `release` after touching `apps/notae-android/src/lib.rs` 41 s; cold `dev` 140 s, `dev` with nothing changed 15 s, `dev` after touching `lib.rs` 20 s. The point of `dev` is the edit-build-install loop (roughly half the time of `release` after a source change); a cold `dev` build is not faster. No `sccache` or `mold` is installed, and the arm64 link already uses the NDK's `lld`, so neither was added.
+
+Create the single-entry `.p12` with `NOTAE_KEYSTORE_PASSWORD=... NOTAE_KEY_ALIAS=... NOTAE_KEY_PASSWORD=... .github/scripts/prepare-release-keystore.sh notae-release.jks notae-release.p12`. Plain `cargo apk2 build` (without `--release`) also keeps using the SDK's `~/.android/debug.keystore`.
+
+Verify an APK with `.github/scripts/verify-release-apk.sh target/release/apk/notae-android.apk vX.Y.Z dist`, or manually with `aapt2 dump badging`, `apksigner verify --print-certs` and `sha256sum`. A locally built APK is a convenient test build; the published APK is the one the Release workflow builds from the tag.
 
 ## Debug-key and release-key installs are incompatible
 
