@@ -37,3 +37,12 @@ expect_used = "warn"
 # that PR. See vendor/README.md.
 [patch.crates-io]
 i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
+
+# Quick local APK for trying a change on a device (`.github/scripts/build-apk.sh dev`). It is NOT the
+# shipped build: the Release workflow and `build-apk.sh release` use the stock `release` profile,
+# which this table does not touch. Signed with the SDK debug key, never the release key.
+[profile.apk-dev]
+inherits = "release"
+opt-level = 1
+incremental = true
+codegen-units = 256
