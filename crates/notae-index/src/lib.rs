@@ -13,7 +13,10 @@
 //!   present, which is what makes the ID invariant a database constraint
 //!   rather than a convention.
 //! - `notes_fts` — an FTS5 index over note ID, title, composer/artist, tags,
-//!   filename, and OCR text, sharing row identifiers with `notes`.
+//!   filename, and OCR text, sharing row identifiers with `notes`. Its text is
+//!   written with Polish `ł`/`Ł` folded to `l`/`L` (schema version 2, see
+//!   `fold`) and queries are folded the same way; `notes` keeps the original
+//!   spelling.
 //! - `schema_migrations` — the versions applied to this database. A recorded
 //!   version is verified against the objects it names when the database is
 //!   opened, and the table itself is created inside the migration transaction,

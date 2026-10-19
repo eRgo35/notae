@@ -16,7 +16,11 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::store::IndexError;
 
 /// Version of the schema this build creates and expects.
-pub const SCHEMA_VERSION: u32 = 1;
+///
+/// Version 2 folds the Polish `ł`/`Ł` in `notes_fts` (migration
+/// `0002_fold_l_stroke.sql`). A database at version 2 is refused by builds that
+/// only know version 1; see [`migrate`].
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// The bookkeeping table recording applied migrations.
 const CREATE_MIGRATIONS_TABLE: &str = "\
@@ -25,14 +29,16 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT";
 
-/// Objects the schema at version 1 is made of, as `sqlite_master` type and
-/// name.
+/// Objects every schema version since 1 is made of, as `sqlite_master` type
+/// and name.
 ///
-/// Checked when opening, so a database that recorded version 1 without
-/// actually having it is rejected. The FTS5 shadow tables are deliberately not
-/// listed: they are SQLite's own bookkeeping for `notes_fts` and are dropped
-/// and recreated with it.
-const V1_OBJECTS: &[(&str, &str)] = &[
+/// Checked when opening, so a database that recorded a version without
+/// actually having it is rejected. Version 2 only rewrites rows of `notes_fts`
+/// and adds no object. The FTS5 shadow tables are deliberately not listed: they
+/// are SQLite's own bookkeeping for `notes_fts` and are dropped and recreated
+/// with it. The check cannot tell whether the rows of `notes_fts` are folded;
+/// that is guaranteed by the migration transaction, not verified at open.
+const SCHEMA_OBJECTS: &[(&str, &str)] = &[
     ("table", "schema_migrations"),
     ("table", "notes"),
     ("table", "notes_fts"),
@@ -52,11 +58,18 @@ pub struct Migration {
 }
 
 /// Every migration, ordered by ascending version.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "initial",
-    sql: include_str!("../migrations/0001_initial.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial",
+        sql: include_str!("../migrations/0001_initial.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "fold_l_stroke",
+        sql: include_str!("../migrations/0002_fold_l_stroke.sql"),
+    },
+];
 
 /// Returns the newest migration version recorded in `conn`.
 ///
@@ -82,6 +95,11 @@ pub fn applied_version(conn: &Connection) -> Result<u32, IndexError> {
 
 /// Applies every migration newer than the recorded version.
 ///
+/// The upgrade is forward-only: a database upgraded to a newer version is
+/// refused by older builds ([`IndexError::UnsupportedSchemaVersion`]), because
+/// an older build would write rows the newer schema's migrations had
+/// normalized.
+///
 /// # Errors
 ///
 /// Returns [`IndexError::UnsupportedSchemaVersion`] when the database was
@@ -98,6 +116,13 @@ pub fn migrate(conn: &Connection) -> Result<u32, IndexError> {
             found: current,
             supported: SCHEMA_VERSION,
         });
+    }
+
+    // A recorded version is a claim: check it before building on it, so a
+    // hollow database is reported as such rather than failing inside the first
+    // migration that touches a table it does not have.
+    if current > 0 {
+        verify_objects(conn, current)?;
     }
 
     let pending: Vec<&Migration> = MIGRATIONS
@@ -130,7 +155,7 @@ pub fn migrate(conn: &Connection) -> Result<u32, IndexError> {
 /// `sqlite_master`, and the ones that are absent are named in the error.
 fn verify_objects(conn: &Connection, version: u32) -> Result<u32, IndexError> {
     let mut missing: Vec<&str> = Vec::new();
-    for (kind, name) in V1_OBJECTS {
+    for (kind, name) in SCHEMA_OBJECTS {
         if !object_exists(conn, kind, name)? {
             missing.push(name);
         }
