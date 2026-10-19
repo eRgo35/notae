@@ -34,16 +34,14 @@
 | External-content or contentless `notes_fts` (index folded text, read original text for `snippet()`) | Rejected. | Rebuilds the table, makes `delete`/`rebuild` commands depend on exact old values, changes the schema shape. Far more risk than a 1:1 char mapping. |
 | Bring old FTS rows up to date | Migration `0002` = one in-place `UPDATE notes_fts … replace(replace(col,'ł','l'),'Ł','L')` on the rows that contain `ł`/`Ł`; `SCHEMA_VERSION` 2. | Pure SQL, so it fits the existing `MIGRATIONS` runner, runs once inside the migration transaction and fails atomically with it. **Correction to the brief:** a Rust-side rebuild is *not* needed. The `filename` column does not have to be derived from `path`: folding the stored FTS text in place gives the same bytes. Task 2 proves it by comparing the migrated rows with rows written by the Rust writer. |
 | Keep the stored lyric snippet in the original spelling | Map the folded snippet back onto `notes.ocr_text` in Rust (`restore_l_stroke`), only for hits whose stored text contains `ł`/`Ł`. | `snippet()` can only return text of the FTS column, which is now folded, so without this users would read `Palka zagrala kolysanke` for `Pałka zagrała kołysankę`. The fold keeps char count, so the snippet is a contiguous char range of the folded text and the same range of the original gives the original spelling. `notes.*` is already selected, so `ocr_text` is read with `get_ref` (borrowed, no copy) and nothing else is queried. Cost only for ł-bearing hits: one fold plus one substring search of that note's page text. Rejected: showing folded snippets (loses the letter in displayed lyrics), reimplementing `unicode61` matching in Rust to compute snippets, and external content (above). |
-| Exact-title bonus | Also `ł`-insensitive, via the same function. | `Łódź` must rank first for `lodz` the way `łódź` already does. Rust side: `fold(lowercase(title)) == fold(lowercase(query))`. SQL `ORDER BY` side: compare `lower(notes_fts.title)` (already folded) with the folded query. **Pre-existing, left alone:** SQLite `lower()` is ASCII-only, so the SQL term never matched non-ASCII titles; the Rust bonus is what ranks results, the SQL term only matters when `LIMIT` truncates (the Android app passes `usize::MAX`). |
+| Exact-title bonus | Also `ł`-insensitive, via the same function. | A title that differs from the query only by the stroke (`Łaska` for `laska`) must rank first the way `łaska` already does. The bonus has never folded the other diacritics, so `lodz` does not earn it for `Łódź` (ó, ź); that is unchanged. Rust side: `fold(lowercase(title)) == fold(lowercase(query))`. SQL `ORDER BY` side: compare `lower(notes_fts.title)` (already folded) with the folded query. **Pre-existing, left alone:** SQLite `lower()` is ASCII-only, so the SQL term never matched non-ASCII titles; the Rust bonus is what ranks results, the SQL term only matters when `LIMIT` truncates (the Android app passes `usize::MAX`). |
 
-### Migration, downgrade and the Android index
+### Migration and the Android index
 
 - `IndexStore::from_connection` runs `schema::migrate`, so every opener upgrades in place: the Android app (`apps/notae-android/src/android_main.rs:1013`, when the library is opened) and the desktop indexer (`apps/notae-index/src/main.rs:126`, `<library>/.notae/index.sqlite`).
 - The Android index (`<internal data>/notae/index.sqlite`) is **not** rebuilt by a rescan: it persists and a rescan updates it incrementally by content hash. So the migration is what brings it up to date; the app does not "rebuild anyway".
 - The Android app imports `manifest.json`, never the CLI's `index.sqlite` (see `apps/notae-index/README.md`), and the manifest format does not change.
-- **One-way upgrade.** `migrate()` refuses an index recorded at a newer version (`IndexError::UnsupportedSchemaVersion`). That refusal is the *correct* behaviour here: a 0.2.1 build writing unfolded rows into a folded index would silently break search. Consequences for the maintainer:
-  - An older desktop CLI run against a `.notae/index.sqlite` already opened by the new build fails with `index schema version 2 is newer than the supported version 1`. Recovery: delete `<library>/.notae/index.sqlite` and rerun (this repeats OCR; `manifest.json` is rewritten and stays compatible).
-  - An older APK installed over the new one cannot open the index (Android normally refuses a lower `versionCode` anyway; `adb install -r -d` forces it). Recovery: Clear storage, select the library, rescan and re-import the sidecar. Manual metadata edits not in the sidecar are lost.
+- **Forward-only upgrade (accepted by the maintainer).** `migrate()` refuses an index recorded at a newer version (`IndexError::UnsupportedSchemaVersion`), so an older APK or `notae-index` refuses a version 2 index; no downgrade path is provided. That refusal is the *correct* behaviour here: an older build writing unfolded rows into a folded index would silently break search.
 - The migration touches only derived data; `notes` is not modified, so there is no data-loss path.
 
 ## File Structure
@@ -78,7 +76,7 @@
 - Consumes: `IndexStore::{open, upsert_note_with_ocr, search_in}`, test helpers `note`, `digest` (already in `store_and_search.rs`).
 - Produces: `pub(crate) fn fold_l_stroke(text: &str) -> std::borrow::Cow<'_, str>` in `crate::fold`.
 
-- [ ] **Step 1: Write the failing integration tests**
+- [x] **Step 1: Write the failing integration tests**
 
 In `crates/notae-index/tests/store_and_search.rs`, delete the whole test `accentless_queries_follow_the_unicode61_folding_rules_without_a_tokenizer_change` (it asserts the old limitation; it starts at the `#[test]` before it, currently line 980, and runs to the end of the file) and append:
 
@@ -224,25 +222,27 @@ fn scopes_stay_separate_after_folding() {
 
 #[test]
 fn the_exact_title_bonus_ignores_the_stroke() {
+    // Only the stroke differs between the query and the exact title: the exact
+    // title bonus has never folded the other diacritics.
     let store = IndexStore::open(":memory:").expect("open");
     store
-        .upsert_note(&note("a.pdf", 1, None, "Łódź", None, &[]))
+        .upsert_note(&note("a.pdf", 1, None, "Łaska łaskawa", None, &[]))
         .expect("insert");
     store
-        .upsert_note(&note("b.pdf", 2, None, LODZ_TITLE, None, &[]))
+        .upsert_note(&note("b.pdf", 2, None, "Łaska", None, &[]))
         .expect("insert");
-    for query in ["lodz", "Lodz", "łódź", "ŁÓDŹ"] {
+    for query in ["laska", "Laska", "łaska", "ŁASKA", " Łaska "] {
         let hits = store
             .search_in(query, SearchScope::Titles, 10)
             .expect("search");
         assert_eq!(hits.len(), 2, "{query:?}");
-        assert_eq!(hits[0].note.title(), "Łódź", "{query:?}");
+        assert_eq!(hits[0].note.title(), "Łaska", "{query:?}");
         assert!(hits[0].rank > 50.0, "exact title bonus for {query:?}: {}", hits[0].rank);
         assert!(hits[1].rank < 50.0, "no bonus for the longer title: {}", hits[1].rank);
         let limited = store
             .search_in(query, SearchScope::Titles, 1)
             .expect("search");
-        assert_eq!(limited[0].note.title(), "Łódź", "limit 1 for {query:?}");
+        assert_eq!(limited[0].note.title(), "Łaska", "limit 1 for {query:?}");
     }
 }
 
@@ -267,12 +267,12 @@ fn only_the_l_stroke_is_folded() {
 
 `cargo fmt` will reflow the long arrays; run it in Step 5.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cargo test -p notae-index --test store_and_search -- queries_with_and_without the_examples_of_issue_35 plain_l_and_stroke_l scopes_stay_separate the_exact_title_bonus only_the_l_stroke`
 Expected: FAIL — `queries_with_and_without_the_stroke…` (e.g. `query "lodz" in Titles`), `the_examples_of_issue_35…`, `plain_l_and_stroke_l…`, and `the_exact_title_bonus_ignores_the_stroke` fail; `scopes_stay_separate_after_folding` and `only_the_l_stroke_is_folded` already pass (they pin behaviour that must not change).
 
-- [ ] **Step 3: Create the fold module**
+- [x] **Step 3: Create the fold module**
 
 Create `crates/notae-index/src/fold.rs`:
 
@@ -383,7 +383,7 @@ mod fold;
 mod import;
 ```
 
-- [ ] **Step 4: Fold on the index side and the query side**
+- [x] **Step 4: Fold on the index side and the query side**
 
 `crates/notae-index/src/store.rs`: add the import below `use crate::schema;`:
 
@@ -475,12 +475,12 @@ fn match_expression(query: &str, scope: SearchScope) -> String {
 
 (the rest of the function is unchanged).
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `cargo fmt && cargo test -p notae-index`
 Expected: PASS for the new tests and the unit tests in `fold.rs`. Everything else in `notae-index` still passes (the schema version is still 1 at this point; `polish_titles_match_exact_and_case_varied_queries_in_every_scope` still passes).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/notae-index/src/fold.rs crates/notae-index/src/lib.rs crates/notae-index/src/store.rs crates/notae-index/src/search.rs crates/notae-index/tests/store_and_search.rs
@@ -501,7 +501,7 @@ git commit -m "feat(index): fold Polish ł/Ł on both sides of the FTS index" -m
 - Consumes: `MIGRATIONS`, `SCHEMA_VERSION`, `Migration` (public, `crates/notae-index/src/lib.rs`), `IndexStore::{open, schema_version, upsert_note_with_ocr, ocr_text, get_by_hash, search}`, fixtures `note`, `digest`, `temp_db`.
 - Produces: `SCHEMA_VERSION == 2`; `MIGRATIONS` has `Migration { version: 2, name: "fold_l_stroke", sql: … }`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `crates/notae-index/tests/store_and_search.rs` change the import `use std::path::PathBuf;` to `use std::path::{Path, PathBuf};` and the `notae_index` import to include `MIGRATIONS`:
 
@@ -674,12 +674,12 @@ fn reopening_a_migrated_index_does_not_change_it() {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cargo test -p notae-index --test store_and_search -- the_schema_version_is_the_newest_migration a_version_1_index_is_folded reopening_a_migrated opening_a_database_that_claims_a_version`
 Expected: FAIL — `the_schema_version_is_the_newest_migration` (`1 != 2`); `a_version_1_index_is_folded_in_place_when_it_is_opened` (the open leaves rows unfolded: `lodz` finds 0 hits, and `SCHEMA_VERSION` is still 1 so the deleted `version = 2` row never existed). The hollow-database loop passes for version 1 today.
 
-- [ ] **Step 3: Write the migration and bump the version**
+- [x] **Step 3: Write the migration and bump the version**
 
 Create `crates/notae-index/migrations/0002_fold_l_stroke.sql`:
 
@@ -698,9 +698,8 @@ Create `crates/notae-index/migrations/0002_fold_l_stroke.sql`:
 -- the original spelling, and the sidecar manifest (which is built from `notes`)
 -- is unaffected. Rows without ł/Ł are not rewritten.
 --
--- A database upgraded by this migration is refused by builds that only know
--- version 1: they would write unfolded rows into a folded index. To go back,
--- delete the index file and rebuild it (see the CHANGELOG).
+-- The upgrade is forward-only: builds that only know version 1 refuse a
+-- version 2 database.
 --
 -- A released migration is frozen. The mapping below is a copy of
 -- `fold_l_stroke`; `a_version_1_index_is_folded_in_place_when_it_is_opened` in
@@ -727,7 +726,7 @@ Line 18-19:
 ///
 /// Version 2 folds the Polish `ł`/`Ł` in `notes_fts` (migration
 /// `0002_fold_l_stroke.sql`). A database at version 2 is refused by builds that
-/// only know version 1; see [`migrate`].
+/// only know version 1: the upgrade is forward-only.
 pub const SCHEMA_VERSION: u32 = 2;
 ```
 
@@ -801,12 +800,12 @@ and update the doc of `migrate` (the `# Errors` section already names both error
 //!   spelling.
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo fmt && cargo test -p notae-index`
 Expected: PASS, including `open_creates_schema_at_the_current_version`, `reopening_an_existing_database_reapplies_no_migration`, `opening_a_database_from_a_newer_schema_is_refused` (seeded `99`; still `found == 99`, `supported == SCHEMA_VERSION`) and `a_failed_migration_leaves_the_database_unchanged`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/notae-index
@@ -826,7 +825,7 @@ git commit -m "feat(index): migrate existing FTS rows to the folded form" -m "Sc
 - Consumes: `fold_l_stroke`, `has_l_stroke` (Task 1); `SearchHit::text_snippet`.
 - Produces: `pub(crate) fn restore_l_stroke(snippet: &str, ellipsis: &str, original: &str) -> String` — `snippet` is an FTS5 `snippet()` result over the folded text (markers `\u{2}`/`\u{3}`, optional leading/trailing `ellipsis`), `original` is the stored text; returns the snippet with the original characters, the snippet unchanged when it cannot be located.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `crates/notae-index/tests/store_and_search.rs`:
 
@@ -875,12 +874,12 @@ fn a_snippet_with_a_leading_ellipsis_keeps_the_original_spelling() {
 
 (The window is the 12-token window FTS5 `snippet(…, 12)` produces; the expected strings were derived by running the same statement against SQLite 3.51 with the folded text. If the bundled SQLite picks another window, correct the expected string to the snippet of the *folded* text with `ł`/`Ł` put back — the assertion that matters is that no `ł`/`Ł` of the original is lost and no folded `l` replaces one. The existing `text_scope_matches_only_page_text_and_returns_a_marked_snippet` covers text without a stroke.)
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `cargo test -p notae-index --test store_and_search -- lyric_snippets_keep a_snippet_with_a_leading`
 Expected: FAIL — the snippet reads `\u{2}Palka\u{3} zagrala kolysankę dla Lodzi …` (folded).
 
-- [ ] **Step 3: Implement `restore_l_stroke`**
+- [x] **Step 3: Implement `restore_l_stroke`**
 
 In `crates/notae-index/src/fold.rs` add the marker constant next to `STROKES` (this was deferred from Task 1 to keep `-D warnings` green):
 
@@ -1001,7 +1000,7 @@ Add to the `tests` module in `fold.rs`:
     }
 ```
 
-- [ ] **Step 4: Use it in `search`**
+- [x] **Step 4: Use it in `search`**
 
 `crates/notae-index/src/search.rs`: import `use crate::fold::{fold_l_stroke, has_l_stroke, restore_l_stroke};` and add above `SEARCH_SQL`:
 
@@ -1092,12 +1091,12 @@ and add to the module docs of `search.rs` (after the ranking paragraph):
 //! page text before it is returned.
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `cargo fmt && cargo test -p notae-index`
 Expected: PASS (new snippet tests, `fold.rs` unit tests, and the existing `text_scope_matches_only_page_text_and_returns_a_marked_snippet`).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add crates/notae-index
@@ -1120,7 +1119,7 @@ git commit -m "fix(index): keep ł in lyric snippets of the folded index" -m "Re
 
 `library_row` is the real projection `SearchRow` → Slint `LibraryRow` that `android_main.rs` pushes through `sync_window`; it is `#[cfg(target_os = "android")] pub(crate)` only because nothing else called it. The Android runtime wiring (`on_search_changed` → worker → `UiModel` → `sync_window`) cannot run on the host, so the test wires `on_search_changed`/`on_search_scope_changed` to the same `LibraryViewModel` + `library_row` the worker uses, over a real in-memory `IndexStore`, and observes the Search screen the way a TalkBack/uiautomator user does (accessible labels).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `apps/notae-android/tests/search_stroke_ui.rs`:
 
@@ -1296,7 +1295,7 @@ fn lyric_results_show_the_stored_spelling_not_the_folded_one() {
     for (query, printed) in [
         ("palka", "Pałka"),
         ("galuszki", "Gałuszki"),
-        ("czesci stale", "Części"),
+        ("czesci stale", "stałe"),
         ("zmartwychwstal", "zmartwychwstał"),
     ] {
         let found = search(&store, "Lyrics", query);
@@ -1388,14 +1387,14 @@ pub fn type_text(app: &AppWindow, text: &str) {
 
 (Keep the existing `use slint::ComponentHandle; use std::cell::Cell;` lines only once; merge imports into the block above. The existing `app`, `app_sized` and `initialize_backend` are unchanged.)
 
-- [ ] **Step 2: Run the new test to verify it fails for the right reason**
+- [x] **Step 2: Run the new test to verify it fails for the right reason**
 
 Red check (the production fix from Tasks 1-3 is already in the tree, so break it for a moment): in `crates/notae-index/src/fold.rs` change the body of `fold_l_stroke` to `Cow::Borrowed(text)`, then run:
 
 Run: `cargo test -p notae-android --test search_stroke_ui`
 Expected: FAIL — `queries_with_and_without_the_stroke_find_the_score_in_every_scope` with `left: [], right: ["Łódź — Pieśń żółta"]` for `"lodz" under Titles`. Revert the temporary change and run again: all three tests PASS. If `ElementHandle` finds no `ResultRow`, the `ListView` has not instantiated its rows yet: call `i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(500))` after `type_text` in `search`, as `library_ui.rs::settle` does.
 
-- [ ] **Step 3: Make `search_input.rs` reuse the shared helper**
+- [x] **Step 3: Make `search_input.rs` reuse the shared helper**
 
 In `apps/notae-android/tests/search_input.rs` replace the `use support::{app, app_sized};` import and the `SEARCH_LABEL` const with:
 
@@ -1420,12 +1419,12 @@ fn focus_search(app: AppWindow) -> (AppWindow, Rc<RefCell<Vec<String>>>) {
 
 Remove the imports that become unused (`LogicalPosition`, `PointerEventButton`) only if the compiler reports them unused; `WindowEvent`, `SharedString` and `ElementHandle` are still used by the other tests in that file.
 
-- [ ] **Step 4: Run the Android host tests**
+- [x] **Step 4: Run the Android host tests**
 
 Run: `cargo test -p notae-android --test search_stroke_ui --test search_input --test search_state --test voice_search`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/notae-android
@@ -1444,7 +1443,7 @@ git commit -m "test(android): drive Search over a real index for ł-less queries
 
 **Interfaces:** none (documentation).
 
-- [ ] **Step 1: README**
+- [x] **Step 1: README**
 
 Replace (lines 57-59, `**Search** …` bullet tail):
 
@@ -1465,21 +1464,21 @@ with
 
 (keep the surrounding lines byte-identical; check the first line's exact wrapping with `read README.md:54-60` before editing.)
 
-- [ ] **Step 2: `docs/android-debugging.md`**
+- [x] **Step 2: `docs/android-debugging.md`**
 
 Replace the whole of line 60 (`- Observed FTS5 `unicode61` folding (no tokenizer or schema change was made): …`) with:
 
 ```
-- Search folding (#35, supersedes the limitation first observed for #13): FTS5 `unicode61 remove_diacritics 2` removes combining diacritics (`ą ć ę ń ó ś ź ż`) but `ł`/`Ł` have no decomposition, so `lodz`, `Lodz` and `zolta` found nothing in 0.2.0/0.2.1. Notae now folds `ł`→`l` and `Ł`→`L` itself (`crates/notae-index/src/fold.rs`) on every `notes_fts` row it writes (title, composer, tags, filename, page text) and on every query. Migration `0002_fold_l_stroke.sql` (index schema version 2) folds rows written by 0.2.x in place the first time the index is opened; the stored `notes` text, displayed titles and lyric snippets keep the original spelling. `lodz`, `palka`, `Galuszka`, `czesci stale` and `zmartwychwstal` now find `Łódź — Pieśń żółta`, `Pałka`, `Gałuszka`, `części stałe` and `zmartwychwstał`. `l` and `ł` are one letter for search, so `lodz` also finds a score titled `Lodz`. A version 2 index is refused by older builds ("index schema version 2 is newer than the supported version 1"): on Android use Clear storage, reselect the library, rescan and re-import the sidecar; for the desktop CLI delete `<library>/.notae/index.sqlite`. Verified on host tests only; not yet on the Galaxy Tab S10 FE+.
+- Search folding (#35, supersedes the limitation first observed for #13): FTS5 `unicode61 remove_diacritics 2` removes combining diacritics (`ą ć ę ń ó ś ź ż`) but `ł`/`Ł` have no decomposition, so `lodz`, `Lodz` and `zolta` found nothing in 0.2.0/0.2.1. Notae now folds `ł`→`l` and `Ł`→`L` itself (`crates/notae-index/src/fold.rs`) on every `notes_fts` row it writes (title, composer, tags, filename, page text) and on every query. Migration `0002_fold_l_stroke.sql` (index schema version 2) folds rows written by 0.2.x in place the first time the index is opened; the stored `notes` text, displayed titles and lyric snippets keep the original spelling. `lodz`, `palka`, `Galuszka`, `czesci stale` and `zmartwychwstal` now find `Łódź — Pieśń żółta`, `Pałka`, `Gałuszka`, `części stałe` and `zmartwychwstał`. `l` and `ł` are one letter for search, so `lodz` also finds a score titled `Lodz`. The schema upgrade is forward-only: an older build refuses a version 2 index. Verified on host tests only; not yet on the Galaxy Tab S10 FE+.
 ```
 
-Append to the end of line 59 (after `…in Titles and Everything scopes.`):
+Append to the end of line 59 (after `…in Titles and Everything scopes.`); the text below is what was committed:
 
 ```
  For #35 the same file indexes `Łódź — Pieśń żółta` with composer, tag and lyrics containing `ł` and checks the issue's queries (`palka`, `Galuszka`, `czesci stale`, `zmartwychwstal`, `lodz`) and their diacritic forms in every scope, the migration of a version 1 index, and snippet spelling; `apps/notae-android/tests/search_stroke_ui.rs` types the queries into the Search screen over a real in-memory index and reads the result rows (title, lyric snippet) from the accessibility tree in every scope.
 ```
 
-- [ ] **Step 3: CHANGELOG**
+- [x] **Step 3: CHANGELOG**
 
 In `## [Unreleased]` add under the existing `### Fixed` list, then a new `### Changed` section (blank line between sections, same bullet/wrapping style as the entry above it):
 
@@ -1495,32 +1494,24 @@ In `## [Unreleased]` add under the existing `### Fixed` list, then a new `### Ch
 ### Changed
 
 - Index schema version 2 ([#35](https://github.com/eRgo35/notae/issues/35)):
-  the search index folds `ł`/`Ł` to `l`/`L` as it is written. Existing indexes
-  are migrated in place the first time this build opens them (Android app and
-  `notae-index` CLI alike); the stored titles, metadata and OCR text are not
-  changed. **The upgrade is one-way:** an older build refuses a version 2 index
-  with "index schema version 2 is newer than the supported version 1". To go
-  back, Clear storage on Android and reselect the library, rescan and re-import
-  the sidecar, or delete `<library>/.notae/index.sqlite` and rerun the CLI (OCR
-  runs again). The sidecar format is unchanged (`SIDECAR_SCHEMA_VERSION` stays
-  `2`), so sidecars written by either build import into either build.
+  the search index folds `ł`/`Ł` to `l`/`L` as it is written, and existing
+  indexes are migrated in place the first time this build opens them. The
+  upgrade is forward-only: older builds refuse a version 2 index. The sidecar
+  format is unchanged (`SIDECAR_SCHEMA_VERSION` stays `2`).
 ```
 
-- [ ] **Step 4: `apps/notae-index/README.md`**
+- [x] **Step 4: `apps/notae-index/README.md`**
 
 After the bullet list of the two files (line 29, after `the Android app reads. This is the cross-platform contract.`) add:
 
 ```markdown
 `index.sqlite` is upgraded in place by the first build that knows a newer schema
-version. Version 2 (issue #35) folds the Polish `ł`/`Ł` in its search table, and
-an older `notae-index` refuses a version 2 file with "index schema version 2 is
-newer than the supported version 1". If you have to go back, delete
-`.notae/index.sqlite` and rerun; the next run re-reads the library and repeats
-OCR. `manifest.json` is unaffected: its format (`schema_version` 2) did not
-change.
+version (version 2 folds the Polish `ł`/`Ł` in its search table, issue #35); the
+upgrade is forward-only, so an older `notae-index` refuses the file. The
+`manifest.json` format is unchanged.
 ```
 
-- [ ] **Step 5: Full verification**
+- [x] **Step 5: Full verification**
 
 Run, in this order (from `docs/engineering-standards.md`; on a Fedora/RHEL host without system pkg-config files first export `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` as that document describes):
 
@@ -1538,7 +1529,7 @@ cargo apk2 check -p notae-android --target aarch64-linux-android
 
 Expected: all exit 0; `cargo test --workspace` includes `store_and_search` (new tests), the `fold` unit tests and `search_stroke_ui`. No dependency changed, so `cargo deny check` and `Cargo.lock` are unchanged.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md docs/android-debugging.md CHANGELOG.md apps/notae-index/README.md docs/superpowers/plans/2026-10-19-notae-polish-l-stroke-search.md
@@ -1547,10 +1538,20 @@ git commit -m "docs: record ł/Ł search folding and index schema 2" -m "Closes 
 
 ---
 
+## Implementation notes
+
+The plan was executed as written except for three corrections, already folded into the code above:
+
+1. The exact-title test uses `Łaska` / `Łaska łaskawa` because the bonus never folded ó/ź (a `lodz` query cannot earn it for `Łódź`).
+2. The Android lyric case is `("czesci stale", "stałe")`: `Części` contains no `ł`, so folding cannot change it.
+3. The `SCHEMA_VERSION` doc comment has no `[`migrate`]` link (`migrate` is private; the rustdoc `-D warnings` gate rejects it).
+
+Also: `cargo fmt` found rustfmt drift in two unrelated test files that failed `cargo fmt --check` on a clean `main`; it was committed separately as `style:`.
+
 ## Notes for the PR
 
 - Summary: `ł`/`Ł` are folded on both sides of the FTS index through one function; existing indexes migrate in place (schema 1 → 2); displayed text keeps its spelling; sidecar format unchanged.
-- Maintainer decisions flagged: (1) accepting the one-way schema bump (older APK/CLI refuse a version 2 index; recovery steps are in the CHANGELOG); (2) restoring the original spelling in lyric snippets instead of showing folded text.
+- Maintainer decisions flagged: (1) accepting the one-way schema bump (forward-only: an older APK/CLI refuses a version 2 index; accepted by the maintainer); (2) restoring the original spelling in lyric snippets instead of showing folded text.
 - **Later work, not in this change (issue acceptance 7):** the same tokenizer gap exists for `đ`, `ø`, `æ`, `œ`, `ß` (verified with `unicode61 remove_diacritics 2` on SQLite 3.51: `ore`, `dorde`, `caeli`, `coeli`, `strasse` match none of `Øre`, `Đorđe`, `Cæli`, `Cœli`, `Straße`; `only_the_l_stroke_is_folded` pins that). For a Polish music library the relevant ones are `æ`/`œ` (Latin liturgical text: `cæli`/`cœli` vs `caeli`) and `ß` (German lyrics). `đ`, `ø` are rarer (Croatian/Scandinavian composers). `æ`→`ae`, `œ`→`oe`, `ß`→`ss` are one-to-many, so they would break the 1:1 char property that `restore_l_stroke` relies on; that change needs a different snippet strategy, not just more entries in `fold_l_stroke`. `đ`→`d`, `ø`→`o` are 1:1 and could reuse the mechanism.
 - Not verified: the Galaxy Tab S10 FE+; the Android worker thread and `sync_window` wiring (the host UI test reuses `LibraryViewModel` and `library_row` but not the worker); the cost of `restore_l_stroke` on a very large library (one fold and one substring search per ł-bearing hit that has a lyric match; `search_in(…, usize::MAX)` on a broad query is the worst case) was reasoned about, not measured.
 
@@ -1564,7 +1565,7 @@ git commit -m "docs: record ł/Ł search folding and index schema 2" -m "Closes 
 | 2 | Diacritic queries still work | Task 1 table (`Łódź`, `ŁÓDŹ`, `żółta`, `Pałka`, mixed forms); Task 4 (`łódź`, `Stanisław`, `kołysanka`, `części stałe`) |
 | 3 | Ł ł L l all work | Task 1 table (`ŁÓDŹ`, `łÓdŹ`, `LODZ`, `lodz`), `plain_l_and_stroke_l_are_one_letter_in_both_directions`; fold unit tests |
 | 4 | Titles, composers, tags, OCR text in every scope | Task 1 `queries_with_and_without_the_stroke_find_polish_text_in_every_scope` (all five `SearchScope`s); Task 4 chips `Titles/Composers/Tags/Lyrics/All`; filename column via migration parity dump (Task 2) |
-| 5 | Existing indexes keep working; one shared function; migration/rebuild path; no silent sidecar change | Task 2 (migration 0002, `SCHEMA_VERSION` 2, parity test, hollow-version test); *Migration, downgrade and the Android index*; Global Constraints (sidecar stays 2, reasons); Task 5 notes in CHANGELOG, READMEs, SQL header |
+| 5 | Existing indexes keep working; one shared function; migration/rebuild path; no silent sidecar change | Task 2 (migration 0002, `SCHEMA_VERSION` 2, parity test, hollow-version test); *Migration and the Android index*; Global Constraints (sidecar stays 2, reasons); Task 5 notes in CHANGELOG, READMEs, SQL header |
 | 6 | Regression tests in `crates/notae-index` with the `Łódź — Pieśń żółta` fixture (exact and diacritic-less) and an Android Search generated-UI test | Task 1 `lodz_store` (`LODZ_TITLE`), Task 4 `search_stroke_ui.rs` |
 | 7 | ł/Ł only; note đ ø æ œ ß | Global Constraints; `only_the_l_stroke_is_folded`; *Notes for the PR* |
 | – | Update README, `docs/android-debugging.md`, CHANGELOG | Task 5 Steps 1-4 |
