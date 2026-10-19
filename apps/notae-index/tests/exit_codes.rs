@@ -11,11 +11,15 @@
 //! * non-zero — the command line is invalid, or no report could be produced at
 //!   all (missing/unusable root, a symlinked root, a catalog-wide failure).
 
+use std::error::Error;
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::process::{Command, Output};
 
 use tempfile::TempDir;
+
+type TestResult<T = ()> = Result<T, Box<dyn Error>>;
 
 struct Library {
     _dir: TempDir,
@@ -23,19 +27,20 @@ struct Library {
 }
 
 impl Library {
-    fn new() -> Self {
-        let dir = TempDir::new().expect("temporary parent directory");
+    fn new() -> TestResult<Self> {
+        let dir = TempDir::new()?;
         let root = dir.path().join("library");
-        fs::create_dir_all(&root).expect("create the library root");
-        Self { _dir: dir, root }
+        fs::create_dir_all(&root)?;
+        Ok(Self { _dir: dir, root })
     }
 
-    fn write(&self, relative: &str, content: &str) {
+    fn write(&self, relative: &str, content: &str) -> TestResult {
         let path = self.root.join(relative);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).expect("create parent directory");
+            fs::create_dir_all(parent)?;
         }
-        fs::write(path, content).expect("write fixture");
+        fs::write(path, content)?;
+        Ok(())
     }
 
     fn root(&self) -> &Path {
@@ -43,11 +48,15 @@ impl Library {
     }
 }
 
-fn index(args: &[&str]) -> Output {
+fn index(args: &[&str]) -> io::Result<Output> {
     Command::new(env!("CARGO_BIN_EXE_notae-index"))
         .args(args)
         .output()
-        .expect("the built binary runs")
+}
+
+fn utf8(path: &Path) -> TestResult<&str> {
+    path.to_str()
+        .ok_or_else(|| format!("{} is not UTF-8", path.display()).into())
 }
 
 fn stdout(output: &Output) -> String {
@@ -59,8 +68,8 @@ fn stderr(output: &Output) -> String {
 }
 
 #[test]
-fn help_exits_successfully() {
-    let output = index(&["--help"]);
+fn help_exits_successfully() -> TestResult {
+    let output = index(&["--help"])?;
     assert!(
         output.status.success(),
         "--help must exit 0; stderr: {}",
@@ -71,11 +80,12 @@ fn help_exits_successfully() {
         "--help prints usage on stdout: {}",
         stdout(&output)
     );
+    Ok(())
 }
 
 #[test]
-fn version_exits_successfully() {
-    let output = index(&["--version"]);
+fn version_exits_successfully() -> TestResult {
+    let output = index(&["--version"])?;
     assert!(
         output.status.success(),
         "--version must exit 0; stderr: {}",
@@ -85,11 +95,12 @@ fn version_exits_successfully() {
         !stdout(&output).trim().is_empty(),
         "--version prints the version on stdout"
     );
+    Ok(())
 }
 
 #[test]
-fn a_missing_root_argument_is_a_usage_error() {
-    let output = index(&[]);
+fn a_missing_root_argument_is_a_usage_error() -> TestResult {
+    let output = index(&[])?;
     assert!(
         !output.status.success(),
         "an invalid command line exits non-zero"
@@ -99,21 +110,23 @@ fn a_missing_root_argument_is_a_usage_error() {
         "the usage error names the argument: {}",
         stderr(&output)
     );
+    Ok(())
 }
 
 #[test]
-fn an_unknown_flag_is_a_usage_error() {
-    let output = index(&["/tmp", "--nonsense"]);
+fn an_unknown_flag_is_a_usage_error() -> TestResult {
+    let output = index(&["/tmp", "--nonsense"])?;
     assert!(!output.status.success(), "an unknown flag exits non-zero");
     assert!(
         !stderr(&output).is_empty(),
         "the usage error is reported on stderr"
     );
+    Ok(())
 }
 
 #[test]
-fn an_unusable_root_exits_non_zero() {
-    let output = index(&["/definitely/not/a/real/library"]);
+fn an_unusable_root_exits_non_zero() -> TestResult {
+    let output = index(&["/definitely/not/a/real/library"])?;
     assert!(
         !output.status.success(),
         "a run that cannot produce a report exits non-zero"
@@ -123,16 +136,17 @@ fn an_unusable_root_exits_non_zero() {
         "the reason is reported: {}",
         stderr(&output)
     );
+    Ok(())
 }
 
 #[test]
-fn a_completed_run_with_isolated_failures_exits_zero_and_reports_them() {
-    let library = Library::new();
-    library.write("good.pdf", "readable");
+fn a_completed_run_with_isolated_failures_exits_zero_and_reports_them() -> TestResult {
+    let library = Library::new()?;
+    library.write("good.pdf", "readable")?;
     // A filename the domain type rejects: an isolated per-file failure.
-    library.write("C:.pdf", "drive");
+    library.write("C:.pdf", "drive")?;
 
-    let output = index(&[library.root().to_str().expect("utf-8 path"), "--verbose"]);
+    let output = index(&[utf8(library.root())?, "--verbose"])?;
     assert!(
         output.status.success(),
         "a run that completes with per-file failures exits 0; stdout: {}",
@@ -148,14 +162,15 @@ fn a_completed_run_with_isolated_failures_exits_zero_and_reports_them() {
         reported.contains("good.pdf"),
         "the readable file is reported: {reported}"
     );
+    Ok(())
 }
 
 #[test]
-fn a_clean_run_exits_zero() {
-    let library = Library::new();
-    library.write("good.pdf", "readable");
+fn a_clean_run_exits_zero() -> TestResult {
+    let library = Library::new()?;
+    library.write("good.pdf", "readable")?;
 
-    let output = index(&[library.root().to_str().expect("utf-8 path")]);
+    let output = index(&[utf8(library.root())?])?;
     assert!(
         output.status.success(),
         "a clean run exits 0; stderr: {}",
@@ -166,6 +181,7 @@ fn a_clean_run_exits_zero() {
         "the summary is printed: {}",
         stdout(&output)
     );
+    Ok(())
 }
 
 /// Removes read permission from `path`, reporting whether the lock took effect.
@@ -173,33 +189,35 @@ fn a_clean_run_exits_zero() {
 /// A user that bypasses permissions — root — would see the directory as
 /// readable whatever the mode says, and the caller skips its assertion rather
 /// than pretending the run failed for the wrong reason.
-fn lock_directory(path: &Path) -> bool {
+fn lock_directory(path: &Path) -> TestResult<bool> {
     use std::os::unix::fs::PermissionsExt;
 
-    fs::set_permissions(path, fs::Permissions::from_mode(0o000)).expect("lock the directory");
+    fs::set_permissions(path, fs::Permissions::from_mode(0o000))?;
     if fs::read_dir(path).is_ok() {
-        fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("unlock");
-        return false;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
+        return Ok(false);
     }
-    true
+    Ok(true)
 }
 
-fn unlock_directory(path: &Path) {
+fn unlock_directory(path: &Path) -> TestResult {
     use std::os::unix::fs::PermissionsExt;
 
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).expect("unlock");
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755))?;
+    Ok(())
 }
 
 #[test]
-fn an_unreadable_root_exits_non_zero_and_names_it() {
-    let library = Library::new();
-    library.write("hidden.pdf", "content");
-    if !lock_directory(library.root()) {
-        return;
+fn an_unreadable_root_exits_non_zero_and_names_it() -> TestResult {
+    let library = Library::new()?;
+    library.write("hidden.pdf", "content")?;
+    if !lock_directory(library.root())? {
+        return Ok(());
     }
 
-    let output = index(&[library.root().to_str().expect("utf-8 path")]);
-    unlock_directory(library.root());
+    let output = index(&[utf8(library.root())?]);
+    unlock_directory(library.root())?;
+    let output = output?;
 
     assert!(
         !output.status.success(),
@@ -217,24 +235,26 @@ fn an_unreadable_root_exits_non_zero_and_names_it() {
         "the message names the root that could not be read: {}",
         stderr(&output)
     );
+    Ok(())
 }
 
 #[test]
-fn an_unreadable_file_under_a_readable_root_still_exits_zero() {
+fn an_unreadable_file_under_a_readable_root_still_exits_zero() -> TestResult {
     use std::os::unix::fs::PermissionsExt;
 
-    let library = Library::new();
-    library.write("readable.pdf", "content");
-    library.write("nested/locked.pdf", "content");
+    let library = Library::new()?;
+    library.write("readable.pdf", "content")?;
+    library.write("nested/locked.pdf", "content")?;
     let locked = library.root().join("nested/locked.pdf");
-    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).expect("lock the file");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000))?;
     if fs::File::open(&locked).is_ok() {
-        fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).expect("unlock");
-        return;
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o644))?;
+        return Ok(());
     }
 
-    let output = index(&[library.root().to_str().expect("utf-8 path")]);
+    let output = index(&[utf8(library.root())?]);
     let _ = fs::set_permissions(&locked, fs::Permissions::from_mode(0o644));
+    let output = output?;
 
     assert!(
         output.status.success(),
@@ -251,18 +271,19 @@ fn an_unreadable_file_under_a_readable_root_still_exits_zero() {
         reported.contains("nested/locked.pdf"),
         "the unreadable file is still named: {reported}"
     );
+    Ok(())
 }
 
 #[test]
-fn a_symlinked_root_never_indexes_the_directory_it_points_at() {
-    let library = Library::new();
+fn a_symlinked_root_never_indexes_the_directory_it_points_at() -> TestResult {
+    let library = Library::new()?;
     let outside = library._dir.path().join("outside-library");
-    fs::create_dir_all(&outside).expect("create the directory outside the root");
-    fs::write(outside.join("secret.pdf"), "outside content").expect("write the target");
+    fs::create_dir_all(&outside)?;
+    fs::write(outside.join("secret.pdf"), "outside content")?;
     let link = library._dir.path().join("library-link");
-    std::os::unix::fs::symlink(&outside, &link).expect("link the directory as the root");
+    std::os::unix::fs::symlink(&outside, &link)?;
 
-    let output = index(&[link.to_str().expect("utf-8 path")]);
+    let output = index(&[utf8(&link)?])?;
 
     let reported = format!("{}{}", stdout(&output), stderr(&output));
     assert!(
@@ -285,6 +306,7 @@ fn a_symlinked_root_never_indexes_the_directory_it_points_at() {
         "the refusal names the root as given: {}",
         stderr(&output)
     );
+    Ok(())
 }
 
 /// A link is a link however the command line spells it.
@@ -294,18 +316,16 @@ fn a_symlinked_root_never_indexes_the_directory_it_points_at() {
 /// refuse these: a run that accepted `link/` would index the link's target and
 /// exit zero, which is exactly the outcome the root boundary forbids.
 #[test]
-fn no_spelling_of_a_symlinked_root_is_followed_by_the_binary() {
-    let library = Library::new();
+fn no_spelling_of_a_symlinked_root_is_followed_by_the_binary() -> TestResult {
+    let library = Library::new()?;
     let outside = library._dir.path().join("outside-library");
-    fs::create_dir_all(&outside).expect("create the directory outside the root");
-    fs::write(outside.join("secret.pdf"), "outside content").expect("write the target");
-    std::os::unix::fs::symlink(&outside, library._dir.path().join("library-link"))
-        .expect("link the directory as the root");
+    fs::create_dir_all(&outside)?;
+    fs::write(outside.join("secret.pdf"), "outside content")?;
+    std::os::unix::fs::symlink(&outside, library._dir.path().join("library-link"))?;
     std::os::unix::fs::symlink(
         library._dir.path().join("nothing-here"),
         library._dir.path().join("dead-link"),
-    )
-    .expect("link a directory that does not exist");
+    )?;
 
     for spelling in [
         "library-link",
@@ -319,7 +339,7 @@ fn no_spelling_of_a_symlinked_root_is_followed_by_the_binary() {
         "dead-link//",
     ] {
         let root = library._dir.path().join(spelling);
-        let output = index(&[root.to_str().expect("utf-8 path")]);
+        let output = index(&[utf8(&root)?])?;
         let reported = format!("{}{}", stdout(&output), stderr(&output));
 
         assert!(
@@ -336,23 +356,18 @@ fn no_spelling_of_a_symlinked_root_is_followed_by_the_binary() {
             "`{spelling}` is refused as the link it is: {reported}"
         );
     }
+    Ok(())
 }
 
 /// Normalising the root's spelling must not cost a user a working command.
 #[test]
-fn a_real_root_exits_zero_however_the_binary_is_spelled() {
-    let library = Library::new();
-    library.write("inside.pdf", "readable");
+fn a_real_root_exits_zero_however_the_binary_is_spelled() -> TestResult {
+    let library = Library::new()?;
+    library.write("inside.pdf", "readable")?;
 
-    for spelling in [
-        "library",
-        "library/",
-        "library//",
-        "library/.",
-        "library/./",
-    ] {
+    for spelling in ["library", "library/", "library//", "library/.", "library/./"] {
         let root = library._dir.path().join(spelling);
-        let output = index(&[root.to_str().expect("utf-8 path")]);
+        let output = index(&[utf8(&root)?])?;
         assert!(
             output.status.success(),
             "`{spelling}` is the same directory and is indexed; stderr: {}",
@@ -364,4 +379,5 @@ fn a_real_root_exits_zero_however_the_binary_is_spelled() {
             stdout(&output)
         );
     }
+    Ok(())
 }

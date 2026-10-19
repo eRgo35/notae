@@ -8,17 +8,19 @@ use notae_domain::{
     parse_note_filename, validate_unique_ids,
 };
 
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
 fn fingerprint() -> PdfFingerprint {
     PdfFingerprint::new(Sha256Digest::from_bytes([7; 32]), 1024, None)
 }
 
-fn note(filename: &str) -> IndexedNote {
+fn note(filename: &str) -> Result<IndexedNote, Box<dyn std::error::Error>> {
     let parsed = parse_filename(filename);
-    IndexedNote::new(
-        RelativePdfPath::new(filename).expect("valid relative path"),
+    Ok(IndexedNote::new(
+        RelativePdfPath::new(filename)?,
         fingerprint(),
-        parsed.into_note_metadata().expect("non-empty title"),
-    )
+        parsed.into_note_metadata()?,
+    ))
 }
 
 #[test]
@@ -124,10 +126,8 @@ fn overflowing_id_is_not_parsed_as_an_id() {
 }
 
 #[test]
-fn parsed_filename_seeds_metadata_with_filename_origin() {
-    let metadata = parse_filename("12 - Autumn Leaves.pdf")
-        .into_note_metadata()
-        .expect("non-empty title");
+fn parsed_filename_seeds_metadata_with_filename_origin() -> TestResult {
+    let metadata = parse_filename("12 - Autumn Leaves.pdf").into_note_metadata()?;
     assert_eq!(metadata.id(), Some(NoteId::new(12)));
     assert_eq!(metadata.title(), "Autumn Leaves");
     assert_eq!(
@@ -138,36 +138,37 @@ fn parsed_filename_seeds_metadata_with_filename_origin() {
         metadata.origin_of(MetadataField::Title),
         MetadataOrigin::FilenameDerived
     );
+    Ok(())
 }
 
 #[test]
-fn parsed_filename_seeds_metadata_without_id() {
-    let metadata = parse_filename("Autumn Leaves.pdf")
-        .into_note_metadata()
-        .expect("non-empty title");
+fn parsed_filename_seeds_metadata_without_id() -> TestResult {
+    let metadata = parse_filename("Autumn Leaves.pdf").into_note_metadata()?;
     assert_eq!(metadata.id(), None);
     assert_eq!(metadata.title(), "Autumn Leaves");
     assert_eq!(
         metadata.origin_of(MetadataField::Title),
         MetadataOrigin::FilenameDerived
     );
+    Ok(())
 }
 
 #[test]
-fn two_sorts_before_ten() {
-    let mut notes = [note("10 - Ten.pdf"), note("2 - Two.pdf")];
+fn two_sorts_before_ten() -> TestResult {
+    let mut notes = [note("10 - Ten.pdf")?, note("2 - Two.pdf")?];
     notes.sort_by(compare_library_order);
     assert_eq!(notes[0].metadata().id(), Some(NoteId::new(2)));
     assert_eq!(notes[1].metadata().id(), Some(NoteId::new(10)));
+    Ok(())
 }
 
 #[test]
-fn unnumbered_records_follow_numbered_ones() {
+fn unnumbered_records_follow_numbered_ones() -> TestResult {
     let mut notes = [
-        note("Alma.pdf"),
-        note("12 - Autumn Leaves.pdf"),
-        note("Zebra.pdf"),
-        note("507 - Custom.pdf"),
+        note("Alma.pdf")?,
+        note("12 - Autumn Leaves.pdf")?,
+        note("Zebra.pdf")?,
+        note("507 - Custom.pdf")?,
     ];
     notes.sort_by(compare_library_order);
     let titles: Vec<&str> = notes.iter().map(|n| n.metadata().title()).collect();
@@ -176,65 +177,73 @@ fn unnumbered_records_follow_numbered_ones() {
         ["Autumn Leaves", "Custom", "Alma", "Zebra"],
         "numbered records ascending, then unnumbered alphabetically"
     );
+    Ok(())
 }
 
 #[test]
-fn unnumbered_records_sort_case_insensitively_by_title() {
+fn unnumbered_records_sort_case_insensitively_by_title() -> TestResult {
     let mut notes = [
-        note("banana.pdf"),
-        note("Apple.pdf"),
-        note("cherry.pdf"),
-        note("apricot.pdf"),
+        note("banana.pdf")?,
+        note("Apple.pdf")?,
+        note("cherry.pdf")?,
+        note("apricot.pdf")?,
     ];
     notes.sort_by(compare_library_order);
     let titles: Vec<&str> = notes.iter().map(|n| n.metadata().title()).collect();
     assert_eq!(titles, ["Apple", "apricot", "banana", "cherry"]);
+    Ok(())
 }
 
 #[test]
-fn ordering_is_total_for_equal_titles() {
-    let left = note("Same Title.pdf");
-    let right = note("sub/Same Title.pdf");
+fn ordering_is_total_for_equal_titles() -> TestResult {
+    let left = note("Same Title.pdf")?;
+    let right = note("sub/Same Title.pdf")?;
     assert_ne!(
         compare_library_order(&left, &right),
         Ordering::Equal,
         "records with equal normalized titles are still totally ordered"
     );
+    Ok(())
 }
 
 #[test]
-fn duplicate_ids_are_reported() {
+fn duplicate_ids_are_reported() -> TestResult {
     let notes = [
-        note("12 - Autumn Leaves.pdf"),
-        note("13 - Another.pdf"),
-        note("12 - Autumn Leaves Copy.pdf"),
+        note("12 - Autumn Leaves.pdf")?,
+        note("13 - Another.pdf")?,
+        note("12 - Autumn Leaves Copy.pdf")?,
     ];
-    let error = validate_unique_ids(notes.iter()).expect_err("duplicate ID 12");
+    let error = validate_unique_ids(notes.iter())
+        .err()
+        .ok_or("duplicate ID 12 must be reported")?;
     assert_eq!(error.id(), NoteId::new(12));
     assert_eq!(
         error.existing_path(),
-        &RelativePdfPath::new("12 - Autumn Leaves.pdf").expect("valid path")
+        &RelativePdfPath::new("12 - Autumn Leaves.pdf")?
     );
     assert_eq!(
         error.conflicting_path(),
-        &RelativePdfPath::new("12 - Autumn Leaves Copy.pdf").expect("valid path")
+        &RelativePdfPath::new("12 - Autumn Leaves Copy.pdf")?
     );
+    Ok(())
 }
 
 #[test]
-fn records_without_an_id_never_conflict() {
-    let notes = [note("Alma.pdf"), note("Alma Copy.pdf")];
+fn records_without_an_id_never_conflict() -> TestResult {
+    let notes = [note("Alma.pdf")?, note("Alma Copy.pdf")?];
     assert_eq!(validate_unique_ids(notes.iter()), Ok(()));
+    Ok(())
 }
 
 #[test]
-fn unique_ids_validate() {
+fn unique_ids_validate() -> TestResult {
     let notes = [
-        note("12 - Autumn Leaves.pdf"),
-        note("Alma.pdf"),
-        note("507 - Custom.pdf"),
+        note("12 - Autumn Leaves.pdf")?,
+        note("Alma.pdf")?,
+        note("507 - Custom.pdf")?,
     ];
     assert_eq!(validate_unique_ids(notes.iter()), Ok(()));
+    Ok(())
 }
 
 #[test]
@@ -279,24 +288,28 @@ fn parse_note_filename_rejects_non_pdf_names() {
 }
 
 #[test]
-fn parse_note_filename_accepts_pdf_names() {
-    let parsed = parse_note_filename("12 - Autumn Leaves.pdf").expect("pdf");
+fn parse_note_filename_accepts_pdf_names() -> TestResult {
+    let parsed = parse_note_filename("12 - Autumn Leaves.pdf")?;
     assert_eq!(parsed.id(), Some(NoteId::new(12)));
     assert_eq!(parsed.title(), "Autumn Leaves");
+    Ok(())
 }
 
 #[test]
-fn invalid_pdf_name_cannot_become_note_metadata() {
-    let parsed = parse_note_filename("12 - Autumn Leaves.txt").expect_err("not a pdf");
+fn invalid_pdf_name_cannot_become_note_metadata() -> TestResult {
+    let parsed = parse_note_filename("12 - Autumn Leaves.txt")
+        .err()
+        .ok_or("a non-PDF name must be rejected")?;
     assert_eq!(parsed, FilenameError::NotPdf);
+    Ok(())
 }
 
 /// Equal IDs are only a conflict until they are resolved, so the browsing
 /// order still has to place them deterministically.
 #[test]
-fn duplicate_id_records_are_still_totally_ordered() {
-    let left = note("12 - Autumn Leaves.pdf");
-    let right = note("12 - Winter Wind.pdf");
+fn duplicate_id_records_are_still_totally_ordered() -> TestResult {
+    let left = note("12 - Autumn Leaves.pdf")?;
+    let right = note("12 - Winter Wind.pdf")?;
     let ordering = compare_library_order(&left, &right);
     assert_ne!(
         ordering,
@@ -309,12 +322,13 @@ fn duplicate_id_records_are_still_totally_ordered() {
         "the comparison is antisymmetric"
     );
     assert_eq!(ordering, Ordering::Less, "tie broken by title");
+    Ok(())
 }
 
 #[test]
-fn duplicate_id_and_title_records_sort_by_path() {
-    let left = note("a/12 - Autumn Leaves.pdf");
-    let right = note("b/12 - Autumn Leaves.pdf");
+fn duplicate_id_and_title_records_sort_by_path() -> TestResult {
+    let left = note("a/12 - Autumn Leaves.pdf")?;
+    let right = note("b/12 - Autumn Leaves.pdf")?;
     assert_eq!(compare_library_order(&left, &right), Ordering::Less);
     assert_eq!(compare_library_order(&right, &left), Ordering::Greater);
     assert_eq!(
@@ -322,14 +336,15 @@ fn duplicate_id_and_title_records_sort_by_path() {
         Ordering::Equal,
         "a record equals itself"
     );
+    Ok(())
 }
 
 #[test]
-fn duplicate_id_records_sort_deterministically() {
+fn duplicate_id_records_sort_deterministically() -> TestResult {
     let mut notes = [
-        note("c/12 - Same.pdf"),
-        note("a/12 - Same.pdf"),
-        note("b/12 - Other.pdf"),
+        note("c/12 - Same.pdf")?,
+        note("a/12 - Same.pdf")?,
+        note("b/12 - Other.pdf")?,
     ];
     notes.sort_by(compare_library_order);
     let paths: Vec<&str> = notes.iter().map(|n| n.path().as_str()).collect();
@@ -337,24 +352,28 @@ fn duplicate_id_records_sort_deterministically() {
         paths,
         ["b/12 - Other.pdf", "a/12 - Same.pdf", "c/12 - Same.pdf"]
     );
+    Ok(())
 }
 
-fn note_with_fingerprint(filename: &str, seed: u8) -> IndexedNote {
+fn note_with_fingerprint(
+    filename: &str,
+    seed: u8,
+) -> Result<IndexedNote, Box<dyn std::error::Error>> {
     let parsed = parse_filename(filename);
-    IndexedNote::new(
-        RelativePdfPath::new(filename).expect("valid relative path"),
+    Ok(IndexedNote::new(
+        RelativePdfPath::new(filename)?,
         PdfFingerprint::new(Sha256Digest::from_bytes([seed; 32]), 1024, None),
-        parsed.into_note_metadata().expect("non-empty title"),
-    )
+        parsed.into_note_metadata()?,
+    ))
 }
 
 /// Two records that agree on ID, title, and path but were fingerprinted
 /// differently are still distinct records, so the browsing order must place
 /// them deterministically instead of calling them equal.
 #[test]
-fn same_id_title_and_path_with_different_fingerprints_is_not_equal() {
-    let left = note_with_fingerprint("12 - Autumn Leaves.pdf", 7);
-    let right = note_with_fingerprint("12 - Autumn Leaves.pdf", 9);
+fn same_id_title_and_path_with_different_fingerprints_is_not_equal() -> TestResult {
+    let left = note_with_fingerprint("12 - Autumn Leaves.pdf", 7)?;
+    let right = note_with_fingerprint("12 - Autumn Leaves.pdf", 9)?;
     assert_ne!(left, right, "the records really do differ");
     let ordering = compare_library_order(&left, &right);
     assert_ne!(
@@ -372,14 +391,15 @@ fn same_id_title_and_path_with_different_fingerprints_is_not_equal() {
         Ordering::Equal,
         "a record equals itself"
     );
+    Ok(())
 }
 
 /// A status transition alone must not make two otherwise identical records
 /// compare equal.
 #[test]
-fn same_id_title_and_path_with_different_status_is_not_equal() {
-    let left = status_note("12 - Autumn Leaves.pdf", IndexStatus::Discovered);
-    let right = status_note("12 - Autumn Leaves.pdf", IndexStatus::OcrPending);
+fn same_id_title_and_path_with_different_status_is_not_equal() -> TestResult {
+    let left = status_note("12 - Autumn Leaves.pdf", IndexStatus::Discovered)?;
+    let right = status_note("12 - Autumn Leaves.pdf", IndexStatus::OcrPending)?;
     assert_ne!(left, right, "the records really do differ");
     let ordering = compare_library_order(&left, &right);
     assert_ne!(
@@ -392,20 +412,21 @@ fn same_id_title_and_path_with_different_status_is_not_equal() {
         compare_library_order(&right, &left).reverse(),
         "the comparison stays antisymmetric"
     );
+    Ok(())
 }
 
 /// Sorting a library that contains same-path records differing only in
 /// fingerprint or status must keep every record and land on one order no
 /// matter how the input was arranged.
 #[test]
-fn a_library_with_colliding_records_sorts_deterministically() {
+fn a_library_with_colliding_records_sorts_deterministically() -> TestResult {
     let mut library = [
-        note_with_fingerprint("12 - Same.pdf", 9),
-        status_note("12 - Same.pdf", IndexStatus::Stale),
-        note_with_fingerprint("12 - Same.pdf", 7),
-        status_note("12 - Same.pdf", IndexStatus::Ready),
-        note_with_fingerprint("12 - Same.pdf", 3),
-        note("2 - Other.pdf"),
+        note_with_fingerprint("12 - Same.pdf", 9)?,
+        status_note("12 - Same.pdf", IndexStatus::Stale)?,
+        note_with_fingerprint("12 - Same.pdf", 7)?,
+        status_note("12 - Same.pdf", IndexStatus::Ready)?,
+        note_with_fingerprint("12 - Same.pdf", 3)?,
+        note("2 - Other.pdf")?,
     ];
 
     let mut expected: Vec<SortKey> = library.iter().map(sort_key).collect();
@@ -430,16 +451,17 @@ fn a_library_with_colliding_records_sorts_deterministically() {
 
     // A different input permutation reaches the same order.
     let mut shuffled = [
-        status_note("12 - Same.pdf", IndexStatus::Ready),
-        note("2 - Other.pdf"),
-        note_with_fingerprint("12 - Same.pdf", 3),
-        status_note("12 - Same.pdf", IndexStatus::Stale),
-        note_with_fingerprint("12 - Same.pdf", 7),
-        note_with_fingerprint("12 - Same.pdf", 9),
+        status_note("12 - Same.pdf", IndexStatus::Ready)?,
+        note("2 - Other.pdf")?,
+        note_with_fingerprint("12 - Same.pdf", 3)?,
+        status_note("12 - Same.pdf", IndexStatus::Stale)?,
+        note_with_fingerprint("12 - Same.pdf", 7)?,
+        note_with_fingerprint("12 - Same.pdf", 9)?,
     ];
     shuffled.sort_by(compare_library_order);
     let shuffled: Vec<SortKey> = shuffled.iter().map(sort_key).collect();
     assert_eq!(actual, shuffled, "input order must not affect the result");
+    Ok(())
 }
 
 /// The documented tie-break chain, spelled out independently of the
@@ -474,14 +496,17 @@ fn sort_key(note: &IndexedNote) -> SortKey {
     )
 }
 
-fn status_note(filename: &str, status: IndexStatus) -> IndexedNote {
-    let mut note = note(filename);
+fn status_note(
+    filename: &str,
+    status: IndexStatus,
+) -> Result<IndexedNote, Box<dyn std::error::Error>> {
+    let mut note = note(filename)?;
     note.set_status(status);
-    note
+    Ok(note)
 }
 
 #[test]
-fn indexed_note_carries_its_index_status() {
+fn indexed_note_carries_its_index_status() -> TestResult {
     for status in [
         IndexStatus::Discovered,
         IndexStatus::Ready,
@@ -493,35 +518,31 @@ fn indexed_note_carries_its_index_status() {
         IndexStatus::InvalidPdf,
         IndexStatus::ImportMismatch,
     ] {
-        let note = status_note("12 - Autumn Leaves.pdf", status);
+        let note = status_note("12 - Autumn Leaves.pdf", status)?;
         assert_eq!(note.status(), status);
         assert_eq!(note.with_status(status).status(), status);
     }
+    Ok(())
 }
 
 #[test]
-fn a_new_indexed_note_is_discovered() {
-    assert_eq!(
-        note("12 - Autumn Leaves.pdf").status(),
-        IndexStatus::Discovered
-    );
+fn a_new_indexed_note_is_discovered() -> TestResult {
+    assert_eq!(note("12 - Autumn Leaves.pdf")?.status(), IndexStatus::Discovered);
     assert_eq!(
         IndexedNote::new(
-            RelativePdfPath::new("12 - Autumn Leaves.pdf").expect("valid"),
+            RelativePdfPath::new("12 - Autumn Leaves.pdf")?,
             fingerprint(),
-            parse_note_filename("12 - Autumn Leaves.pdf")
-                .expect("pdf")
-                .into_note_metadata()
-                .expect("non-empty title"),
+            parse_note_filename("12 - Autumn Leaves.pdf")?.into_note_metadata()?,
         )
         .status(),
         IndexStatus::Discovered
     );
+    Ok(())
 }
 
 #[test]
-fn setting_status_leaves_metadata_untouched() {
-    let original = note("12 - Autumn Leaves.pdf");
+fn setting_status_leaves_metadata_untouched() -> TestResult {
+    let original = note("12 - Autumn Leaves.pdf")?;
     let updated = original.with_status(IndexStatus::OcrPending);
     assert_eq!(updated.status(), IndexStatus::OcrPending);
     assert_eq!(updated.metadata(), original.metadata());
@@ -534,28 +555,28 @@ fn setting_status_leaves_metadata_untouched() {
         "status changes must not disturb provenance"
     );
     assert_eq!(original.status(), IndexStatus::Discovered);
+    Ok(())
 }
 
 #[test]
-fn index_status_round_trips_through_json() {
-    let note = status_note("12 - Autumn Leaves.pdf", IndexStatus::DuplicateIdConflict);
-    let json = serde_json::to_value(&note).expect("serializes");
+fn index_status_round_trips_through_json() -> TestResult {
+    let note = status_note("12 - Autumn Leaves.pdf", IndexStatus::DuplicateIdConflict)?;
+    let json = serde_json::to_value(&note)?;
     assert_eq!(json["status"], "duplicate_id_conflict");
-    assert_eq!(
-        serde_json::from_value::<IndexedNote>(json).expect("deserializes"),
-        note
-    );
+    assert_eq!(serde_json::from_value::<IndexedNote>(json)?, note);
+    Ok(())
 }
 
 #[test]
-fn a_record_without_status_loads_as_discovered() {
-    let note = note("12 - Autumn Leaves.pdf");
-    let mut json = serde_json::to_value(&note).expect("serializes");
-    json.as_object_mut().expect("object").remove("status");
+fn a_record_without_status_loads_as_discovered() -> TestResult {
+    let note = note("12 - Autumn Leaves.pdf")?;
+    let mut json = serde_json::to_value(&note)?;
+    json.as_object_mut()
+        .ok_or("serialized note must be a JSON object")?
+        .remove("status");
     assert_eq!(
-        serde_json::from_value::<IndexedNote>(json)
-            .expect("deserializes")
-            .status(),
+        serde_json::from_value::<IndexedNote>(json)?.status(),
         IndexStatus::Discovered
     );
+    Ok(())
 }

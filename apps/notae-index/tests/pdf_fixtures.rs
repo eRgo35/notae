@@ -27,6 +27,8 @@
 //! rendering assertions checkable: at *n* DPI the rendered page is
 //! `round(200 * n / 72)` by `round(100 * n / 72)` pixels.
 
+#![allow(clippy::expect_used)] // Fixture loading and assertions abort the test on failure by design.
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 

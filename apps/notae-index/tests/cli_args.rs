@@ -3,6 +3,9 @@
 //! These tests exercise the CLI's own crates through its library surface, so
 //! they can construct a catalog directly; the binary itself is only a thin
 //! wrapper around [`notae_index_cli::run`].
+// Fixtures and assertions in this test crate may panic on setup failure; the
+// project's test gates allow `unwrap_used`/`expect_used` for test code only.
+#![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::fs;
 use std::path::{Path, PathBuf};

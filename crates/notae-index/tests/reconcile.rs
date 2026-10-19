@@ -4,6 +4,7 @@
 //! afterwards, so every test here first checks what the *plan* says — it is the
 //! read-only preview the Android UI shows — and then what the applied report
 //! says.
+#![allow(clippy::expect_used)]
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

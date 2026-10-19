@@ -8,6 +8,7 @@
 //! per-file failures on stderr: a non-zero status would be a surprise, so
 //! every test below asserts `0` for any run that actually indexed
 //! something.
+#![allow(clippy::expect_used)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
