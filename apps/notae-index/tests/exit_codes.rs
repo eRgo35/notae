@@ -365,7 +365,13 @@ fn a_real_root_exits_zero_however_the_binary_is_spelled() -> TestResult {
     let library = Library::new()?;
     library.write("inside.pdf", "readable")?;
 
-    for spelling in ["library", "library/", "library//", "library/.", "library/./"] {
+    for spelling in [
+        "library",
+        "library/",
+        "library//",
+        "library/.",
+        "library/./",
+    ] {
         let root = library._dir.path().join(spelling);
         let output = index(&[utf8(&root)?])?;
         assert!(

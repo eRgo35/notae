@@ -527,7 +527,10 @@ fn indexed_note_carries_its_index_status() -> TestResult {
 
 #[test]
 fn a_new_indexed_note_is_discovered() -> TestResult {
-    assert_eq!(note("12 - Autumn Leaves.pdf")?.status(), IndexStatus::Discovered);
+    assert_eq!(
+        note("12 - Autumn Leaves.pdf")?.status(),
+        IndexStatus::Discovered
+    );
     assert_eq!(
         IndexedNote::new(
             RelativePdfPath::new("12 - Autumn Leaves.pdf")?,
