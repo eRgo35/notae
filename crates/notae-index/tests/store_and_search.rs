@@ -1364,3 +1364,46 @@ fn reopening_a_migrated_index_does_not_change_it() {
     assert_eq!(fts_dump(&file), first);
     let _ = std::fs::remove_file(&file);
 }
+
+#[test]
+fn lyric_snippets_keep_the_original_spelling() {
+    let store = IndexStore::open(":memory:").expect("open");
+    let lyrics = "Pałka zagrała kołysankę dla Łodzi i wszystkich dzieci które nie chciały spać aż do samego rana";
+    store
+        .upsert_note_with_ocr(
+            &note("a.pdf", 1, None, "Kołysanka", None, &[]),
+            Some(&OcrText::new(lyrics)),
+        )
+        .expect("insert");
+    for query in ["palka", "Pałka", "PAŁKA"] {
+        let hits = store
+            .search_in(query, SearchScope::Text, 10)
+            .expect("search");
+        let snippet = hits[0].text_snippet.as_deref().expect("snippet");
+        assert_eq!(
+            snippet,
+            "\u{2}Pałka\u{3} zagrała kołysankę dla Łodzi i wszystkich dzieci które nie chciały spać…",
+            "{query:?}"
+        );
+    }
+}
+
+#[test]
+fn a_snippet_with_a_leading_ellipsis_keeps_the_original_spelling() {
+    let store = IndexStore::open(":memory:").expect("open");
+    store
+        .upsert_note_with_ocr(
+            &note("a.pdf", 1, None, "Kołysanka", None, &[]),
+            Some(&OcrText::new(
+                "a b c d e f g h i j k l m n o p q r Pałka zagrała x y z w",
+            )),
+        )
+        .expect("insert");
+    let hits = store
+        .search_in("palka", SearchScope::Text, 10)
+        .expect("search");
+    assert_eq!(
+        hits[0].text_snippet.as_deref(),
+        Some("…m n o p q r \u{2}Pałka\u{3} zagrała x y z w")
+    );
+}
