@@ -70,7 +70,8 @@ fn near(actual: f32, expected: f32) -> bool {
 }
 
 /// Tile bounds measured before the phone layout existed: `(x, y, width, height)` of the first tile
-/// and of the first tile of the second row. The tablet and wide layouts must not move.
+/// and of the first tile of the second row. The tablet and wide layouts must not move. `y` is
+/// relative to where the first tile sits on the host, because the header height depends on fonts.
 #[test]
 fn tablet_and_wide_tile_geometry_is_unchanged() {
     let baseline: [(u32, u32, Bounds, Bounds); 8] = [
@@ -126,17 +127,21 @@ fn tablet_and_wide_tile_geometry_is_unchanged() {
     for (width, height, first, second_row) in baseline {
         let app = library(width, height, 9);
         let found = tiles(&app, 9);
+        // The grid starts below a header whose text height comes from the system fonts, so the
+        // absolute `y` differs between hosts (Noto Sans on Fedora, DejaVu Sans on the CI image).
+        // Everything else, including the distance between rows, is font independent.
+        let top = found[0].y - first.1;
         let matches = |tile: &Tile, (x, y, w, h): Bounds| {
-            near(tile.x, x) && near(tile.y, y) && near(tile.width, w) && near(tile.height, h)
+            near(tile.x, x) && near(tile.y, top + y) && near(tile.width, w) && near(tile.height, h)
         };
         assert!(
             matches(&found[0], first),
-            "{width}x{height}: first tile {:?}, expected {first:?}",
+            "{width}x{height}: first tile {:?}, expected {first:?} below a header offset of {top}",
             found[0]
         );
         assert!(
             found.iter().any(|tile| matches(tile, second_row)),
-            "{width}x{height}: no tile at {second_row:?} in {found:?}"
+            "{width}x{height}: no tile at {second_row:?} (header offset {top}) in {found:?}"
         );
     }
 }
