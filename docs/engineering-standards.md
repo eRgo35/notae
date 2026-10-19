@@ -42,6 +42,8 @@ CI runs the same arm64 target check; the signed release build runs only from a v
 
 Third-party actions are pinned by major version. Workflows can be checked locally with `actionlint`.
 
+The **Rust quality gates** job runs on `ubuntu-24.04`, not `ubuntu-latest`: on the 26.04 image the `leptonica-sys` 0.4.9 bindgen step fails with `unknown type name 'atomic_int'` when it picks libclang 21 or 22 (the image ships clang 20, 21 and 22; a 26.04 container reproduces the failure and passes with `LIBCLANG_PATH=/usr/lib/llvm-20/lib`). Move the pin only after confirming the host build on the newer image.
+
 ## Audit summary
 
 | Rule | Status | Severity | Evidence / remediation |
