@@ -53,6 +53,7 @@ fn text_round_trips_every_combination() {
                     library_view: view,
                     sidebar_collapsed_portrait: portrait,
                     sidebar_collapsed_landscape: landscape,
+                    ..UiPrefs::default()
                 };
                 assert_eq!(UiPrefs::from_text(&prefs.to_text()), prefs);
             }
@@ -68,6 +69,7 @@ fn save_then_load_keeps_list_mode_and_both_orientation_choices() {
         library_view: LibraryView::List,
         sidebar_collapsed_portrait: false,
         sidebar_collapsed_landscape: true,
+        ..UiPrefs::default()
     };
     prefs.save(&path).expect("preferences are saved");
     assert_eq!(UiPrefs::load(&path), prefs);
