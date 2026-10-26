@@ -82,12 +82,16 @@ pub struct PdfTextOutcome {
 }
 
 /// Maps local PDF text extraction to an index status without discarding sidecar OCR.
+///
+/// Stored text always wins: an embedded text layer only fills a note that has
+/// none, so imported hand-corrected text survives rescans.
 #[must_use]
 pub fn classify_text_layer(
     extracted: Result<Option<String>, PdfError>,
     has_existing_searchable_text: bool,
 ) -> PdfTextOutcome {
     match extracted {
+        Ok(_) if has_existing_searchable_text => missing_text_outcome(true),
         Ok(Some(text)) => {
             let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
             if !text.is_empty() {

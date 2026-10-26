@@ -128,6 +128,24 @@ fn missing_text_layer_preserves_existing_sidecar_ocr() {
 }
 
 #[test]
+fn embedded_text_layer_does_not_replace_existing_sidecar_ocr() {
+    let outcome = classify_text_layer(Ok(Some("older embedded text".to_owned())), true);
+
+    assert_eq!(outcome.status, IndexStatus::Ready);
+    assert_eq!(outcome.text, None);
+    assert_eq!(outcome.failure, None);
+}
+
+#[test]
+fn embedded_text_layer_fills_a_note_without_text() {
+    let outcome = classify_text_layer(Ok(Some("  embedded \n text ".to_owned())), false);
+
+    assert_eq!(outcome.status, IndexStatus::Ready);
+    assert_eq!(outcome.text, Some("embedded text".to_owned()));
+    assert_eq!(outcome.failure, None);
+}
+
+#[test]
 fn text_layer_failure_is_visible_as_ocr_incomplete() {
     let outcome = classify_text_layer(
         Err(PdfError::Platform("PDF text extraction failed".to_owned())),
