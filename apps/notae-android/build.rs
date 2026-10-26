@@ -9,9 +9,14 @@ use std::process::Command;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rerun-if-changed=ui/app.slint");
     println!("cargo:rerun-if-changed=ui/setup.slint");
+    println!("cargo:rerun-if-changed=translations");
     let build_identity = git_build_identity();
     println!("cargo:rustc-env=NOTAE_BUILD_ID={build_identity}");
-    let mut config = slint_build::CompilerConfiguration::new().with_style("material".into());
+    // Every string is translated once, whichever component shows it; see translations/.
+    let mut config = slint_build::CompilerConfiguration::new()
+        .with_style("material".into())
+        .with_bundled_translations("translations")
+        .with_default_translation_context(slint_build::DefaultTranslationContext::None);
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("android") {
         config = config.with_debug_info(true);
     }
