@@ -164,6 +164,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
             crate::android::language::select(&app, choice);
             if let Some(window) = window_weak.upgrade() {
                 window.set_language_choice(choice.index());
+                sync_window(&window, &model.borrow());
             }
         };
         apply();
@@ -184,6 +185,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
             crate::android::language::select(&app, choice);
             if let Some(window) = window_weak.upgrade() {
                 window.set_language_choice(choice.index());
+                sync_window(&window, &model.borrow());
             }
         });
     }
@@ -555,7 +557,11 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
                 .library_root_handle()
                 .ok_or_else(|| {
                     crate::pdf_intent::ViewerError::Platform(
-                        "No active library folder is available.".to_owned(),
+                        crate::language::pick(
+                            "No active library folder is available.",
+                            "Brak aktywnego folderu biblioteki.",
+                        )
+                        .to_owned(),
                     )
                 })
                 .and_then(|tree_uri| {
@@ -668,8 +674,8 @@ struct LibraryRowsCache {
     /// Decoded thumbnails by content key. A key's thumbnail is written once and never
     /// rewritten, so entries only need dropping when the key leaves the library.
     images: HashMap<String, slint::Image>,
-    /// The rows and per-row thumbnail availability last pushed to the window.
-    pushed: Option<(Vec<SearchRow>, Vec<bool>)>,
+    /// The rows, per-row thumbnail availability and language last pushed to the window.
+    pushed: Option<(Vec<SearchRow>, Vec<bool>, bool)>,
 }
 
 impl LibraryRowsCache {
@@ -685,11 +691,11 @@ impl LibraryRowsCache {
             .map(|row| self.thumbnail(model.thumbnail_cache(), &row.note_key))
             .collect();
         let available: Vec<bool> = thumbnails.iter().map(Option::is_some).collect();
-        if self
-            .pushed
-            .as_ref()
-            .is_some_and(|(rows, flags)| *rows == visible && *flags == available)
-        {
+        // Row labels are translated in Rust, so a language switch must re-push them.
+        let polish = crate::language::pick(false, true);
+        if self.pushed.as_ref().is_some_and(|(rows, flags, language)| {
+            *rows == visible && *flags == available && *language == polish
+        }) {
             return;
         }
         let rows: Vec<crate::LibraryRow> = visible
@@ -699,7 +705,7 @@ impl LibraryRowsCache {
             .map(|(row, thumbnail)| crate::ui::search::library_row(row, thumbnail))
             .collect();
         window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
-        self.pushed = Some((visible, available));
+        self.pushed = Some((visible, available, polish));
     }
 
     /// The decoded thumbnail for `note_key`, loading it once the file exists. A file that fails
@@ -789,16 +795,23 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     let (scan_summary, scan_conflicts, scan_failures) = status.latest_rescan.map_or_else(
         || {
             (
-                "No scan this session".to_owned(),
+                crate::language::pick("No scan this session", "Brak skanowania w tej sesji")
+                    .to_owned(),
                 String::new(),
                 String::new(),
             )
         },
         |summary| {
             (
-                format!(
-                    "{} added, {} updated, {} moved, {} deleted",
-                    summary.added, summary.updated, summary.moved, summary.deleted,
+                crate::language::pick(
+                    format!(
+                        "{} added, {} updated, {} moved, {} deleted",
+                        summary.added, summary.updated, summary.moved, summary.deleted,
+                    ),
+                    format!(
+                        "dodano: {}, zaktualizowano: {}, przeniesiono: {}, usunięto: {}",
+                        summary.added, summary.updated, summary.moved, summary.deleted,
+                    ),
                 ),
                 summary.conflicts.to_string(),
                 summary.failures.to_string(),
@@ -887,9 +900,15 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_selected_section(model.section().key().into());
     window.set_library_title(model.section().title().into());
     window.set_library_subtitle(
-        format!(
-            "{row_count} {}",
-            if row_count == 1 { "score" } else { "scores" }
+        crate::language::pick(
+            format!(
+                "{row_count} {}",
+                if row_count == 1 { "score" } else { "scores" }
+            ),
+            format!(
+                "{row_count} {}",
+                crate::language::polish_plural(row_count, "utwór", "utwory", "utworów")
+            ),
         )
         .into(),
     );
@@ -930,16 +949,23 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
             change: row.change.as_str().into(),
             local_metadata: row.local_metadata.as_deref().unwrap_or("—").into(),
             proposed_metadata: row.proposed_metadata.as_str().into(),
-            fields: format!(
-                "Imported: {}; preserved: {}; ",
-                row.imported_fields.join(", "),
-                row.preserved_fields.join(", ")
+            fields: crate::language::pick(
+                format!(
+                    "Imported: {}; preserved: {}; ",
+                    row.imported_fields.join(", "),
+                    row.preserved_fields.join(", ")
+                ),
+                format!(
+                    "Importowane: {}; zachowane: {}; ",
+                    row.imported_fields.join(", "),
+                    row.preserved_fields.join(", ")
+                ),
             )
             .into(),
             ocr: if row.ocr_available {
-                "OCR available. ".into()
+                crate::language::pick("OCR available. ", "OCR dostępny. ").into()
             } else {
-                "No sidecar OCR. ".into()
+                crate::language::pick("No sidecar OCR. ", "Brak OCR w pliku sidecar. ").into()
             },
             conflict: row
                 .conflict
@@ -952,16 +978,24 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
 }
 
 fn import_preview_text(summary: &crate::operations::events::ImportPreviewSummary) -> String {
-    format!(
-        "{} new; {} changed; {} unchanged; {} missing; {} hash mismatches; {} unreadable; {} ID conflicts; {} entries with OCR. Review proposed and preserved metadata below.",
-        summary.new,
-        summary.changed,
-        summary.unchanged,
-        summary.missing,
-        summary.mismatches,
-        summary.unreadable,
-        summary.conflicts,
-        summary.ocr_available,
+    let crate::operations::events::ImportPreviewSummary {
+        new,
+        changed,
+        unchanged,
+        missing,
+        mismatches,
+        unreadable,
+        conflicts,
+        ocr_available,
+        ..
+    } = summary;
+    crate::language::pick(
+        format!(
+            "{new} new; {changed} changed; {unchanged} unchanged; {missing} missing; {mismatches} hash mismatches; {unreadable} unreadable; {conflicts} ID conflicts; {ocr_available} entries with OCR. Review proposed and preserved metadata below."
+        ),
+        format!(
+            "nowe: {new}; zmienione: {changed}; bez zmian: {unchanged}; brakujące: {missing}; niezgodne sumy kontrolne: {mismatches}; nieczytelne: {unreadable}; konflikty numerów: {conflicts}; z OCR: {ocr_available}. Sprawdź poniżej proponowane i zachowane dane."
+        ),
     )
 }
 

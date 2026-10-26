@@ -46,8 +46,8 @@ impl LibrarySection {
     #[must_use]
     pub fn title(&self) -> String {
         match self {
-            Self::All => "All scores".to_owned(),
-            Self::Recent => "Recent".to_owned(),
+            Self::All => crate::language::pick("All scores", "Wszystkie utwory").to_owned(),
+            Self::Recent => crate::language::pick("Recent", "Ostatnie").to_owned(),
             Self::Composer(name) => name.clone(),
         }
     }

@@ -1,3 +1,4 @@
+use crate::language::pick;
 use notae_domain::{MetadataField, NoteId, NoteMetadata};
 use notae_index::{
     EntryChange, ImportEntry, ImportPreview, ImportReport, IndexStore, SidecarImporter,
@@ -32,7 +33,7 @@ impl ImportPreviewViewModel {
             let mut rows: Vec<_> = preview.entries().iter().map(preview_row).collect();
             rows.extend(preview.missing().iter().map(|note| ImportPreviewRow {
                 path: note.path().as_str().to_owned(),
-                change: "Not in sidecar".to_owned(),
+                change: pick("Not in sidecar", "Brak w pliku sidecar").to_owned(),
                 local_title: Some(note.title().to_owned()),
                 proposed_title: String::new(),
                 local_metadata: Some(format_metadata(note)),
@@ -83,23 +84,28 @@ pub fn metadata_field_names(fields: &[MetadataField]) -> Vec<&'static str> {
     fields
         .iter()
         .map(|field| match field {
-            MetadataField::Id => "ID",
-            MetadataField::Title => "title",
-            MetadataField::ComposerOrArtist => "composer/artist",
-            MetadataField::Tags => "tags",
+            MetadataField::Id => pick("ID", "numer"),
+            MetadataField::Title => pick("title", "tytuł"),
+            MetadataField::ComposerOrArtist => pick("composer/artist", "kompozytor/wykonawca"),
+            MetadataField::Tags => pick("tags", "tagi"),
         })
         .collect()
 }
 
 fn preview_row(entry: &ImportEntry) -> ImportPreviewRow {
     let change = match entry.change() {
-        EntryChange::New => "New".to_owned(),
-        EntryChange::Unchanged => "Unchanged".to_owned(),
-        EntryChange::Changed => "Changed".to_owned(),
-        EntryChange::Moved { from } => format!("Moved from {from}"),
-        EntryChange::HashMismatch { .. } => "Hash mismatch".to_owned(),
-        EntryChange::Missing => "Missing".to_owned(),
-        EntryChange::Unverified { .. } => "Unreadable".to_owned(),
+        EntryChange::New => pick("New", "Nowy").to_owned(),
+        EntryChange::Unchanged => pick("Unchanged", "Bez zmian").to_owned(),
+        EntryChange::Changed => pick("Changed", "Zmieniony").to_owned(),
+        EntryChange::Moved { from } => pick(
+            format!("Moved from {from}"),
+            format!("Przeniesiony z {from}"),
+        ),
+        EntryChange::HashMismatch { .. } => {
+            pick("Hash mismatch", "Niezgodna suma kontrolna").to_owned()
+        }
+        EntryChange::Missing => pick("Missing", "Brak pliku").to_owned(),
+        EntryChange::Unverified { .. } => pick("Unreadable", "Nieczytelny").to_owned(),
     };
     let sidecar = entry.sidecar();
     let local = entry.local();

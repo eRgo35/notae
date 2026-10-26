@@ -1,3 +1,4 @@
+use crate::language::pick;
 use notae_domain::{IndexStatus, IndexedNote, MetadataField, MetadataOrigin};
 use notae_index::IndexError;
 
@@ -92,25 +93,25 @@ pub fn library_row(row: SearchRow, thumbnail: Option<slint::Image>) -> crate::Li
 
 fn origin_label(origin: MetadataOrigin) -> &'static str {
     match origin {
-        MetadataOrigin::FilenameDerived => "From filename",
-        MetadataOrigin::PcImported => "From desktop",
-        MetadataOrigin::Manual => "Edited",
+        MetadataOrigin::FilenameDerived => pick("From filename", "Z nazwy pliku"),
+        MetadataOrigin::PcImported => pick("From desktop", "Z komputera"),
+        MetadataOrigin::Manual => pick("Edited", "Edytowano"),
         _ => "",
     }
 }
 
 fn status_label(status: IndexStatus) -> &'static str {
     match status {
-        IndexStatus::Discovered => "Discovered",
-        IndexStatus::Indexing => "Indexing",
-        IndexStatus::Ready => "Ready",
-        IndexStatus::OcrPending => "OCR pending",
-        IndexStatus::OcrIncomplete => "OCR incomplete",
-        IndexStatus::Stale => "Stale",
-        IndexStatus::DuplicateIdConflict => "ID conflict",
-        IndexStatus::Inaccessible => "Inaccessible",
-        IndexStatus::InvalidPdf => "Invalid PDF",
-        IndexStatus::ImportMismatch => "Import mismatch",
+        IndexStatus::Discovered => pick("Discovered", "Wykryto"),
+        IndexStatus::Indexing => pick("Indexing", "Indeksowanie"),
+        IndexStatus::Ready => pick("Ready", "Gotowe"),
+        IndexStatus::OcrPending => pick("OCR pending", "Czeka na OCR"),
+        IndexStatus::OcrIncomplete => pick("OCR incomplete", "OCR niepełny"),
+        IndexStatus::Stale => pick("Stale", "Nieaktualne"),
+        IndexStatus::DuplicateIdConflict => pick("ID conflict", "Konflikt numeru"),
+        IndexStatus::Inaccessible => pick("Inaccessible", "Niedostępne"),
+        IndexStatus::InvalidPdf => pick("Invalid PDF", "Nieprawidłowy PDF"),
+        IndexStatus::ImportMismatch => pick("Import mismatch", "Niezgodność importu"),
     }
 }
 

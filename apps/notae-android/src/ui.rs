@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Mutex;
 
+use crate::language::pick;
 use crate::operations::events::{
     DesktopImportCheck, ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
 };
@@ -459,9 +460,14 @@ impl UiModel {
                         self.controller.import_preview_ready(candidate_count);
                     }
                     DesktopImportCheck::Failed { reason } => {
-                        self.controller.fail_operation(format!(
-                            "Scan finished ({}), but the desktop sidecar check failed: {reason}",
-                            rescan_summary(&summary)
+                        let scan = rescan_summary(&summary);
+                        self.controller.fail_operation(pick(
+                            format!(
+                                "Scan finished ({scan}), but the desktop sidecar check failed: {reason}"
+                            ),
+                            format!(
+                                "Skanowanie zakończone ({scan}), ale sprawdzenie pliku sidecar nie powiodło się: {reason}"
+                            ),
                         ));
                     }
                 }
@@ -601,19 +607,39 @@ impl OperationBanner {
         let text = match operation {
             OperationState::Idle => String::new(),
             OperationState::Rescan { phase } => match phase {
-                RescanPhase::Enumerating => "Scanning library…".to_owned(),
-                RescanPhase::Indexing { total: 1 } => "Indexing 1 PDF…".to_owned(),
-                RescanPhase::Indexing { total } => format!("Indexing {total} PDFs…"),
-                RescanPhase::ReadingText { completed, total } => {
-                    format!("Reading PDF text and thumbnails: {completed} of {total}")
+                RescanPhase::Enumerating => {
+                    pick("Scanning library…", "Skanowanie biblioteki…").to_owned()
                 }
-                RescanPhase::CheckingDesktopImport => "Checking for a desktop sidecar…".to_owned(),
+                RescanPhase::Indexing { total: 1 } => {
+                    pick("Indexing 1 PDF…", "Indeksowanie 1 pliku PDF…").to_owned()
+                }
+                RescanPhase::Indexing { total } => pick(
+                    format!("Indexing {total} PDFs…"),
+                    format!("Indeksowanie {total} plików PDF…"),
+                ),
+                RescanPhase::ReadingText { completed, total } => pick(
+                    format!("Reading PDF text and thumbnails: {completed} of {total}"),
+                    format!("Odczyt tekstu i miniatur PDF: {completed} z {total}"),
+                ),
+                RescanPhase::CheckingDesktopImport => pick(
+                    "Checking for a desktop sidecar…",
+                    "Sprawdzanie pliku sidecar z komputera…",
+                )
+                .to_owned(),
             },
-            OperationState::ImportPreviewPending { candidate_count } => {
-                format!("Review {candidate_count} proposed sidecar changes")
-            }
-            OperationState::ImportApplying => "Applying sidecar import…".to_owned(),
-            OperationState::Completed { summary } => format!("Finished: {summary}"),
+            OperationState::ImportPreviewPending { candidate_count } => pick(
+                format!("Review {candidate_count} proposed sidecar changes"),
+                format!("Przejrzyj proponowane zmiany z pliku sidecar: {candidate_count}"),
+            ),
+            OperationState::ImportApplying => pick(
+                "Applying sidecar import…",
+                "Stosowanie importu z pliku sidecar…",
+            )
+            .to_owned(),
+            OperationState::Completed { summary } => pick(
+                format!("Finished: {summary}"),
+                format!("Zakończono: {summary}"),
+            ),
             OperationState::Failed { reason } => reason.clone(),
         };
         let fraction = match operation {
@@ -644,14 +670,19 @@ impl OperationBanner {
 
 fn rescan_summary(summary: &RescanSummary) -> String {
     let mut parts = Vec::new();
-    add_count(&mut parts, summary.added, "added");
-    add_count(&mut parts, summary.updated, "updated");
-    add_count(&mut parts, summary.moved, "moved");
-    add_count(&mut parts, summary.deleted, "deleted");
-    add_count(&mut parts, summary.conflicts, "ID conflicts");
-    add_count(&mut parts, summary.failures, "failures");
+    add_count(&mut parts, summary.added, "added", "dodano");
+    add_count(&mut parts, summary.updated, "updated", "zaktualizowano");
+    add_count(&mut parts, summary.moved, "moved", "przeniesiono");
+    add_count(&mut parts, summary.deleted, "deleted", "usunięto");
+    add_count(
+        &mut parts,
+        summary.conflicts,
+        "ID conflicts",
+        "konflikty numerów",
+    );
+    add_count(&mut parts, summary.failures, "failures", "błędy");
     if parts.is_empty() {
-        "No changes".to_owned()
+        pick("No changes", "Bez zmian").to_owned()
     } else {
         parts.join(", ")
     }
@@ -659,22 +690,36 @@ fn rescan_summary(summary: &RescanSummary) -> String {
 
 fn import_summary(summary: &ImportSummary) -> String {
     let mut parts = Vec::new();
-    add_count(&mut parts, summary.imported, "imported");
-    add_count(&mut parts, summary.mismatches, "hash mismatches");
-    add_count(&mut parts, summary.missing, "missing");
-    add_count(&mut parts, summary.unreadable, "unreadable");
-    add_count(&mut parts, summary.conflicts, "ID conflicts");
-    add_count(&mut parts, summary.failures, "failures");
+    add_count(&mut parts, summary.imported, "imported", "zaimportowano");
+    add_count(
+        &mut parts,
+        summary.mismatches,
+        "hash mismatches",
+        "niezgodne sumy kontrolne",
+    );
+    add_count(&mut parts, summary.missing, "missing", "brakujące");
+    add_count(&mut parts, summary.unreadable, "unreadable", "nieczytelne");
+    add_count(
+        &mut parts,
+        summary.conflicts,
+        "ID conflicts",
+        "konflikty numerów",
+    );
+    add_count(&mut parts, summary.failures, "failures", "błędy");
     if parts.is_empty() {
-        "No import changes".to_owned()
+        pick("No import changes", "Import bez zmian").to_owned()
     } else {
         parts.join(", ")
     }
 }
 
-fn add_count(parts: &mut Vec<String>, count: usize, label: &str) {
+/// English reads "3 added"; Polish reads "dodano: 3", which needs no plural agreement.
+fn add_count(parts: &mut Vec<String>, count: usize, english: &str, polish: &str) {
     if count != 0 {
-        parts.push(format!("{count} {label}"));
+        parts.push(pick(
+            format!("{count} {english}"),
+            format!("{polish}: {count}"),
+        ));
     }
 }
 
