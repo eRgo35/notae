@@ -62,7 +62,8 @@ pub fn write_choice(app: &AndroidApp, choice: LanguageChoice) -> bool {
     .unwrap_or(false)
 }
 
-/// Shows the translation for `choice`, given the device language.
+/// Shows the translation for `choice`, given the device language. Callers re-sync the
+/// window afterwards so text built in Rust follows.
 pub fn select(app: &AndroidApp, choice: LanguageChoice) {
     let system_tag = call_string(app, jni_str!("readSystemLanguageTag"))
         .ok()
@@ -70,6 +71,7 @@ pub fn select(app: &AndroidApp, choice: LanguageChoice) {
         .unwrap_or_default();
     let bundle = bundle_for(choice, &system_tag);
     eprintln!("notae: language choice={choice:?} system={system_tag:?} bundle={bundle:?}");
+    crate::language::set_active_bundle(bundle);
     if let Err(error) = slint::select_bundled_translation(bundle) {
         eprintln!("notae: cannot select translation {bundle:?}: {error}");
     }
