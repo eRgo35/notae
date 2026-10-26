@@ -106,8 +106,8 @@ export component WelcomeScreen inherits Rectangle {
                 spacing: 20px;
                 HorizontalLayout { alignment: center; Image { source: @image-url("assets/notae.png"); image-fit: contain; width: 96px; height: 96px; accessible-role: none; } }
                 Text {
-                    text: root.recovery ? "Reconnect your library" : "Welcome to Notae";
-                    color: Theme.foreground; font-size: root.available-width < 420px ? 32px : 40px; font-weight: 600; horizontal-alignment: center; wrap: word-wrap; accessible-role: text; accessible-label: root.recovery ? "Reconnect your library" : "Welcome to Notae";
+                    text: root.recovery ? @tr("Reconnect your library") : @tr("Welcome to Notae");
+                    color: Theme.foreground; font-size: root.available-width < 420px ? 32px : 40px; font-weight: 600; horizontal-alignment: center; wrap: word-wrap; accessible-role: text; accessible-label: root.recovery ? @tr("Reconnect your library") : @tr("Welcome to Notae");
                 }
                 // Paragraph and feature card read as one group: 12 px apart, unlike the 20 px between other blocks.
                 VerticalLayout {
@@ -118,8 +118,8 @@ export component WelcomeScreen inherits Rectangle {
                         Text {
                             width: root.column;
                             text: root.recovery
-                                ? "Notae no longer has access to “" + root.folder + "”. Choose it again to reconnect your scores."
-                                : "Your sheet music, in good order. Notae reads your PDFs where they are and opens them in the PDF app you already use.";
+                                ? @tr("Notae no longer has access to “{}”. Choose it again to reconnect your scores.", root.folder)
+                                : @tr("Your sheet music, in good order. Notae reads your PDFs where they are and opens them in the PDF app you already use.");
                             color: Theme.muted; font-size: 17px; horizontal-alignment: center; wrap: word-wrap;
                         }
                     }
@@ -133,9 +133,9 @@ export component WelcomeScreen inherits Rectangle {
                                 padding-right: 24px;
                                 padding-top: 8px;
                                 padding-bottom: 8px;
-                                FeatureRow { kind: "folder"; heading: "Files stay where they are"; detail: "Nothing is moved, renamed or uploaded"; }
+                                FeatureRow { kind: "folder"; heading: @tr("Files stay where they are"); detail: @tr("Nothing is moved, renamed or uploaded"); }
                                 Rectangle { height: 1px; background: Theme.divider; }
-                                FeatureRow { kind: "search"; heading: "Find any score fast"; detail: "Search by title, composer, tag or lyrics"; }
+                                FeatureRow { kind: "search"; heading: @tr("Find any score fast"); detail: @tr("Search by title, composer, tag or lyrics"); }
                             }
                         }
                     }
@@ -156,9 +156,9 @@ export component WelcomeScreen inherits Rectangle {
         if root.error-text != "" : Text { text: root.error-text; color: Theme.error; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
         HorizontalLayout {
             alignment: center;
-            PillButton { width: min(360px, root.column); text: root.recovery ? "Reconnect folder" : "Choose score folder"; primary: true; clicked => { root.accepted(); } }
+            PillButton { width: min(360px, root.column); text: root.recovery ? @tr("Reconnect folder") : @tr("Choose score folder"); primary: true; clicked => { root.accepted(); } }
         }
-        Text { text: "Pick a folder on device storage or an SD card."; color: Theme.muted; font-size: 14px; horizontal-alignment: center; wrap: word-wrap; }
+        Text { text: @tr("Pick a folder on device storage or an SD card."); color: Theme.muted; font-size: 14px; horizontal-alignment: center; wrap: word-wrap; }
     }
 }
 
@@ -198,8 +198,8 @@ export component SettingsScreen inherits Rectangle {
         spacing: 12px;
         HorizontalLayout {
             spacing: 8px;
-            VerticalLayout { alignment: center; IconButton { label: "Back to library"; icon: @image-url("material-icons/arrow-back.svg"); clicked => { root.back(); } } }
-            Text { text: "Settings"; color: Theme.foreground; font-size: root.available-width < 420px ? 26px : 32px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
+            VerticalLayout { alignment: center; IconButton { label: @tr("Back to library"); icon: @image-url("material-icons/arrow-back.svg"); clicked => { root.back(); } } }
+            Text { text: @tr("Settings"); color: Theme.foreground; font-size: root.available-width < 420px ? 26px : 32px; font-weight: 600; vertical-alignment: center; horizontal-stretch: 1; }
         }
         if root.progress-text != "" : OperationBanner {
             text: root.progress-text;
@@ -228,11 +228,11 @@ export component SettingsScreen inherits Rectangle {
                         padding: 16px;
                         alignment: start;
                         spacing: 4px;
-                        Text { text: "Library folder"; color: Theme.muted; font-size: 13px; }
+                        Text { text: @tr("Library folder"); color: Theme.muted; font-size: 13px; }
                         HorizontalLayout {
                             spacing: 12px;
                             Text { text: root.library-display-name; color: Theme.foreground; font-size: 15px; wrap: word-wrap; vertical-alignment: center; horizontal-stretch: 1; accessible-role: text; accessible-label: root.library-display-name; }
-                            VerticalLayout { alignment: center; PillButton { text: "Change"; tonal: true; clicked => { root.change-library(); } } }
+                            VerticalLayout { alignment: center; PillButton { text: @tr("Change"); tonal: true; clicked => { root.change-library(); } } }
                         }
                     }
                 }
@@ -241,17 +241,17 @@ export component SettingsScreen inherits Rectangle {
                         padding: 16px;
                         alignment: start;
                         spacing: 8px;
-                        Text { text: "Library maintenance"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
-                        FactRow { label: "Indexed scores"; value: root.indexed-count; }
-                        FactRow { label: "PDFs without extractable text"; value: root.no-text-count; }
-                        FactRow { label: "Last scan"; value: root.scan-summary; }
+                        Text { text: @tr("Library maintenance"); color: Theme.foreground; font-size: 18px; font-weight: 600; }
+                        FactRow { label: @tr("Indexed scores"); value: root.indexed-count; }
+                        FactRow { label: @tr("PDFs without extractable text"); value: root.no-text-count; }
+                        FactRow { label: @tr("Last scan"); value: root.scan-summary; }
                         if root.scan-conflicts != "" : FactRow {
-                            label: "ID conflicts";
+                            label: @tr("ID conflicts");
                             value: root.scan-conflicts;
                             value-color: root.scan-conflicts == "0" ? Theme.foreground : Theme.error;
                         }
                         if root.scan-failures != "" : FactRow {
-                            label: "Failures";
+                            label: @tr("Failures");
                             value: root.scan-failures;
                             value-color: root.scan-failures == "0" ? Theme.foreground : Theme.error;
                         }
@@ -262,13 +262,13 @@ export component SettingsScreen inherits Rectangle {
                         padding: 16px;
                         alignment: start;
                         spacing: 8px;
-                        Text { text: "About Notae"; color: Theme.foreground; font-size: 18px; font-weight: 600; }
-                        FactRow { label: "Version"; value: root.version; }
-                        FactRow { label: "Build"; value: root.build-identity; }
-                        FactRow { label: "License"; value: root.license; }
-                        FactRow { label: "Repository"; value: root.repository; }
-                        FactRow { label: "Sidecar schema"; value: root.schema-version; }
-                        Text { text: "Your library stays on this device. Notae does not send data over the network."; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+                        Text { text: @tr("About Notae"); color: Theme.foreground; font-size: 18px; font-weight: 600; }
+                        FactRow { label: @tr("Version"); value: root.version; }
+                        FactRow { label: @tr("Build"); value: root.build-identity; }
+                        FactRow { label: @tr("License"); value: root.license; }
+                        FactRow { label: @tr("Repository"); value: root.repository; }
+                        FactRow { label: @tr("Sidecar schema"); value: root.schema-version; }
+                        Text { text: @tr("Your library stays on this device. Notae does not send data over the network."); color: Theme.muted; font-size: 14px; wrap: word-wrap; }
                     }
                 }
                 Card {

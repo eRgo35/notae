@@ -104,11 +104,11 @@ export component SearchScreen inherits Rectangle {
         spacing: 16px;
         HorizontalLayout {
             spacing: 8px;
-            VerticalLayout { alignment: center; IconButton { label: "Back to library"; icon: @image-url("material-icons/arrow-back.svg"); clicked => { root.focus-initial-pending = false; root.close(); } } }
+            VerticalLayout { alignment: center; IconButton { label: @tr("Back to library"); icon: @image-url("material-icons/arrow-back.svg"); clicked => { root.focus-initial-pending = false; root.close(); } } }
             field := SearchField {
                 horizontal-stretch: 1;
                 text <=> root.query;
-                placeholder: "Search titles, composers, tags or lyrics";
+                placeholder: @tr("Search titles, composers, tags or lyrics");
                 hardware-keyboard-present: root.hardware-keyboard-present;
                 focus-state-changed(has-focus) => {
                     if has-focus {
@@ -123,7 +123,7 @@ export component SearchScreen inherits Rectangle {
             if root.voice-available : VerticalLayout {
                 alignment: center;
                 IconButton {
-                    label: "Search by voice";
+                    label: @tr("Search by voice");
                     icon: @image-url("material-icons/mic.svg");
                     clicked => {
                         root.focus-initial-pending = false;
@@ -151,11 +151,11 @@ export component SearchScreen inherits Rectangle {
                 padding-left: 56px;
                 spacing: 8px;
                 alignment: start;
-                Chip { label: "All"; selected: root.scope == "everything"; clicked => { root.focus-initial-pending = false; root.scope-changed("everything"); } }
-                Chip { label: "Titles"; selected: root.scope == "titles"; clicked => { root.focus-initial-pending = false; root.scope-changed("titles"); } }
-                Chip { label: "Composers"; selected: root.scope == "composers"; clicked => { root.focus-initial-pending = false; root.scope-changed("composers"); } }
-                Chip { label: "Lyrics"; selected: root.scope == "text"; clicked => { root.focus-initial-pending = false; root.scope-changed("text"); } }
-                Chip { label: "Tags"; selected: root.scope == "tags"; clicked => { root.focus-initial-pending = false; root.scope-changed("tags"); } }
+                Chip { label: @tr("All"); selected: root.scope == "everything"; clicked => { root.focus-initial-pending = false; root.scope-changed("everything"); } }
+                Chip { label: @tr("Titles"); selected: root.scope == "titles"; clicked => { root.focus-initial-pending = false; root.scope-changed("titles"); } }
+                Chip { label: @tr("Composers"); selected: root.scope == "composers"; clicked => { root.focus-initial-pending = false; root.scope-changed("composers"); } }
+                Chip { label: @tr("Lyrics"); selected: root.scope == "text"; clicked => { root.focus-initial-pending = false; root.scope-changed("text"); } }
+                Chip { label: @tr("Tags"); selected: root.scope == "tags"; clicked => { root.focus-initial-pending = false; root.scope-changed("tags"); } }
             }
         }
         if root.query != "" && root.rows.length > 0 : Card {
@@ -184,16 +184,16 @@ export component SearchScreen inherits Rectangle {
             vertical-stretch: 1;
             alignment: center;
             spacing: 8px;
-            Text { text: "No scores found"; color: Theme.foreground; font-size: 20px; font-weight: 600; horizontal-alignment: center; }
-            Text { text: "Try another word, or switch the scope above."; color: Theme.muted; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
+            Text { text: @tr("No scores found"); color: Theme.foreground; font-size: 20px; font-weight: 600; horizontal-alignment: center; }
+            Text { text: @tr("Try another word, or switch the scope above."); color: Theme.muted; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
         }
         if root.query == "" : VerticalLayout {
             vertical-stretch: 1;
             alignment: center;
             spacing: 8px;
             HorizontalLayout { alignment: center; Glyph { kind: "search"; width: 40px; height: 40px; } }
-            Text { text: "Search your library"; color: Theme.foreground; font-size: 20px; font-weight: 600; horizontal-alignment: center; }
-            Text { text: "Find scores by title, composer, tag or lyrics."; color: Theme.muted; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
+            Text { text: @tr("Search your library"); color: Theme.foreground; font-size: 20px; font-weight: 600; horizontal-alignment: center; }
+            Text { text: @tr("Find scores by title, composer, tag or lyrics."); color: Theme.muted; font-size: 15px; horizontal-alignment: center; wrap: word-wrap; }
         }
     }
 }

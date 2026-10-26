@@ -31,13 +31,13 @@ component InfoCard inherits Rectangle {
         padding-right: 20px;
         padding-top: 4px;
         padding-bottom: 4px;
-        InfoRow { label: "Title"; value: root.score.title; origin: root.score.title_origin; }
+        InfoRow { label: @tr("Title"); value: root.score.title; origin: root.score.title_origin; }
         Rectangle { height: 1px; background: Theme.divider; }
-        InfoRow { label: "Composer"; value: root.score.composer_or_artist; origin: root.score.composer_origin; }
+        InfoRow { label: @tr("Composer"); value: root.score.composer_or_artist; origin: root.score.composer_origin; }
         Rectangle { height: 1px; background: Theme.divider; }
-        InfoRow { label: "Tags"; value: root.score.tags; origin: ""; }
+        InfoRow { label: @tr("Tags"); value: root.score.tags; origin: ""; }
         Rectangle { height: 1px; background: Theme.divider; }
-        InfoRow { label: "File"; value: root.score.relative_path; origin: root.score.status; }
+        InfoRow { label: @tr("File"); value: root.score.relative_path; origin: root.score.status; }
     }
 }
 
@@ -49,15 +49,15 @@ component ScoreHeadline inherits VerticalLayout {
     callback edit();
     spacing: 6px;
     alignment: start;
-    if root.score.id != "" : Text { text: "No. " + root.score.id; color: Theme.accent-text; font-size: 14px; font-weight: 600; horizontal-alignment: root.centered ? center : left; }
+    if root.score.id != "" : Text { text: @tr("No. {}", root.score.id); color: Theme.accent-text; font-size: 14px; font-weight: 600; horizontal-alignment: root.centered ? center : left; }
     Text { text: root.score.title; color: Theme.foreground; font-size: root.centered ? 26px : 32px; font-weight: 600; wrap: word-wrap; horizontal-alignment: root.centered ? center : left; }
     if root.score.composer_or_artist != "" : Text { text: root.score.composer_or_artist; color: Theme.muted; font-size: 17px; wrap: word-wrap; horizontal-alignment: root.centered ? center : left; }
     HorizontalLayout {
         padding-top: 18px;
         spacing: 10px;
         alignment: root.centered ? center : start;
-        PillButton { text: "Open score"; primary: true; clicked => { root.open(); } }
-        IconButton { label: "Edit details"; icon: @image-url("material-icons/edit.svg"); clicked => { root.edit(); } }
+        PillButton { text: @tr("Open score"); primary: true; clicked => { root.open(); } }
+        IconButton { label: @tr("Edit details"); icon: @image-url("material-icons/edit.svg"); clicked => { root.edit(); } }
     }
 }
 
@@ -82,7 +82,7 @@ export component ScoreDetails inherits Card {
         HorizontalLayout {
             spacing: 4px;
             IconButton {
-                label: "Back to library";
+                label: @tr("Back to library");
                 icon: @image-url("material-icons/arrow-back.svg");
                 clicked => { root.close(); }
             }
@@ -94,16 +94,16 @@ export component ScoreDetails inherits Card {
                 horizontal-alignment: center;
                 vertical-alignment: center;
                 accessible-role: text;
-                accessible-label: root.position == "" ? "" : "Score " + root.position;
+                accessible-label: root.position == "" ? "" : @tr("Score {}", root.position);
             }
             IconButton {
-                label: "Previous score";
+                label: @tr("Previous score");
                 icon: @image-url("material-icons/chevron-left.svg");
                 enabled: root.has-previous;
                 clicked => { root.previous(); }
             }
             IconButton {
-                label: "Next score";
+                label: @tr("Next score");
                 icon: @image-url("material-icons/chevron-right.svg");
                 enabled: root.has-next;
                 clicked => { root.next(); }

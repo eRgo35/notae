@@ -39,9 +39,9 @@ component ImportCard inherits Rectangle {
             Label { text: root.item.path; font-weight: 500; horizontal-stretch: 1; }
             SupportingText { text: root.item.change; color: Theme.accent-text; }
         }
-        Text { text: "On device: " + root.item.local_metadata; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
+        Text { text: @tr("On device: {}", root.item.local_metadata); color: Theme.muted; font-size: 14px; wrap: word-wrap; }
         Rectangle { height: 1px; background: Theme.divider; }
-        Text { text: "From desktop: " + root.item.proposed_metadata; color: Theme.foreground; font-size: 14px; wrap: word-wrap; }
+        Text { text: @tr("From desktop: {}", root.item.proposed_metadata); color: Theme.foreground; font-size: 14px; wrap: word-wrap; }
         Text { text: root.item.fields + root.item.ocr; color: Theme.muted; font-size: 13px; wrap: word-wrap; }
         if root.item.conflict != "" : Text { text: root.item.conflict; color: Theme.error; font-size: 14px; wrap: word-wrap; }
     }
@@ -241,12 +241,12 @@ export component AppWindow inherits Window {
                 width: parent.width;
                 height: parent.height;
                 Text {
-                    text: "Loading library…";
+                    text: @tr("Loading library…");
                     color: Theme.muted;
                     horizontal-alignment: center;
                     vertical-alignment: center;
                     accessible-role: progress-indicator;
-                    accessible-label: "Loading library";
+                    accessible-label: @tr("Loading library");
                 }
             }
             if welcome-presence.mounted : ScreenTransition {
@@ -434,8 +434,8 @@ export component AppWindow inherits Window {
         border-radius: 26px;
         clip: true;
         accessible-role: form;
-        accessible-label: root.sheet-import-content ? "Review desktop import dialog" : "Score details dialog";
-        accessible-description: "Modal dialog. Close or cancel to return to your library.";
+        accessible-label: root.sheet-import-content ? @tr("Review desktop import dialog") : @tr("Score details dialog");
+        accessible-description: @tr("Modal dialog. Close or cancel to return to your library.");
         TouchArea { }
         dialog-scope := FocusScope {
             enabled: root.modal-open;
@@ -454,7 +454,7 @@ export component AppWindow inherits Window {
             spacing: 16px;
             HorizontalLayout {
                 spacing: 12px;
-                Label { text: root.sheet-import-content ? "Review desktop import" : "Score details"; font-size: 24px; font-weight: 600; color: Theme.foreground; horizontal-stretch: 1; }
+                Label { text: root.sheet-import-content ? @tr("Review desktop import") : @tr("Score details"); font-size: 24px; font-weight: 600; color: Theme.foreground; horizontal-stretch: 1; }
                 dialog-close := IconButton {
                     in-dialog: true;
                     icon: @image-url("material-icons/close.svg");
@@ -472,35 +472,35 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     alignment: end;
                     spacing: 12px;
-                    PillButton { in-dialog: true; text: "Keep local"; clicked => { root.import_cancelled(); } }
-                    PillButton { in-dialog: true; text: "Apply import"; primary: true; clicked => { root.import_confirmed(); } }
+                    PillButton { in-dialog: true; text: @tr("Keep local"); clicked => { root.import_cancelled(); } }
+                    PillButton { in-dialog: true; text: @tr("Apply import"); primary: true; clicked => { root.import_confirmed(); } }
                 }
             }
             if !root.sheet-import-content : VerticalLayout {
                 spacing: 16px;
-                SupportingText { text: "Update the details without renaming your PDF."; }
+                SupportingText { text: @tr("Update the details without renaming your PDF."); }
                 VerticalLayout {
                     spacing: 16px;
                     // Each label sits closer to its own field than to the previous one.
                     VerticalLayout {
                         spacing: 6px;
-                        Label { text: "Title"; font-size: 14px; font-weight: 600; color: Theme.muted; }
-                        TextField { in-dialog: true; text <=> root.metadata_title; placeholder: "Score title"; }
+                        Label { text: @tr("Title"); font-size: 14px; font-weight: 600; color: Theme.muted; }
+                        TextField { in-dialog: true; text <=> root.metadata_title; placeholder: @tr("Score title"); }
                     }
                     VerticalLayout {
                         spacing: 6px;
-                        Label { text: "Composer or artist"; font-size: 14px; font-weight: 600; color: Theme.muted; }
-                        TextField { in-dialog: true; text <=> root.metadata_composer_or_artist; placeholder: "Composer or artist (optional)"; }
+                        Label { text: @tr("Composer or artist"); font-size: 14px; font-weight: 600; color: Theme.muted; }
+                        TextField { in-dialog: true; text <=> root.metadata_composer_or_artist; placeholder: @tr("Composer or artist (optional)"); }
                     }
                     VerticalLayout {
                         spacing: 6px;
-                        Label { text: "Score number"; font-size: 14px; font-weight: 600; color: Theme.muted; }
-                        TextField { in-dialog: true; text <=> root.metadata_id; placeholder: "Score number (optional)"; }
+                        Label { text: @tr("Score number"); font-size: 14px; font-weight: 600; color: Theme.muted; }
+                        TextField { in-dialog: true; text <=> root.metadata_id; placeholder: @tr("Score number (optional)"); }
                     }
                     VerticalLayout {
                         spacing: 6px;
-                        Label { text: "Tags"; font-size: 14px; font-weight: 600; color: Theme.muted; }
-                        TextField { in-dialog: true; text <=> root.metadata_tags; placeholder: "Tags, separated by commas"; }
+                        Label { text: @tr("Tags"); font-size: 14px; font-weight: 600; color: Theme.muted; }
+                        TextField { in-dialog: true; text <=> root.metadata_tags; placeholder: @tr("Tags, separated by commas"); }
                     }
                     if root.metadata_error_text != "" : Text { text: root.metadata_error_text; color: Theme.error; wrap: word-wrap; font-size: 14px; }
                     Rectangle { background: transparent; vertical-stretch: 1; }
@@ -508,8 +508,8 @@ export component AppWindow inherits Window {
                 HorizontalLayout {
                     alignment: end;
                     spacing: 12px;
-                    PillButton { in-dialog: true; text: "Cancel"; clicked => { root.metadata_cancelled(); } }
-                    PillButton { in-dialog: true; text: "Save details"; primary: true; clicked => { root.metadata_save_requested(root.metadata_note_key, root.metadata_id, root.metadata_title, root.metadata_composer_or_artist, root.metadata_tags); } }
+                    PillButton { in-dialog: true; text: @tr("Cancel"); clicked => { root.metadata_cancelled(); } }
+                    PillButton { in-dialog: true; text: @tr("Save details"); primary: true; clicked => { root.metadata_save_requested(root.metadata_note_key, root.metadata_id, root.metadata_title, root.metadata_composer_or_artist, root.metadata_tags); } }
                 }
             }
         }

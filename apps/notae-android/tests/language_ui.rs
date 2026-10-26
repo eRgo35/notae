@@ -46,3 +46,33 @@ fn choosing_a_language_reports_its_settings_index() {
         assert_eq!(chosen.get(), index, "{label}");
     }
 }
+
+#[test]
+fn selecting_polish_translates_the_open_screen_in_place() {
+    let app = settings();
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Back to library")
+            .next()
+            .is_some()
+    );
+
+    slint::select_bundled_translation("pl").expect("Polish is bundled");
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Wróć do biblioteki")
+            .next()
+            .is_some(),
+        "labels re-translate without rebuilding the window"
+    );
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Polski")
+            .next()
+            .is_some()
+    );
+
+    slint::select_bundled_translation("").expect("English is the source language");
+    assert!(
+        ElementHandle::find_by_accessible_label(&app, "Back to library")
+            .next()
+            .is_some()
+    );
+}
