@@ -55,7 +55,7 @@ export component PagePreview inherits Rectangle {
 // accessible name and is a full 48 px target.
 component MoreActions inherits IconButton {
     in property <string> title;
-    label: "More actions for " + root.title;
+    label: @tr("More actions for {}", root.title);
     icon: @image-url("material-icons/more-vertical.svg");
 }
 
@@ -73,7 +73,7 @@ component ScoreCard inherits Rectangle {
     border-color: input.has-focus ? Theme.accent : Theme.divider;
     accessible-role: button;
     accessible-label: root.score.title;
-    accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + "Opens the score";
+    accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + @tr("Opens the score");
     accessible-action-default => { if root.interactive && !Theme.modal-open { root.open(); } }
     forward-focus: input;
     input := ActionInput {
@@ -161,7 +161,7 @@ export component ScoreRow inherits Rectangle {
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: root.score.title;
-    accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + "Opens the score";
+    accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + @tr("Opens the score");
     accessible-action-default => { if root.interactive && !Theme.modal-open { root.open(); } }
     forward-focus: input;
     input := ActionInput {
@@ -260,7 +260,7 @@ component SidePanel inherits VerticalLayout {
         vertical-stretch: 1;
         VerticalLayout {
             padding: 8px;
-            HorizontalLayout { padding-left: 14px; Text { text: "Composers"; color: Theme.muted; font-size: 13px; font-weight: 600; height: 36px; vertical-alignment: center; } }
+            HorizontalLayout { padding-left: 14px; Text { text: @tr("Composers"); color: Theme.muted; font-size: 13px; font-weight: 600; height: 36px; vertical-alignment: center; } }
             ListView {
                 for item in root.composers : NavRow {
                     label: item.label;
@@ -272,7 +272,7 @@ component SidePanel inherits VerticalLayout {
         }
     }
     if root.composers.length == 0 : Rectangle { vertical-stretch: 1; }
-    NavRow { label: "Settings"; kind: "settings"; clicked => { root.settings-clicked(); } }
+    NavRow { label: @tr("Settings"); kind: "settings"; clicked => { root.settings-clicked(); } }
 }
 
 export component OperationBanner inherits Card {
@@ -292,8 +292,8 @@ export component OperationBanner inherits Card {
             spacing: 12px;
             VerticalLayout { alignment: center; Glyph { kind: root.busy ? "scan" : root.failed ? "warning" : "check"; ink: root.failed ? Theme.error : Theme.muted; } }
             Text { text: root.text; color: root.failed ? Theme.error : Theme.foreground; font-size: 15px; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
-            if root.cancel-enabled : PillButton { text: "Cancel"; tonal: true; clicked => { root.cancel(); } }
-            if root.acknowledge-enabled : PillButton { text: "Dismiss"; tonal: true; clicked => { root.acknowledge(); } }
+            if root.cancel-enabled : PillButton { text: @tr("Cancel"); tonal: true; clicked => { root.cancel(); } }
+            if root.acknowledge-enabled : PillButton { text: @tr("Dismiss"); tonal: true; clicked => { root.acknowledge(); } }
         }
         // `fraction < 0` means the total is unknown: the bar is an empty track with a moving
         // segment (a moving segment cannot be read as a value; with motion off the track stays empty).
@@ -364,14 +364,14 @@ export component LibraryScreen inherits Rectangle {
     callback sidebar-toggle-clicked();
     callback view-toggle-clicked();
     pure function empty-title(key: string) -> string {
-        return key == "all" ? "A little space for your scores"
-            : key == "recent" ? "No recent scores"
-            : "No scores here";
+        return key == "all" ? @tr("A little space for your scores")
+            : key == "recent" ? @tr("No recent scores")
+            : @tr("No scores here");
     }
     pure function empty-detail(key: string) -> string {
-        return key == "all" ? "Scan your library folder to add the PDFs it contains."
-            : key == "recent" ? "Scores you open appear here."
-            : "No scores by this composer are in the library.";
+        return key == "all" ? @tr("Scan your library folder to add the PDFs it contains.")
+            : key == "recent" ? @tr("Scores you open appear here.")
+            : @tr("No scores by this composer are in the library.");
     }
     callback section-selected(string);
     callback settings-clicked();
@@ -435,7 +435,7 @@ export component LibraryScreen inherits Rectangle {
                 if root.expanded : VerticalLayout {
                     alignment: center;
                     IconButton {
-                        label: root.sidebar-visible ? "Hide sidebar" : "Show sidebar";
+                        label: root.sidebar-visible ? @tr("Hide sidebar") : @tr("Show sidebar");
                         icon: root.sidebar-visible ? @image-url("material-icons/panel-left-close.svg") : @image-url("material-icons/panel-left-open.svg");
                         clicked => { root.sidebar-toggle-clicked(); }
                     }
@@ -452,13 +452,13 @@ export component LibraryScreen inherits Rectangle {
                     alignment: center;
                     HorizontalLayout {
                         spacing: 4px;
-                        IconButton { label: "Search"; icon: @image-url("material-icons/search.svg"); clicked => { root.search-clicked(); } }
+                        IconButton { label: @tr("Search"); icon: @image-url("material-icons/search.svg"); clicked => { root.search-clicked(); } }
                         IconButton {
-                            label: root.list-view ? "Switch to grid view" : "Switch to list view";
+                            label: root.list-view ? @tr("Switch to grid view") : @tr("Switch to list view");
                             icon: root.list-view ? @image-url("material-icons/layout-grid.svg") : @image-url("material-icons/layout-list.svg");
                             clicked => { root.view-toggle-clicked(); }
                         }
-                        if !root.sidebar-visible : IconButton { label: "Settings"; icon: @image-url("material-icons/settings.svg"); clicked => { root.settings-clicked(); } }
+                        if !root.sidebar-visible : IconButton { label: @tr("Settings"); icon: @image-url("material-icons/settings.svg"); clicked => { root.settings-clicked(); } }
                         ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
                     }
                 }
@@ -570,7 +570,7 @@ export component LibraryScreen inherits Rectangle {
                             alignment: center;
                             padding-top: 8px;
                             PillButton {
-                                text: "Scan library";
+                                text: @tr("Scan library");
                                 icon: @image-url("material-icons/scan.svg");
                                 primary: true;
                                 enabled: root.rescan-enabled;
@@ -645,8 +645,8 @@ export component LibraryScreen inherits Rectangle {
             border-top-right-radius: 28px;
             init => { sheet-open-action.focus(); }
             accessible-role: form;
-            accessible-label: "Score actions dialog";
-            accessible-description: "Modal sheet. Press Back to close.";
+            accessible-label: @tr("Score actions dialog");
+            accessible-description: @tr("Modal sheet. Press Back to close.");
             TouchArea { accessible-role: none; }
             sheet-content := VerticalLayout {
                 padding: 8px;
@@ -677,17 +677,17 @@ export component LibraryScreen inherits Rectangle {
                 }
                 Rectangle { height: 1px; background: Theme.divider; }
                 sheet-open-action := SheetAction {
-                    label: "Open score";
+                    label: @tr("Open score");
                     icon: @image-url("material-icons/external-link.svg");
                     clicked => { root.menu-open = false; root.score-opened(root.menu-row.relative_path, root.menu-row.note_key); }
                 }
                 SheetAction {
-                    label: "Score details";
+                    label: @tr("Score details");
                     icon: @image-url("material-icons/info.svg");
                     clicked => { root.menu-open = false; root.score-selected(root.menu-row.note_key); }
                 }
                 SheetAction {
-                    label: "Edit details";
+                    label: @tr("Edit details");
                     icon: @image-url("material-icons/edit.svg");
                     clicked => { root.menu-open = false; root.score-edit-requested(root.menu-row.note_key); }
                 }

@@ -272,7 +272,7 @@ export component IconButton inherits Rectangle {
 // The one Scan entry point. Library, Search and Settings each place it as the right-most action
 // of their header so it never moves between screens.
 export component ScanButton inherits IconButton {
-    label: "Scan library";
+    label: @tr("Scan library");
     icon: @image-url("material-icons/scan.svg");
 }
 
@@ -381,7 +381,7 @@ export component SearchField inherits Rectangle {
     if root.text != "": IconButton {
         x: parent.width - 52px;
         y: (parent.height - self.height) / 2;
-        label: "Clear search";
+        label: @tr("Clear search");
         icon: @image-url("material-icons/close.svg");
         enabled: root.enabled;
         in-dialog: root.in-dialog;
@@ -493,7 +493,7 @@ export component NavRow inherits Rectangle {
     border-color: Theme.accent;
     accessible-role: button;
     accessible-label: root.label;
-    accessible-description: root.selected ? "Current section" : "";
+    accessible-description: root.selected ? @tr("Current section") : "";
     accessible-action-default => { if !Theme.modal-open { root.clicked(); } }
     forward-focus: input;
     HorizontalLayout {
@@ -544,7 +544,7 @@ export component Chip inherits Rectangle {
     border-width: 0px;
     accessible-role: button;
     accessible-label: root.label;
-    accessible-description: root.selected ? "Selected" : "";
+    accessible-description: root.selected ? @tr("Selected") : "";
     accessible-action-default => { if !Theme.modal-open { root.clicked(); } }
     forward-focus: input;
     Rectangle {

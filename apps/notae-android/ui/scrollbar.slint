@@ -72,7 +72,7 @@ export component Scrollbar inherits Rectangle {
         enabled: root.shown;
         mouse-cursor: default;
         accessible-role: slider;
-        accessible-label: "Scroll position";
+        accessible-label: @tr("Scroll position");
         accessible-enabled: root.shown;
         accessible-value: root.thumb-range <= 0px ? 0 : round(root.thumb-y / root.thumb-range * 100);
         accessible-value-minimum: 0;

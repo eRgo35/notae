@@ -64,6 +64,70 @@ fn polish_translations_are_complete_and_keep_placeholders() {
     }
 }
 
+/// Text that stays the same in every language.
+const UNTRANSLATED: &[&str] = &["Notae", "Ctrl K", "English", "Polski"];
+
+/// Properties whose value people read or hear.
+const TEXT_PROPERTIES: &[&str] = &[
+    "text:",
+    "label:",
+    "placeholder:",
+    "heading:",
+    "detail:",
+    "accessible-label:",
+    "accessible-description:",
+];
+
+#[test]
+fn ui_text_goes_through_tr() {
+    let ui = Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
+    let mut plain = BTreeSet::new();
+    for entry in fs::read_dir(ui).expect("ui directory is readable") {
+        let path = entry.expect("ui entry is readable").path();
+        if path
+            .extension()
+            .is_none_or(|extension| extension != "slint")
+        {
+            continue;
+        }
+        let text = fs::read_to_string(&path).expect("slint source is readable");
+        for (number, line) in text.lines().enumerate() {
+            for property in TEXT_PROPERTIES {
+                let mut rest = line;
+                while let Some(start) = rest.find(property) {
+                    rest = rest[start + property.len()..].trim_start();
+                    // A bare literal, or one in a conditional (`a ? "x" : "y"`) on the same line.
+                    let value = rest.split(';').next().unwrap_or_default();
+                    for literal in plain_literals(value) {
+                        if literal.chars().any(char::is_alphabetic)
+                            && !UNTRANSLATED.contains(&literal.as_str())
+                        {
+                            plain.insert(format!("{}:{}: {literal}", path.display(), number + 1));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(plain.is_empty(), "wrap these in @tr(): {plain:#?}");
+}
+
+/// String literals in `value` that are not the first argument of `@tr(` or compared with `==`/`!=`.
+fn plain_literals(value: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut rest = value;
+    while let Some(start) = rest.find('"') {
+        let before = rest[..start].trim_end();
+        let (literal, after) = slint_string(&rest[start..]);
+        let wrapped = before.ends_with("@tr(") || before.ends_with("==") || before.ends_with("!=");
+        if !wrapped {
+            found.push(literal);
+        }
+        rest = after;
+    }
+    found
+}
+
 fn source_messages() -> BTreeSet<Message> {
     let ui = Path::new(env!("CARGO_MANIFEST_DIR")).join("ui");
     let mut messages = BTreeSet::new();
