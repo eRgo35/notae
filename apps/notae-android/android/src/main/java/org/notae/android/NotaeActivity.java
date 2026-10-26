@@ -1,8 +1,12 @@
 package org.notae.android;
 
+import android.app.LocaleConfig;
+import android.app.LocaleManager;
 import android.app.NativeActivity;
 import android.content.Intent;
 import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.os.LocaleList;
 import android.content.ActivityNotFoundException;
 import android.speech.RecognizerIntent;
 import android.graphics.Bitmap;
@@ -31,6 +35,65 @@ public final class NotaeActivity extends NativeActivity {
     private native void nativeOnKeyboardConfigurationChanged(boolean present);
     private native void nativeOnAnimatorDurationScaleChanged(float scale);
     private native void nativeOnApplicationActiveChanged(boolean active);
+    private native void nativeOnLanguageConfigurationChanged();
+
+    // The translations bundled with the app, in Android's tag form.
+    private static final String NOTAE_LANGUAGES = "en,pl";
+    private String lastLanguageTags;
+
+    // Android 14+ lists an app under per-app languages only once it declares its translations.
+    public void declareNotaeLanguages() {
+        if (Build.VERSION.SDK_INT < 34) return;
+        LocaleManager manager = getSystemService(LocaleManager.class);
+        if (manager != null) {
+            manager.setOverrideLocaleConfig(
+                new LocaleConfig(LocaleList.forLanguageTags(NOTAE_LANGUAGES)));
+        }
+    }
+
+    // Notae's per-app language: "" to follow the system, null where Android has no such setting.
+    public String readNotaeLanguageChoice() {
+        if (Build.VERSION.SDK_INT < 33) return null;
+        LocaleManager manager = getSystemService(LocaleManager.class);
+        if (manager == null) return null;
+        LocaleList locales = manager.getApplicationLocales();
+        return locales.isEmpty() ? "" : locales.get(0).toLanguageTag();
+    }
+
+    // Stores the per-app language; "" follows the system. False where Android has no such setting.
+    public boolean writeNotaeLanguageChoice(String tag) {
+        if (Build.VERSION.SDK_INT < 33) return false;
+        LocaleManager manager = getSystemService(LocaleManager.class);
+        if (manager == null) return false;
+        manager.setApplicationLocales(tag.isEmpty()
+            ? LocaleList.getEmptyLocaleList()
+            : LocaleList.forLanguageTags(tag));
+        return true;
+    }
+
+    // The device language, unaffected by Notae's own per-app language.
+    @SuppressWarnings("deprecation") // API 23 has only Configuration.locale.
+    public String readSystemLanguageTag() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            LocaleManager manager = getSystemService(LocaleManager.class);
+            if (manager != null) {
+                LocaleList locales = manager.getSystemLocales();
+                return locales.isEmpty() ? "" : locales.get(0).toLanguageTag();
+            }
+        }
+        Configuration system = Resources.getSystem().getConfiguration();
+        if (Build.VERSION.SDK_INT >= 24) {
+            LocaleList locales = system.getLocales();
+            return locales.isEmpty() ? "" : locales.get(0).toLanguageTag();
+        }
+        return system.locale == null ? "" : system.locale.toLanguageTag();
+    }
+
+    @SuppressWarnings("deprecation") // API 23 has only Configuration.locale.
+    private static String languageTags(Configuration configuration) {
+        if (Build.VERSION.SDK_INT >= 24) return configuration.getLocales().toLanguageTags();
+        return configuration.locale == null ? "" : configuration.locale.toLanguageTag();
+    }
 
     public boolean hasVoiceRecognizer() {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -108,6 +171,7 @@ public final class NotaeActivity extends NativeActivity {
             getWindow().getDecorView().setSystemUiVisibility(flags);
         }
         nativeOnKeyboardConfigurationChanged(hasHardwareKeyboard());
+        lastLanguageTags = languageTags(getResources().getConfiguration());
         // Fail open: the accessibility bridge is optional and must never stop the app starting.
         try {
             accessibility = NotaeAccessibility.install(this);
@@ -139,6 +203,12 @@ public final class NotaeActivity extends NativeActivity {
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
         nativeOnKeyboardConfigurationChanged(hasHardwareKeyboard());
+        // Rotation and keyboard changes arrive here too; only a language change re-translates.
+        String tags = languageTags(newConfig);
+        if (!tags.equals(lastLanguageTags)) {
+            lastLanguageTags = tags;
+            nativeOnLanguageConfigurationChanged();
+        }
     }
 
     @Override

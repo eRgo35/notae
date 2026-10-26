@@ -1,3 +1,4 @@
+use notae_android::language::LanguageChoice;
 use notae_android::ui::UiModel;
 use notae_android::ui_prefs::{LibraryView, UiPrefs};
 
@@ -122,11 +123,13 @@ fn model_persists_user_changes_and_a_restart_restores_them() {
 
     model.set_library_view(LibraryView::List).expect("saved");
     model.set_sidebar_collapsed(true, false).expect("saved");
+    model.set_language(LanguageChoice::Polish).expect("saved");
 
     let mut restarted = UiModel::new();
     restarted.set_ui_prefs_path(path.clone());
     let prefs = restarted.ui_prefs();
     assert_eq!(prefs.library_view, LibraryView::List);
+    assert_eq!(prefs.language, LanguageChoice::Polish, "language restored");
     assert!(
         !prefs.sidebar_collapsed_portrait,
         "portrait choice restored"
