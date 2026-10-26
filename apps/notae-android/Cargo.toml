@@ -104,7 +104,8 @@ icon = "@mipmap/ic_launcher"
 
 [[package.metadata.android.application.activity]]
 name = ".NotaeActivity"
-config_changes = "orientation|keyboard|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
+# `locale|layoutDirection`: a language change re-translates in place instead of restarting.
+config_changes = "orientation|keyboard|keyboardHidden|screenSize|screenLayout|smallestScreenSize|locale|layoutDirection"
 exported = true
 
 [[package.metadata.android.application.activity.meta_data]]

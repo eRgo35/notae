@@ -151,6 +151,43 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
     window.set_voice_search_available(voice_available);
     sync_window(&window, &model.borrow());
 
+    // Language: Android's per-app setting when it has one, Notae's preferences otherwise.
+    // Translations can only be selected once the window exists.
+    crate::android::language::declare_languages(&app);
+    {
+        let app = app.clone();
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        let apply = move || {
+            let choice = crate::android::language::read_choice(&app)
+                .unwrap_or(model.borrow().ui_prefs().language);
+            crate::android::language::select(&app, choice);
+            if let Some(window) = window_weak.upgrade() {
+                window.set_language_choice(choice.index());
+            }
+        };
+        apply();
+        crate::android::language::on_change(apply);
+    }
+    {
+        let app = app.clone();
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        window.on_language_chosen(move |index| {
+            let choice = crate::language::LanguageChoice::from_index(index);
+            if !crate::android::language::write_choice(&app, choice)
+                && let Err(error) = model.borrow_mut().set_language(choice)
+            {
+                eprintln!("notae: cannot save UI preferences: {error}");
+            }
+            // Android also reports the change; selecting now keeps the switch instant.
+            crate::android::language::select(&app, choice);
+            if let Some(window) = window_weak.upgrade() {
+                window.set_language_choice(choice.index());
+            }
+        });
+    }
+
     // The "Select folder" / "Reauthorize folder" button on the setup
     // and recovery screens fires the same callback. The handler reads
     // the storage state to decide which action to take — on setup it

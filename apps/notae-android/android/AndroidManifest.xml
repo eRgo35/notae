@@ -33,7 +33,7 @@
                  android:icon="@mipmap/ic_launcher">
         <activity android:name=".NotaeActivity"
                   android:exported="true"
-                  android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|smallestScreenSize">
+                  android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|smallestScreenSize|locale|layoutDirection">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

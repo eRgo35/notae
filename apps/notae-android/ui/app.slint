@@ -123,6 +123,8 @@ export component AppWindow inherits Window {
     in-out property <bool> sidebar_collapsed_landscape: false;
     callback settings_clicked();
     callback settings_closed();
+    callback language_chosen(int);
+    in property <int> language_choice: 0;
     callback setup_chosen();
     callback rescan_clicked();
     callback cancel_rescan_clicked();
@@ -402,6 +404,8 @@ export component AppWindow inherits Window {
                 acknowledge => { root.acknowledge_clicked(); }
                 change-library => { root.setup_chosen(); }
                 back => { root.settings_closed(); }
+                language-choice: root.language_choice;
+                language-chosen(choice) => { root.language_chosen(choice); }
             }
             }
         }

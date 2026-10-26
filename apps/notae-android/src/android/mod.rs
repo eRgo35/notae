@@ -11,6 +11,7 @@
 //! `#![forbid(unsafe_code)]`.
 
 pub mod accessibility;
+pub mod language;
 pub mod motion;
 pub mod pdf_intent;
 pub mod pdf_pages;
