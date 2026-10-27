@@ -73,7 +73,9 @@ fn ui_model_records_opened_scores_and_filters_recent_section() {
     model.set_recent_path(dir.path().join("recent.txt"));
     model.set_search_rows(vec![row('a', "One"), row('b', "Two")]);
     model.record_opened(&key('b')).expect("record");
-    model.select_section(LibrarySection::Recent);
+    model
+        .select_section(LibrarySection::Recent)
+        .expect("no preferences file to save");
 
     let titles: Vec<String> = model
         .visible_rows()

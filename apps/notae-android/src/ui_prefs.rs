@@ -1,4 +1,5 @@
-//! Private UI preferences: library layout, per-orientation sidebar visibility and language.
+//! Private UI preferences: library layout, per-orientation sidebar visibility, language and the
+//! library section on display.
 //!
 //! Stored as `key=value` lines next to the recent list, using the same
 //! temporary-file-and-rename write as [`crate::recent`].
@@ -50,6 +51,9 @@ pub struct UiPrefs {
     pub sidebar_collapsed_landscape: bool,
     /// Used only where Android has no per-app language setting (before Android 13).
     pub language: LanguageChoice,
+    /// [`crate::ui::browse::LibrarySection::key`] of the section on display, so Notae comes back
+    /// to the same set after Android closes it while the PDF app is in front.
+    pub section: String,
 }
 
 impl Default for UiPrefs {
@@ -59,6 +63,7 @@ impl Default for UiPrefs {
             sidebar_collapsed_portrait: true,
             sidebar_collapsed_landscape: false,
             language: LanguageChoice::System,
+            section: "all".to_owned(),
         }
     }
 }
@@ -96,6 +101,7 @@ impl UiPrefs {
                     }
                 }
                 "language" => prefs.language = LanguageChoice::from_tag(value),
+                "section" if !value.is_empty() => value.clone_into(&mut prefs.section),
                 _ => {}
             }
         }
@@ -106,11 +112,12 @@ impl UiPrefs {
     #[must_use]
     pub fn to_text(&self) -> String {
         format!(
-            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nlanguage={}\n",
+            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nlanguage={}\nsection={}\n",
             self.library_view.key(),
             self.sidebar_collapsed_portrait,
             self.sidebar_collapsed_landscape,
             self.language.tag(),
+            self.section,
         )
     }
 

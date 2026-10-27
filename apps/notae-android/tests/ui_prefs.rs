@@ -1,5 +1,8 @@
 use notae_android::language::LanguageChoice;
+use notae_android::sets::{SetFields, SetStore};
 use notae_android::ui::UiModel;
+use notae_android::ui::browse::LibrarySection;
+use notae_android::ui::search::SearchRow;
 use notae_android::ui_prefs::{LibraryView, UiPrefs};
 
 #[test]
@@ -168,6 +171,91 @@ fn model_keeps_the_choice_when_saving_fails() {
     assert_eq!(model.ui_prefs().library_view, LibraryView::List);
     assert!(model.set_sidebar_collapsed(true, false).is_err());
     assert!(!model.ui_prefs().sidebar_collapsed_portrait);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn section_round_trips() {
+    assert_eq!(UiPrefs::default().section, "all");
+    let prefs = UiPrefs::from_text("section=set:0123456789abcdef\n");
+    assert_eq!(prefs.section, "set:0123456789abcdef");
+    assert_eq!(UiPrefs::from_text(&prefs.to_text()), prefs);
+
+    // Through the model: the section on display survives a restart.
+    let dir = tempfile_dir("section");
+    let path = dir.join("ui-prefs.txt");
+    let mut model = UiModel::new();
+    model.set_ui_prefs_path(path.clone());
+    model.select_section(LibrarySection::Sets).expect("saved");
+    let mut restarted = UiModel::new();
+    restarted.set_ui_prefs_path(path);
+    assert_eq!(restarted.section(), &LibrarySection::Sets);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn missing_set_falls_back_to_sets() {
+    let dir = tempfile_dir("missing-set");
+    let sets_path = dir.join("sets.json");
+    let prefs_path = dir.join("ui-prefs.txt");
+    let mut store = SetStore::default();
+    let kept = store.create(
+        SetFields {
+            name: "Wszystkich Świętych".to_owned(),
+            date: None,
+            notes: None,
+        },
+        10,
+    );
+    store.save(&sets_path).expect("sets are saved");
+
+    // The open set still exists: Notae comes back to it.
+    std::fs::write(&prefs_path, format!("section=set:{kept}\n")).expect("prefs are written");
+    let mut model = UiModel::new();
+    model.set_sets_path(sets_path.clone());
+    model.set_ui_prefs_path(prefs_path.clone());
+    assert_eq!(model.section(), &LibrarySection::Set(kept));
+
+    // The set was deleted while Notae was closed: the list of sets, not a blank screen.
+    std::fs::write(&prefs_path, "section=set:ffffffffffffffff\n").expect("prefs are written");
+    let mut model = UiModel::new();
+    model.set_sets_path(sets_path);
+    model.set_ui_prefs_path(prefs_path);
+    assert_eq!(model.section(), &LibrarySection::Sets);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn row(composer: &str) -> SearchRow {
+    SearchRow {
+        id: None,
+        title: "Pavane".to_owned(),
+        composer_or_artist: Some(composer.to_owned()),
+        tags: Vec::new(),
+        status: "Ready".to_owned(),
+        relative_path: "Pavane.pdf".to_owned(),
+        note_key: "d".repeat(64),
+        text_pending: false,
+        title_origin: "From filename".to_owned(),
+        composer_origin: String::new(),
+        text_snippet: None,
+    }
+}
+
+#[test]
+fn persisted_composer_waits_for_rows_before_falling_back_to_all() {
+    let dir = tempfile_dir("composer");
+    let path = dir.join("ui-prefs.txt");
+    std::fs::write(&path, "section=composer:Gabriel Fauré\n").expect("prefs are written");
+    let mut model = UiModel::new();
+    model.set_ui_prefs_path(path);
+    let faure = LibrarySection::Composer("Gabriel Fauré".to_owned());
+    assert_eq!(model.section(), &faure, "rows load later; keep the choice");
+    model.set_search_rows(Vec::new());
+    assert_eq!(model.section(), &faure, "an empty library proves nothing");
+    model.set_search_rows(vec![row("gabriel fauré")]);
+    assert_eq!(model.section(), &faure, "matched case-insensitively");
+    model.set_search_rows(vec![row("Claude Debussy")]);
+    assert_eq!(model.section(), &LibrarySection::All);
     let _ = std::fs::remove_dir_all(dir);
 }
 

@@ -1,7 +1,12 @@
+use std::sync::Mutex;
+
 use notae_android::favorites::PieceRef;
+use notae_android::language::set_active_bundle;
+use notae_android::sets::{SetFields, SetStore};
 use notae_android::ui::UiModel;
 use notae_android::ui::browse::{
-    ComposerCount, LibrarySection, SectionContext, composers, neighbours, section_rows, sections,
+    ComposerCount, LibrarySection, SectionContext, composers, format_edited, format_set_date,
+    neighbours, section_rows, sections,
 };
 use notae_android::ui::search::SearchRow;
 
@@ -49,6 +54,8 @@ fn section_keys_round_trip() {
         LibrarySection::All,
         LibrarySection::Recent,
         LibrarySection::Favorites,
+        LibrarySection::Sets,
+        LibrarySection::Set("0123456789abcdef".to_owned()),
         LibrarySection::Composer("Gabriel Fauré".to_owned()),
     ] {
         assert_eq!(LibrarySection::from_key(&section.key()), section);
@@ -141,6 +148,7 @@ fn fixed_sections_report_counts() {
             ("all".to_owned(), 5),
             ("recent".to_owned(), 1),
             ("favorites".to_owned(), 0),
+            ("sets".to_owned(), 0),
         ]
     );
 }
@@ -193,6 +201,7 @@ fn sections_include_favorites_with_count() {
             ("all".to_owned(), 5, "library"),
             ("recent".to_owned(), 0, "schedule"),
             ("favorites".to_owned(), 1, "star"),
+            ("sets".to_owned(), 0, "folder"),
         ]
     );
 }
@@ -253,7 +262,9 @@ fn model_with_library() -> UiModel {
 #[test]
 fn preview_neighbours_follow_the_current_section_not_the_whole_library() {
     let mut model = model_with_library();
-    model.select_section(LibrarySection::Composer("Gabriel Fauré".to_owned()));
+    model
+        .select_section(LibrarySection::Composer("Gabriel Fauré".to_owned()))
+        .expect("no preferences file to save");
     let pavane = "d".repeat(64);
     model.select_note(Some(pavane.clone()));
     let nav = model
@@ -268,7 +279,9 @@ fn preview_neighbours_follow_the_current_section_not_the_whole_library() {
 fn preview_neighbours_are_absent_when_the_selection_is_outside_the_section() {
     // For example a Search result opened while another section is current.
     let mut model = model_with_library();
-    model.select_section(LibrarySection::Composer("traditional".to_owned()));
+    model
+        .select_section(LibrarySection::Composer("traditional".to_owned()))
+        .expect("no preferences file to save");
     model.select_note(Some("a".repeat(64)));
     assert!(
         model.selected_row().is_some(),
@@ -298,4 +311,97 @@ fn empty_library_has_no_preview() {
     model.set_search_rows(Vec::new());
     assert!(model.selected_row().is_none());
     assert!(model.preview_neighbours().is_none());
+}
+
+/// The active language is process-wide; tests that switch it take turns.
+static LANGUAGE: Mutex<()> = Mutex::new(());
+
+fn set_fields(name: &str) -> SetFields {
+    SetFields {
+        name: name.to_owned(),
+        date: None,
+        notes: None,
+    }
+}
+
+#[test]
+fn sets_section_counts_sets() {
+    let mut store = SetStore::default();
+    store.create(set_fields("Wszystkich Świętych"), 10);
+    store.create(set_fields("Dzień Zaduszny"), 20);
+    let context = SectionContext {
+        sets: &store,
+        ..SectionContext::default()
+    };
+    let summary: Vec<(String, usize, &str)> = sections(&library(), &context)
+        .into_iter()
+        .map(|view| (view.key, view.count, view.kind))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            ("all".to_owned(), 5, "library"),
+            ("recent".to_owned(), 0, "schedule"),
+            ("favorites".to_owned(), 0, "star"),
+            ("sets".to_owned(), 2, "folder"),
+        ]
+    );
+    // The Sets list shows folder cards, not score rows.
+    assert!(section_rows(&library(), &LibrarySection::Sets, &context).is_empty());
+}
+
+#[test]
+fn set_key_round_trips() {
+    assert_eq!(LibrarySection::Sets.key(), "sets");
+    assert_eq!(LibrarySection::from_key("sets"), LibrarySection::Sets);
+    let set = LibrarySection::Set("0123456789abcdef".to_owned());
+    assert_eq!(set.key(), "set:0123456789abcdef");
+    assert_eq!(LibrarySection::from_key("set:0123456789abcdef"), set);
+    assert_eq!(LibrarySection::from_key("set:"), LibrarySection::All);
+}
+
+const NOV_1_2026: u64 = 1_793_491_200;
+const DAY: u64 = 86_400;
+
+#[test]
+fn format_edited_buckets() {
+    let _language = LANGUAGE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let now = NOV_1_2026 + 30 * DAY + 12 * 3600;
+    let today = now - 3600;
+    let yesterday = now - DAY;
+    let three_days = now - 3 * DAY;
+    let long_ago = NOV_1_2026 + 600;
+
+    set_active_bundle("");
+    assert_eq!(format_edited(today, now), "Edited today");
+    assert_eq!(format_edited(yesterday, now), "Edited yesterday");
+    assert_eq!(format_edited(three_days, now), "Edited 3 days ago");
+    assert_eq!(format_edited(long_ago, now), "Edited 1 Nov 2026");
+    // A clock that went backwards is not "in the future".
+    assert_eq!(format_edited(now + DAY, now), "Edited today");
+
+    set_active_bundle("pl");
+    assert_eq!(format_edited(today, now), "Edytowano dziś");
+    assert_eq!(format_edited(yesterday, now), "Edytowano wczoraj");
+    assert_eq!(format_edited(three_days, now), "Edytowano 3 dni temu");
+    assert_eq!(format_edited(long_ago, now), "Edytowano 1 lis 2026");
+    set_active_bundle("");
+}
+
+#[test]
+fn format_set_date_en_and_pl() {
+    let _language = LANGUAGE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    set_active_bundle("");
+    assert_eq!(format_set_date("2026-11-01"), "1 Nov 2026");
+    assert_eq!(format_set_date("2027-05-24"), "24 May 2027");
+    set_active_bundle("pl");
+    assert_eq!(format_set_date("2026-11-01"), "1 lis 2026");
+    assert_eq!(format_set_date("2027-05-24"), "24 maj 2027");
+    set_active_bundle("");
+    // Anything that is not a stored ISO date is shown as written.
+    assert_eq!(format_set_date("soon"), "soon");
 }

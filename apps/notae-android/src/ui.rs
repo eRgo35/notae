@@ -23,7 +23,7 @@ use crate::operations::events::{
     DesktopImportCheck, ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
 };
 use crate::recent::RecentScores;
-use crate::sets::SetStore;
+use crate::sets::{SetFieldError, SetFields, SetStore};
 use crate::state::{
     AppController, AppState, EventError, OperationState, RescanPhase, Transition, UiEvent,
 };
@@ -81,6 +81,9 @@ pub struct UiModel {
     favorites: Favorites,
     favorites_path: Option<PathBuf>,
     sets: SetStore,
+    sets_path: Option<PathBuf>,
+    /// The set whose deletion waits for the user's confirmation.
+    pending_delete_set: Option<String>,
     ui_prefs: UiPrefs,
     ui_prefs_path: Option<PathBuf>,
     selected_note: Option<String>,
@@ -114,6 +117,8 @@ impl UiModel {
             favorites: Favorites::default(),
             favorites_path: None,
             sets: SetStore::empty(),
+            sets_path: None,
+            pending_delete_set: None,
             ui_prefs: UiPrefs::default(),
             ui_prefs_path: None,
             selected_note: None,
@@ -219,6 +224,7 @@ impl UiModel {
     pub fn set_search_rows(&mut self, rows: Vec<SearchRow>) {
         self.search_rows = rows;
         self.forget_missing_selection();
+        self.forget_missing_composer();
     }
 
     /// Returns the rows most recently projected by the operation worker.
@@ -276,6 +282,90 @@ impl UiModel {
         self.favorites.items()
     }
 
+    /// Loads the singing sets from, and later saves them to, `path`. Call before
+    /// [`UiModel::set_ui_prefs_path`], which checks a saved open set against them.
+    pub fn set_sets_path(&mut self, path: PathBuf) {
+        self.sets = SetStore::load(&path);
+        self.sets_path = Some(path);
+    }
+
+    /// The singing sets.
+    #[must_use]
+    pub fn sets(&self) -> &SetStore {
+        &self.sets
+    }
+
+    /// Validates `fields`, adds the set and opens it.
+    ///
+    /// # Errors
+    ///
+    /// The validation error; nothing is created. A failed save is logged and the set stays in
+    /// memory.
+    pub fn create_set(&mut self, fields: SetFields) -> Result<String, SetFieldError> {
+        let fields = fields.validate()?;
+        let id = self.sets.create(fields, unix_now());
+        self.save_sets();
+        log_prefs_error(self.select_section(LibrarySection::Set(id.clone())));
+        Ok(id)
+    }
+
+    /// Validates `fields` and replaces the set's name, date and notes.
+    ///
+    /// # Errors
+    ///
+    /// The validation error; the set is unchanged. An unknown id changes nothing.
+    pub fn update_set(&mut self, id: &str, fields: SetFields) -> Result<(), SetFieldError> {
+        let fields = fields.validate()?;
+        if self.sets.update(id, fields, unix_now()) {
+            self.save_sets();
+        }
+        Ok(())
+    }
+
+    /// Deletes the set; when it was open, the list of sets is shown instead.
+    pub fn delete_set(&mut self, id: &str) {
+        if !self.sets.delete(id) {
+            return;
+        }
+        self.save_sets();
+        if self.section == LibrarySection::Set(id.to_owned()) {
+            log_prefs_error(self.select_section(LibrarySection::Sets));
+        }
+    }
+
+    /// Asks before deleting the set: [`UiModel::pending_delete_set_name`] names it until the
+    /// user confirms or cancels.
+    pub fn request_delete_set(&mut self, id: &str) {
+        self.pending_delete_set = self.sets.get(id).map(|set| set.id.clone());
+    }
+
+    /// The name of the set waiting for delete confirmation.
+    #[must_use]
+    pub fn pending_delete_set_name(&self) -> Option<&str> {
+        let id = self.pending_delete_set.as_deref()?;
+        self.sets.get(id).map(|set| set.name.as_str())
+    }
+
+    /// Deletes the set the user was asked about.
+    pub fn confirm_delete_set(&mut self) {
+        if let Some(id) = self.pending_delete_set.take() {
+            self.delete_set(&id);
+        }
+    }
+
+    /// Keeps the set the user was asked about.
+    pub fn cancel_delete_set(&mut self) {
+        self.pending_delete_set = None;
+    }
+
+    fn save_sets(&self) {
+        if let Some(path) = &self.sets_path
+            && let Err(error) = self.sets.save(path)
+        {
+            eprintln!("notae: cannot save sets: {error}");
+        }
+    }
+
     /// The lists the sections draw on.
     #[must_use]
     pub fn section_context(&self) -> SectionContext<'_> {
@@ -286,10 +376,16 @@ impl UiModel {
         }
     }
 
-    /// Loads the UI preferences from, and later saves them to, `path`.
+    /// Loads the UI preferences from, and later saves them to, `path`, and reopens the saved
+    /// section. A saved set that no longer exists opens the list of sets.
     pub fn set_ui_prefs_path(&mut self, path: PathBuf) {
         self.ui_prefs = UiPrefs::load(&path);
         self.ui_prefs_path = Some(path);
+        self.section = match LibrarySection::from_key(&self.ui_prefs.section) {
+            LibrarySection::Set(id) if self.sets.get(&id).is_none() => LibrarySection::Sets,
+            section => section,
+        };
+        self.forget_missing_composer();
     }
 
     /// The current UI preferences.
@@ -392,10 +488,43 @@ impl UiModel {
         &self.section
     }
 
-    /// Switches section and closes the details pane.
-    pub fn select_section(&mut self, section: LibrarySection) {
+    /// The large title of the section on display; an open set's title is its name.
+    #[must_use]
+    pub fn section_title(&self) -> String {
+        self.section.title(&self.sets)
+    }
+
+    /// Switches section, closes the details pane and remembers the section.
+    ///
+    /// # Errors
+    ///
+    /// Returns the I/O error when the preferences cannot be saved; the section is still shown.
+    pub fn select_section(&mut self, section: LibrarySection) -> std::io::Result<()> {
         self.section = section;
         self.selected_note = None;
+        let key = self.section.key();
+        if self.ui_prefs.section == key {
+            return Ok(());
+        }
+        self.ui_prefs.section = key;
+        self.save_ui_prefs()
+    }
+
+    /// Shows All instead of a composer none of the loaded rows has. While no rows are loaded yet
+    /// the composer is kept, since a saved choice is restored before the library arrives.
+    fn forget_missing_composer(&mut self) {
+        if let LibrarySection::Composer(name) = &self.section
+            && !self.search_rows.is_empty()
+        {
+            let name = name.to_lowercase();
+            if !self.search_rows.iter().any(|row| {
+                row.composer_or_artist
+                    .as_deref()
+                    .is_some_and(|composer| composer.to_lowercase() == name)
+            }) {
+                self.section = LibrarySection::All;
+            }
+        }
     }
 
     /// Rows for the current screen: search hits on the Search screen, the section otherwise.
@@ -565,6 +694,7 @@ impl UiModel {
             }
         }
         self.forget_missing_selection();
+        self.forget_missing_composer();
         Ok(())
     }
 
@@ -634,6 +764,20 @@ impl UiModel {
     pub fn start_rescan(&mut self) -> Result<Transition, EventError> {
         self.dispatch(UiEvent::RequestRescan)
     }
+}
+
+fn log_prefs_error(result: std::io::Result<()>) {
+    if let Err(error) = result {
+        eprintln!("notae: cannot save UI preferences: {error}");
+    }
+}
+
+/// The current time in Unix seconds; 0 if the clock is before 1970.
+#[must_use]
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
 }
 
 impl Default for UiModel {

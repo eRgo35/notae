@@ -2,6 +2,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Motion, ViewPresence, Glyph, IconButton, ScanButton, PillButton, Card, NavRow, Chip, ActionInput } from "components.slint";
 import { Scrollbar } from "scrollbar.slint";
+import { SetCard, SetsPane } from "sets.slint";
 
 export struct LibraryRow {
     id: string,
@@ -269,7 +270,7 @@ component SidePanel inherits VerticalLayout {
                 label: item.label;
                 kind: item.kind;
                 count: item.count;
-                selected: item.key == root.selected-key;
+                selected: item.key == root.selected-key || (item.key == "sets" && root.selected-key.starts-with("set:"));
                 clicked => { root.section-selected(item.key); }
             }
         }
@@ -361,6 +362,7 @@ export component LibraryScreen inherits Rectangle {
     in property <string> title;
     in property <string> subtitle;
     in property <[LibraryRow]> rows;
+    in property <[SetCard]> set-cards;
     in property <string> pdf-error;
     in property <string> progress-text;
     in property <bool> busy;
@@ -372,10 +374,20 @@ export component LibraryScreen inherits Rectangle {
     // The score actions sheet. The owner binds `menu-open` so Back/Escape can dismiss it.
     in-out property <bool> menu-open: false;
     private property <LibraryRow> menu-row;
+    // The sheet shows a set's actions instead of a score's.
+    private property <bool> menu-is-set: false;
+    private property <SetCard> menu-set;
     function show-menu(row: LibraryRow) {
         root.menu-row = row;
+        root.menu-is-set = false;
         root.menu-open = true;
     }
+    function show-set-menu(card: SetCard) {
+        root.menu-set = card;
+        root.menu-is-set = true;
+        root.menu-open = true;
+    }
+    private property <bool> sets-section: root.selected-section == "sets";
     init => { root.menu-open = false; }
     actions-presence := ViewPresence { active: root.menu-open; }
     callback rescan-clicked();
@@ -385,12 +397,16 @@ export component LibraryScreen inherits Rectangle {
         return key == "all" ? @tr("A little space for your scores")
             : key == "recent" ? @tr("No recent scores")
             : key == "favorites" ? @tr("No favorites yet")
+            : key == "sets" ? @tr("No sets yet")
+            : key.starts-with("set:") ? @tr("This set is empty")
             : @tr("No scores here");
     }
     pure function empty-detail(key: string) -> string {
         return key == "all" ? @tr("Scan your library folder to add the PDFs it contains.")
             : key == "recent" ? @tr("Scores you open appear here.")
             : key == "favorites" ? @tr("Star a score to keep it here.")
+            : key == "sets" ? @tr("Make a set for each Mass or service, then add its pieces.")
+            : key.starts-with("set:") ? @tr("Pieces you add to this set appear here.")
             : @tr("No scores by this composer are in the library.");
     }
     callback section-selected(string);
@@ -402,6 +418,10 @@ export component LibraryScreen inherits Rectangle {
     callback score-opened(string, string);
     callback score-edit-requested(string);
     callback favorite-toggled(string);
+    callback new-set-requested();
+    callback set-opened(string);
+    callback edit-set-requested(string);
+    callback delete-set-requested(string);
     // Phones (a compact window width, or a landscape phone's short height) get two-column
     // outlined cards; wider and taller windows keep the tablet grid exactly.
     private property <bool> compact-grid: root.available-width < 600px || root.height < 480px;
@@ -479,6 +499,12 @@ export component LibraryScreen inherits Rectangle {
                             icon: root.list-view ? @image-url("material-icons/layout-grid.svg") : @image-url("material-icons/layout-list.svg");
                             clicked => { root.view-toggle-clicked(); }
                         }
+                        if root.sets-section : PillButton {
+                            text: @tr("New set");
+                            icon: @image-url("material-icons/add.svg");
+                            primary: true;
+                            clicked => { root.new-set-requested(); }
+                        }
                         if !root.sidebar-visible : IconButton { label: @tr("Settings"); icon: @image-url("material-icons/settings.svg"); clicked => { root.settings-clicked(); } }
                         ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
                     }
@@ -495,7 +521,7 @@ export component LibraryScreen inherits Rectangle {
                     spacing: 8px;
                     for item in root.sections : Chip {
                         label: item.label;
-                        selected: item.key == root.selected-section;
+                        selected: item.key == root.selected-section || (item.key == "sets" && root.selected-section.starts-with("set:"));
                         clicked => { root.section-selected(item.key); }
                     }
                     for item in root.composers : Chip {
@@ -519,7 +545,16 @@ export component LibraryScreen inherits Rectangle {
             if root.pdf-error != "" : Text { text: root.pdf-error; color: Theme.error; font-size: 15px; wrap: word-wrap; }
             Rectangle {
                 vertical-stretch: 1;
-                if root.rows.length > 0 && !root.list-view : Card {
+                if root.sets-section && root.set-cards.length > 0 : SetsPane {
+                    width: parent.width;
+                    height: parent.height;
+                    cards: root.set-cards;
+                    list-view: root.list-view;
+                    items-enabled: !root.menu-open;
+                    open(id) => { root.set-opened(id); }
+                    more(card) => { root.show-set-menu(card); }
+                }
+                if !root.sets-section && root.rows.length > 0 && !root.list-view : Card {
                     width: parent.width;
                     height: parent.height;
                     grid := ScoreGrid {
@@ -544,7 +579,7 @@ export component LibraryScreen inherits Rectangle {
                         scrolled(y) => { grid.content-y = y; }
                     }
                 }
-                if root.rows.length > 0 && root.list-view : Card {
+                if !root.sets-section && root.rows.length > 0 && root.list-view : Card {
                     width: parent.width;
                     height: parent.height;
                     list := ListView {
@@ -571,7 +606,7 @@ export component LibraryScreen inherits Rectangle {
                         scrolled(y) => { list.content-y = y; }
                     }
                 }
-                if root.rows.length == 0 : Card {
+                if root.sets-section ? root.set-cards.length == 0 : root.rows.length == 0 : Card {
                     width: parent.width;
                     height: parent.height;
                     VerticalLayout {
@@ -666,7 +701,7 @@ export component LibraryScreen inherits Rectangle {
             border-top-right-radius: 28px;
             init => { sheet-open-action.focus(); }
             accessible-role: form;
-            accessible-label: @tr("Score actions dialog");
+            accessible-label: root.menu-is-set ? @tr("Set actions dialog") : @tr("Score actions dialog");
             accessible-description: @tr("Modal sheet. Press Back to close.");
             TouchArea { accessible-role: none; }
             sheet-content := VerticalLayout {
@@ -682,14 +717,25 @@ export component LibraryScreen inherits Rectangle {
                     padding-right: 16px;
                     padding-bottom: 12px;
                     spacing: 16px;
-                    VerticalLayout { alignment: center; PagePreview { score: root.menu-row; width: 44px; height: 58px; border-radius: 6px; } }
+                    if !root.menu-is-set : VerticalLayout { alignment: center; PagePreview { score: root.menu-row; width: 44px; height: 58px; border-radius: 6px; } }
+                    if root.menu-is-set : VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 44px;
+                            height: 44px;
+                            border-radius: 12px;
+                            background: Theme.accent-soft;
+                            Glyph { kind: "folder"; ink: Theme.on-accent-soft; x: 10px; y: 10px; }
+                        }
+                    }
                     VerticalLayout {
                         horizontal-stretch: 1;
                         alignment: center;
                         spacing: 2px;
-                        Text { text: root.menu-row.title; color: Theme.foreground; font-size: 18px; font-weight: 600; overflow: elide; }
+                        Text { text: root.menu-is-set ? root.menu-set.name : root.menu-row.title; color: Theme.foreground; font-size: 18px; font-weight: 600; overflow: elide; }
                         Text {
-                            text: (root.menu-row.id != "" && root.menu-row.composer_or_artist != "" ? root.menu-row.id + " · " + root.menu-row.composer_or_artist : root.menu-row.id + root.menu-row.composer_or_artist);
+                            text: root.menu-is-set ? root.menu-set.date + " · " + root.menu-set.count
+                                : (root.menu-row.id != "" && root.menu-row.composer_or_artist != "" ? root.menu-row.id + " · " + root.menu-row.composer_or_artist : root.menu-row.id + root.menu-row.composer_or_artist);
                             color: Theme.muted;
                             font-size: 14px;
                             overflow: elide;
@@ -697,22 +743,35 @@ export component LibraryScreen inherits Rectangle {
                     }
                 }
                 Rectangle { height: 1px; background: Theme.divider; }
+                // The first action takes focus when the sheet opens, so it serves sets and scores.
                 sheet-open-action := SheetAction {
-                    label: @tr("Open score");
-                    icon: @image-url("material-icons/external-link.svg");
-                    clicked => { root.menu-open = false; root.score-opened(root.menu-row.relative_path, root.menu-row.note_key); }
+                    label: root.menu-is-set ? @tr("Edit set") : @tr("Open score");
+                    icon: root.menu-is-set ? @image-url("material-icons/edit.svg") : @image-url("material-icons/external-link.svg");
+                    clicked => {
+                        root.menu-open = false;
+                        if root.menu-is-set {
+                            root.edit-set-requested(root.menu-set.id);
+                        } else {
+                            root.score-opened(root.menu-row.relative_path, root.menu-row.note_key);
+                        }
+                    }
                 }
-                SheetAction {
+                if root.menu-is-set : SheetAction {
+                    label: @tr("Delete set");
+                    icon: @image-url("material-icons/delete.svg");
+                    clicked => { root.menu-open = false; root.delete-set-requested(root.menu-set.id); }
+                }
+                if !root.menu-is-set : SheetAction {
                     label: root.menu-row.favorite ? @tr("Remove from favorites") : @tr("Add to favorites");
                     icon: root.menu-row.favorite ? @image-url("material-icons/star-filled.svg") : @image-url("material-icons/star.svg");
                     clicked => { root.menu-open = false; root.favorite-toggled(root.menu-row.note_key); }
                 }
-                SheetAction {
+                if !root.menu-is-set : SheetAction {
                     label: @tr("Score details");
                     icon: @image-url("material-icons/info.svg");
                     clicked => { root.menu-open = false; root.score-selected(root.menu-row.note_key); }
                 }
-                SheetAction {
+                if !root.menu-is-set : SheetAction {
                     label: @tr("Edit details");
                     icon: @image-url("material-icons/edit.svg");
                     clicked => { root.menu-open = false; root.score-edit-requested(root.menu-row.note_key); }

@@ -293,3 +293,75 @@ msgstr "Brak ulubionych"
 
 msgid "Star a score to keep it here."
 msgstr "Oznacz utwór gwiazdką, aby miał tu swoje miejsce."
+
+msgid "New set"
+msgstr "Nowy zestaw"
+
+msgid "Edit set"
+msgstr "Edytuj zestaw"
+
+msgid "Delete set"
+msgstr "Usuń zestaw"
+
+msgid "Name"
+msgstr "Nazwa"
+
+msgid "Set name"
+msgstr "Nazwa zestawu"
+
+msgid "Date (optional)"
+msgstr "Data (opcjonalnie)"
+
+msgid "YYYY-MM-DD"
+msgstr "RRRR-MM-DD"
+
+msgid "Clear date"
+msgstr "Wyczyść datę"
+
+msgid "Notes (optional)"
+msgstr "Notatki (opcjonalnie)"
+
+msgid "Occasion, time, cantor…"
+msgstr "Uroczystość, godzina, kantor…"
+
+msgid "Save set"
+msgstr "Zapisz zestaw"
+
+msgid "Name is required"
+msgstr "Nazwa jest wymagana"
+
+msgid "Only the name is required. You add pieces after saving."
+msgstr "Wymagana jest tylko nazwa. Utwory dodasz po zapisaniu."
+
+msgid "Set details dialog"
+msgstr "Okno danych zestawu"
+
+msgid "Delete set dialog"
+msgstr "Okno usuwania zestawu"
+
+msgid "Delete “{0}”?"
+msgstr "Usunąć „{0}”?"
+
+msgid "The set is removed. Its pieces stay in your library."
+msgstr "Zestaw zostanie usunięty. Jego utwory zostaną w bibliotece."
+
+msgid "Delete"
+msgstr "Usuń"
+
+msgid "Opens the set"
+msgstr "Otwiera zestaw"
+
+msgid "Set actions dialog"
+msgstr "Okno działań dla zestawu"
+
+msgid "No sets yet"
+msgstr "Brak zestawów"
+
+msgid "Make a set for each Mass or service, then add its pieces."
+msgstr "Utwórz zestaw na każdą mszę lub nabożeństwo, a potem dodaj do niego utwory."
+
+msgid "This set is empty"
+msgstr "Ten zestaw jest pusty"
+
+msgid "Pieces you add to this set appear here."
+msgstr "Tu pojawią się utwory dodane do tego zestawu."

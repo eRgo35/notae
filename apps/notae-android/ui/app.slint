@@ -5,7 +5,8 @@ import { Theme, ScreenTransition, ViewPresence, PillButton, TextField, IconButto
 import { LibraryScreen, LibraryRow, SectionItem, OperationBanner } from "library.slint";
 import { SearchScreen } from "search.slint";
 import { ScoreDetails } from "details.slint";
-export { Theme, LibraryRow, SectionItem }
+import { SetCard, SetDialog, DeleteSetDialog } from "sets.slint";
+export { Theme, LibraryRow, SectionItem, SetCard }
 export struct ImportRow {
     path: string,
     change: string,
@@ -147,6 +148,25 @@ export component AppWindow inherits Window {
     callback sidebar_collapsed_changed(bool, bool);
     callback score_selected(string);
     callback favorite_toggled(string);
+    // Singing sets. The dialog's fields are owned here while it is open; Rust fills them on
+    // open and reports validation errors through `set_dialog_error`.
+    in property <[SetCard]> set_cards: [];
+    in-out property <bool> show_set_dialog: false;
+    in-out property <string> set_dialog_id: "";
+    in-out property <string> set_dialog_name: "";
+    in-out property <string> set_dialog_date: "";
+    in-out property <string> set_dialog_notes: "";
+    in-out property <string> set_dialog_error: "";
+    // Non-empty while Rust waits for the user to confirm deleting the set with this name.
+    in property <string> confirm_delete_set_name: "";
+    callback new_set_requested();
+    callback set_opened(string);
+    callback edit_set_requested(string);
+    callback delete_set_requested(string);
+    callback delete_set_confirmed();
+    callback delete_set_cancelled();
+    callback set_dialog_saved(string, string, string, string);
+    callback set_dialog_cancelled();
     in property <bool> operation_failed: false;
     in property <bool> animations-enabled: true;
     in property <bool> application-active: true;
@@ -163,7 +183,10 @@ export component AppWindow inherits Window {
     animate sheet-progress { duration: Theme.motion-medium; easing: ease-in-out; }
     private property <float> sheet-visual-progress: Theme.animations-enabled
         ? root.sheet-progress : ((root.show_metadata_editor || root.show_import_preview) ? 1 : 0);
-    private property <bool> modal-open: root.show_metadata_editor || root.show_import_preview;
+    private property <bool> set-modal-open: root.show_set_dialog || root.confirm_delete_set_name != "";
+    private property <bool> modal-open: root.show_metadata_editor || root.show_import_preview || root.set-modal-open;
+    set-dialog-presence := ViewPresence { active: root.show_set_dialog; }
+    delete-set-presence := ViewPresence { active: root.confirm_delete_set_name != ""; }
     private property <bool> sheet-import-content: false;
     // One presence per top-level view: the logical destination is active at once, while a view
     // that was just left stays mounted (and blocked) until its exit has played.
@@ -182,7 +205,9 @@ export component AppWindow inherits Window {
     changed animations-enabled => { Theme.animations-enabled = root.animations-enabled; }
     changed modal-open => {
         Theme.modal-open = root.modal-open;
-        if root.modal-open {
+        if root.set-modal-open {
+            // The set dialogs focus their own first control when they appear.
+        } else if root.modal-open {
             root.sheet-import-content = root.show_import_preview;
             dialog-scope.focus();
         } else {
@@ -336,6 +361,11 @@ export component AppWindow inherits Window {
                 score-opened(path, key) => { root.open_pdf_requested(path, key); }
                 score-edit-requested(key) => { root.edit_metadata_requested(key); }
                 favorite-toggled(key) => { root.favorite_toggled(key); }
+                set-cards: root.set_cards;
+                new-set-requested => { root.new_set_requested(); }
+                set-opened(id) => { root.set_opened(id); }
+                edit-set-requested(id) => { root.edit_set_requested(id); }
+                delete-set-requested(id) => { root.delete_set_requested(id); }
                 menu-open <=> root.library_menu_open;
             }
             }
@@ -522,5 +552,30 @@ export component AppWindow inherits Window {
             width: parent.width;
             height: parent.height;
         }
+    }
+
+    if set-dialog-presence.mounted : SetDialog {
+        x: 0px;
+        y: root.safe-area-insets.top;
+        width: root.width;
+        height: root.available-height;
+        presence: set-dialog-presence.value;
+        set-id: root.set_dialog_id;
+        name <=> root.set_dialog_name;
+        date <=> root.set_dialog_date;
+        notes <=> root.set_dialog_notes;
+        error <=> root.set_dialog_error;
+        saved(id, name, date, notes) => { root.set_dialog_saved(id, name, date, notes); }
+        cancelled => { root.set_dialog_cancelled(); }
+    }
+    if delete-set-presence.mounted : DeleteSetDialog {
+        x: 0px;
+        y: root.safe-area-insets.top;
+        width: root.width;
+        height: root.available-height;
+        presence: delete-set-presence.value;
+        name: root.confirm_delete_set_name;
+        confirmed => { root.delete_set_confirmed(); }
+        cancelled => { root.delete_set_cancelled(); }
     }
 }

@@ -110,6 +110,10 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
     model
         .borrow_mut()
         .set_favorites_path(index_dir.join("favorites.json"));
+    // Before the UI preferences, which reopen a saved set only if it still exists.
+    model
+        .borrow_mut()
+        .set_sets_path(index_dir.join("sets.json"));
     model
         .borrow_mut()
         .set_ui_prefs_path(index_dir.join("ui-prefs.txt"));
@@ -326,9 +330,12 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
         window.on_section_selected(move |key| {
-            model
+            if let Err(error) = model
                 .borrow_mut()
-                .select_section(crate::ui::browse::LibrarySection::from_key(key.as_str()));
+                .select_section(crate::ui::browse::LibrarySection::from_key(key.as_str()))
+            {
+                eprintln!("notae: cannot save UI preferences: {error}");
+            }
             if let Some(window) = window_weak.upgrade() {
                 sync_window(&window, &model.borrow());
             }
@@ -539,6 +546,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
             }
         });
     }
+    wire_sets(&window, &model);
     {
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
@@ -785,6 +793,121 @@ fn close_search(
 ///
 /// `Screen::Setup(_)` from the controller is not consulted here because
 /// the storage state is authoritative for the picker-driven flows.
+/// The Sets section's callbacks: open a set, the new/edit set dialog and the delete confirmation.
+fn wire_sets(window: &AppWindow, model: &Rc<RefCell<UiModel>>) {
+    use crate::sets::SetFields;
+    use crate::ui::browse::LibrarySection;
+
+    /// A callback that runs `change` on the model, then redraws the window.
+    fn redraw_after(
+        window: &AppWindow,
+        model: &Rc<RefCell<UiModel>>,
+        change: impl Fn(&AppWindow, &mut UiModel) + 'static,
+    ) -> impl FnMut() + 'static {
+        let model = Rc::clone(model);
+        let window_weak = window.as_weak();
+        move || {
+            if let Some(window) = window_weak.upgrade() {
+                change(&window, &mut model.borrow_mut());
+                sync_window(&window, &model.borrow());
+            }
+        }
+    }
+    fn open_dialog(window: &AppWindow, id: &str, fields: SetFields) {
+        window.set_set_dialog_id(id.into());
+        window.set_set_dialog_name(fields.name.into());
+        window.set_set_dialog_date(fields.date.unwrap_or_default().into());
+        window.set_set_dialog_notes(fields.notes.unwrap_or_default().into());
+        window.set_set_dialog_error("".into());
+        window.set_show_set_dialog(true);
+    }
+
+    window.on_new_set_requested(redraw_after(window, model, |window, _model| {
+        let empty = SetFields {
+            name: String::new(),
+            date: None,
+            notes: None,
+        };
+        open_dialog(window, "", empty);
+    }));
+    window.on_set_dialog_cancelled(redraw_after(window, model, |window, _model| {
+        window.set_show_set_dialog(false);
+    }));
+    window.on_delete_set_confirmed(redraw_after(window, model, |_window, model| {
+        model.confirm_delete_set();
+    }));
+    window.on_delete_set_cancelled(redraw_after(window, model, |_window, model| {
+        model.cancel_delete_set();
+    }));
+    {
+        let model = Rc::clone(model);
+        let window_weak = window.as_weak();
+        window.on_set_opened(move |id| {
+            if let Err(error) = model
+                .borrow_mut()
+                .select_section(LibrarySection::Set(id.to_string()))
+            {
+                eprintln!("notae: cannot save UI preferences: {error}");
+            }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let model = Rc::clone(model);
+        let window_weak = window.as_weak();
+        window.on_edit_set_requested(move |id| {
+            let Some(window) = window_weak.upgrade() else {
+                return;
+            };
+            if let Some(set) = model.borrow().sets().get(id.as_str()) {
+                let fields = SetFields {
+                    name: set.name.clone(),
+                    date: set.date.clone(),
+                    notes: set.notes.clone(),
+                };
+                open_dialog(&window, &set.id, fields);
+            }
+        });
+    }
+    {
+        let model = Rc::clone(model);
+        let window_weak = window.as_weak();
+        window.on_delete_set_requested(move |id| {
+            model.borrow_mut().request_delete_set(id.as_str());
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let model = Rc::clone(model);
+        let window_weak = window.as_weak();
+        window.on_set_dialog_saved(move |id, name, date, notes| {
+            let Some(window) = window_weak.upgrade() else {
+                return;
+            };
+            let fields = SetFields {
+                name: name.to_string(),
+                date: Some(date.to_string()),
+                notes: Some(notes.to_string()),
+            };
+            let result = if id.is_empty() {
+                model.borrow_mut().create_set(fields).map(|_| ())
+            } else {
+                model.borrow_mut().update_set(id.as_str(), fields)
+            };
+            match result {
+                Ok(()) => window.set_show_set_dialog(false),
+                Err(error) => window
+                    .set_set_dialog_error(crate::ui::browse::set_field_error_text(error).into()),
+            }
+            sync_window(&window, &model.borrow());
+        });
+    }
+}
+
 fn sync_window(window: &AppWindow, model: &UiModel) {
     let state = model.state();
     let (show_setup, show_recovery, recovery_folder_name, setup_error, library_display_name) =
@@ -927,8 +1050,11 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         .collect();
     window.set_composers(slint::ModelRc::new(slint::VecModel::from(composers)));
     window.set_selected_section(model.section().key().into());
-    window.set_library_title(model.section().title().into());
-    window.set_library_subtitle(
+    window.set_library_title(model.section_title().into());
+    let set_cards = crate::ui::browse::set_cards(model.sets(), crate::ui::unix_now());
+    let subtitle = if model.section() == &crate::ui::browse::LibrarySection::Sets {
+        crate::ui::browse::sets_subtitle(set_cards.len())
+    } else {
         crate::language::pick(
             format!(
                 "{row_count} {}",
@@ -939,8 +1065,10 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
                 crate::language::polish_plural(row_count, "utwór", "utwory", "utworów")
             ),
         )
-        .into(),
-    );
+    };
+    window.set_library_subtitle(subtitle.into());
+    window.set_set_cards(slint::ModelRc::new(slint::VecModel::from(set_cards)));
+    window.set_confirm_delete_set_name(model.pending_delete_set_name().unwrap_or_default().into());
     window.set_show_search(matches!(state.screen(), Screen::Search));
     let metadata = model.metadata_editor();
     window.set_show_metadata_editor(metadata.is_some());
