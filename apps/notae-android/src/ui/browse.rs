@@ -5,6 +5,7 @@
 use std::collections::BTreeMap;
 
 use crate::favorites::PieceRef;
+use crate::sets::SetStore;
 use crate::ui::search::SearchRow;
 
 /// One entry of the library side panel.
@@ -101,12 +102,25 @@ pub fn composers(rows: &[SearchRow]) -> Vec<ComposerCount> {
 }
 
 /// What the user-kept lists contribute to the sections.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct SectionContext<'a> {
     /// Content keys of recently opened scores, newest first.
     pub recent: &'a [String],
     /// Starred scores, newest first.
     pub favorites: &'a [PieceRef],
+    /// Singing sets.
+    pub sets: &'a SetStore,
+}
+
+impl Default for SectionContext<'_> {
+    fn default() -> Self {
+        static NO_SETS: SetStore = SetStore::empty();
+        Self {
+            recent: &[],
+            favorites: &[],
+            sets: &NO_SETS,
+        }
+    }
 }
 
 /// Rows that belong to `section`, in the section's own order.

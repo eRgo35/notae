@@ -29,6 +29,7 @@ pub mod language;
 pub mod picker_fut;
 pub mod recent;
 pub mod saf_tree;
+pub mod sets;
 pub mod state;
 pub mod storage;
 

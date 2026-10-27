@@ -111,6 +111,7 @@ fn recent_section_follows_recent_order_and_skips_unknown_keys() {
         &SectionContext {
             recent: &recent,
             favorites: &[],
+            ..SectionContext::default()
         },
     )
     .into_iter()
@@ -127,6 +128,7 @@ fn fixed_sections_report_counts() {
         &SectionContext {
             recent: &recent,
             favorites: &[],
+            ..SectionContext::default()
         },
     );
     let summary: Vec<(String, usize)> = views
@@ -161,6 +163,7 @@ fn favorites_section_lists_newest_first_and_skips_missing() {
     let context = SectionContext {
         recent: &[],
         favorites: &favorites,
+        ..SectionContext::default()
     };
     let titles: Vec<String> = section_rows(&library(), &LibrarySection::Favorites, &context)
         .into_iter()
@@ -177,6 +180,7 @@ fn sections_include_favorites_with_count() {
         &SectionContext {
             recent: &[],
             favorites: &favorites,
+            ..SectionContext::default()
         },
     );
     let summary: Vec<(String, usize, &str)> = views

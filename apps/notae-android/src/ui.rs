@@ -23,6 +23,7 @@ use crate::operations::events::{
     DesktopImportCheck, ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
 };
 use crate::recent::RecentScores;
+use crate::sets::SetStore;
 use crate::state::{
     AppController, AppState, EventError, OperationState, RescanPhase, Transition, UiEvent,
 };
@@ -79,6 +80,7 @@ pub struct UiModel {
     recent_path: Option<PathBuf>,
     favorites: Favorites,
     favorites_path: Option<PathBuf>,
+    sets: SetStore,
     ui_prefs: UiPrefs,
     ui_prefs_path: Option<PathBuf>,
     selected_note: Option<String>,
@@ -111,6 +113,7 @@ impl UiModel {
             recent_path: None,
             favorites: Favorites::default(),
             favorites_path: None,
+            sets: SetStore::empty(),
             ui_prefs: UiPrefs::default(),
             ui_prefs_path: None,
             selected_note: None,
@@ -279,6 +282,7 @@ impl UiModel {
         SectionContext {
             recent: self.recent.keys(),
             favorites: self.favorites.items(),
+            sets: &self.sets,
         }
     }
 
