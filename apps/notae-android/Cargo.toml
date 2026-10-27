@@ -20,6 +20,8 @@ thiserror = { workspace = true }
 notae-domain = { path = "../../crates/notae-domain", version = "0.2.2" }
 notae-index = { path = "../../crates/notae-index", version = "0.2.2" }
 sha2 = "0.11"
+serde = { workspace = true }
+serde_json = { workspace = true }
 # `atomic-waker` is the standard library the SAF picker handshake
 # uses to bridge the Slint main thread (where `select_root` is
 # polled) and the Java main looper (where the activity-result

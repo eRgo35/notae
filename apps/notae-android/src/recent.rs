@@ -15,7 +15,7 @@ pub struct RecentScores {
     keys: Vec<String>,
 }
 
-fn is_content_key(text: &str) -> bool {
+pub(crate) fn is_content_key(text: &str) -> bool {
     text.len() == 64
         && text
             .bytes()

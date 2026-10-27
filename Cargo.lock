@@ -3511,6 +3511,8 @@ dependencies = [
  "notae-index",
  "notae-index-cli",
  "pollster",
+ "serde",
+ "serde_json",
  "sha2",
  "slint",
  "slint-build",

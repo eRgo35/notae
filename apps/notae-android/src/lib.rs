@@ -24,6 +24,7 @@
 //! it off here keeps the per-module policies in control.
 
 pub mod accessibility;
+pub mod favorites;
 pub mod language;
 pub mod picker_fut;
 pub mod recent;
