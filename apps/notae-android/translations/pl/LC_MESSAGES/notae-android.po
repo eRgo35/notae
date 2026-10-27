@@ -281,3 +281,15 @@ msgstr "Twoja biblioteka zostaje na tym urządzeniu. Notae nie wysyła danych pr
 
 msgid "Your sheet music, in good order. Notae reads your PDFs where they are and opens them in the PDF app you already use."
 msgstr "Twoje nuty w należytym porządku. Notae czyta pliki PDF tam, gdzie leżą, i otwiera je w aplikacji PDF, której już używasz."
+
+msgid "Add to favorites"
+msgstr "Dodaj do ulubionych"
+
+msgid "Remove from favorites"
+msgstr "Usuń z ulubionych"
+
+msgid "No favorites yet"
+msgstr "Brak ulubionych"
+
+msgid "Star a score to keep it here."
+msgstr "Oznacz utwór gwiazdką, aby miał tu swoje miejsce."

@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Mutex;
 
+use crate::favorites::{Favorites, PieceRef};
 use crate::language::pick;
 use crate::operations::events::{
     DesktopImportCheck, ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
@@ -27,7 +28,7 @@ use crate::state::{
 };
 use crate::storage::StorageState;
 use crate::thumbnails::ThumbnailCache;
-use crate::ui::browse::{LibrarySection, Neighbours, neighbours, section_rows};
+use crate::ui::browse::{LibrarySection, Neighbours, SectionContext, neighbours, section_rows};
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
 use crate::ui_prefs::{LibraryView, UiPrefs};
@@ -76,6 +77,8 @@ pub struct UiModel {
     section: LibrarySection,
     recent: RecentScores,
     recent_path: Option<PathBuf>,
+    favorites: Favorites,
+    favorites_path: Option<PathBuf>,
     ui_prefs: UiPrefs,
     ui_prefs_path: Option<PathBuf>,
     selected_note: Option<String>,
@@ -106,6 +109,8 @@ impl UiModel {
             section: LibrarySection::All,
             recent: RecentScores::default(),
             recent_path: None,
+            favorites: Favorites::default(),
+            favorites_path: None,
             ui_prefs: UiPrefs::default(),
             ui_prefs_path: None,
             selected_note: None,
@@ -223,6 +228,58 @@ impl UiModel {
     pub fn set_recent_path(&mut self, path: PathBuf) {
         self.recent = RecentScores::load(&path);
         self.recent_path = Some(path);
+    }
+
+    /// Loads the favorites from, and later saves them to, `path`.
+    pub fn set_favorites_path(&mut self, path: PathBuf) {
+        self.favorites = Favorites::load(&path);
+        self.favorites_path = Some(path);
+    }
+
+    /// Stars or unstars the score with `note_key`; returns whether it is now a favorite.
+    ///
+    /// # Errors
+    ///
+    /// Returns the I/O error when the file cannot be saved; the in-memory list is still updated.
+    /// A key that is not in the library changes nothing and returns `Ok(false)`.
+    pub fn toggle_favorite(&mut self, note_key: &str) -> std::io::Result<bool> {
+        let Some(path) = self
+            .search_rows
+            .iter()
+            .find(|row| row.note_key == note_key)
+            .map(|row| row.relative_path.clone())
+        else {
+            return Ok(false);
+        };
+        let now = self.favorites.toggle(PieceRef {
+            key: note_key.to_owned(),
+            path,
+        });
+        if let Some(path) = &self.favorites_path {
+            self.favorites.save(path)?;
+        }
+        Ok(now)
+    }
+
+    /// Whether the score with `key` is starred.
+    #[must_use]
+    pub fn is_favorite(&self, key: &str) -> bool {
+        self.favorites.contains(key)
+    }
+
+    /// The starred scores, newest first.
+    #[must_use]
+    pub fn favorites(&self) -> &[PieceRef] {
+        self.favorites.items()
+    }
+
+    /// The lists the sections draw on.
+    #[must_use]
+    pub fn section_context(&self) -> SectionContext<'_> {
+        SectionContext {
+            recent: self.recent.keys(),
+            favorites: self.favorites.items(),
+        }
     }
 
     /// Loads the UI preferences from, and later saves them to, `path`.
@@ -343,7 +400,7 @@ impl UiModel {
         if matches!(self.state().screen(), crate::state::Screen::Search) {
             self.search_rows.clone()
         } else {
-            section_rows(&self.search_rows, &self.section, self.recent.keys())
+            section_rows(&self.search_rows, &self.section, &self.section_context())
         }
     }
 
@@ -378,7 +435,7 @@ impl UiModel {
     pub fn preview_neighbours(&self) -> Option<Neighbours> {
         let key = self.selected_note.as_deref()?;
         neighbours(
-            &section_rows(&self.search_rows, &self.section, self.recent.keys()),
+            &section_rows(&self.search_rows, &self.section, &self.section_context()),
             key,
         )
     }

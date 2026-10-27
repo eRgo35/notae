@@ -82,7 +82,7 @@ fn publish(app: &AppWindow, store: &IndexStore, scope: SearchScope, query: &str)
         .search()
         .expect("search the index")
         .into_iter()
-        .map(|row| library_row(row, None))
+        .map(|row| library_row(row, None, false))
         .collect();
     app.set_library_rows(ModelRc::new(VecModel::from(rows)));
 }

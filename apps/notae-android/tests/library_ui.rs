@@ -694,3 +694,25 @@ fn editing_from_the_preview_still_works() {
     click(&app, "Edit details", 0);
     assert_eq!(seen.borrow().edited, [format!("{:064}", 2)]);
 }
+
+#[test]
+fn details_star_has_accessible_label() {
+    let app = app();
+    with_library(&app, 2);
+    open_preview(&app, 1, 2);
+    assert!(labelled(&app, "Remove from favorites").is_none());
+    let toggled = Rc::new(RefCell::new(Vec::new()));
+    let sink = Rc::clone(&toggled);
+    app.on_favorite_toggled(move |key| sink.borrow_mut().push(key.to_string()));
+    press(&app, "Add to favorites");
+    assert_eq!(*toggled.borrow(), [format!("{:064}", 1)]);
+
+    let mut starred = score(1);
+    starred.favorite = true;
+    app.set_selected(starred);
+    assert!(labelled(&app, "Add to favorites").is_none());
+    assert_eq!(
+        labelled(&app, "Remove from favorites").and_then(|star| star.accessible_role()),
+        Some(i_slint_core::items::AccessibleRole::Button)
+    );
+}

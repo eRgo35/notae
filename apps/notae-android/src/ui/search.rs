@@ -61,7 +61,11 @@ impl SearchRow {
 ///
 /// `android_main` calls this for every row it publishes; host tests call it to
 /// drive the generated UI with the real projection.
-pub fn library_row(row: SearchRow, thumbnail: Option<slint::Image>) -> crate::LibraryRow {
+pub fn library_row(
+    row: SearchRow,
+    thumbnail: Option<slint::Image>,
+    favorite: bool,
+) -> crate::LibraryRow {
     let (before, hit, after) = row
         .text_snippet
         .as_deref()
@@ -88,6 +92,7 @@ pub fn library_row(row: SearchRow, thumbnail: Option<slint::Image>) -> crate::Li
         snippet_before: before.into(),
         snippet_match: hit.into(),
         snippet_after: after.into(),
+        favorite,
     }
 }
 

@@ -1,6 +1,7 @@
+use notae_android::favorites::PieceRef;
 use notae_android::ui::UiModel;
 use notae_android::ui::browse::{
-    ComposerCount, LibrarySection, composers, neighbours, section_rows, sections,
+    ComposerCount, LibrarySection, SectionContext, composers, neighbours, section_rows, sections,
 };
 use notae_android::ui::search::SearchRow;
 
@@ -47,6 +48,7 @@ fn section_keys_round_trip() {
     for section in [
         LibrarySection::All,
         LibrarySection::Recent,
+        LibrarySection::Favorites,
         LibrarySection::Composer("Gabriel Fauré".to_owned()),
     ] {
         assert_eq!(LibrarySection::from_key(&section.key()), section);
@@ -89,21 +91,78 @@ fn composer_sections_filter_rows_case_insensitively() {
     let faure = section_rows(
         &library(),
         &LibrarySection::Composer("GABRIEL FAURÉ".to_owned()),
-        &[],
+        &SectionContext::default(),
     );
     assert_eq!(faure.len(), 2);
 }
 
 #[test]
 fn rows_without_a_number_composer_or_text_stay_in_the_library() {
-    let all = section_rows(&library(), &LibrarySection::All, &[]);
+    let all = section_rows(&library(), &LibrarySection::All, &SectionContext::default());
     assert_eq!(all.len(), 5, "no row is hidden for missing details or text");
 }
 
 #[test]
 fn recent_section_follows_recent_order_and_skips_unknown_keys() {
     let recent = vec!["d".repeat(64), "z".repeat(64), "a".repeat(64)];
-    let titles: Vec<String> = section_rows(&library(), &LibrarySection::Recent, &recent)
+    let titles: Vec<String> = section_rows(
+        &library(),
+        &LibrarySection::Recent,
+        &SectionContext {
+            recent: &recent,
+            favorites: &[],
+        },
+    )
+    .into_iter()
+    .map(|row| row.title)
+    .collect();
+    assert_eq!(titles, ["Pavane", "Clair de lune"]);
+}
+
+#[test]
+fn fixed_sections_report_counts() {
+    let recent = vec!["a".repeat(64)];
+    let views = sections(
+        &library(),
+        &SectionContext {
+            recent: &recent,
+            favorites: &[],
+        },
+    );
+    let summary: Vec<(String, usize)> = views
+        .into_iter()
+        .map(|view| (view.key, view.count))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            ("all".to_owned(), 5),
+            ("recent".to_owned(), 1),
+            ("favorites".to_owned(), 0),
+        ]
+    );
+}
+
+fn piece(key: char, title: &str) -> PieceRef {
+    PieceRef {
+        key: key.to_string().repeat(64),
+        path: format!("{title}.pdf"),
+    }
+}
+
+#[test]
+fn favorites_section_lists_newest_first_and_skips_missing() {
+    // `Favorites::items` is newest first; a piece no longer in the library is left out.
+    let favorites = vec![
+        piece('d', "Pavane"),
+        piece('z', "Gone"),
+        piece('a', "Clair de lune"),
+    ];
+    let context = SectionContext {
+        recent: &[],
+        favorites: &favorites,
+    };
+    let titles: Vec<String> = section_rows(&library(), &LibrarySection::Favorites, &context)
         .into_iter()
         .map(|row| row.title)
         .collect();
@@ -111,14 +170,36 @@ fn recent_section_follows_recent_order_and_skips_unknown_keys() {
 }
 
 #[test]
-fn fixed_sections_report_counts() {
-    let recent = vec!["a".repeat(64)];
-    let views = sections(&library(), &recent);
-    let summary: Vec<(String, usize)> = views
+fn sections_include_favorites_with_count() {
+    let favorites = vec![piece('b', "Cantique"), piece('z', "Gone")];
+    let views = sections(
+        &library(),
+        &SectionContext {
+            recent: &[],
+            favorites: &favorites,
+        },
+    );
+    let summary: Vec<(String, usize, &str)> = views
         .into_iter()
-        .map(|view| (view.key, view.count))
+        .map(|view| (view.key, view.count, view.kind))
         .collect();
-    assert_eq!(summary, [("all".to_owned(), 5), ("recent".to_owned(), 1),]);
+    assert_eq!(
+        summary,
+        [
+            ("all".to_owned(), 5, "library"),
+            ("recent".to_owned(), 0, "schedule"),
+            ("favorites".to_owned(), 1, "star"),
+        ]
+    );
+}
+
+#[test]
+fn favorites_key_round_trips() {
+    assert_eq!(LibrarySection::Favorites.key(), "favorites");
+    assert_eq!(
+        LibrarySection::from_key("favorites"),
+        LibrarySection::Favorites
+    );
 }
 
 fn keys(rows: &[SearchRow]) -> Vec<String> {

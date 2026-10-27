@@ -146,6 +146,7 @@ export component AppWindow inherits Window {
     callback library_view_changed(string);
     callback sidebar_collapsed_changed(bool, bool);
     callback score_selected(string);
+    callback favorite_toggled(string);
     in property <bool> operation_failed: false;
     in property <bool> animations-enabled: true;
     in property <bool> application-active: true;
@@ -313,6 +314,7 @@ export component AppWindow inherits Window {
                         next => { root.score_selected(root.selected_next_key); }
                         open => { root.open_pdf_requested(root.selected.relative_path, root.selected.note_key); }
                         edit => { root.edit_metadata_requested(root.selected.note_key); }
+                        favorite-toggled => { root.favorite_toggled(root.selected.note_key); }
                     }
                 }
                 details-open: root.details_open;
@@ -333,6 +335,7 @@ export component AppWindow inherits Window {
                 score-selected(key) => { root.score_selected(key); }
                 score-opened(path, key) => { root.open_pdf_requested(path, key); }
                 score-edit-requested(key) => { root.edit_metadata_requested(key); }
+                favorite-toggled(key) => { root.favorite_toggled(key); }
                 menu-open <=> root.library_menu_open;
             }
             }

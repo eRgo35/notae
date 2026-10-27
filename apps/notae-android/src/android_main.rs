@@ -51,6 +51,7 @@ use std::time::Duration;
 use slint::ComponentHandle;
 
 use crate::android::saf::{SafHandles, SafLibraryRootProvider};
+use crate::favorites::PieceRef;
 use crate::operations::rescan::OperationController;
 use crate::state::{EventError, OperationState, Screen, Setup, Transition, UiEvent};
 use crate::storage::{LibraryRootProvider, SharedLibraryCatalog, StorageError, StorageState};
@@ -106,6 +107,9 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
     model
         .borrow_mut()
         .set_recent_path(index_dir.join("recent.txt"));
+    model
+        .borrow_mut()
+        .set_favorites_path(index_dir.join("favorites.json"));
     model
         .borrow_mut()
         .set_ui_prefs_path(index_dir.join("ui-prefs.txt"));
@@ -538,6 +542,18 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
     {
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
+        window.on_favorite_toggled(move |key| {
+            if let Err(error) = model.borrow_mut().toggle_favorite(&key) {
+                eprintln!("notae: cannot save favorites: {error}");
+            }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
         window.on_selection_cleared(move || {
             model.borrow_mut().select_note(None);
             if let Some(window) = window_weak.upgrade() {
@@ -674,8 +690,8 @@ struct LibraryRowsCache {
     /// Decoded thumbnails by content key. A key's thumbnail is written once and never
     /// rewritten, so entries only need dropping when the key leaves the library.
     images: HashMap<String, slint::Image>,
-    /// The rows, per-row thumbnail availability and language last pushed to the window.
-    pushed: Option<(Vec<SearchRow>, Vec<bool>, bool)>,
+    /// The rows, per-row thumbnail availability, language and favorites last pushed to the window.
+    pushed: Option<(Vec<SearchRow>, Vec<bool>, bool, Vec<PieceRef>)>,
 }
 
 impl LibraryRowsCache {
@@ -693,19 +709,30 @@ impl LibraryRowsCache {
         let available: Vec<bool> = thumbnails.iter().map(Option::is_some).collect();
         // Row labels are translated in Rust, so a language switch must re-push them.
         let polish = crate::language::pick(false, true);
-        if self.pushed.as_ref().is_some_and(|(rows, flags, language)| {
-            *rows == visible && *flags == available && *language == polish
-        }) {
+        let favorites = model.favorites();
+        if self
+            .pushed
+            .as_ref()
+            .is_some_and(|(rows, flags, language, starred)| {
+                *rows == visible
+                    && *flags == available
+                    && *language == polish
+                    && starred.as_slice() == favorites
+            })
+        {
             return;
         }
         let rows: Vec<crate::LibraryRow> = visible
             .iter()
             .cloned()
             .zip(thumbnails)
-            .map(|(row, thumbnail)| crate::ui::search::library_row(row, thumbnail))
+            .map(|(row, thumbnail)| {
+                let favorite = model.is_favorite(&row.note_key);
+                crate::ui::search::library_row(row, thumbnail, favorite)
+            })
             .collect();
         window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
-        self.pushed = Some((visible, available, polish));
+        self.pushed = Some((visible, available, polish, favorites.to_vec()));
     }
 
     /// The decoded thumbnail for `note_key`, loading it once the file exists. A file that fails
@@ -870,20 +897,22 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     if let Some(row) = selected {
         let thumbnail = LIBRARY_ROWS
             .with_borrow_mut(|cache| cache.thumbnail(model.thumbnail_cache(), &row.note_key));
-        window.set_selected(crate::ui::search::library_row(row, thumbnail));
+        let favorite = model.is_favorite(&row.note_key);
+        window.set_selected(crate::ui::search::library_row(row, thumbnail, favorite));
     }
     LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible));
 
     let all_rows = model.search_rows();
-    let sections: Vec<crate::SectionItem> = crate::ui::browse::sections(all_rows, model.recent())
-        .into_iter()
-        .map(|view| crate::SectionItem {
-            key: view.key.into(),
-            label: view.label.into(),
-            count: i32::try_from(view.count).unwrap_or(i32::MAX),
-            kind: view.kind.into(),
-        })
-        .collect();
+    let sections: Vec<crate::SectionItem> =
+        crate::ui::browse::sections(all_rows, &model.section_context())
+            .into_iter()
+            .map(|view| crate::SectionItem {
+                key: view.key.into(),
+                label: view.label.into(),
+                count: i32::try_from(view.count).unwrap_or(i32::MAX),
+                kind: view.kind.into(),
+            })
+            .collect();
     window.set_sections(slint::ModelRc::new(slint::VecModel::from(sections)));
     let composers: Vec<crate::SectionItem> = crate::ui::browse::composers(all_rows)
         .into_iter()

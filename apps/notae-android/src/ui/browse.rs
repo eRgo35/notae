@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+use crate::favorites::PieceRef;
 use crate::ui::search::SearchRow;
 
 /// One entry of the library side panel.
@@ -14,6 +15,8 @@ pub enum LibrarySection {
     All,
     /// Scores opened recently, newest first.
     Recent,
+    /// Scores the user starred, newest first.
+    Favorites,
     /// Scores by one composer, matched case-insensitively.
     Composer(String),
 }
@@ -25,6 +28,7 @@ impl LibrarySection {
         match self {
             Self::All => "all".to_owned(),
             Self::Recent => "recent".to_owned(),
+            Self::Favorites => "favorites".to_owned(),
             Self::Composer(name) => format!("composer:{name}"),
         }
     }
@@ -35,6 +39,7 @@ impl LibrarySection {
     pub fn from_key(key: &str) -> Self {
         match key {
             "recent" => Self::Recent,
+            "favorites" => Self::Favorites,
             _ => key
                 .strip_prefix("composer:")
                 .filter(|name| !name.trim().is_empty())
@@ -48,6 +53,7 @@ impl LibrarySection {
         match self {
             Self::All => crate::language::pick("All scores", "Wszystkie utwory").to_owned(),
             Self::Recent => crate::language::pick("Recent", "Ostatnie").to_owned(),
+            Self::Favorites => crate::language::pick("Favorites", "Ulubione").to_owned(),
             Self::Composer(name) => name.clone(),
         }
     }
@@ -94,18 +100,34 @@ pub fn composers(rows: &[SearchRow]) -> Vec<ComposerCount> {
     by_name.into_values().collect()
 }
 
-/// Rows that belong to `section`; `recent` holds content keys, newest first.
+/// What the user-kept lists contribute to the sections.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SectionContext<'a> {
+    /// Content keys of recently opened scores, newest first.
+    pub recent: &'a [String],
+    /// Starred scores, newest first.
+    pub favorites: &'a [PieceRef],
+}
+
+/// Rows that belong to `section`, in the section's own order.
 #[must_use]
 pub fn section_rows(
     rows: &[SearchRow],
     section: &LibrarySection,
-    recent: &[String],
+    context: &SectionContext,
 ) -> Vec<SearchRow> {
     match section {
         LibrarySection::All => rows.to_vec(),
-        LibrarySection::Recent => recent
+        LibrarySection::Recent => context
+            .recent
             .iter()
             .filter_map(|key| rows.iter().find(|row| &row.note_key == key))
+            .cloned()
+            .collect(),
+        LibrarySection::Favorites => context
+            .favorites
+            .iter()
+            .filter_map(|piece| rows.iter().find(|row| row.note_key == piece.key))
             .cloned()
             .collect(),
         LibrarySection::Composer(name) => {
@@ -148,16 +170,17 @@ pub fn neighbours(rows: &[SearchRow], key: &str) -> Option<Neighbours> {
 
 /// The fixed side-panel sections with their counts.
 #[must_use]
-pub fn sections(rows: &[SearchRow], recent: &[String]) -> Vec<SectionView> {
+pub fn sections(rows: &[SearchRow], context: &SectionContext) -> Vec<SectionView> {
     [
         (LibrarySection::All, "library"),
         (LibrarySection::Recent, "schedule"),
+        (LibrarySection::Favorites, "star"),
     ]
     .into_iter()
     .map(|(section, kind)| SectionView {
         key: section.key(),
         label: section.title(),
-        count: section_rows(rows, &section, recent).len(),
+        count: section_rows(rows, &section, context).len(),
         kind,
     })
     .collect()

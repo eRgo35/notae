@@ -86,6 +86,8 @@ export component Glyph inherits Image {
         : root.kind == "check" ? @image-url("material-icons/check.svg")
         : root.kind == "warning" ? @image-url("material-icons/warning.svg")
         : root.kind == "schedule" ? @image-url("material-icons/schedule.svg")
+        : root.kind == "star" ? @image-url("material-icons/star.svg")
+        : root.kind == "star-filled" ? @image-url("material-icons/star-filled.svg")
         : @image-url("material-icons/document.svg");
 }
 

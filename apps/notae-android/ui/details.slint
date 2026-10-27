@@ -70,6 +70,7 @@ export component ScoreDetails inherits Card {
     callback close();
     callback open();
     callback edit();
+    callback favorite-toggled();
     callback previous();
     callback next();
     // Derived from this pane's own size (assigned by its parent), never from its children.
@@ -95,6 +96,12 @@ export component ScoreDetails inherits Card {
                 vertical-alignment: center;
                 accessible-role: text;
                 accessible-label: root.position == "" ? "" : @tr("Score {}", root.position);
+            }
+            IconButton {
+                label: root.score.favorite ? @tr("Remove from favorites") : @tr("Add to favorites");
+                icon: root.score.favorite ? @image-url("material-icons/star-filled.svg") : @image-url("material-icons/star.svg");
+                selected: root.score.favorite;
+                clicked => { root.favorite-toggled(); }
             }
             IconButton {
                 label: @tr("Previous score");

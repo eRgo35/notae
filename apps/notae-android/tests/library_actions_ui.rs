@@ -362,3 +362,31 @@ fn holding_an_item_no_longer_opens_anything_and_release_is_an_ordinary_tap() {
         );
     }
 }
+
+#[test]
+fn action_sheet_offers_add_to_favorites_then_remove() {
+    let app = library(1280, 800, false, "all", false);
+    let toggled = Rc::new(RefCell::new(Vec::new()));
+    let sink = Rc::clone(&toggled);
+    app.on_favorite_toggled(move |key| sink.borrow_mut().push(key.to_string()));
+
+    click(&overflow(&app, "Score 2"));
+    wait(500);
+    assert!(sheet_action(&app, "Remove from favorites").is_none());
+    click(&sheet_action(&app, "Add to favorites").expect("sheet offers Add to favorites"));
+    wait(500);
+    assert_eq!(*toggled.borrow(), [format!("{:064}", 2)]);
+    assert!(!sheet_is_open(&app), "choosing an action closes the sheet");
+
+    // A favourite offers the opposite action and shows the badge.
+    let mut starred = score(2);
+    starred.favorite = true;
+    app.set_library_rows(ModelRc::new(VecModel::from(vec![score(1), starred])));
+    wait(500);
+    click(&overflow(&app, "Score 2"));
+    wait(500);
+    assert!(sheet_action(&app, "Add to favorites").is_none());
+    click(&sheet_action(&app, "Remove from favorites").expect("sheet offers Remove"));
+    wait(500);
+    assert_eq!(toggled.borrow().len(), 2);
+}

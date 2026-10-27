@@ -18,6 +18,7 @@ export struct LibraryRow {
     snippet_before: string,
     snippet_match: string,
     snippet_after: string,
+    favorite: bool,
 }
 
 export struct SectionItem {
@@ -57,6 +58,15 @@ component MoreActions inherits IconButton {
     in property <string> title;
     label: @tr("More actions for {}", root.title);
     icon: @image-url("material-icons/more-vertical.svg");
+}
+
+// A small filled star in the accent colour on a favourite's card or row.
+component FavoriteBadge inherits Rectangle {
+    width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    background: Theme.card;
+    Glyph { kind: "star-filled"; ink: Theme.accent; width: 16px; height: 16px; x: 4px; y: 4px; }
 }
 
 component ScoreCard inherits Rectangle {
@@ -103,6 +113,10 @@ component ScoreCard inherits Rectangle {
                 overflow: elide;
             }
         }
+    }
+    if root.score.favorite : FavoriteBadge {
+        x: root.width - self.width - 14px;
+        y: 14px;
     }
     MoreActions {
         title: root.score.title;
@@ -188,6 +202,10 @@ export component ScoreRow inherits Rectangle {
                 color: Theme.muted;
             }
             if root.score.tags != "" : Text { text: root.score.tags; font-size: 13px; overflow: elide; color: Theme.muted; }
+        }
+        if root.score.favorite : VerticalLayout {
+            alignment: center;
+            FavoriteBadge { }
         }
         VerticalLayout {
             alignment: center;
@@ -366,11 +384,13 @@ export component LibraryScreen inherits Rectangle {
     pure function empty-title(key: string) -> string {
         return key == "all" ? @tr("A little space for your scores")
             : key == "recent" ? @tr("No recent scores")
+            : key == "favorites" ? @tr("No favorites yet")
             : @tr("No scores here");
     }
     pure function empty-detail(key: string) -> string {
         return key == "all" ? @tr("Scan your library folder to add the PDFs it contains.")
             : key == "recent" ? @tr("Scores you open appear here.")
+            : key == "favorites" ? @tr("Star a score to keep it here.")
             : @tr("No scores by this composer are in the library.");
     }
     callback section-selected(string);
@@ -381,6 +401,7 @@ export component LibraryScreen inherits Rectangle {
     callback score-selected(string);
     callback score-opened(string, string);
     callback score-edit-requested(string);
+    callback favorite-toggled(string);
     // Phones (a compact window width, or a landscape phone's short height) get two-column
     // outlined cards; wider and taller windows keep the tablet grid exactly.
     private property <bool> compact-grid: root.available-width < 600px || root.height < 480px;
@@ -680,6 +701,11 @@ export component LibraryScreen inherits Rectangle {
                     label: @tr("Open score");
                     icon: @image-url("material-icons/external-link.svg");
                     clicked => { root.menu-open = false; root.score-opened(root.menu-row.relative_path, root.menu-row.note_key); }
+                }
+                SheetAction {
+                    label: root.menu-row.favorite ? @tr("Remove from favorites") : @tr("Add to favorites");
+                    icon: root.menu-row.favorite ? @image-url("material-icons/star-filled.svg") : @image-url("material-icons/star.svg");
+                    clicked => { root.menu-open = false; root.favorite-toggled(root.menu-row.note_key); }
                 }
                 SheetAction {
                     label: @tr("Score details");
