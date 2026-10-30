@@ -323,11 +323,15 @@ fn set_header_back_returns_to_sets() {
             labelled(&app, "Uroczystość · 10:00").is_some(),
             "{context}: notes line"
         );
-        for action in ["Add", "Reorder", "Search", "Scan library"] {
+        for action in ["Add", "Search", "Scan library"] {
             let button = labelled(&app, action).unwrap_or_else(|| panic!("{context}: {action}"));
             let right = button.absolute_position().x + button.size().width;
             assert!(right <= width as f32, "{context}: {action} fits the header");
         }
+        assert!(
+            labelled(&app, "Reorder").is_none(),
+            "{context}: reorder is not in 0.3.0"
+        );
         assert!(
             labelled(&app, "New set").is_none(),
             "{context}: not the Sets list"

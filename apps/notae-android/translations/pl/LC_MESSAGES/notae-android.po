@@ -372,9 +372,6 @@ msgstr "Wróć do zestawów"
 msgid "Add"
 msgstr "Dodaj"
 
-msgid "Reorder"
-msgstr "Zmień kolejność"
-
 msgid "Add to set…"
 msgstr "Dodaj do zestawu…"
 

@@ -546,8 +546,6 @@ export component LibraryScreen inherits Rectangle {
                             primary: true;
                             clicked => { root.add-pieces-requested(); }
                         }
-                        // Inert on purpose: reorder mode moved to the Jetpack Compose UI plan.
-                        if root.in-set : PillButton { text: @tr("Reorder"); tonal: true; }
                         if !root.sidebar-visible : IconButton { label: @tr("Settings"); icon: @image-url("material-icons/settings.svg"); clicked => { root.settings-clicked(); } }
                         ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
                     }
