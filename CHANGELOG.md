@@ -9,9 +9,6 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
-The last release of the Slint Android app. Reordering a set, text notes
-between pieces and importing an export come in the next app.
-
 ### Added
 
 - Polish UI: every screen, dialog and status message is translated into Polish.
@@ -33,11 +30,6 @@ between pieces and importing an export come in the next app.
   through Android's save dialog, for moving them to the next Notae app.
   Favorites and sets are stored in the app's private storage, never in the
   library folder.
-
-### Fixed
-
-- Opening a set by tapping its card no longer makes Android Back close Notae;
-  Back returns to Sets.
 
 ## [0.2.2] - 2026-10-19
 
