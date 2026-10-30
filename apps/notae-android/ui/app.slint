@@ -111,7 +111,8 @@ export component AppWindow inherits Window {
     in property <string> library_subtitle: "";
     in property <string> library_notes: "";
     in property <LibraryRow> selected;
-    // The previewed score's neighbours in the current section; empty at a boundary.
+    // Selection ids (a set row's item id, else the note key) of the previewed score's neighbours in
+    // the current section; empty at a boundary.
     in property <string> selected_previous_key: "";
     in property <string> selected_next_key: "";
     in property <string> selected_position: "";
@@ -138,7 +139,8 @@ export component AppWindow inherits Window {
     callback metadata_save_requested(string, string, string, string, string);
     callback metadata_cancelled();
     callback selection_cleared();
-    callback open_pdf_requested(string, string);
+    // Relative path, note key and set item id (empty outside a set).
+    callback open_pdf_requested(string, string, string);
     callback section_selected(string);
     callback search_opened();
     callback search_closed();
@@ -341,7 +343,7 @@ export component AppWindow inherits Window {
                         close => { root.selection_cleared(); }
                         previous => { root.score_selected(root.selected_previous_key); }
                         next => { root.score_selected(root.selected_next_key); }
-                        open => { root.open_pdf_requested(root.selected.relative_path, root.selected.note_key); }
+                        open => { root.open_pdf_requested(root.selected.relative_path, root.selected.note_key, root.selected.item_id); }
                         edit => { root.edit_metadata_requested(root.selected.note_key); }
                         favorite-toggled => { root.favorite_toggled(root.selected.note_key); }
                     }
@@ -362,7 +364,7 @@ export component AppWindow inherits Window {
                 cancel-clicked => { root.cancel_rescan_clicked(); }
                 acknowledge-clicked => { root.acknowledge_clicked(); }
                 score-selected(key) => { root.score_selected(key); }
-                score-opened(path, key) => { root.open_pdf_requested(path, key); }
+                score-opened(path, key, item) => { root.open_pdf_requested(path, key, item); }
                 score-edit-requested(key) => { root.edit_metadata_requested(key); }
                 favorite-toggled(key) => { root.favorite_toggled(key); }
                 set-cards: root.set_cards;

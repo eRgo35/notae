@@ -29,7 +29,9 @@ use crate::state::{
 };
 use crate::storage::StorageState;
 use crate::thumbnails::ThumbnailCache;
-use crate::ui::browse::{LibrarySection, Neighbours, SectionContext, neighbours, section_rows};
+use crate::ui::browse::{
+    LibrarySection, Neighbours, SectionContext, neighbours, row_id, section_rows,
+};
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
 use crate::ui_prefs::{LibraryView, UiPrefs};
@@ -86,7 +88,8 @@ pub struct UiModel {
     pending_delete_set: Option<String>,
     ui_prefs: UiPrefs,
     ui_prefs_path: Option<PathBuf>,
-    selected_note: Option<String>,
+    /// The previewed row's selection id ([`row_id`]).
+    selected: Option<String>,
     thumbnails: Option<ThumbnailCache>,
     startup_presentation: StartupPresentation,
     result_shown_at: Option<std::time::Instant>,
@@ -121,7 +124,7 @@ impl UiModel {
             pending_delete_set: None,
             ui_prefs: UiPrefs::default(),
             ui_prefs_path: None,
-            selected_note: None,
+            selected: None,
             thumbnails: None,
             startup_presentation: StartupPresentation::Restoring,
             result_shown_at: None,
@@ -501,7 +504,7 @@ impl UiModel {
     /// Returns the I/O error when the preferences cannot be saved; the section is still shown.
     pub fn select_section(&mut self, section: LibrarySection) -> std::io::Result<()> {
         self.section = section;
-        self.selected_note = None;
+        self.selected = None;
         let key = self.section.key();
         if self.ui_prefs.section == key {
             return Ok(());
@@ -531,28 +534,33 @@ impl UiModel {
         }
     }
 
-    /// Opens (`Some`) or closes (`None`) the details pane.
-    pub fn select_note(&mut self, note_key: Option<String>) {
-        self.selected_note = note_key;
+    /// Opens the details pane on the row with selection id `id` ([`row_id`]: a set row's item
+    /// id, else the note key), or closes it with `None`.
+    pub fn select_note(&mut self, id: Option<String>) {
+        self.selected = id;
     }
 
-    /// The row shown in the details pane, if it is still in the library.
+    /// The row shown in the details pane, if it is still in the library. Inside a set this is
+    /// the selected copy of the piece, carrying its item id.
     #[must_use]
     pub fn selected_row(&self) -> Option<SearchRow> {
-        let key = self.selected_note.as_deref()?;
+        let id = self.selected.as_deref()?;
         self.search_rows
             .iter()
-            .find(|row| row.note_key == key)
+            .find(|row| row_id(row) == id)
             .cloned()
+            .or_else(|| {
+                section_rows(&self.search_rows, &self.section, &self.section_context())
+                    .into_iter()
+                    .find(|row| !row.missing && row_id(row) == id)
+            })
     }
 
-    /// Closes the preview when its score left the library, so it cannot reopen if the
-    /// same key later returns.
+    /// Closes the preview when its score left the library (or its set), so it cannot reopen if
+    /// the same id later returns.
     fn forget_missing_selection(&mut self) {
-        if let Some(key) = self.selected_note.as_deref()
-            && !self.search_rows.iter().any(|row| row.note_key == key)
-        {
-            self.selected_note = None;
+        if self.selected.is_some() && self.selected_row().is_none() {
+            self.selected = None;
         }
     }
 
@@ -560,10 +568,10 @@ impl UiModel {
     /// is open or the score is not in the section (for example a Search result).
     #[must_use]
     pub fn preview_neighbours(&self) -> Option<Neighbours> {
-        let key = self.selected_note.as_deref()?;
+        let id = self.selected.as_deref()?;
         neighbours(
             &section_rows(&self.search_rows, &self.section, &self.section_context()),
-            key,
+            id,
         )
     }
 

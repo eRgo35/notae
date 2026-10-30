@@ -146,7 +146,8 @@ component ScoreGrid inherits Flickable {
     in property <bool> items-enabled: true;
     // Phones: at least two cards per row with a fixed rhythm instead of width-filling tiles.
     in property <bool> compact: false;
-    callback open(string, string);
+    // Relative path, note key and set item id (empty outside a set).
+    callback open(string, string, string);
     callback more(LibraryRow);
     private property <length> gap: self.compact ? 12px : 16px;
     private property <length> row-gap: self.compact ? 12px : 20px;
@@ -171,7 +172,7 @@ component ScoreGrid inherits Flickable {
         score: row;
         compact: root.compact;
         interactive: root.items-enabled;
-        open => { root.open(row.relative_path, row.note_key); }
+        open => { root.open(row.relative_path, row.note_key, row.item_id); }
         more => { root.more(row); }
     }
 }
@@ -434,7 +435,7 @@ export component LibraryScreen inherits Rectangle {
     callback cancel-clicked();
     callback acknowledge-clicked();
     callback score-selected(string);
-    callback score-opened(string, string);
+    callback score-opened(string, string, string);
     callback score-edit-requested(string);
     callback favorite-toggled(string);
     callback new-set-requested();
@@ -600,7 +601,7 @@ export component LibraryScreen inherits Rectangle {
                         rows: root.rows;
                         compact: root.compact-grid;
                         items-enabled: !root.menu-open;
-                        open(path, key) => { root.score-opened(path, key); }
+                        open(path, key, item) => { root.score-opened(path, key, item); }
                         more(row) => { root.show-menu(row); }
                     }
                     Scrollbar {
@@ -626,7 +627,7 @@ export component LibraryScreen inherits Rectangle {
                         for row in root.rows : ScoreRow {
                             score: row;
                             interactive: !root.menu-open;
-                            open => { root.score-opened(row.relative_path, row.note_key); }
+                            open => { root.score-opened(row.relative_path, row.note_key, row.item_id); }
                             more => { root.show-menu(row); }
                         }
                     }
@@ -787,7 +788,7 @@ export component LibraryScreen inherits Rectangle {
                         if root.menu-is-set {
                             root.edit-set-requested(root.menu-set.id);
                         } else {
-                            root.score-opened(root.menu-row.relative_path, root.menu-row.note_key);
+                            root.score-opened(root.menu-row.relative_path, root.menu-row.note_key, root.menu-row.item_id);
                         }
                     }
                 }
@@ -804,7 +805,8 @@ export component LibraryScreen inherits Rectangle {
                 if !root.menu-is-set : SheetAction {
                     label: @tr("Score details");
                     icon: @image-url("material-icons/info.svg");
-                    clicked => { root.menu-open = false; root.score-selected(root.menu-row.note_key); }
+                    // Inside a set the item id names this copy of a repeated piece.
+                    clicked => { root.menu-open = false; root.score-selected(root.menu-row.item_id != "" ? root.menu-row.item_id : root.menu-row.note_key); }
                 }
                 if !root.menu-is-set : SheetAction {
                     label: @tr("Edit details");

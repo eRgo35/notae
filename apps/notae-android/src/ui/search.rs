@@ -30,6 +30,8 @@ pub struct SearchRow {
     pub text_snippet: Option<String>,
     /// The set item this row shows; `None` outside a set.
     pub item_id: Option<String>,
+    /// The item's one-based number in its set, counting notes; `None` outside a set.
+    pub position: Option<usize>,
     /// A set's piece whose PDF is no longer in the library.
     pub missing: bool,
 }
@@ -58,6 +60,7 @@ impl SearchRow {
             relative_path: note.path().as_str().to_owned(),
             text_snippet: None,
             item_id: None,
+            position: None,
             missing: false,
         }
     }
@@ -100,8 +103,10 @@ pub fn library_row(
         snippet_after: after.into(),
         favorite,
         item_id: row.item_id.unwrap_or_default().into(),
-        // Set by the caller inside a set, where it knows the item's number.
-        position: "".into(),
+        position: row
+            .position
+            .map_or_else(String::new, |position| position.to_string())
+            .into(),
         missing: row.missing,
         just_opened: false,
     }

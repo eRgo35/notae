@@ -221,6 +221,7 @@ pub fn set_entries(rows: &[SearchRow], set: &Set) -> Vec<SetEntry> {
                     .cloned()
                     .unwrap_or_else(|| missing_row(piece));
                 row.item_id = Some(item.id.clone());
+                row.position = Some(position);
                 SetEntry::Piece { position, row }
             }
             ItemKind::Note { text } => SetEntry::Note {
@@ -251,6 +252,7 @@ fn missing_row(piece: &PieceRef) -> SearchRow {
         composer_origin: String::new(),
         text_snippet: None,
         item_id: None,
+        position: None,
         missing: true,
     }
 }
@@ -292,7 +294,15 @@ pub fn set_subtitle(set: &Set) -> String {
     parts.join(" · ")
 }
 
-/// Where a row sits among its section's rows, with the keys of the rows either side.
+/// The id that selects `row`: its set item id inside a set, so each copy of a repeated piece is
+/// its own row, and its note key everywhere else.
+#[must_use]
+pub fn row_id(row: &SearchRow) -> &str {
+    row.item_id.as_deref().unwrap_or(&row.note_key)
+}
+
+/// Where a row sits among its section's rows, with the selection ids ([`row_id`]) of the rows
+/// either side.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Neighbours {
     pub previous: Option<String>,
@@ -302,15 +312,24 @@ pub struct Neighbours {
     pub total: usize,
 }
 
-/// The neighbours of `key` in `rows`, without wrapping; `None` when `key` is not in `rows`.
+/// The neighbours of the row selected by `id` in `rows`, without wrapping and skipping rows
+/// missing from the library; `None` when no row has that [`row_id`].
 #[must_use]
-pub fn neighbours(rows: &[SearchRow], key: &str) -> Option<Neighbours> {
-    let index = rows.iter().position(|row| row.note_key == key)?;
+pub fn neighbours(rows: &[SearchRow], id: &str) -> Option<Neighbours> {
+    let index = rows.iter().position(|row| row_id(row) == id)?;
+    let selectable = |row: &&SearchRow| !row.missing;
     Some(Neighbours {
-        previous: index
-            .checked_sub(1)
-            .map(|previous| rows[previous].note_key.clone()),
-        next: rows.get(index + 1).map(|row| row.note_key.clone()),
+        previous: rows
+            .iter()
+            .take(index)
+            .rev()
+            .find(selectable)
+            .map(|row| row_id(row).to_owned()),
+        next: rows
+            .iter()
+            .skip(index + 1)
+            .find(selectable)
+            .map(|row| row_id(row).to_owned()),
         position: index + 1,
         total: rows.len(),
     })

@@ -146,7 +146,7 @@ fn click_runs_the_slint_default_action_of_exactly_that_card_and_its_overflow_she
     let opened = Rc::new(RefCell::new(Vec::new()));
     let previewed = Rc::new(RefCell::new(Vec::new()));
     let recorded = Rc::clone(&opened);
-    app.on_open_pdf_requested(move |path, key| {
+    app.on_open_pdf_requested(move |path, key, _item| {
         recorded
             .borrow_mut()
             .push((path.to_string(), key.to_string()));

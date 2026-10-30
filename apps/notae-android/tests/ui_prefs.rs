@@ -239,6 +239,7 @@ fn row(composer: &str) -> SearchRow {
         composer_origin: String::new(),
         text_snippet: None,
         item_id: None,
+        position: None,
         missing: false,
     }
 }

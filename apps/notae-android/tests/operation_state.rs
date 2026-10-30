@@ -279,6 +279,7 @@ fn worker_progress_and_completion_are_reflected_in_ui_state_and_rows() {
         composer_origin: String::new(),
         text_snippet: None,
         item_id: None,
+        position: None,
         missing: false,
     }];
     model
@@ -320,6 +321,7 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         composer_origin: String::new(),
         text_snippet: None,
         item_id: None,
+        position: None,
         missing: false,
     };
     model
@@ -674,6 +676,7 @@ fn metadata_events_keep_errors_visible_and_close_after_success() {
                 composer_origin: String::new(),
                 text_snippet: None,
                 item_id: None,
+                position: None,
                 missing: false,
             }],
         })

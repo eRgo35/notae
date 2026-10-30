@@ -96,7 +96,7 @@ fn list_rows_show_every_row_in_order_and_open_by_stable_key() {
     with_library(&app, 4);
     let opened = Rc::new(RefCell::new(Vec::new()));
     let recorded = Rc::clone(&opened);
-    app.on_open_pdf_requested(move |path, key| {
+    app.on_open_pdf_requested(move |path, key, _item| {
         recorded
             .borrow_mut()
             .push((path.to_string(), key.to_string()))
@@ -539,7 +539,7 @@ fn preview_actions_open_and_edit_the_previewed_score() {
     let opened = Rc::new(RefCell::new(Vec::new()));
     let edited = Rc::new(RefCell::new(Vec::new()));
     let (o, e) = (Rc::clone(&opened), Rc::clone(&edited));
-    app.on_open_pdf_requested(move |path, key| {
+    app.on_open_pdf_requested(move |path, key, _item| {
         o.borrow_mut().push((path.to_string(), key.to_string()))
     });
     app.on_edit_metadata_requested(move |key| e.borrow_mut().push(key.to_string()));
@@ -589,7 +589,7 @@ struct Dispatches {
 fn record_dispatches(app: &AppWindow) -> Rc<RefCell<Dispatches>> {
     let seen = Rc::new(RefCell::new(Dispatches::default()));
     let opened = Rc::clone(&seen);
-    app.on_open_pdf_requested(move |path, key| {
+    app.on_open_pdf_requested(move |path, key, _item| {
         opened
             .borrow_mut()
             .opened
@@ -715,4 +715,155 @@ fn details_star_has_accessible_label() {
         labelled(&app, "Remove from favorites").and_then(|star| star.accessible_role()),
         Some(i_slint_core::items::AccessibleRole::Button)
     );
+}
+
+fn set_piece(key: char, title: &str) -> notae_android::ui::search::SearchRow {
+    notae_android::ui::search::SearchRow {
+        id: None,
+        title: title.to_owned(),
+        composer_or_artist: None,
+        tags: Vec::new(),
+        status: "Ready".to_owned(),
+        relative_path: format!("{title}.pdf"),
+        note_key: key.to_string().repeat(64),
+        text_pending: false,
+        title_origin: String::new(),
+        composer_origin: String::new(),
+        text_snippet: None,
+        item_id: None,
+        position: None,
+        missing: false,
+    }
+}
+
+/// Pushes the model's selection to the details pane the way `sync_window` does.
+fn show_selection(app: &AppWindow, model: &notae_android::ui::UiModel) {
+    let nav = model.preview_neighbours();
+    app.set_selected_previous_key(
+        nav.as_ref()
+            .and_then(|nav| nav.previous.clone())
+            .unwrap_or_default()
+            .into(),
+    );
+    app.set_selected_next_key(
+        nav.as_ref()
+            .and_then(|nav| nav.next.clone())
+            .unwrap_or_default()
+            .into(),
+    );
+    app.set_selected_position(
+        nav.map_or_else(String::new, |nav| {
+            format!("{} of {}", nav.position, nav.total)
+        })
+        .into(),
+    );
+    let selected = model.selected_row();
+    app.set_details_open(selected.is_some());
+    if let Some(row) = selected {
+        app.set_selected(notae_android::ui::search::library_row(row, None, false));
+    }
+}
+
+/// Plan Review Focus #1: a set holding the same piece twice (A, B, A). The ⋮ sheet, the details
+/// pane and previous/next on the second copy act on that copy, never the first.
+#[test]
+fn selecting_second_copy_keeps_its_position() {
+    use notae_android::favorites::PieceRef;
+    use notae_android::sets::{SetFields, SetStore};
+    use notae_android::ui::UiModel;
+    use notae_android::ui::browse::LibrarySection;
+
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let mut store = SetStore::default();
+    let set = store.create(
+        SetFields {
+            name: "Msza".to_owned(),
+            date: None,
+            notes: None,
+        },
+        10,
+    );
+    let items: Vec<String> = [('a', "Ave"), ('b', "Bogurodzica"), ('a', "Ave")]
+        .into_iter()
+        .map(|(key, title)| {
+            let piece = PieceRef {
+                key: key.to_string().repeat(64),
+                path: format!("{title}.pdf"),
+            };
+            store.add_piece(&set, piece, 10).expect("set exists")
+        })
+        .collect();
+    let path = dir.path().join("sets.json");
+    store.save(&path).expect("sets file is written");
+
+    let model = Rc::new(RefCell::new(UiModel::new()));
+    model.borrow_mut().set_sets_path(path);
+    model
+        .borrow_mut()
+        .set_search_rows(vec![set_piece('a', "Ave"), set_piece('b', "Bogurodzica")]);
+    model
+        .borrow_mut()
+        .select_section(LibrarySection::Set(set))
+        .expect("no preferences file to save");
+
+    let app = app();
+    app.set_library_list_view(true);
+    app.set_selected_section(model.borrow().section().key().into());
+    let rows: Vec<LibraryRow> = model
+        .borrow()
+        .visible_rows()
+        .into_iter()
+        .map(|row| notae_android::ui::search::library_row(row, None, false))
+        .collect();
+    app.set_library_rows(ModelRc::new(VecModel::from(rows)));
+    settle();
+    {
+        let (model, weak) = (Rc::clone(&model), app.as_weak());
+        app.on_score_selected(move |id| {
+            model.borrow_mut().select_note(Some(id.to_string()));
+            if let Some(app) = weak.upgrade() {
+                show_selection(&app, &model.borrow());
+            }
+        });
+    }
+    let opened = Rc::new(RefCell::new(Vec::new()));
+    let recorded = Rc::clone(&opened);
+    app.on_open_pdf_requested(move |path, key, item| {
+        recorded
+            .borrow_mut()
+            .push((path.to_string(), key.to_string(), item.to_string()));
+    });
+
+    // ⋮ on the second Ave, then Score details.
+    click(&app, "More actions for Ave", 1);
+    settle();
+    ElementHandle::find_by_accessible_label(&app, "Score details")
+        .find(|element| element.type_name().as_deref() == Some("SheetAction"))
+        .expect("the sheet offers Score details")
+        .mock_single_click(slint::platform::PointerEventButton::Left);
+    settle();
+    assert_eq!(app.get_selected().item_id, items[2].as_str());
+    assert!(
+        labelled(&app, "Score 3 of 3").is_some(),
+        "the second copy is third"
+    );
+    assert_eq!(
+        labelled(&app, "Next score").and_then(|e| e.accessible_enabled()),
+        Some(false)
+    );
+
+    press(&app, "Open score");
+    assert_eq!(
+        *opened.borrow(),
+        [("Ave.pdf".to_owned(), "a".repeat(64), items[2].clone())]
+    );
+
+    press(&app, "Previous score");
+    assert!(labelled(&app, "Score 2 of 3").is_some());
+    press(&app, "Next score");
+    assert!(
+        labelled(&app, "Score 3 of 3").is_some(),
+        "next from Bogurodzica returns to the second Ave, not the first"
+    );
+    assert_eq!(app.get_selected().item_id, items[2].as_str());
 }

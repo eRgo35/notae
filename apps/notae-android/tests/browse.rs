@@ -30,6 +30,7 @@ fn row(
         composer_origin: String::new(),
         text_snippet: None,
         item_id: None,
+        position: None,
         missing: false,
     }
 }
@@ -583,4 +584,67 @@ fn set_subtitle_joins_date_and_counts() {
     let (store, id) = store_with(&[]);
     assert_eq!(set_subtitle(store.get(&id).expect("set")), "");
     set_active_bundle("");
+}
+
+#[test]
+fn neighbours_in_set_with_repeats_use_item_ids() {
+    let (store, id) = store_with(&[Some('a'), Some('b'), Some('a')]);
+    let context = SectionContext {
+        sets: &store,
+        ..SectionContext::default()
+    };
+    let rows = section_rows(&library(), &LibrarySection::Set(id.clone()), &context);
+    let ids = item_ids(&store, &id);
+
+    let second = neighbours(&rows, &ids[2]).expect("the second copy is present");
+    assert_eq!(second.previous.as_deref(), Some(ids[1].as_str()));
+    assert_eq!(second.next, None, "the second copy is last");
+    assert_eq!((second.position, second.total), (3, 3));
+
+    let first = neighbours(&rows, &ids[0]).expect("the first copy is present");
+    assert_eq!(first.previous, None);
+    assert_eq!(first.next.as_deref(), Some(ids[1].as_str()));
+    assert_eq!((first.position, first.total), (1, 3));
+
+    // Inside a set the note key no longer names a row: it would be ambiguous.
+    assert!(neighbours(&rows, &"a".repeat(64)).is_none());
+}
+
+#[test]
+fn neighbours_skip_missing_rows() {
+    let (store, id) = store_with(&[Some('a'), Some('f'), Some('c')]);
+    let context = SectionContext {
+        sets: &store,
+        ..SectionContext::default()
+    };
+    let rows = section_rows(&library(), &LibrarySection::Set(id.clone()), &context);
+    let ids = item_ids(&store, &id);
+    assert!(rows[1].missing);
+
+    let first = neighbours(&rows, &ids[0]).expect("first piece is present");
+    assert_eq!(first.next.as_deref(), Some(ids[2].as_str()));
+    let last = neighbours(&rows, &ids[2]).expect("last piece is present");
+    assert_eq!(last.previous.as_deref(), Some(ids[0].as_str()));
+    assert_eq!(last.next, None);
+}
+
+#[test]
+fn set_rows_carry_their_set_position() {
+    let (store, id) = store_with(&[Some('a'), None, Some('f'), Some('a')]);
+    let context = SectionContext {
+        sets: &store,
+        ..SectionContext::default()
+    };
+    let rows = section_rows(&library(), &LibrarySection::Set(id), &context);
+    let positions: Vec<Option<usize>> = rows.iter().map(|row| row.position).collect();
+    assert_eq!(
+        positions,
+        [Some(1), Some(3), Some(4)],
+        "notes keep their number"
+    );
+    assert!(
+        section_rows(&library(), &LibrarySection::All, &context)
+            .iter()
+            .all(|row| row.position.is_none())
+    );
 }

@@ -63,7 +63,7 @@ impl Dispatches {
 fn record(app: &AppWindow) -> Rc<RefCell<Dispatches>> {
     let seen = Rc::new(RefCell::new(Dispatches::default()));
     let opened = Rc::clone(&seen);
-    app.on_open_pdf_requested(move |path, key| {
+    app.on_open_pdf_requested(move |path, key, _item| {
         opened
             .borrow_mut()
             .opened

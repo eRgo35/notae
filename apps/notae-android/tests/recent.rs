@@ -21,6 +21,7 @@ fn row(c: char, title: &str) -> SearchRow {
         composer_origin: String::new(),
         text_snippet: None,
         item_id: None,
+        position: None,
         missing: false,
     }
 }

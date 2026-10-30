@@ -382,7 +382,7 @@ fn set_cards_show_position_numbers() {
             );
             let opened = Rc::new(RefCell::new(Vec::new()));
             let seen = Rc::clone(&opened);
-            app.on_open_pdf_requested(move |path, _| seen.borrow_mut().push(path.to_string()));
+            app.on_open_pdf_requested(move |path, _, _| seen.borrow_mut().push(path.to_string()));
             click(&labelled(&app, "4. Psalm 23").expect("missing row"));
             assert!(
                 opened.borrow().is_empty(),

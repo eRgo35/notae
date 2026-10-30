@@ -574,7 +574,8 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
         let app = app.clone();
-        window.on_open_pdf_requested(move |relative_path, note_key| {
+        // The set item id (empty outside a set) is not used yet.
+        window.on_open_pdf_requested(move |relative_path, note_key, _item_id| {
             let relative_path = relative_path.to_string();
             let result = model
                 .borrow()
@@ -691,7 +692,7 @@ thread_local! {
     static LIBRARY_ROWS: RefCell<LibraryRowsCache> = RefCell::default();
 }
 
-type PushedRows = (Vec<SearchRow>, Vec<bool>, bool, Vec<PieceRef>, Vec<String>);
+type PushedRows = (Vec<SearchRow>, Vec<bool>, bool, Vec<PieceRef>);
 
 /// Keeps `sync_window` from re-decoding thumbnail PNGs and from replacing an unchanged
 /// `library_rows` model (which would rebuild every card and drop keyboard focus).
@@ -700,20 +701,13 @@ struct LibraryRowsCache {
     /// Decoded thumbnails by content key. A key's thumbnail is written once and never
     /// rewritten, so entries only need dropping when the key leaves the library.
     images: HashMap<String, slint::Image>,
-    /// The rows, per-row thumbnail availability, language, favorites and set positions last
-    /// pushed to the window.
+    /// The rows, per-row thumbnail availability, language and favorites last pushed to the
+    /// window.
     pushed: Option<PushedRows>,
 }
 
 impl LibraryRowsCache {
-    /// `positions` holds each row's number inside a set, and is empty elsewhere.
-    fn push(
-        &mut self,
-        window: &AppWindow,
-        model: &UiModel,
-        visible: Vec<SearchRow>,
-        positions: Vec<String>,
-    ) {
+    fn push(&mut self, window: &AppWindow, model: &UiModel, visible: Vec<SearchRow>) {
         let keys: HashSet<&str> = model
             .search_rows()
             .iter()
@@ -722,7 +716,14 @@ impl LibraryRowsCache {
         self.images.retain(|key, _| keys.contains(key.as_str()));
         let thumbnails: Vec<Option<slint::Image>> = visible
             .iter()
-            .map(|row| self.thumbnail(model.thumbnail_cache(), &row.note_key))
+            // A missing piece has no PDF, so a thumbnail left from its old content is stale.
+            .map(|row| {
+                if row.missing {
+                    None
+                } else {
+                    self.thumbnail(model.thumbnail_cache(), &row.note_key)
+                }
+            })
             .collect();
         let available: Vec<bool> = thumbnails.iter().map(Option::is_some).collect();
         // Row labels are translated in Rust, so a language switch must re-push them.
@@ -731,12 +732,11 @@ impl LibraryRowsCache {
         if self
             .pushed
             .as_ref()
-            .is_some_and(|(rows, flags, language, starred, numbers)| {
+            .is_some_and(|(rows, flags, language, starred)| {
                 *rows == visible
                     && *flags == available
                     && *language == polish
                     && starred.as_slice() == favorites
-                    && *numbers == positions
             })
         {
             return;
@@ -745,16 +745,13 @@ impl LibraryRowsCache {
             .iter()
             .cloned()
             .zip(thumbnails)
-            .enumerate()
-            .map(|(index, (row, thumbnail))| {
+            .map(|(row, thumbnail)| {
                 let favorite = model.is_favorite(&row.note_key);
-                let mut row = crate::ui::search::library_row(row, thumbnail, favorite);
-                row.position = positions.get(index).cloned().unwrap_or_default().into();
-                row
+                crate::ui::search::library_row(row, thumbnail, favorite)
             })
             .collect();
         window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
-        self.pushed = Some((visible, available, polish, favorites.to_vec(), positions));
+        self.pushed = Some((visible, available, polish, favorites.to_vec()));
     }
 
     /// The decoded thumbnail for `note_key`, loading it once the file exists. A file that fails
@@ -1013,16 +1010,6 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         }
         _ => None,
     };
-    let positions: Vec<String> = open_set.map_or_else(Vec::new, |set| {
-        crate::ui::browse::set_entries(model.search_rows(), set)
-            .into_iter()
-            .filter_map(|entry| match entry {
-                crate::ui::browse::SetEntry::Piece { position, .. } => Some(position.to_string()),
-                crate::ui::browse::SetEntry::Note { .. } => None,
-            })
-            .collect()
-    });
-
     let selected = model.selected_row();
     window.set_details_open(selected.is_some());
     let preview_neighbours = model.preview_neighbours();
@@ -1053,7 +1040,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         let favorite = model.is_favorite(&row.note_key);
         window.set_selected(crate::ui::search::library_row(row, thumbnail, favorite));
     }
-    LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible, positions));
+    LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible));
 
     let all_rows = model.search_rows();
     let sections: Vec<crate::SectionItem> =
