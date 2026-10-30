@@ -248,6 +248,8 @@ export component AppWindow inherits Window {
     changed show_settings => { if !root.modal-open { shortcuts.focus(); } }
     changed show_search => { if !root.show_search && !root.modal-open { shortcuts.focus(); } }
     changed details_open => { if !root.modal-open { shortcuts.focus(); } }
+    // Opening a set unmounts the tapped set card; leaving one unmounts the header's back arrow.
+    changed selected_section => { if !root.modal-open && !root.show_search { shortcuts.focus(); } }
 
     forward-focus: shortcuts;
     shortcuts := FocusScope {

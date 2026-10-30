@@ -357,6 +357,37 @@ fn set_header_back_returns_to_sets() {
 }
 
 #[test]
+fn back_works_after_opening_a_set_from_its_card() {
+    each_tablet(|width, height, dark, context| {
+        let app = sets_screen(width, height, false, dark);
+        let selected = Rc::new(RefCell::new(Vec::new()));
+        let seen = Rc::clone(&selected);
+        app.on_section_selected(move |key| seen.borrow_mut().push(key.to_string()));
+        let weak = app.as_weak();
+        app.on_set_opened(move |id| {
+            if let Some(app) = weak.upgrade() {
+                app.set_selected_section(format!("set:{id}").into());
+            }
+        });
+
+        // The tapped card takes focus and then unmounts when the set opens.
+        let folder = ElementHandle::find_by_element_type_name(&app, "SetFolderCard")
+            .next()
+            .expect("first card");
+        click(&folder);
+        wait(500);
+        assert_eq!(
+            app.get_selected_section(),
+            "set:aaaaaaaaaaaaaaaa",
+            "{context}"
+        );
+
+        key(&app, Key::Back);
+        assert_eq!(*selected.borrow(), ["sets"], "{context}: Back is handled");
+    });
+}
+
+#[test]
 fn set_cards_show_position_numbers() {
     each_tablet(|width, height, dark, context| {
         for list in [false, true] {
