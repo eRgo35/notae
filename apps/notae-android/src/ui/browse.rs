@@ -174,7 +174,7 @@ pub fn section_rows(
             set_entries(rows, set)
                 .into_iter()
                 .filter_map(|entry| match entry {
-                    SetEntry::Piece { row, .. } => Some(row),
+                    SetEntry::Piece(row) => Some(row),
                     SetEntry::Note { .. } => None,
                 })
                 .collect()
@@ -197,8 +197,9 @@ pub fn section_rows(
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)] // A short list built per redraw; boxing the row buys nothing.
 pub enum SetEntry {
-    /// A piece; a PDF no longer in the library is a placeholder row with `missing` set.
-    Piece { position: usize, row: SearchRow },
+    /// A piece, numbered by `row.position`; a PDF no longer in the library is a placeholder row
+    /// with `missing` set.
+    Piece(SearchRow),
     /// A text note between pieces.
     Note {
         position: usize,
@@ -222,7 +223,7 @@ pub fn set_entries(rows: &[SearchRow], set: &Set) -> Vec<SetEntry> {
                     .unwrap_or_else(|| missing_row(piece));
                 row.item_id = Some(item.id.clone());
                 row.position = Some(position);
-                SetEntry::Piece { position, row }
+                SetEntry::Piece(row)
             }
             ItemKind::Note { text } => SetEntry::Note {
                 position,
@@ -310,6 +311,18 @@ pub struct Neighbours {
     /// One-based index of the row.
     pub position: usize,
     pub total: usize,
+}
+
+impl Neighbours {
+    /// "2 of 5" (Polish "2 z 5"), shown in the details pane.
+    #[must_use]
+    pub fn label(&self) -> String {
+        let (position, total) = (self.position, self.total);
+        pick(
+            format!("{position} of {total}"),
+            format!("{position} z {total}"),
+        )
+    }
 }
 
 /// The neighbours of the row selected by `id` in `rows`, without wrapping and skipping rows

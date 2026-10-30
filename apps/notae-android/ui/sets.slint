@@ -1,7 +1,7 @@
 // Singing sets: folder cards (grid), set rows (list), the new/edit set dialog and the delete
 // confirmation. Kept apart from library.slint, which places them.
 import { ListView } from "std-widgets.slint";
-import { Theme, Glyph, IconButton, PillButton, Card, ActionInput, TextField } from "components.slint";
+import { Theme, Glyph, IconButton, PillButton, Card, ActionInput, TextField, SearchField } from "components.slint";
 import { Scrollbar } from "scrollbar.slint";
 
 export struct SetCard {
@@ -10,6 +10,24 @@ export struct SetCard {
     date: string,
     count: string,
     edited: string,
+}
+
+// One set in the "Add to set…" checklist; `checked` when it holds the piece.
+export struct SetChoice {
+    id: string,
+    name: string,
+    detail: string,
+    checked: bool,
+}
+
+// One score in the add picker. `in_set`: in the set before the picker opened; `added`: added
+// during this picker session.
+export struct PickerRow {
+    note_key: string,
+    title: string,
+    detail: string,
+    in_set: bool,
+    added: bool,
 }
 
 // A set item's number, on its card's corner or at the start of its row.
@@ -270,25 +288,31 @@ component DialogLabel inherits Text {
     font-weight: 600;
 }
 
-// A centred modal card over a scrim. `presence` fades it in and out; the scrim swallows input.
+// A centred modal card over a scrim, or a bottom sheet like the actions sheet. `presence` fades it
+// in and out; the scrim swallows input and reports a tap through `dismissed`.
 component SetModal inherits Rectangle {
     in property <float> presence;
     in property <length> card-width: 560px;
+    in property <bool> bottom-sheet: false;
     in property <string> dialog-label;
     callback dismissed();
     Rectangle {
         background: #000000;
         opacity: root.presence * 0.4;
-        TouchArea { }
+        TouchArea { clicked => { root.dismissed(); } }
     }
     card := Rectangle {
-        width: min(root.width - 32px, root.card-width);
+        width: min(root.width - (root.bottom-sheet ? 0px : 32px), root.card-width);
         height: content.preferred-height;
         x: (root.width - self.width) / 2;
-        y: (root.height - self.height) / 2 + (1 - root.presence) * 32px;
+        y: root.bottom-sheet ? root.height - self.height + (1 - root.presence) * 48px
+            : (root.height - self.height) / 2 + (1 - root.presence) * 32px;
         opacity: root.presence;
         background: Theme.card;
-        border-radius: 26px;
+        border-top-left-radius: root.bottom-sheet ? 28px : 26px;
+        border-top-right-radius: root.bottom-sheet ? 28px : 26px;
+        border-bottom-left-radius: root.bottom-sheet ? 0px : 26px;
+        border-bottom-right-radius: root.bottom-sheet ? 0px : 26px;
         accessible-role: form;
         accessible-label: root.dialog-label;
         accessible-description: @tr("Modal dialog. Close or cancel to return to your library.");
@@ -417,6 +441,240 @@ export component DeleteSetDialog inherits FocusScope {
                 primary: true;
                 clicked => { root.confirmed(); }
             }
+        }
+    }
+}
+
+// A tick box in the accent colour, ticked or empty.
+component CheckBox inherits Rectangle {
+    in property <bool> checked;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border-width: root.checked ? 0px : 2px;
+    border-color: Theme.muted;
+    background: root.checked ? Theme.accent : transparent;
+    if root.checked : Glyph { kind: "check"; ink: Theme.on-accent; x: 2px; y: 2px; width: 20px; height: 20px; }
+}
+
+// One set in the checklist: tapping checks or unchecks it. A 64 px target.
+component SetChoiceRow inherits Rectangle {
+    in property <SetChoice> choice;
+    callback toggled();
+    height: 64px;
+    border-radius: 16px;
+    background: input.pressed || input.keyboard-pressed ? Theme.field : transparent;
+    border-width: input.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-checked: root.choice.checked;
+    accessible-label: root.choice.name;
+    accessible-description: root.choice.detail;
+    accessible-action-default => { root.toggled(); }
+    forward-focus: input;
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 16px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: 12px;
+                background: Theme.accent-soft;
+                Glyph { kind: "folder"; ink: Theme.on-accent-soft; x: 8px; y: 8px; width: 24px; height: 24px; }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text { text: root.choice.name; color: Theme.foreground; font-size: 16px; font-weight: 600; overflow: elide; accessible-role: none; }
+            Text { text: root.choice.detail; color: Theme.muted; font-size: 14px; overflow: elide; accessible-role: none; }
+        }
+        VerticalLayout { alignment: center; CheckBox { checked: root.choice.checked; } }
+    }
+    input := ActionInput {
+        clicked => { self.focus(); root.toggled(); }
+    }
+}
+
+// The checklist's last row: a new set that will hold the piece.
+component NewSetRow inherits Rectangle {
+    callback clicked();
+    height: 56px;
+    border-radius: 16px;
+    background: input.pressed || input.keyboard-pressed ? Theme.field : transparent;
+    border-width: input.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
+    accessible-role: button;
+    accessible-label: @tr("New set");
+    accessible-action-default => { root.clicked(); }
+    forward-focus: input;
+    HorizontalLayout {
+        padding-left: 24px;
+        padding-right: 16px;
+        spacing: 24px;
+        VerticalLayout {
+            alignment: center;
+            Image { source: @image-url("material-icons/add.svg"); width: 24px; height: 24px; colorize: Theme.accent-text; accessible-role: none; }
+        }
+        Text { text: @tr("New set"); color: Theme.accent-text; font-size: 16px; font-weight: 600; vertical-alignment: center; accessible-role: none; }
+    }
+    input := ActionInput {
+        clicked => { self.focus(); root.clicked(); }
+    }
+}
+
+// "Add to set…" from a score's ⋮: one row per set, checked when it holds the piece, then "New set".
+// Rust applies each tap at once, so there is nothing to confirm.
+export component AddToSetSheet inherits FocusScope {
+    in property <float> presence;
+    // The piece's title, under the heading.
+    in property <string> title;
+    in property <[SetChoice]> choices;
+    callback toggled(string);
+    callback new-set();
+    callback closed();
+    init => { root.focus(); }
+    key-pressed(event) => {
+        if event.text == Key.Escape || event.text == Key.Back {
+            root.closed();
+            return accept;
+        }
+        return reject;
+    }
+    SetModal {
+        width: root.width;
+        height: root.height;
+        presence: root.presence;
+        bottom-sheet: true;
+        card-width: 640px;
+        dialog-label: @tr("Add to set dialog");
+        dismissed => { root.closed(); }
+        VerticalLayout {
+            spacing: 2px;
+            Text { text: @tr("Add to set…"); color: Theme.foreground; font-size: 22px; font-weight: 600; }
+            Text { text: root.title; color: Theme.muted; font-size: 14px; overflow: elide; }
+        }
+        VerticalLayout {
+            spacing: 0px;
+            // Up to about six sets show at once; more scroll.
+            ListView {
+                min-height: min(root.choices.length * 64px, max(64px, root.height - 280px));
+                max-height: self.min-height;
+                for choice in root.choices : SetChoiceRow {
+                    choice: choice;
+                    toggled => { root.toggled(choice.id); }
+                }
+            }
+            NewSetRow { clicked => { root.new-set(); } }
+        }
+    }
+}
+
+// One score in the add picker, with a round add/added button.
+component PickerEntry inherits Rectangle {
+    in property <PickerRow> entry;
+    callback toggled();
+    height: 72px;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        spacing: 14px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 40px;
+                height: 40px;
+                border-radius: 10px;
+                background: Theme.field;
+                Glyph { kind: "document"; x: 8px; y: 8px; width: 24px; height: 24px; }
+            }
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 2px;
+            Text { text: root.entry.title; color: Theme.foreground; font-size: 16px; font-weight: 600; overflow: elide; }
+            if root.entry.detail != "" || root.entry.in_set : Text {
+                text: !root.entry.in_set ? root.entry.detail
+                    : root.entry.detail != "" ? root.entry.detail + " · " + @tr("already in this set")
+                    : @tr("already in this set");
+                color: Theme.muted;
+                font-size: 14px;
+                overflow: elide;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                in-dialog: true;
+                selected: root.entry.added;
+                label: root.entry.added ? @tr("Remove {} from set", root.entry.title) : @tr("Add {} to set", root.entry.title);
+                icon: root.entry.added ? @image-url("material-icons/check.svg") : @image-url("material-icons/add.svg");
+                clicked => { root.toggled(); }
+            }
+        }
+    }
+}
+
+// "Add" in a set's header: search the library and add pieces at the end of the set. Only the
+// Pieces tab exists; text notes come with the Compose UI.
+export component AddPiecesDialog inherits FocusScope {
+    in property <float> presence;
+    in-out property <string> query;
+    in property <[PickerRow]> rows;
+    // "{n} added at the end of the set", built in Rust for its plural forms.
+    in property <string> footer;
+    callback search-changed(string);
+    callback toggled(string);
+    callback closed();
+    init => { field.focus(); }
+    key-pressed(event) => {
+        if event.text == Key.Escape || event.text == Key.Back {
+            root.closed();
+            return accept;
+        }
+        return reject;
+    }
+    SetModal {
+        width: root.width;
+        height: root.height;
+        presence: root.presence;
+        card-width: 720px;
+        dialog-label: @tr("Add pieces dialog");
+        dismissed => { root.closed(); }
+        Text { text: @tr("Pieces"); color: Theme.foreground; font-size: 24px; font-weight: 600; }
+        field := SearchField {
+            in-dialog: true;
+            text <=> root.query;
+            placeholder: @tr("Search titles, composers, tags or lyrics");
+            edited(text) => { root.search-changed(text); }
+        }
+        Rectangle {
+            min-height: max(144px, min(432px, root.height - 340px));
+            max-height: self.min-height;
+            ListView {
+                for row in root.rows : PickerEntry {
+                    entry: row;
+                    toggled => { root.toggled(row.note_key); }
+                }
+            }
+            if root.rows.length == 0 : Text {
+                text: @tr("No scores here");
+                color: Theme.muted;
+                font-size: 15px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        HorizontalLayout {
+            spacing: 12px;
+            Text { text: root.footer; color: Theme.muted; font-size: 14px; vertical-alignment: center; horizontal-stretch: 1; wrap: word-wrap; }
+            PillButton { in-dialog: true; text: @tr("Done"); primary: true; clicked => { root.closed(); } }
         }
     }
 }

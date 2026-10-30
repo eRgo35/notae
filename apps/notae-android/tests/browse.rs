@@ -517,8 +517,8 @@ fn set_entries_number_notes_and_pieces() {
     let entries = set_entries(&library(), set);
     assert_eq!(entries.len(), 4);
     match &entries[0] {
-        SetEntry::Piece { position, row } => {
-            assert_eq!(*position, 1);
+        SetEntry::Piece(row) => {
+            assert_eq!(row.position, Some(1));
             assert_eq!(row.title, "Clair de lune");
             assert_eq!(row.item_id.as_ref(), Some(&ids[0]));
         }
@@ -533,15 +533,15 @@ fn set_entries_number_notes_and_pieces() {
         }
     );
     match &entries[2] {
-        SetEntry::Piece { position, row } => {
-            assert_eq!(*position, 3);
+        SetEntry::Piece(row) => {
+            assert_eq!(row.position, Some(3));
             assert!(row.missing, "a missing piece keeps its number");
         }
         other => panic!("third entry is a piece: {other:?}"),
     }
     match &entries[3] {
-        SetEntry::Piece { position, row } => {
-            assert_eq!(*position, 4);
+        SetEntry::Piece(row) => {
+            assert_eq!(row.position, Some(4));
             assert_eq!(row.item_id.as_ref(), Some(&ids[3]));
         }
         other => panic!("fourth entry is a piece: {other:?}"),

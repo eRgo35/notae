@@ -132,7 +132,8 @@ component ScoreCard inherits Rectangle {
         x: root.width - self.width - 14px;
         y: 14px;
     }
-    if !root.score.missing : MoreActions {
+    // A missing piece keeps its ⋮: inside a set it can still be removed.
+    MoreActions {
         title: root.score.title;
         enabled: root.interactive;
         x: root.width - self.width - 2px;
@@ -225,7 +226,7 @@ export component ScoreRow inherits Rectangle {
             alignment: center;
             FavoriteBadge { }
         }
-        if !root.score.missing : VerticalLayout {
+        VerticalLayout {
             alignment: center;
             MoreActions {
                 title: root.score.title;
@@ -442,6 +443,11 @@ export component LibraryScreen inherits Rectangle {
     callback set-opened(string);
     callback edit-set-requested(string);
     callback delete-set-requested(string);
+    // Note key of the score whose "Add to set…" was chosen.
+    callback add-to-set-requested(string);
+    // Item id of the set item to remove from the open set.
+    callback remove-set-item-requested(string);
+    callback add-pieces-requested();
     // Phones (a compact window width, or a landscape phone's short height) get two-column
     // outlined cards; wider and taller windows keep the tablet grid exactly.
     private property <bool> compact-grid: root.available-width < 600px || root.height < 480px;
@@ -534,12 +540,13 @@ export component LibraryScreen inherits Rectangle {
                             primary: true;
                             clicked => { root.new-set-requested(); }
                         }
-                        // Not wired yet: adding pieces and reorder mode come with their own screens.
                         if root.in-set : PillButton {
                             text: @tr("Add");
                             icon: @image-url("material-icons/add.svg");
                             primary: true;
+                            clicked => { root.add-pieces-requested(); }
                         }
+                        // Inert on purpose: reorder mode moved to the Jetpack Compose UI plan.
                         if root.in-set : PillButton { text: @tr("Reorder"); tonal: true; }
                         if !root.sidebar-visible : IconButton { label: @tr("Settings"); icon: @image-url("material-icons/settings.svg"); clicked => { root.settings-clicked(); } }
                         ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
@@ -771,6 +778,7 @@ export component LibraryScreen inherits Rectangle {
                         Text { text: root.menu-is-set ? root.menu-set.name : root.menu-row.title; color: Theme.foreground; font-size: 18px; font-weight: 600; overflow: elide; }
                         Text {
                             text: root.menu-is-set ? root.menu-set.date + " · " + root.menu-set.count
+                                : root.menu-row.missing ? root.menu-row.status
                                 : (root.menu-row.id != "" && root.menu-row.composer_or_artist != "" ? root.menu-row.id + " · " + root.menu-row.composer_or_artist : root.menu-row.id + root.menu-row.composer_or_artist);
                             color: Theme.muted;
                             font-size: 14px;
@@ -779,14 +787,19 @@ export component LibraryScreen inherits Rectangle {
                     }
                 }
                 Rectangle { height: 1px; background: Theme.divider; }
-                // The first action takes focus when the sheet opens, so it serves sets and scores.
+                // The first action takes focus when the sheet opens, so it serves sets, scores and
+                // set pieces missing from the library, whose only action is removal.
                 sheet-open-action := SheetAction {
-                    label: root.menu-is-set ? @tr("Edit set") : @tr("Open score");
-                    icon: root.menu-is-set ? @image-url("material-icons/edit.svg") : @image-url("material-icons/external-link.svg");
+                    label: root.menu-is-set ? @tr("Edit set") : root.menu-row.missing ? @tr("Remove from set") : @tr("Open score");
+                    icon: root.menu-is-set ? @image-url("material-icons/edit.svg")
+                        : root.menu-row.missing ? @image-url("material-icons/delete.svg")
+                        : @image-url("material-icons/external-link.svg");
                     clicked => {
                         root.menu-open = false;
                         if root.menu-is-set {
                             root.edit-set-requested(root.menu-set.id);
+                        } else if root.menu-row.missing {
+                            root.remove-set-item-requested(root.menu-row.item_id);
                         } else {
                             root.score-opened(root.menu-row.relative_path, root.menu-row.note_key, root.menu-row.item_id);
                         }
@@ -797,21 +810,32 @@ export component LibraryScreen inherits Rectangle {
                     icon: @image-url("material-icons/delete.svg");
                     clicked => { root.menu-open = false; root.delete-set-requested(root.menu-set.id); }
                 }
-                if !root.menu-is-set : SheetAction {
+                if !root.menu-is-set && !root.menu-row.missing : SheetAction {
                     label: root.menu-row.favorite ? @tr("Remove from favorites") : @tr("Add to favorites");
                     icon: root.menu-row.favorite ? @image-url("material-icons/star-filled.svg") : @image-url("material-icons/star.svg");
                     clicked => { root.menu-open = false; root.favorite-toggled(root.menu-row.note_key); }
                 }
-                if !root.menu-is-set : SheetAction {
+                if !root.menu-is-set && !root.menu-row.missing : SheetAction {
+                    label: @tr("Add to set…");
+                    icon: @image-url("material-icons/folder.svg");
+                    clicked => { root.menu-open = false; root.add-to-set-requested(root.menu-row.note_key); }
+                }
+                if !root.menu-is-set && !root.menu-row.missing : SheetAction {
                     label: @tr("Score details");
                     icon: @image-url("material-icons/info.svg");
                     // Inside a set the item id names this copy of a repeated piece.
                     clicked => { root.menu-open = false; root.score-selected(root.menu-row.item_id != "" ? root.menu-row.item_id : root.menu-row.note_key); }
                 }
-                if !root.menu-is-set : SheetAction {
+                if !root.menu-is-set && !root.menu-row.missing : SheetAction {
                     label: @tr("Edit details");
                     icon: @image-url("material-icons/edit.svg");
                     clicked => { root.menu-open = false; root.score-edit-requested(root.menu-row.note_key); }
+                }
+                // Inside a set; removal is not confirmed.
+                if root.in-set && !root.menu-is-set && !root.menu-row.missing : SheetAction {
+                    label: @tr("Remove from set");
+                    icon: @image-url("material-icons/delete.svg");
+                    clicked => { root.menu-open = false; root.remove-set-item-requested(root.menu-row.item_id); }
                 }
             }
         }

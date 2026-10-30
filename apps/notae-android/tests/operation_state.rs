@@ -489,6 +489,55 @@ fn settings_indexed_count_comes_from_worker_whole_library_count_not_filtered_row
 }
 
 #[test]
+fn picker_search_answers_with_its_own_rows_only() {
+    let store = IndexStore::open(":memory:").expect("open test index");
+    for (id, title) in [(1u32, "Autumn Leaves"), (2, "Blue Bossa")] {
+        let bytes = format!("%PDF-1.4\n{title}").into_bytes();
+        let mut metadata =
+            NoteMetadata::new(title, None, Vec::<String>::new()).expect("valid metadata");
+        metadata.assign_id(Some(NoteId::new(id)), MetadataOrigin::FilenameDerived);
+        store
+            .reindex_note(&IndexedNote::new(
+                RelativePdfPath::new(format!("{id} - {title}.pdf")).expect("valid path"),
+                PdfFingerprint::new(
+                    Sha256Digest::from_bytes(Sha256::digest(&bytes).into()),
+                    u64::try_from(bytes.len()).expect("fixture fits in u64"),
+                    None,
+                ),
+                metadata,
+            ))
+            .expect("insert test note");
+    }
+    let controller = OperationController::new(
+        store,
+        Box::new(StaticCatalog {
+            files: Vec::new(),
+            entered: None,
+            release: None,
+        }),
+    )
+    .expect("start test worker");
+
+    controller
+        .search_picker("Blue".to_owned())
+        .expect("picker query");
+    match next_event(&controller) {
+        OperationEvent::PickerRows { query, rows } => {
+            assert_eq!(query, "Blue");
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].title, "Blue Bossa");
+        }
+        other => panic!("unexpected event: {other:?}"),
+    }
+    assert!(
+        controller
+            .recv_event_timeout(Duration::from_millis(200))
+            .is_none(),
+        "no library rows: the picker's search leaves them alone"
+    );
+}
+
+#[test]
 fn rescan_previews_root_sidecar_hash_mismatch_without_importing_it() {
     let directory = tempfile::tempdir().expect("temporary database directory");
     let database = directory.path().join("index.sqlite");

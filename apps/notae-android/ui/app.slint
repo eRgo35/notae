@@ -5,8 +5,8 @@ import { Theme, ScreenTransition, ViewPresence, PillButton, TextField, IconButto
 import { LibraryScreen, LibraryRow, SectionItem, OperationBanner } from "library.slint";
 import { SearchScreen } from "search.slint";
 import { ScoreDetails } from "details.slint";
-import { SetCard, SetDialog, DeleteSetDialog } from "sets.slint";
-export { Theme, LibraryRow, SectionItem, SetCard }
+import { SetCard, SetChoice, PickerRow, SetDialog, DeleteSetDialog, AddToSetSheet, AddPiecesDialog } from "sets.slint";
+export { Theme, LibraryRow, SectionItem, SetCard, SetChoice, PickerRow }
 export struct ImportRow {
     path: string,
     change: string,
@@ -170,6 +170,27 @@ export component AppWindow inherits Window {
     callback delete_set_cancelled();
     callback set_dialog_saved(string, string, string, string);
     callback set_dialog_cancelled();
+    // Removes the item with this id from the open set, without asking.
+    callback remove_set_item_requested(string);
+    // The "Add to set…" checklist, open while Rust sets `show_add_to_set`.
+    in property <bool> show_add_to_set: false;
+    in property <string> add_to_set_key: "";
+    in property <string> add_to_set_title: "";
+    in property <[SetChoice]> add_to_set_choices: [];
+    callback add_to_set_requested(string);
+    // Set id, note key.
+    callback set_membership_toggled(string, string);
+    callback add_to_set_new_set_requested();
+    callback add_to_set_closed();
+    // The add picker over the open set, open while Rust sets `show_add_picker`.
+    in property <bool> show_add_picker: false;
+    in-out property <string> add_picker_query: "";
+    in property <[PickerRow]> add_picker_rows: [];
+    in property <string> add_picker_footer: "";
+    callback add_picker_opened();
+    callback add_picker_search_changed(string);
+    callback add_picker_toggled(string);
+    callback add_picker_closed();
     in property <bool> operation_failed: false;
     in property <bool> animations-enabled: true;
     in property <bool> application-active: true;
@@ -186,10 +207,13 @@ export component AppWindow inherits Window {
     animate sheet-progress { duration: Theme.motion-medium; easing: ease-in-out; }
     private property <float> sheet-visual-progress: Theme.animations-enabled
         ? root.sheet-progress : ((root.show_metadata_editor || root.show_import_preview) ? 1 : 0);
-    private property <bool> set-modal-open: root.show_set_dialog || root.confirm_delete_set_name != "";
+    private property <bool> set-modal-open: root.show_set_dialog || root.confirm_delete_set_name != ""
+        || root.show_add_to_set || root.show_add_picker;
     private property <bool> modal-open: root.show_metadata_editor || root.show_import_preview || root.set-modal-open;
     set-dialog-presence := ViewPresence { active: root.show_set_dialog; }
     delete-set-presence := ViewPresence { active: root.confirm_delete_set_name != ""; }
+    add-to-set-presence := ViewPresence { active: root.show_add_to_set; }
+    add-picker-presence := ViewPresence { active: root.show_add_picker; }
     private property <bool> sheet-import-content: false;
     // One presence per top-level view: the logical destination is active at once, while a view
     // that was just left stays mounted (and blocked) until its exit has played.
@@ -372,6 +396,9 @@ export component AppWindow inherits Window {
                 set-opened(id) => { root.set_opened(id); }
                 edit-set-requested(id) => { root.edit_set_requested(id); }
                 delete-set-requested(id) => { root.delete_set_requested(id); }
+                add-to-set-requested(key) => { root.add_to_set_requested(key); }
+                remove-set-item-requested(item) => { root.remove_set_item_requested(item); }
+                add-pieces-requested => { root.add_picker_opened(); }
                 menu-open <=> root.library_menu_open;
             }
             }
@@ -583,5 +610,30 @@ export component AppWindow inherits Window {
         name: root.confirm_delete_set_name;
         confirmed => { root.delete_set_confirmed(); }
         cancelled => { root.delete_set_cancelled(); }
+    }
+    if add-to-set-presence.mounted : AddToSetSheet {
+        x: 0px;
+        y: root.safe-area-insets.top;
+        width: root.width;
+        height: root.available-height;
+        presence: add-to-set-presence.value;
+        title: root.add_to_set_title;
+        choices: root.add_to_set_choices;
+        toggled(id) => { root.set_membership_toggled(id, root.add_to_set_key); }
+        new-set => { root.add_to_set_new_set_requested(); }
+        closed => { root.add_to_set_closed(); }
+    }
+    if add-picker-presence.mounted : AddPiecesDialog {
+        x: 0px;
+        y: root.safe-area-insets.top;
+        width: root.width;
+        height: root.available-height;
+        presence: add-picker-presence.value;
+        query <=> root.add_picker_query;
+        rows: root.add_picker_rows;
+        footer: root.add_picker_footer;
+        search-changed(query) => { root.add_picker_search_changed(query); }
+        toggled(key) => { root.add_picker_toggled(key); }
+        closed => { root.add_picker_closed(); }
     }
 }

@@ -367,14 +367,14 @@ fn set_cards_show_position_numbers() {
                 assert!(labelled(&app, label).is_some(), "{context}: {label}");
             }
 
-            // A missing piece shows why and opens nothing; its ⋮ has nothing to offer yet.
+            // A missing piece shows why and opens nothing; its ⋮ can still remove it.
             assert!(
                 labelled(&app, "Missing from library").is_some(),
                 "{context}"
             );
             assert!(
-                labelled(&app, "More actions for Psalm 23").is_none(),
-                "{context}: no ⋮ on a missing row"
+                labelled(&app, "More actions for Psalm 23").is_some(),
+                "{context}: a missing row keeps its ⋮"
             );
             assert!(
                 labelled(&app, "More actions for Gloria").is_some(),
@@ -479,5 +479,327 @@ fn deleting_waits_for_confirmation_and_leaves_an_open_set() {
         model.section(),
         &LibrarySection::Sets,
         "the deleted set was open"
+    );
+}
+
+// --- Adding and removing pieces ---
+
+fn search_row(key: char, title: &str) -> notae_android::ui::search::SearchRow {
+    notae_android::ui::search::SearchRow {
+        id: None,
+        title: title.to_owned(),
+        composer_or_artist: Some("Anonim".to_owned()),
+        tags: Vec::new(),
+        status: String::new(),
+        relative_path: format!("{title}.pdf"),
+        note_key: key.to_string().repeat(64),
+        text_pending: false,
+        title_origin: String::new(),
+        composer_origin: String::new(),
+        text_snippet: None,
+        item_id: None,
+        position: None,
+        missing: false,
+    }
+}
+
+/// A model with Kyrie, Gloria and Sanctus in the library and an open set holding Kyrie.
+fn model_with_open_set(path: Option<std::path::PathBuf>) -> (UiModel, String) {
+    let mut model = UiModel::new();
+    if let Some(path) = path {
+        model.set_sets_path(path);
+    }
+    model.set_search_rows(vec![
+        search_row('a', "Kyrie"),
+        search_row('b', "Gloria"),
+        search_row('c', "Sanctus"),
+    ]);
+    let id = model.create_set(fields("Mass", None)).expect("valid");
+    model.add_picker_opened();
+    model.add_picker_toggled(&"a".repeat(64));
+    model.add_picker_closed();
+    (model, id)
+}
+
+fn item_keys(model: &UiModel, id: &str) -> Vec<(String, String)> {
+    model
+        .sets()
+        .get(id)
+        .expect("set")
+        .items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            notae_android::sets::ItemKind::Piece(piece) => {
+                Some((item.id.clone(), piece.key.clone()))
+            }
+            notae_android::sets::ItemKind::Note { .. } => None,
+        })
+        .collect()
+}
+
+#[test]
+fn remove_from_set_needs_no_confirmation() {
+    each_tablet(|width, height, dark, context| {
+        for list in [false, true] {
+            let context = format!("{context} list={list}");
+            let app = set_screen(width, height, list, dark, "");
+            let removed = Rc::new(RefCell::new(Vec::new()));
+            let seen = Rc::clone(&removed);
+            app.on_remove_set_item_requested(move |item| seen.borrow_mut().push(item.to_string()));
+
+            click(&labelled(&app, "More actions for Gloria").expect("⋮"));
+            wait(500);
+            for action in ["Open score", "Add to set…", "Remove from set"] {
+                assert!(labelled(&app, action).is_some(), "{context}: {action}");
+            }
+            click(&labelled(&app, "Remove from set").expect("Remove from set"));
+            wait(500);
+            assert_eq!(
+                *removed.borrow(),
+                ["item-3"],
+                "{context}: the copy's item id"
+            );
+            assert!(!app.get_library_menu_open(), "{context}: the sheet closes");
+            assert!(
+                labelled(&app, "Delete set dialog").is_none(),
+                "{context}: nothing to confirm"
+            );
+
+            // A missing piece's ⋮ offers only removal.
+            let overflow = labelled(&app, "More actions for Psalm 23")
+                .unwrap_or_else(|| panic!("{context}: a missing row has a ⋮"));
+            assert!(overflow.size().width >= 48.0, "{context}");
+            click(&overflow);
+            wait(500);
+            for action in [
+                "Open score",
+                "Add to set…",
+                "Score details",
+                "Edit details",
+                "Add to favorites",
+            ] {
+                assert!(
+                    ElementHandle::find_by_accessible_label(&app, action)
+                        .all(|element| element.type_name().as_deref() != Some("SheetAction")),
+                    "{context}: no {action} for a missing piece"
+                );
+            }
+            click(&labelled(&app, "Remove from set").expect("Remove from set"));
+            wait(500);
+            assert_eq!(*removed.borrow(), ["item-3", "item-4"], "{context}");
+        }
+    });
+
+    // The model removes at once and saves.
+    let dir = temp_dir("remove");
+    let path = dir.join("sets.json");
+    let (mut model, id) = model_with_open_set(Some(path.clone()));
+    let item = item_keys(&model, &id)[0].0.clone();
+    model.select_note(Some(item.clone()));
+    model.remove_set_item_requested(&item);
+    assert!(item_keys(&model, &id).is_empty());
+    assert!(
+        SetStore::load(&path)
+            .get(&id)
+            .expect("set")
+            .items
+            .is_empty()
+    );
+    assert_eq!(model.pending_delete_set_name(), None);
+    assert!(
+        model.selected_row().is_none(),
+        "the removed copy's preview closes"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn picker_row(key: char, title: &str, in_set: bool, added: bool) -> notae_android::PickerRow {
+    notae_android::PickerRow {
+        note_key: key.to_string().repeat(64).into(),
+        title: title.into(),
+        detail: "Anonim".into(),
+        in_set,
+        added,
+    }
+}
+
+#[test]
+fn picker_adds_at_end_and_counts() {
+    each_tablet(|width, height, dark, context| {
+        let app = set_screen(width, height, false, dark, "");
+        let opened = Rc::new(RefCell::new(0));
+        let seen = Rc::clone(&opened);
+        app.on_add_picker_opened(move || *seen.borrow_mut() += 1);
+        click(&labelled(&app, "Add").expect("Add in the set header"));
+        assert_eq!(*opened.borrow(), 1, "{context}");
+
+        let toggled = Rc::new(RefCell::new(Vec::new()));
+        let seen = Rc::clone(&toggled);
+        app.on_add_picker_toggled(move |key| seen.borrow_mut().push(key.to_string()));
+        let searched = Rc::new(RefCell::new(Vec::new()));
+        let seen = Rc::clone(&searched);
+        app.on_add_picker_search_changed(move |query| seen.borrow_mut().push(query.to_string()));
+        let closed = Rc::new(RefCell::new(0));
+        let seen = Rc::clone(&closed);
+        app.on_add_picker_closed(move || *seen.borrow_mut() += 1);
+
+        app.set_add_picker_rows(ModelRc::new(VecModel::from(vec![
+            picker_row('a', "Kyrie", true, false),
+            picker_row('b', "Gloria", false, true),
+        ])));
+        app.set_add_picker_footer("1 added at the end of the set".into());
+        app.set_show_add_picker(true);
+        wait(500);
+        assert!(labelled(&app, "Add pieces dialog").is_some(), "{context}");
+        assert!(
+            labelled(&app, "Pieces").is_some(),
+            "{context}: one Pieces title"
+        );
+        assert!(
+            labelled(&app, "Text note").is_none(),
+            "{context}: no tab bar"
+        );
+        assert!(
+            labelled(&app, "Anonim · already in this set").is_some(),
+            "{context}: a piece already in the set says so"
+        );
+        assert!(
+            labelled(&app, "1 added at the end of the set").is_some(),
+            "{context}"
+        );
+        let add = labelled(&app, "Add Kyrie to set").expect("add button");
+        let remove = labelled(&app, "Remove Gloria from set").expect("added button");
+        for button in [&add, &remove] {
+            assert!(button.size().width >= 48.0, "{context}: a full target");
+            let right = button.absolute_position().x + button.size().width;
+            assert!(right <= width as f32, "{context}: fits the window");
+        }
+        click(&add);
+        click(&remove);
+        assert_eq!(
+            *toggled.borrow(),
+            ["a".repeat(64), "b".repeat(64)],
+            "{context}"
+        );
+
+        let field = ElementHandle::find_by_accessible_label(&app, support::SEARCH_LABEL)
+            .next()
+            .expect("the picker's own search field");
+        field.set_accessible_value("Agnus");
+        assert_eq!(*searched.borrow(), ["Agnus"], "{context}");
+
+        click(&labelled(&app, "Done").expect("Done"));
+        assert_eq!(*closed.borrow(), 1, "{context}");
+        key(&app, Key::Escape);
+        assert_eq!(*closed.borrow(), 2, "{context}: Escape closes too");
+    });
+
+    // The model: new pieces go at the end, a piece already in the set is added again.
+    let dir = temp_dir("picker");
+    let path = dir.join("sets.json");
+    let (mut model, id) = model_with_open_set(Some(path.clone()));
+    model.add_picker_opened();
+    assert!(model.add_picker_open());
+    let rows = model.add_picker_rows();
+    assert_eq!(rows.len(), 3, "the whole library while the query is empty");
+    assert!(
+        rows[0].in_set && !rows[0].added,
+        "Kyrie was in the set before"
+    );
+    assert!(!rows[1].in_set && !rows[1].added);
+    assert_eq!(
+        model.add_picker_footer_text(),
+        "0 added at the end of the set"
+    );
+
+    model.add_picker_toggled(&"c".repeat(64));
+    model.add_picker_toggled(&"a".repeat(64));
+    let keys: Vec<String> = item_keys(&model, &id)
+        .into_iter()
+        .map(|(_, key)| key)
+        .collect();
+    assert_eq!(keys, ["a".repeat(64), "c".repeat(64), "a".repeat(64)]);
+    assert_eq!(
+        SetStore::load(&path).get(&id).expect("set").items.len(),
+        3,
+        "saved"
+    );
+    let rows = model.add_picker_rows();
+    assert!(rows[0].in_set && rows[0].added);
+    assert!(rows[2].added);
+    assert_eq!(
+        model.add_picker_footer_text(),
+        "2 added at the end of the set"
+    );
+
+    // The picker's search goes through the worker; its rows replace the list for that query only.
+    model.add_picker_search_changed("Glo");
+    model
+        .apply_operation_event(
+            notae_android::operations::events::OperationEvent::PickerRows {
+                query: "Kyr".to_owned(),
+                rows: vec![search_row('a', "Kyrie")],
+            },
+        )
+        .expect("event");
+    assert_eq!(
+        model.add_picker_rows().len(),
+        3,
+        "a stale query's rows are ignored"
+    );
+    model
+        .apply_operation_event(
+            notae_android::operations::events::OperationEvent::PickerRows {
+                query: "Glo".to_owned(),
+                rows: vec![search_row('b', "Gloria")],
+            },
+        )
+        .expect("event");
+    let rows = model.add_picker_rows();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].title, "Gloria");
+    assert_eq!(
+        model.search_rows().len(),
+        3,
+        "the library rows are untouched"
+    );
+    model.add_picker_search_changed("");
+    assert_eq!(model.add_picker_rows().len(), 3);
+
+    model.add_picker_closed();
+    assert!(!model.add_picker_open());
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn picker_untoggle_removes_only_this_sessions_item() {
+    let (mut model, id) = model_with_open_set(None);
+    let original = item_keys(&model, &id);
+    let kyrie = "a".repeat(64);
+    model.add_picker_opened();
+    model.add_picker_toggled(&kyrie);
+    assert_eq!(item_keys(&model, &id).len(), 2);
+    model.add_picker_toggled(&kyrie);
+    assert_eq!(
+        item_keys(&model, &id),
+        original,
+        "only the copy added in this session goes"
+    );
+    assert!(model.add_picker_rows()[0].in_set && !model.add_picker_rows()[0].added);
+    assert_eq!(
+        model.add_picker_footer_text(),
+        "0 added at the end of the set"
+    );
+
+    // A later session cannot remove what an earlier one added.
+    model.add_picker_toggled(&kyrie);
+    model.add_picker_closed();
+    model.add_picker_opened();
+    assert!(!model.add_picker_rows()[0].added);
+    model.add_picker_toggled(&kyrie);
+    assert_eq!(
+        item_keys(&model, &id).len(),
+        3,
+        "tapping again adds a third copy"
     );
 }

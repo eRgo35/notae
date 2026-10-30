@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use i_slint_backend_testing::ElementHandle;
-use notae_android::{AppWindow, LibraryRow, SectionItem, Theme};
+use notae_android::{AppWindow, LibraryRow, SectionItem, SetChoice, Theme};
 use slint::platform::{Key, PointerEventButton, WindowEvent};
 use slint::{ComponentHandle, Global, LogicalPosition, ModelRc, SharedString, VecModel};
 use support::app_sized;
@@ -389,4 +389,256 @@ fn action_sheet_offers_add_to_favorites_then_remove() {
     click(&sheet_action(&app, "Remove from favorites").expect("sheet offers Remove"));
     wait(500);
     assert_eq!(toggled.borrow().len(), 2);
+}
+
+fn choice(id: &str, name: &str, checked: bool) -> SetChoice {
+    SetChoice {
+        id: id.into(),
+        name: name.into(),
+        detail: "1 Nov 2026 · 3 items".into(),
+        checked,
+    }
+}
+
+#[test]
+fn add_to_set_sheet_lists_sets_with_checks() {
+    for (width, height) in [(1280, 800), (800, 1280)] {
+        for dark in [false, true] {
+            let context = format!("{width}x{height} dark={dark}");
+            let app = library(width, height, false, "all", dark);
+            let requested = Rc::new(RefCell::new(Vec::new()));
+            let sink = Rc::clone(&requested);
+            app.on_add_to_set_requested(move |key| sink.borrow_mut().push(key.to_string()));
+            let toggled = Rc::new(RefCell::new(Vec::new()));
+            let sink = Rc::clone(&toggled);
+            app.on_set_membership_toggled(move |set, key| {
+                sink.borrow_mut().push((set.to_string(), key.to_string()));
+            });
+            let new_set = Rc::new(RefCell::new(0));
+            let sink = Rc::clone(&new_set);
+            app.on_add_to_set_new_set_requested(move || *sink.borrow_mut() += 1);
+            let closed = Rc::new(RefCell::new(0));
+            let sink = Rc::clone(&closed);
+            app.on_add_to_set_closed(move || *sink.borrow_mut() += 1);
+
+            click(&overflow(&app, "Score 2"));
+            wait(500);
+            click(&sheet_action(&app, "Add to set…").expect("sheet offers Add to set…"));
+            wait(500);
+            let note = format!("{:064}", 2);
+            assert_eq!(
+                *requested.borrow(),
+                std::slice::from_ref(&note),
+                "{context}"
+            );
+            assert!(!sheet_is_open(&app), "{context}: the actions sheet closes");
+
+            // Rust answers with the sets, most recently edited first, and which hold the piece.
+            app.set_add_to_set_key(note.as_str().into());
+            app.set_add_to_set_title("Score 2".into());
+            app.set_add_to_set_choices(ModelRc::new(VecModel::from(vec![
+                choice("aaaaaaaaaaaaaaaa", "Wszystkich Świętych", true),
+                choice("bbbbbbbbbbbbbbbb", "Dzień Zaduszny", false),
+            ])));
+            app.set_show_add_to_set(true);
+            wait(500);
+            assert!(labelled(&app, "Add to set dialog").is_some(), "{context}");
+            let first = labelled(&app, "Wszystkich Świętych").expect("first set");
+            let second = labelled(&app, "Dzień Zaduszny").expect("second set");
+            assert_eq!(first.accessible_checked(), Some(true), "{context}");
+            assert_eq!(second.accessible_checked(), Some(false), "{context}");
+            assert!(
+                first.absolute_position().y < second.absolute_position().y,
+                "{context}: in the order Rust gives"
+            );
+            for row in [&first, &second] {
+                assert!(row.size().height >= 48.0, "{context}: a full target");
+                let right = row.absolute_position().x + row.size().width;
+                assert!(right <= width as f32, "{context}: fits the window");
+            }
+            click(&second);
+            click(&first);
+            assert_eq!(
+                *toggled.borrow(),
+                [
+                    ("bbbbbbbbbbbbbbbb".to_owned(), note.clone()),
+                    ("aaaaaaaaaaaaaaaa".to_owned(), note.clone())
+                ],
+                "{context}"
+            );
+
+            let new_row = ElementHandle::find_by_accessible_label(&app, "New set")
+                .next()
+                .expect("New set row");
+            click(&new_row);
+            assert_eq!(*new_set.borrow(), 1, "{context}");
+
+            key(&app, Key::Escape);
+            assert_eq!(
+                *closed.borrow(),
+                1,
+                "{context}: Escape closes the checklist"
+            );
+        }
+    }
+}
+
+fn search_row(key: char, title: &str) -> notae_android::ui::search::SearchRow {
+    notae_android::ui::search::SearchRow {
+        id: None,
+        title: title.to_owned(),
+        composer_or_artist: None,
+        tags: Vec::new(),
+        status: String::new(),
+        relative_path: format!("{title}.pdf"),
+        note_key: key.to_string().repeat(64),
+        text_pending: false,
+        title_origin: String::new(),
+        composer_origin: String::new(),
+        text_snippet: None,
+        item_id: None,
+        position: None,
+        missing: false,
+    }
+}
+
+#[test]
+fn add_to_set_checklist_checks_appends_and_removes_the_last_copy() {
+    use notae_android::sets::{ItemKind, SetFields, SetStore};
+    use notae_android::ui::UiModel;
+
+    let dir = std::env::temp_dir().join(format!("notae-add-to-set-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temporary directory");
+    let path = dir.join("sets.json");
+    let mut model = UiModel::new();
+    model.set_sets_path(path.clone());
+    model.set_search_rows(vec![search_row('a', "Kyrie"), search_row('b', "Gloria")]);
+    let fields = |name: &str| SetFields {
+        name: name.to_owned(),
+        date: None,
+        notes: None,
+    };
+    let older = model.create_set(fields("Older")).expect("valid");
+    let newer = model.create_set(fields("Newer")).expect("valid");
+    let section = model.section().clone();
+    let kyrie = "a".repeat(64);
+
+    model.add_to_set_requested(&kyrie);
+    assert_eq!(model.add_to_set_key(), Some(kyrie.as_str()));
+    let checks = |model: &UiModel| -> Vec<(String, bool)> {
+        model
+            .add_to_set_choices()
+            .into_iter()
+            .map(|choice| (choice.id.to_string(), choice.checked))
+            .collect()
+    };
+    let names: Vec<String> = model
+        .add_to_set_choices()
+        .into_iter()
+        .map(|choice| choice.name.to_string())
+        .collect();
+    assert_eq!(names.len(), 2);
+    assert!(checks(&model).iter().all(|(_, checked)| !checked));
+
+    // Checking appends the piece and saves. Rows keep the order they opened in, so nothing
+    // jumps under the owner's finger.
+    let order: Vec<String> = checks(&model).into_iter().map(|(id, _)| id).collect();
+    model.set_membership_toggled(&older, &kyrie);
+    assert!(checks(&model).contains(&(older.clone(), true)));
+    let after: Vec<String> = checks(&model).into_iter().map(|(id, _)| id).collect();
+    assert_eq!(after, order);
+    model.set_membership_toggled(&newer, &kyrie);
+    let stored = SetStore::load(&path);
+    let pieces = |store: &SetStore, id: &str| -> Vec<(String, String)> {
+        store
+            .get(id)
+            .expect("set")
+            .items
+            .iter()
+            .filter_map(|item| match &item.kind {
+                ItemKind::Piece(piece) => Some((item.id.clone(), piece.key.clone())),
+                ItemKind::Note { .. } => None,
+            })
+            .collect()
+    };
+    assert_eq!(pieces(&stored, &older).len(), 1, "saved to sets.json");
+    assert_eq!(pieces(&stored, &older)[0].1, kyrie);
+    assert_eq!(model.section(), &section, "adding does not navigate");
+
+    // A repeat: the piece is in the set twice; unchecking removes only the last copy.
+    let first_copy = pieces(&stored, &older)[0].0.clone();
+    model.add_to_set_closed();
+    model
+        .select_section(notae_android::ui::browse::LibrarySection::Set(
+            older.clone(),
+        ))
+        .expect("no prefs file");
+    model.add_picker_opened();
+    model.add_picker_toggled(&kyrie);
+    model.add_picker_closed();
+    assert_eq!(pieces(model.sets(), &older).len(), 2);
+    model.add_to_set_requested(&kyrie);
+    model.set_membership_toggled(&older, &kyrie);
+    assert_eq!(
+        pieces(&SetStore::load(&path), &older),
+        [(first_copy, kyrie.clone())],
+        "the last copy went, the first stayed"
+    );
+    assert!(
+        checks(&model).contains(&(older.clone(), true)),
+        "still in the set once"
+    );
+
+    model.add_to_set_closed();
+    assert_eq!(model.add_to_set_key(), None);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn new_set_from_the_checklist_holds_the_piece() {
+    use notae_android::sets::{ItemKind, SetFields};
+    use notae_android::ui::UiModel;
+    use notae_android::ui::browse::LibrarySection;
+
+    let mut model = UiModel::new();
+    model.set_search_rows(vec![search_row('a', "Kyrie")]);
+    let kyrie = "a".repeat(64);
+    model.add_to_set_requested(&kyrie);
+    model.add_to_set_new_set_requested();
+    assert_eq!(
+        model.add_to_set_key(),
+        None,
+        "the checklist gives way to the dialog"
+    );
+    let id = model
+        .create_set(SetFields {
+            name: "Zaduszki".to_owned(),
+            date: None,
+            notes: None,
+        })
+        .expect("valid");
+    let set = model.sets().get(&id).expect("created");
+    assert!(
+        matches!(&set.items[..], [item] if matches!(&item.kind, ItemKind::Piece(piece) if piece.key == kyrie))
+    );
+    assert_eq!(
+        model.section(),
+        &LibrarySection::All,
+        "the owner stays where they were"
+    );
+
+    // A cancelled dialog forgets the piece, so a plain New set afterwards starts empty and opens.
+    model.add_to_set_requested(&kyrie);
+    model.add_to_set_new_set_requested();
+    model.set_dialog_cancelled();
+    let plain = model
+        .create_set(SetFields {
+            name: "Pusty".to_owned(),
+            date: None,
+            notes: None,
+        })
+        .expect("valid");
+    assert!(model.sets().get(&plain).expect("created").items.is_empty());
+    assert_eq!(model.section(), &LibrarySection::Set(plain));
 }

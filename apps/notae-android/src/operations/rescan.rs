@@ -33,6 +33,8 @@ pub struct OperationController {
 enum WorkerCommand {
     Rescan,
     Search(String, SearchScope),
+    /// The add picker's query: searched across every field without changing `Search`'s.
+    PickerSearch(String),
     PreviewImport(SidecarManifest),
     ConfirmImport,
     DiscardImport,
@@ -165,6 +167,14 @@ impl OperationController {
             .map_err(|_| UiError::WorkerStopped)
     }
 
+    /// Searches every field for the add picker; answers with [`OperationEvent::PickerRows`] and
+    /// leaves the library's own query and rows alone.
+    pub fn search_picker(&self, query: String) -> Result<(), UiError> {
+        self.commands
+            .send(WorkerCommand::PickerSearch(query))
+            .map_err(|_| UiError::WorkerStopped)
+    }
+
     /// Re-runs the search across every field.
     pub fn set_query(&self, query: String) -> Result<(), UiError> {
         self.set_search(query, SearchScope::Everything)
@@ -245,6 +255,17 @@ fn run_worker(
                         send(&events, OperationEvent::SearchRows(rows));
                         send_indexed_count(&local, &events);
                     }
+                    Err(error) => send(
+                        &events,
+                        OperationEvent::Failed {
+                            reason: error.to_string(),
+                        },
+                    ),
+                }
+            }
+            WorkerCommand::PickerSearch(query) => {
+                match project_rows(&local, &query, SearchScope::Everything) {
+                    Ok(rows) => send(&events, OperationEvent::PickerRows { query, rows }),
                     Err(error) => send(
                         &events,
                         OperationEvent::Failed {

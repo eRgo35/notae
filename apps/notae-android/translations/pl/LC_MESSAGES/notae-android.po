@@ -374,3 +374,30 @@ msgstr "Dodaj"
 
 msgid "Reorder"
 msgstr "Zmień kolejność"
+
+msgid "Add to set…"
+msgstr "Dodaj do zestawu…"
+
+msgid "Remove from set"
+msgstr "Usuń z zestawu"
+
+msgid "Add to set dialog"
+msgstr "Okno dodawania do zestawu"
+
+msgid "Pieces"
+msgstr "Utwory"
+
+msgid "Add pieces dialog"
+msgstr "Okno dodawania utworów"
+
+msgid "already in this set"
+msgstr "już w tym zestawie"
+
+msgid "Add {} to set"
+msgstr "Dodaj {} do zestawu"
+
+msgid "Remove {} from set"
+msgstr "Usuń {} z zestawu"
+
+msgid "Done"
+msgstr "Gotowe"

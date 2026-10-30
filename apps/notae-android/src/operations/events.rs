@@ -43,6 +43,8 @@ pub enum OperationEvent {
     },
     /// A worker-side search completed.
     SearchRows(Vec<SearchRow>),
+    /// The add picker's search for `query` completed.
+    PickerRows { query: String, rows: Vec<SearchRow> },
     /// The worker loaded one note into the metadata editor.
     MetadataLoaded(EditableMetadata),
     /// A metadata edit committed and the library rows were refreshed.

@@ -13,17 +13,18 @@ pub mod library;
 pub mod metadata_editor;
 pub mod search;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Mutex;
 
 use crate::favorites::{Favorites, PieceRef};
-use crate::language::pick;
+use crate::language::{pick, polish_plural};
 use crate::operations::events::{
     DesktopImportCheck, ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
 };
 use crate::recent::RecentScores;
-use crate::sets::{SetFieldError, SetFields, SetStore};
+use crate::sets::{ItemKind, SetFieldError, SetFields, SetStore};
 use crate::state::{
     AppController, AppState, EventError, OperationState, RescanPhase, Transition, UiEvent,
 };
@@ -86,6 +87,12 @@ pub struct UiModel {
     sets_path: Option<PathBuf>,
     /// The set whose deletion waits for the user's confirmation.
     pending_delete_set: Option<String>,
+    /// The "Add to set…" checklist, while it is open.
+    add_to_set: Option<AddToSet>,
+    /// The piece that the set dialog, opened from the checklist's "New set", adds to the new set.
+    new_set_piece: Option<String>,
+    /// The add picker, while it is open over a set.
+    add_picker: Option<AddPicker>,
     ui_prefs: UiPrefs,
     ui_prefs_path: Option<PathBuf>,
     /// The previewed row's selection id ([`row_id`]).
@@ -122,6 +129,9 @@ impl UiModel {
             sets: SetStore::empty(),
             sets_path: None,
             pending_delete_set: None,
+            add_to_set: None,
+            new_set_piece: None,
+            add_picker: None,
             ui_prefs: UiPrefs::default(),
             ui_prefs_path: None,
             selected: None,
@@ -298,7 +308,8 @@ impl UiModel {
         &self.sets
     }
 
-    /// Validates `fields`, adds the set and opens it.
+    /// Validates `fields`, adds the set and opens it. A set made from the "Add to set…"
+    /// checklist's "New set" gets that piece instead, and the owner stays where they were.
     ///
     /// # Errors
     ///
@@ -306,10 +317,248 @@ impl UiModel {
     /// memory.
     pub fn create_set(&mut self, fields: SetFields) -> Result<String, SetFieldError> {
         let fields = fields.validate()?;
-        let id = self.sets.create(fields, unix_now());
-        self.save_sets();
-        log_prefs_error(self.select_section(LibrarySection::Set(id.clone())));
+        let now = unix_now();
+        let id = self.sets.create(fields, now);
+        match self
+            .new_set_piece
+            .take()
+            .and_then(|key| self.piece_ref(&key))
+        {
+            Some(piece) => {
+                self.sets.add_piece(&id, piece, now);
+                self.save_sets();
+            }
+            None => {
+                self.save_sets();
+                log_prefs_error(self.select_section(LibrarySection::Set(id.clone())));
+            }
+        }
         Ok(id)
+    }
+
+    /// The set dialog was closed without saving; a piece waiting for a new set is forgotten.
+    pub fn set_dialog_cancelled(&mut self) {
+        self.new_set_piece = None;
+    }
+
+    /// A library piece as a set or favorite reference, if `key` is in the library.
+    fn piece_ref(&self, key: &str) -> Option<PieceRef> {
+        let picker_rows = self
+            .add_picker
+            .iter()
+            .flat_map(|picker| picker.rows.iter().flatten());
+        picker_rows
+            .chain(&self.search_rows)
+            .find(|row| row.note_key == key)
+            .map(|row| PieceRef {
+                key: key.to_owned(),
+                path: row.relative_path.clone(),
+            })
+    }
+
+    /// Opens the "Add to set…" checklist for the library piece `key`.
+    pub fn add_to_set_requested(&mut self, key: &str) {
+        if self.piece_ref(key).is_none() {
+            return;
+        }
+        self.add_to_set = Some(AddToSet {
+            key: key.to_owned(),
+            order: self
+                .sets
+                .sets_by_modified()
+                .into_iter()
+                .map(|set| set.id.clone())
+                .collect(),
+        });
+    }
+
+    /// The note key the checklist is open for.
+    #[must_use]
+    pub fn add_to_set_key(&self) -> Option<&str> {
+        self.add_to_set.as_ref().map(|open| open.key.as_str())
+    }
+
+    /// The title of the piece the checklist is open for.
+    #[must_use]
+    pub fn add_to_set_title(&self) -> String {
+        self.add_to_set_key()
+            .and_then(|key| self.search_rows.iter().find(|row| row.note_key == key))
+            .map_or_else(String::new, |row| row.title.clone())
+    }
+
+    /// The checklist's rows: every set, most recently edited first when the checklist opened,
+    /// checked when it holds the piece.
+    #[must_use]
+    pub fn add_to_set_choices(&self) -> Vec<crate::SetChoice> {
+        let Some(open) = &self.add_to_set else {
+            return Vec::new();
+        };
+        let containing = self.sets.sets_containing(&open.key);
+        let cards = crate::ui::browse::set_cards(&self.sets, unix_now());
+        open.order
+            .iter()
+            .filter_map(|id| cards.iter().find(|card| card.id == id.as_str()))
+            .map(|card| crate::SetChoice {
+                id: card.id.clone(),
+                name: card.name.clone(),
+                detail: format!("{} · {}", card.date, card.count).into(),
+                checked: containing.iter().any(|id| card.id == id.as_str()),
+            })
+            .collect()
+    }
+
+    /// Checks or unchecks a set in the checklist: checking appends the piece; unchecking removes
+    /// the last item with that key from the set.
+    pub fn set_membership_toggled(&mut self, set_id: &str, key: &str) {
+        let now = unix_now();
+        let last_copy = self.sets.get(set_id).and_then(|set| {
+            set.items
+                .iter()
+                .rev()
+                .find(|item| matches!(&item.kind, ItemKind::Piece(piece) if piece.key == key))
+                .map(|item| item.id.clone())
+        });
+        let changed = match last_copy {
+            Some(item_id) => self.sets.remove_item(set_id, &item_id, now),
+            None => self
+                .piece_ref(key)
+                .and_then(|piece| self.sets.add_piece(set_id, piece, now))
+                .is_some(),
+        };
+        if changed {
+            self.save_sets();
+            self.forget_missing_selection();
+        }
+    }
+
+    /// Closes the checklist.
+    pub fn add_to_set_closed(&mut self) {
+        self.add_to_set = None;
+    }
+
+    /// The checklist's "New set": closes it and keeps its piece for the set dialog's save.
+    pub fn add_to_set_new_set_requested(&mut self) {
+        self.new_set_piece = self.add_to_set.take().map(|open| open.key);
+    }
+
+    /// Removes one item from the open set at once; removal is not confirmed.
+    pub fn remove_set_item_requested(&mut self, item_id: &str) {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return;
+        };
+        if self.sets.remove_item(set_id, item_id, unix_now()) {
+            self.save_sets();
+            self.forget_missing_selection();
+        }
+    }
+
+    /// Opens the add picker over the open set.
+    pub fn add_picker_opened(&mut self) {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return;
+        };
+        let Some(set) = self.sets.get(set_id) else {
+            return;
+        };
+        let before = set
+            .items
+            .iter()
+            .filter_map(|item| match &item.kind {
+                ItemKind::Piece(piece) => Some(piece.key.clone()),
+                ItemKind::Note { .. } => None,
+            })
+            .collect();
+        self.add_picker = Some(AddPicker {
+            set_id: set.id.clone(),
+            before,
+            added: Vec::new(),
+            query: String::new(),
+            rows: None,
+        });
+    }
+
+    /// Whether the add picker is open.
+    #[must_use]
+    pub fn add_picker_open(&self) -> bool {
+        self.add_picker.is_some()
+    }
+
+    /// The picker's search text. A blank query lists the whole library at once; any other waits
+    /// for the worker's [`OperationEvent::PickerRows`].
+    pub fn add_picker_search_changed(&mut self, query: &str) {
+        if let Some(picker) = &mut self.add_picker {
+            picker.query = query.to_owned();
+            if query.trim().is_empty() {
+                picker.rows = None;
+            }
+        }
+    }
+
+    /// Taps a picker row: adds the piece at the end of the set, or, if this session added it,
+    /// removes the copy this session added last.
+    pub fn add_picker_toggled(&mut self, key: &str) {
+        let now = unix_now();
+        let piece = self.piece_ref(key);
+        let Some(picker) = &mut self.add_picker else {
+            return;
+        };
+        let changed = match picker.added.iter().rposition(|(added, _)| added == key) {
+            Some(index) => {
+                let (_, item_id) = picker.added.remove(index);
+                self.sets.remove_item(&picker.set_id, &item_id, now)
+            }
+            None => match piece.and_then(|piece| self.sets.add_piece(&picker.set_id, piece, now)) {
+                Some(item_id) => {
+                    picker.added.push((key.to_owned(), item_id));
+                    true
+                }
+                None => false,
+            },
+        };
+        if changed {
+            self.save_sets();
+        }
+    }
+
+    /// Closes the add picker; what it added stays in the set.
+    pub fn add_picker_closed(&mut self) {
+        self.add_picker = None;
+    }
+
+    /// The picker's rows: the search hits, or the whole library for a blank query.
+    #[must_use]
+    pub fn add_picker_rows(&self) -> Vec<crate::PickerRow> {
+        let Some(picker) = &self.add_picker else {
+            return Vec::new();
+        };
+        picker
+            .rows
+            .as_deref()
+            .unwrap_or(&self.search_rows)
+            .iter()
+            .map(|row| crate::PickerRow {
+                note_key: row.note_key.as_str().into(),
+                title: row.title.as_str().into(),
+                detail: [row.id.as_deref(), row.composer_or_artist.as_deref()]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join(" · ")
+                    .into(),
+                in_set: picker.before.contains(&row.note_key),
+                added: picker.added.iter().any(|(key, _)| *key == row.note_key),
+            })
+            .collect()
+    }
+
+    /// The picker's footer: how many pieces this session added.
+    #[must_use]
+    pub fn add_picker_footer_text(&self) -> String {
+        add_picker_footer(
+            self.add_picker
+                .as_ref()
+                .map_or(0, |picker| picker.added.len()),
+        )
     }
 
     /// Validates `fields` and replaces the set's name, date and notes.
@@ -678,6 +927,14 @@ impl UiModel {
                 self.startup_presentation = StartupPresentation::Ready;
                 self.search_rows = rows;
             }
+            OperationEvent::PickerRows { query, rows } => {
+                // Rows for an older query, or a closed picker, are stale.
+                if let Some(picker) = &mut self.add_picker
+                    && picker.query == query
+                {
+                    picker.rows = Some(rows);
+                }
+            }
             OperationEvent::IndexedCount(count) => self.indexed_count = count,
             OperationEvent::MetadataLoaded(metadata) => {
                 self.metadata_error = None;
@@ -766,6 +1023,36 @@ impl UiModel {
     pub fn start_rescan(&mut self) -> Result<Transition, EventError> {
         self.dispatch(UiEvent::RequestRescan)
     }
+}
+
+/// The "Add to set…" checklist: the piece and the set order it opened with.
+struct AddToSet {
+    key: String,
+    order: Vec<String>,
+}
+
+/// The add picker's session over one set.
+struct AddPicker {
+    set_id: String,
+    /// Content keys of the pieces in the set when the picker opened.
+    before: HashSet<String>,
+    /// `(content key, item id)` of each piece this session added, oldest first.
+    added: Vec<(String, String)>,
+    query: String,
+    /// The worker's rows for `query`; `None` lists the whole library.
+    rows: Option<Vec<SearchRow>>,
+}
+
+/// "3 added at the end of the set" (Polish "Dodano 3 utwory na końcu zestawu").
+#[must_use]
+pub fn add_picker_footer(count: usize) -> String {
+    pick(
+        format!("{count} added at the end of the set"),
+        format!(
+            "Dodano {count} {} na końcu zestawu",
+            polish_plural(count, "utwór", "utwory", "utworów")
+        ),
+    )
 }
 
 fn log_prefs_error(result: std::io::Result<()>) {

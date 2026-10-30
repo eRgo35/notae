@@ -546,7 +546,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
             }
         });
     }
-    wire_sets(&window, &model);
+    wire_sets(&window, &model, &operations);
     {
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
@@ -792,8 +792,13 @@ fn close_search(
     }
 }
 
-/// The Sets section's callbacks: open a set, the new/edit set dialog and the delete confirmation.
-fn wire_sets(window: &AppWindow, model: &Rc<RefCell<UiModel>>) {
+/// The Sets section's callbacks: open a set, the new/edit set dialog, the delete confirmation,
+/// the "Add to set…" checklist, removing an item and the add picker.
+fn wire_sets(
+    window: &AppWindow,
+    model: &Rc<RefCell<UiModel>>,
+    operations: &Rc<RefCell<Option<OperationController>>>,
+) {
     use crate::sets::SetFields;
     use crate::ui::browse::LibrarySection;
 
@@ -821,17 +826,99 @@ fn wire_sets(window: &AppWindow, model: &Rc<RefCell<UiModel>>) {
         window.set_show_set_dialog(true);
     }
 
-    window.on_new_set_requested(redraw_after(window, model, |window, _model| {
-        let empty = SetFields {
+    fn empty_fields() -> SetFields {
+        SetFields {
             name: String::new(),
             date: None,
             notes: None,
-        };
-        open_dialog(window, "", empty);
+        }
+    }
+
+    window.on_new_set_requested(redraw_after(window, model, |window, model| {
+        // A plain New set never carries a piece left from the checklist.
+        model.set_dialog_cancelled();
+        open_dialog(window, "", empty_fields());
     }));
-    window.on_set_dialog_cancelled(redraw_after(window, model, |window, _model| {
+    window.on_set_dialog_cancelled(redraw_after(window, model, |window, model| {
+        model.set_dialog_cancelled();
         window.set_show_set_dialog(false);
     }));
+    window.on_add_to_set_new_set_requested(redraw_after(window, model, |window, model| {
+        model.add_to_set_new_set_requested();
+        open_dialog(window, "", empty_fields());
+    }));
+    window.on_add_to_set_closed(redraw_after(window, model, |_window, model| {
+        model.add_to_set_closed();
+    }));
+    window.on_add_picker_opened(redraw_after(window, model, |window, model| {
+        model.add_picker_opened();
+        window.set_add_picker_query("".into());
+    }));
+    window.on_add_picker_closed(redraw_after(window, model, |_window, model| {
+        model.add_picker_closed();
+    }));
+    {
+        let model = Rc::clone(model);
+        let window_weak = window.as_weak();
+        window.on_add_to_set_requested(move |key| {
+            model.borrow_mut().add_to_set_requested(key.as_str());
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let model = Rc::clone(model);
+        let window_weak = window.as_weak();
+        window.on_set_membership_toggled(move |set_id, key| {
+            model
+                .borrow_mut()
+                .set_membership_toggled(set_id.as_str(), key.as_str());
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let model = Rc::clone(model);
+        let window_weak = window.as_weak();
+        window.on_remove_set_item_requested(move |item_id| {
+            model
+                .borrow_mut()
+                .remove_set_item_requested(item_id.as_str());
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let model = Rc::clone(model);
+        let operations = Rc::clone(operations);
+        let window_weak = window.as_weak();
+        // The global search's worker answers the picker too, with rows of its own.
+        window.on_add_picker_search_changed(move |query| {
+            model.borrow_mut().add_picker_search_changed(query.as_str());
+            if !query.trim().is_empty()
+                && let Some(controller) = operations.borrow().as_ref()
+                && let Err(error) = controller.search_picker(query.to_string())
+            {
+                eprintln!("notae: picker search failed: {error}");
+            }
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
+    {
+        let model = Rc::clone(model);
+        let window_weak = window.as_weak();
+        window.on_add_picker_toggled(move |key| {
+            model.borrow_mut().add_picker_toggled(key.as_str());
+            if let Some(window) = window_weak.upgrade() {
+                sync_window(&window, &model.borrow());
+            }
+        });
+    }
     window.on_delete_set_confirmed(redraw_after(window, model, |_window, model| {
         model.confirm_delete_set();
     }));
@@ -904,6 +991,25 @@ fn wire_sets(window: &AppWindow, model: &Rc<RefCell<UiModel>>) {
             }
             sync_window(&window, &model.borrow());
         });
+    }
+}
+
+/// Updates `current` in place when only some rows changed, so a tapped checkbox or add button keeps
+/// focus and the list keeps its scroll position; otherwise hands a new model to `replace`.
+fn refresh_rows<T: Clone + PartialEq + 'static>(
+    current: &slint::ModelRc<T>,
+    rows: Vec<T>,
+    replace: impl FnOnce(slint::ModelRc<T>),
+) {
+    use slint::Model;
+    if current.row_count() != rows.len() {
+        replace(slint::ModelRc::new(slint::VecModel::from(rows)));
+        return;
+    }
+    for (index, row) in rows.into_iter().enumerate() {
+        if current.row_data(index).as_ref() != Some(&row) {
+            current.set_row_data(index, row);
+        }
     }
 }
 
@@ -1029,9 +1135,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     );
     window.set_selected_position(
         preview_neighbours
-            .map_or_else(String::new, |nav| {
-                format!("{} of {}", nav.position, nav.total)
-            })
+            .map_or_else(String::new, |nav| nav.label())
             .into(),
     );
     if let Some(row) = selected {
@@ -1094,6 +1198,25 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     );
     window.set_set_cards(slint::ModelRc::new(slint::VecModel::from(set_cards)));
     window.set_confirm_delete_set_name(model.pending_delete_set_name().unwrap_or_default().into());
+    window.set_show_add_to_set(model.add_to_set_key().is_some());
+    window.set_add_to_set_key(model.add_to_set_key().unwrap_or_default().into());
+    window.set_add_to_set_title(model.add_to_set_title().into());
+    refresh_rows(
+        &window.get_add_to_set_choices(),
+        model.add_to_set_choices(),
+        |rows| {
+            window.set_add_to_set_choices(rows);
+        },
+    );
+    window.set_show_add_picker(model.add_picker_open());
+    window.set_add_picker_footer(model.add_picker_footer_text().into());
+    refresh_rows(
+        &window.get_add_picker_rows(),
+        model.add_picker_rows(),
+        |rows| {
+            window.set_add_picker_rows(rows);
+        },
+    );
     window.set_show_search(matches!(state.screen(), Screen::Search));
     let metadata = model.metadata_editor();
     window.set_show_metadata_editor(metadata.is_some());
