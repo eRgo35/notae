@@ -230,10 +230,11 @@ impl UiModel {
         self.pdf_launch_error = error;
     }
 
-    /// Replaces the rows currently displayed by the library screen.
+    /// Replaces the rows currently displayed by the library screen and re-links saved pieces,
+    /// as the row-carrying arms of [`Self::apply_operation_event`] do.
     ///
-    /// The operation worker owns the index and sends its search projection
-    /// back to the UI thread through this method.
+    /// Production rows arrive through [`Self::apply_operation_event`]; tests use this method
+    /// to set up a library directly.
     pub fn set_search_rows(&mut self, rows: Vec<SearchRow>) {
         self.search_rows = rows;
         self.relink_saved_pieces();
@@ -919,6 +920,7 @@ impl UiModel {
             } => {
                 self.latest_rescan = Some(summary);
                 self.search_rows = rows;
+                self.relink_saved_pieces();
                 self.startup_presentation = StartupPresentation::Ready;
                 match desktop_import {
                     DesktopImportCheck::NoSidecar => {
@@ -950,11 +952,13 @@ impl UiModel {
             OperationEvent::ImportApplied { summary, rows } => {
                 self.import_preview_summary = None;
                 self.search_rows = rows;
+                self.relink_saved_pieces();
                 self.controller.complete_operation(import_summary(&summary));
             }
             OperationEvent::SearchRows(rows) => {
                 self.startup_presentation = StartupPresentation::Ready;
                 self.search_rows = rows;
+                self.relink_saved_pieces();
             }
             OperationEvent::PickerRows { query, rows } => {
                 // Rows for an older query, or a closed picker, are stale.
@@ -971,6 +975,7 @@ impl UiModel {
             }
             OperationEvent::MetadataSaved { rows } => {
                 self.search_rows = rows;
+                self.relink_saved_pieces();
                 self.close_metadata_editor();
             }
             OperationEvent::MetadataFailed { reason } => {

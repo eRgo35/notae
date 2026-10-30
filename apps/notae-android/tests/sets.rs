@@ -1,5 +1,8 @@
 use notae_android::favorites::PieceRef;
+use notae_android::operations::events::{DesktopImportCheck, OperationEvent, RescanSummary};
 use notae_android::sets::{ItemKind, SetFieldError, SetFields, SetStore, new_id};
+use notae_android::ui::UiModel;
+use notae_android::ui::search::SearchRow;
 
 fn fields(name: &str) -> SetFields {
     SetFields {
@@ -13,6 +16,35 @@ fn piece(c: char) -> PieceRef {
     PieceRef {
         key: c.to_string().repeat(64),
         path: format!("{c}.pdf"),
+    }
+}
+
+/// The library row for `Kyrie.pdf`, whose content key is `c` repeated.
+fn kyrie_row(c: char) -> SearchRow {
+    SearchRow {
+        id: None,
+        title: "Kyrie".to_owned(),
+        composer_or_artist: None,
+        tags: Vec::new(),
+        status: String::new(),
+        relative_path: "Kyrie.pdf".to_owned(),
+        note_key: c.to_string().repeat(64),
+        text_pending: false,
+        title_origin: String::new(),
+        composer_origin: String::new(),
+        text_snippet: None,
+        item_id: None,
+        position: None,
+        missing: false,
+    }
+}
+
+/// The worker's rescan result carrying `rows`.
+fn completed(rows: Vec<SearchRow>) -> OperationEvent {
+    OperationEvent::Completed {
+        summary: RescanSummary::default(),
+        rows,
+        desktop_import: DesktopImportCheck::NoSidecar,
     }
 }
 
@@ -293,24 +325,19 @@ fn relink_does_not_change_modified() {
 
 #[test]
 fn rescan_with_new_key_at_same_path_rewrites_both_files() {
-    use notae_android::ui::UiModel;
-    use notae_android::ui::search::SearchRow;
-
-    let row = |c: char| SearchRow {
-        id: None,
-        title: "Kyrie".to_owned(),
-        composer_or_artist: None,
-        tags: Vec::new(),
-        status: String::new(),
-        relative_path: "Kyrie.pdf".to_owned(),
-        note_key: c.to_string().repeat(64),
-        text_pending: false,
-        title_origin: String::new(),
-        composer_origin: String::new(),
-        text_snippet: None,
-        item_id: None,
-        position: None,
-        missing: false,
+    let row = kyrie_row;
+    let saved_keys = |favorites_path: &std::path::Path, sets_path: &std::path::Path, id: &str| {
+        let favorites = notae_android::favorites::Favorites::load(favorites_path);
+        let saved = SetStore::load(sets_path);
+        let set = saved.get(id).unwrap();
+        let ItemKind::Piece(piece) = &set.items[0].kind else {
+            panic!("a piece")
+        };
+        (
+            favorites.items()[0].key.clone(),
+            piece.key.clone(),
+            set.modified,
+        )
     };
     let dir = tempfile::tempdir().unwrap();
     let favorites_path = dir.path().join("favorites.json");
@@ -318,7 +345,9 @@ fn rescan_with_new_key_at_same_path_rewrites_both_files() {
     let mut model = UiModel::new();
     model.set_favorites_path(favorites_path.clone());
     model.set_sets_path(sets_path.clone());
-    model.set_search_rows(vec![row('a')]);
+    model
+        .apply_operation_event(OperationEvent::SearchRows(vec![row('a')]))
+        .unwrap();
     model.toggle_favorite(&"a".repeat(64)).unwrap();
     let id = model.create_set(fields("Mass")).unwrap();
     let mut store = SetStore::load(&sets_path);
@@ -333,13 +362,88 @@ fn rescan_with_new_key_at_same_path_rewrites_both_files() {
     store.save(&sets_path).unwrap();
     model.set_sets_path(sets_path.clone());
 
-    model.set_search_rows(vec![row('b')]);
+    // A rescan replaces the PDF: the worker delivers the new key at the same path.
+    model
+        .apply_operation_event(completed(vec![row('b')]))
+        .unwrap();
+    assert_eq!(
+        saved_keys(&favorites_path, &sets_path, &id),
+        ("b".repeat(64), "b".repeat(64), 1),
+        "a rescan re-links both files without touching the set's modified time"
+    );
+
+    // A search after another replacement re-links the same way.
+    model
+        .apply_operation_event(OperationEvent::SearchRows(vec![row('c')]))
+        .unwrap();
+    assert_eq!(
+        saved_keys(&favorites_path, &sets_path, &id),
+        ("c".repeat(64), "c".repeat(64), 1),
+        "search rows re-link both files without touching the set's modified time"
+    );
+}
+
+#[test]
+fn future_version_sets_survive_favorite_changes_and_relink() {
+    let dir = tempfile::tempdir().unwrap();
+    let favorites_path = dir.path().join("favorites.json");
+    let sets_path = dir.path().join("sets.json");
+    let future_sets = format!(
+        r#"{{"schema_version":2,"sets":[{{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{}","path":"Kyrie.pdf"}}]}}]}}"#,
+        "a".repeat(64)
+    );
+    std::fs::write(&sets_path, &future_sets).unwrap();
+    std::fs::write(&favorites_path, "not json {").unwrap();
+    let mut model = UiModel::new();
+    model.set_favorites_path(favorites_path.clone());
+    model.set_sets_path(sets_path.clone());
+    model
+        .apply_operation_event(OperationEvent::SearchRows(vec![kyrie_row('a')]))
+        .unwrap();
+
+    // Starring is a change to favorites, so the corrupt favorites file may be replaced.
+    model.toggle_favorite(&"a".repeat(64)).unwrap();
+    // A rescan that replaces the PDF re-links favorites only.
+    model
+        .apply_operation_event(completed(vec![kyrie_row('b')]))
+        .unwrap();
 
     let favorites = notae_android::favorites::Favorites::load(&favorites_path);
     assert_eq!(favorites.items()[0].key, "b".repeat(64));
+    assert_eq!(std::fs::read_to_string(&sets_path).unwrap(), future_sets);
+}
+
+#[test]
+fn future_version_favorites_survive_set_changes_and_relink() {
+    let dir = tempfile::tempdir().unwrap();
+    let favorites_path = dir.path().join("favorites.json");
+    let sets_path = dir.path().join("sets.json");
+    let future_favorites = format!(
+        r#"{{"schema_version":2,"items":[{{"key":"{}","path":"Kyrie.pdf"}}]}}"#,
+        "a".repeat(64)
+    );
+    std::fs::write(&favorites_path, &future_favorites).unwrap();
+    let mut model = UiModel::new();
+    model.set_favorites_path(favorites_path.clone());
+    model.set_sets_path(sets_path.clone());
+    model
+        .apply_operation_event(OperationEvent::SearchRows(vec![kyrie_row('a')]))
+        .unwrap();
+
+    let id = model.create_set(fields("Mass")).unwrap();
+    model.set_membership_toggled(&id, &"a".repeat(64));
+    // A rescan that replaces the PDF re-links the set only.
+    model
+        .apply_operation_event(completed(vec![kyrie_row('b')]))
+        .unwrap();
+
     let saved = SetStore::load(&sets_path);
     let ItemKind::Piece(piece) = &saved.get(&id).unwrap().items[0].kind else {
         panic!("a piece")
     };
     assert_eq!(piece.key, "b".repeat(64));
+    assert_eq!(
+        std::fs::read_to_string(&favorites_path).unwrap(),
+        future_favorites
+    );
 }
