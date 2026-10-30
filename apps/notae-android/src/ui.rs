@@ -236,6 +236,7 @@ impl UiModel {
     /// back to the UI thread through this method.
     pub fn set_search_rows(&mut self, rows: Vec<SearchRow>) {
         self.search_rows = rows;
+        self.relink_saved_pieces();
         self.forget_missing_selection();
         self.forget_missing_composer();
     }
@@ -608,6 +609,25 @@ impl UiModel {
     /// Keeps the set the user was asked about.
     pub fn cancel_delete_set(&mut self) {
         self.pending_delete_set = None;
+    }
+
+    /// Follows replaced PDFs: a piece whose key left the library takes the key of the entry at
+    /// its path, and the changed file is saved.
+    fn relink_saved_pieces(&mut self) {
+        let library: Vec<(String, String)> = self
+            .search_rows
+            .iter()
+            .map(|row| (row.note_key.clone(), row.relative_path.clone()))
+            .collect();
+        if self.favorites.relink(&library)
+            && let Some(path) = &self.favorites_path
+            && let Err(error) = self.favorites.save(path)
+        {
+            eprintln!("notae: cannot save favorites: {error}");
+        }
+        if self.sets.relink(&library) {
+            self.save_sets();
+        }
     }
 
     fn save_sets(&self) {

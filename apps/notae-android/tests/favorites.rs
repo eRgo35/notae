@@ -115,3 +115,26 @@ fn merge_keeps_order_and_adds_missing_at_end() {
         ]
     );
 }
+
+#[test]
+fn relink_by_path_when_key_changes() {
+    let mut favorites = Favorites::default();
+    favorites.toggle(piece('a', "a.pdf"));
+    let library = [(key('b'), "a.pdf".to_owned())];
+    assert!(favorites.relink(&library));
+    assert_eq!(favorites.items(), [piece('b', "a.pdf")]);
+    assert!(!favorites.relink(&library));
+}
+
+#[test]
+fn relink_leaves_missing_entries_in_place() {
+    let mut favorites = Favorites::default();
+    favorites.toggle(piece('a', "a.pdf"));
+    favorites.toggle(piece('c', "c.pdf"));
+    let library = [(key('c'), "c.pdf".to_owned())];
+    assert!(!favorites.relink(&library));
+    assert_eq!(
+        favorites.items(),
+        [piece('c', "c.pdf"), piece('a', "a.pdf")]
+    );
+}

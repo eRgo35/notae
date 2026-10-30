@@ -109,6 +109,32 @@ impl Favorites {
             }
         }
     }
+
+    /// Points each favorite whose key is not in `library` at the entry with the same path.
+    /// `library` holds `(key, path)` pairs. Returns whether anything changed.
+    pub fn relink(&mut self, library: &[(String, String)]) -> bool {
+        let mut changed = false;
+        for piece in &mut self.items {
+            changed |= piece.relink(library);
+        }
+        changed
+    }
+}
+
+impl PieceRef {
+    /// Takes the key of the library entry with this path if the current key is gone.
+    pub(crate) fn relink(&mut self, library: &[(String, String)]) -> bool {
+        if library.iter().any(|(key, _)| *key == self.key) {
+            return false;
+        }
+        match library.iter().find(|(_, path)| *path == self.path) {
+            Some((key, _)) => {
+                self.key.clone_from(key);
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 /// Writes `text` to `path` through a sibling `.tmp` file and a rename.

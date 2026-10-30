@@ -249,3 +249,97 @@ fn new_id_is_sixteen_lowercase_hex() {
     );
     assert_ne!(id, new_id("seed"));
 }
+
+#[test]
+fn relink_by_path_when_key_changes() {
+    let mut store = SetStore::default();
+    let id = store.create(fields("Mass"), 10);
+    store.add_piece(&id, piece('a'), 10);
+    store.add_note(&id, "Amen".to_owned(), 10);
+    let library = [("b".repeat(64), "a.pdf".to_owned())];
+    assert!(store.relink(&library));
+    let set = store.get(&id).unwrap();
+    assert_eq!(
+        set.items[0].kind,
+        ItemKind::Piece(PieceRef {
+            key: "b".repeat(64),
+            path: "a.pdf".to_owned()
+        })
+    );
+    assert!(matches!(set.items[1].kind, ItemKind::Note { .. }));
+    assert!(!store.relink(&library));
+}
+
+#[test]
+fn relink_leaves_missing_entries_in_place() {
+    let mut store = SetStore::default();
+    let id = store.create(fields("Mass"), 10);
+    store.add_piece(&id, piece('a'), 10);
+    store.add_piece(&id, piece('c'), 10);
+    let before = store.clone();
+    let library = [("c".repeat(64), "c.pdf".to_owned())];
+    assert!(!store.relink(&library));
+    assert_eq!(store, before);
+}
+
+#[test]
+fn relink_does_not_change_modified() {
+    let mut store = SetStore::default();
+    let id = store.create(fields("Mass"), 10);
+    store.add_piece(&id, piece('a'), 10);
+    assert!(store.relink(&[("b".repeat(64), "a.pdf".to_owned())]));
+    assert_eq!(store.get(&id).unwrap().modified, 10);
+}
+
+#[test]
+fn rescan_with_new_key_at_same_path_rewrites_both_files() {
+    use notae_android::ui::UiModel;
+    use notae_android::ui::search::SearchRow;
+
+    let row = |c: char| SearchRow {
+        id: None,
+        title: "Kyrie".to_owned(),
+        composer_or_artist: None,
+        tags: Vec::new(),
+        status: String::new(),
+        relative_path: "Kyrie.pdf".to_owned(),
+        note_key: c.to_string().repeat(64),
+        text_pending: false,
+        title_origin: String::new(),
+        composer_origin: String::new(),
+        text_snippet: None,
+        item_id: None,
+        position: None,
+        missing: false,
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let favorites_path = dir.path().join("favorites.json");
+    let sets_path = dir.path().join("sets.json");
+    let mut model = UiModel::new();
+    model.set_favorites_path(favorites_path.clone());
+    model.set_sets_path(sets_path.clone());
+    model.set_search_rows(vec![row('a')]);
+    model.toggle_favorite(&"a".repeat(64)).unwrap();
+    let id = model.create_set(fields("Mass")).unwrap();
+    let mut store = SetStore::load(&sets_path);
+    store.add_piece(
+        &id,
+        PieceRef {
+            key: "a".repeat(64),
+            path: "Kyrie.pdf".to_owned(),
+        },
+        1,
+    );
+    store.save(&sets_path).unwrap();
+    model.set_sets_path(sets_path.clone());
+
+    model.set_search_rows(vec![row('b')]);
+
+    let favorites = notae_android::favorites::Favorites::load(&favorites_path);
+    assert_eq!(favorites.items()[0].key, "b".repeat(64));
+    let saved = SetStore::load(&sets_path);
+    let ItemKind::Piece(piece) = &saved.get(&id).unwrap().items[0].kind else {
+        panic!("a piece")
+    };
+    assert_eq!(piece.key, "b".repeat(64));
+}

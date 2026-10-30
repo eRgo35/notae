@@ -224,6 +224,18 @@ impl SetStore {
         self.sets.iter().find(|set| set.id == id)
     }
 
+    /// Points each piece whose key is not in `library` at the entry with the same path.
+    /// `library` holds `(key, path)` pairs. Returns whether anything changed; `modified` stays.
+    pub fn relink(&mut self, library: &[(String, String)]) -> bool {
+        let mut changed = false;
+        for item in self.sets.iter_mut().flat_map(|set| &mut set.items) {
+            if let ItemKind::Piece(piece) = &mut item.kind {
+                changed |= piece.relink(library);
+            }
+        }
+        changed
+    }
+
     fn get_mut(&mut self, id: &str) -> Option<&mut Set> {
         self.sets.iter_mut().find(|set| set.id == id)
     }
