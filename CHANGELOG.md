@@ -9,6 +9,13 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-30
+
+Polish UI, Favorites and Sets for preparing the music for each Mass. Verified
+with host tests and on the Android tablet emulator; **not yet run on the
+Galaxy Tab S10 FE+**. See
+[`docs/release-notes/v0.3.0.md`](docs/release-notes/v0.3.0.md).
+
 ### Added
 
 - Polish UI: every screen, dialog and status message is translated into Polish.
@@ -30,6 +37,11 @@ The hand-written release notes for each version live in
   through Android's save dialog, for moving them to the next Notae app.
   Favorites and sets are stored in the app's private storage, never in the
   library folder.
+
+### Changed
+
+- Dependencies: `sha2` 0.11, `pollster` 1.0, `serde_json` and the GitHub
+  Actions group updated; `pulldown-cmark` 0.13.5 for RUSTSEC-2026-0414.
 
 ## [0.2.2] - 2026-10-19
 
@@ -254,7 +266,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/eRgo35/notae/releases/tag/v0.3.0
 [0.2.2]: https://github.com/eRgo35/notae/releases/tag/v0.2.2
 [0.2.1]: https://github.com/eRgo35/notae/releases/tag/v0.2.1
 [0.2.0]: https://github.com/eRgo35/notae/releases/tag/v0.2.0

@@ -26,7 +26,7 @@ body:
     attributes:
       label: Notae version
       description: Android, Settings, About. Indexer, `notae-index --version`. Say "built from main" with the commit if you built it yourself.
-      placeholder: "0.2.2"
+      placeholder: "0.3.0"
     validations:
       required: true
   - type: dropdown
