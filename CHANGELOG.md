@@ -9,6 +9,36 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+The last release of the Slint Android app. Reordering a set, text notes
+between pieces and importing an export come in the next app.
+
+### Added
+
+- Polish UI: every screen, dialog and status message is translated into Polish.
+- Language in Settings: **System default**, **English** or **Polski**. The
+  choice also follows Android's per-app language setting.
+- Favorites: **Add to favorites** in a piece's ⋮ sheet stars it, and the new
+  **Favorites** section lists starred pieces, newest first.
+- Sets, such as one for each Mass or service: create, edit (name, optional
+  date and notes) and delete a set from the new **Sets** section. Deleting asks
+  for confirmation.
+- Inside a set, pieces show in the set's own order with their position
+  numbers. Add pieces from **Add**, or with **Add to set…** in a piece's ⋮
+  sheet, and remove them with **Remove from set**. The same piece may appear
+  more than once, and each copy keeps its own place.
+- A piece that is no longer in the library keeps its place in a set, shown as
+  "Missing from library". When a rescan finds a replaced PDF at the same path,
+  its favorite and set entries are re-linked to it.
+- **Export sets** in Settings saves favorites and all sets to one JSON file
+  through Android's save dialog, for moving them to the next Notae app.
+  Favorites and sets are stored in the app's private storage, never in the
+  library folder.
+
+### Fixed
+
+- Opening a set by tapping its card no longer makes Android Back close Notae;
+  Back returns to Sets.
+
 ## [0.2.2] - 2026-10-19
 
 Follow-up to v0.2.1: Polish `ł`/`Ł` search
