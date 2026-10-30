@@ -15,10 +15,10 @@
 - **Start point.** Cut the branch from `main` **after** favorites/sets 0.3.0 merges. That release includes Tasks 1–7, re-linking, and `backup.rs` with the Export button. Before starting, rebase this docs commit onto that `main`.
 - **Approved dependencies only:**
   - Build: Gradle/AGP 9, Kotlin, `cargo-ndk`.
-  - UI: Compose BOM, Material 3, Navigation 3, AndroidX Activity.
+  - UI: Compose BOM, Material 3, Navigation 3, AndroidX Activity, AndroidX AppCompat (per-app language).
   - FFI: UniFFI (Rust) with JNA (Kotlin).
   - Tests: Robolectric, Compose UI test, Roborazzi.
-  - Not allowed: AppCompat, Coil, Hilt, Play Services, networking, telemetry. Anything else needs the owner's approval.
+  - Not allowed: Coil, Hilt, Play Services, networking, telemetry. Anything else needs the owner's approval.
 - **Android ids and SDKs:** `applicationId` and namespace `com.c2yz.notae`. `compileSdk`/`targetSdk` 36, `minSdk` 26. Native libraries are 16 KB-aligned (`-Wl,-z,max-page-size=16384`, NDK r28+). ABI `arm64-v8a` only.
 - **Versioning:** version 0.5.0 from the workspace `Cargo.toml`. The versionCode formula is identical to today's (0.2.2 → 16777730).
 - **Signing:** use the existing release key, through the existing release secrets.
@@ -270,7 +270,8 @@
   - `PdfOpener.kt`: `ACTION_VIEW` with `FLAG_GRANT_READ_URI_PERMISSION`, keeping today's viewer behaviour (port it from `src/android/pdf_intent.rs`).
   - `VoiceSearch.kt`: `RecognizerIntent`.
   - `Motion.kt`: `ANIMATOR_DURATION_SCALE`.
-  - `Language.kt`: `LocaleManager` on API 33+. Below API 33 it exposes `supported = false`.
+  - `Language.kt`: `AppCompatDelegate.setApplicationLocales` / `getApplicationLocales` on all APIs; `res/xml/locales_config.xml` (en, pl) and `AppLocalesMetadataHolderService` with `autoStoreLocales` in the manifest. `MainActivity` extends `AppCompatActivity`.
+  - `Dates.kt`: `fun formatIsoDate(iso: String, locale: Locale): String` using `DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)`.
 - Test: `app/src/test/kotlin/.../platform/{HashingTest.kt,PdfOpenerTest.kt,SafLibraryTest.kt}`
 
 - [ ] **Step 1: Failing tests:**
@@ -278,6 +279,8 @@
   - `pdf_intent_grants_read_and_targets_pdf_mime`.
   - `enumerate_reports_unreadable_document`: Robolectric `ShadowContentResolver` with a document that throws on open.
   - `revoked_tree_maps_to_permission_lost`.
+  - `iso_date_formats_per_locale`: `2026-11-01` formats with day, month and year for `Locale.ENGLISH` and `Locale("pl")`, and differs between them.
+  - `language_round_trips_through_appcompat`: set `pl`, read back `pl`, under Robolectric `@Config(sdk = [30])`.
 - [ ] **Step 2: Implement.** Every exception inside a `PlatformLibrary` method becomes a `PlatformError`. None escape into UniFFI as a panic.
 - [ ] **Step 3: Commit** `feat(android): implement the platform layer in Kotlin`.
 
@@ -345,15 +348,16 @@ Covers the text field with the IME focused on open, scope chips, results with hi
 - `ctrl_k_opens_search`
 
 ### Task 16: Settings screen
-Covers the library folder (change), rescan, language (hidden when `Language.supported` is false), "Export sets" (`WriteExport`), "Import sets" (Task 20) and about with the version. Tests:
-- `language_hidden_below_api_33` (Robolectric `@Config(sdk = [32])`)
+Covers the library folder (change), rescan, language (English, Polish, system default), "Export sets" (`WriteExport`), "Import sets" (Task 20) and about with the version. Tests:
+- `language_switch_dispatches_appcompat_locale` (Robolectric `@Config(sdk = [30])` and `[34]`)
 - `export_emits_write_export`
 - `polish_plurals_1_2_5_22_25`, a plural check on the item-count strings
 
 ### Task 17: Sets list, set view, dialogs, add-to-set and the picker
 Covers:
 - folder cards and set rows with "Edited …" (from `Edited`)
-- the set dialog: name, date as `YYYY-MM-DD` text with clear, notes as multi-line; field errors
+- the set dialog: name, date as a locale-formatted field opening the M3 `DatePickerDialog` with clear (ISO to the core), notes as multi-line; field errors
+- set dates shown with `formatIsoDate`
 - delete confirmation naming the set
 - the set header: back, title, `SetSubtitle`, notes line, Add, Reorder, search
 - the add-to-set sheet, with checks and New set
@@ -361,6 +365,7 @@ Covers:
 
 Tests:
 - `new_set_requires_name`
+- `date_picker_returns_iso_and_shows_locale_format`
 - `delete_names_the_set`
 - `add_to_set_sheet_checks_member_sets`
 - `picker_untoggle_removes_only_session_item`
@@ -445,4 +450,4 @@ Tests:
   - §6 removal: tasks 2, 3 and 22
   - §7 risks: Review Focus 4 and task 21
   - §8 phases: phases 1–7
-- Open for the owner: per-app language on API 26–32 follows the system (no AppCompat). The date field stays text, for parity with 0.3.0.
+- Owner rulings 2026-10-30: AppCompat added for per-app language on every API; dates are locale-formatted with a date picker; Gradle stays in `apps/notae-android-compose` until the switch; drag-to-reorder ships.

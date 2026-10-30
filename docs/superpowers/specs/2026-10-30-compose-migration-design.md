@@ -64,7 +64,7 @@ Anti-goals, failures even if the app works:
 | 20 | Navigation 3, back stack derived from Rust state; Back calls the core. |
 | 22 | Reference screenshots of every Slint screen, plus a parity checklist, made before the switch. |
 | 23, 27 | Remove `apps/notae-index`, sidecar import, the Tesseract CI setup and the indexer docs inside this plan. 0.3.0 still has import. |
-| 24 | Dependencies approved: Gradle/AGP 9, Kotlin, `cargo-ndk`, Compose BOM, Material 3, Navigation 3, AndroidX Activity, UniFFI with JNA, Robolectric, Compose UI test, Roborazzi. |
+| 24 | Dependencies approved: Gradle/AGP 9, Kotlin, `cargo-ndk`, Compose BOM, Material 3, Navigation 3, AndroidX Activity, AndroidX AppCompat (added 2026-10-30), UniFFI with JNA, Robolectric, Compose UI test, Roborazzi. |
 | 25 | These docs live on `feat/compose-migration`, cut from `main`. |
 | 26, 28 | `crates/notae-ocr` moves to `archive/notae-ocr` and is removed from the workspace. OCR is later work. |
 
@@ -142,7 +142,9 @@ Every text that Rust builds with `pick()` today becomes a typed field, and Kotli
 - operation and status messages
 - "X of Y"
 
-Plurals use `<plurals>`. Language selection uses the framework `LocaleManager` on API 33 and newer, which matches Android's per-app language settings. On API 26–32 the app follows the system language and Settings hides the in-app switch. `androidx.appcompat` is not on the approved list. The language preference leaves `ui-prefs.txt`.
+Plurals use `<plurals>`. Language selection uses `AppCompatDelegate.setApplicationLocales` on every supported API. `MainActivity` is an `AppCompatActivity`; the manifest declares `res/xml/locales_config.xml` (en, pl) and the `AppLocalesMetadataHolderService` with `autoStoreLocales` for API 26–32. On API 33 and newer this is the same as Android's per-app language setting. The language preference leaves `ui-prefs.txt`.
+
+Dates follow the locale. Rust stores and sends ISO `YYYY-MM-DD`. Kotlin shows them with `DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)` in the app locale, so English shows "1 Nov 2026" and Polish "1 lis 2026". The set dialog's date field is a read-only, locale-formatted field that opens the Material 3 `DatePickerDialog`, with a clear button. The value passed back to the core is ISO.
 
 ### 4.4 Navigation and back
 

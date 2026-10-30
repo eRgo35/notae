@@ -44,7 +44,7 @@ The desktop indexer (`apps/notae-index`) and its sidecar import exist only to gi
 
 ## Consequences
 
-- New dependencies, approved 2026-10-30: Gradle and AGP 9, Kotlin, `cargo-ndk`, the Compose BOM, Material 3, Navigation 3, AndroidX Activity, UniFFI with JNA, Robolectric, Compose UI test and Roborazzi. The app still has no Google Play Services, no DI framework and no networking.
+- New dependencies, approved 2026-10-30: Gradle and AGP 9, Kotlin, `cargo-ndk`, the Compose BOM, Material 3, Navigation 3, AndroidX Activity, AndroidX AppCompat (per-app language on API 26–32), UniFFI with JNA, Robolectric, Compose UI test and Roborazzi. The app still has no Google Play Services, no DI framework and no networking.
 - The `unsafe` exception for the `android_main` FFI shim disappears. Every crate can `forbid(unsafe_code)`.
 - About 15 Slint UI test files are replaced by Robolectric Compose tests and Roborazzi screenshot tests. The Rust logic tests carry over. The screenshot tests close engineering-standards gap COND-005.
 - Users of `org.notae.android` must export from 0.3.0 and import in 0.5.0. The two apps install side by side.
