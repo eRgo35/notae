@@ -5,8 +5,8 @@ use notae_android::language::set_active_bundle;
 use notae_android::sets::{SetFields, SetStore};
 use notae_android::ui::UiModel;
 use notae_android::ui::browse::{
-    ComposerCount, LibrarySection, SectionContext, composers, format_edited, format_set_date,
-    neighbours, section_rows, sections,
+    ComposerCount, LibrarySection, SectionContext, SetEntry, composers, format_edited,
+    format_set_date, neighbours, section_rows, sections, set_entries, set_subtitle,
 };
 use notae_android::ui::search::SearchRow;
 
@@ -29,6 +29,8 @@ fn row(
         title_origin: "From filename".to_owned(),
         composer_origin: String::new(),
         text_snippet: None,
+        item_id: None,
+        missing: false,
     }
 }
 
@@ -404,4 +406,181 @@ fn format_set_date_en_and_pl() {
     set_active_bundle("");
     // Anything that is not a stored ISO date is shown as written.
     assert_eq!(format_set_date("soon"), "soon");
+}
+
+/// A store with one set holding `items` (a key letter, or `None` for a note), in order.
+fn store_with(items: &[Option<char>]) -> (SetStore, String) {
+    let mut store = SetStore::default();
+    let id = store.create(set_fields("Wszystkich Świętych"), 10);
+    for item in items {
+        match item {
+            Some(key) => {
+                let path = library()
+                    .into_iter()
+                    .find(|row| row.note_key.starts_with(*key))
+                    .map_or_else(|| "Psalmy/Psalm 23.pdf".to_owned(), |row| row.relative_path);
+                store.add_piece(&id, piece_at(*key, &path), 10);
+            }
+            None => {
+                store.add_note(&id, "Psalm: kantor śpiewa wersety".to_owned(), 10);
+            }
+        }
+    }
+    (store, id)
+}
+
+fn piece_at(key: char, path: &str) -> PieceRef {
+    PieceRef {
+        key: key.to_string().repeat(64),
+        path: path.to_owned(),
+    }
+}
+
+fn item_ids(store: &SetStore, id: &str) -> Vec<String> {
+    store
+        .get(id)
+        .expect("set exists")
+        .items
+        .iter()
+        .map(|item| item.id.clone())
+        .collect()
+}
+
+#[test]
+fn set_rows_follow_set_order_with_repeats() {
+    let (store, id) = store_with(&[Some('b'), Some('a'), Some('b')]);
+    let context = SectionContext {
+        sets: &store,
+        ..SectionContext::default()
+    };
+    let rows = section_rows(&library(), &LibrarySection::Set(id.clone()), &context);
+    let titles: Vec<&str> = rows.iter().map(|row| row.title.as_str()).collect();
+    assert_eq!(titles, ["Cantique", "Clair de lune", "Cantique"]);
+    let ids: Vec<String> = rows.iter().filter_map(|row| row.item_id.clone()).collect();
+    assert_eq!(
+        ids,
+        item_ids(&store, &id),
+        "each copy carries its own item id"
+    );
+    assert!(rows.iter().all(|row| !row.missing));
+    // Outside a set, rows carry no item id.
+    assert!(
+        section_rows(&library(), &LibrarySection::All, &context)
+            .iter()
+            .all(|row| row.item_id.is_none())
+    );
+    // A set that does not exist has no rows.
+    assert!(
+        section_rows(
+            &library(),
+            &LibrarySection::Set("ffff".to_owned()),
+            &context
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn missing_piece_becomes_placeholder_in_place() {
+    let _language = LANGUAGE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    set_active_bundle("");
+    let (store, id) = store_with(&[Some('a'), Some('f'), Some('c')]);
+    let context = SectionContext {
+        sets: &store,
+        ..SectionContext::default()
+    };
+    let rows = section_rows(&library(), &LibrarySection::Set(id.clone()), &context);
+    let titles: Vec<&str> = rows.iter().map(|row| row.title.as_str()).collect();
+    assert_eq!(titles, ["Clair de lune", "Psalm 23", "Scarborough Fair"]);
+    let missing = &rows[1];
+    assert!(missing.missing);
+    assert_eq!(missing.status, "Missing from library");
+    assert_eq!(missing.note_key, "f".repeat(64));
+    assert_eq!(missing.relative_path, "Psalmy/Psalm 23.pdf");
+    assert_eq!(missing.item_id.as_ref(), Some(&item_ids(&store, &id)[1]));
+    assert!(!rows[0].missing && !rows[2].missing);
+
+    set_active_bundle("pl");
+    let rows = section_rows(&library(), &LibrarySection::Set(id), &context);
+    assert_eq!(rows[1].status, "Brak w bibliotece");
+    set_active_bundle("");
+}
+
+#[test]
+fn set_entries_number_notes_and_pieces() {
+    let (store, id) = store_with(&[Some('a'), None, Some('f'), Some('a')]);
+    let set = store.get(&id).expect("set exists");
+    let ids = item_ids(&store, &id);
+    let entries = set_entries(&library(), set);
+    assert_eq!(entries.len(), 4);
+    match &entries[0] {
+        SetEntry::Piece { position, row } => {
+            assert_eq!(*position, 1);
+            assert_eq!(row.title, "Clair de lune");
+            assert_eq!(row.item_id.as_ref(), Some(&ids[0]));
+        }
+        other => panic!("first entry is a piece: {other:?}"),
+    }
+    assert_eq!(
+        entries[1],
+        SetEntry::Note {
+            position: 2,
+            item_id: ids[1].clone(),
+            text: "Psalm: kantor śpiewa wersety".to_owned(),
+        }
+    );
+    match &entries[2] {
+        SetEntry::Piece { position, row } => {
+            assert_eq!(*position, 3);
+            assert!(row.missing, "a missing piece keeps its number");
+        }
+        other => panic!("third entry is a piece: {other:?}"),
+    }
+    match &entries[3] {
+        SetEntry::Piece { position, row } => {
+            assert_eq!(*position, 4);
+            assert_eq!(row.item_id.as_ref(), Some(&ids[3]));
+        }
+        other => panic!("fourth entry is a piece: {other:?}"),
+    }
+}
+
+#[test]
+fn set_subtitle_joins_date_and_counts() {
+    let _language = LANGUAGE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let (mut store, id) =
+        store_with(&[Some('a'), None, Some('b'), Some('c'), Some('d'), Some('e')]);
+    store.update(
+        &id,
+        SetFields {
+            name: "Wszystkich Świętych".to_owned(),
+            date: Some("2026-11-01".to_owned()),
+            notes: None,
+        },
+        10,
+    );
+    set_active_bundle("");
+    assert_eq!(
+        set_subtitle(store.get(&id).expect("set")),
+        "1 Nov 2026 · 5 pieces · 1 note"
+    );
+    set_active_bundle("pl");
+    assert_eq!(
+        set_subtitle(store.get(&id).expect("set")),
+        "1 lis 2026 · 5 utworów · 1 notatka"
+    );
+
+    // Zero counts and a missing date are left out.
+    let (store, id) = store_with(&[Some('a'), Some('b')]);
+    set_active_bundle("");
+    assert_eq!(set_subtitle(store.get(&id).expect("set")), "2 pieces");
+    set_active_bundle("pl");
+    assert_eq!(set_subtitle(store.get(&id).expect("set")), "2 utwory");
+    let (store, id) = store_with(&[]);
+    assert_eq!(set_subtitle(store.get(&id).expect("set")), "");
+    set_active_bundle("");
 }

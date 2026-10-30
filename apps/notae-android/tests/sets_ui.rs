@@ -9,9 +9,9 @@ use i_slint_backend_testing::ElementHandle;
 use notae_android::sets::{SetFieldError, SetFields, SetStore};
 use notae_android::ui::UiModel;
 use notae_android::ui::browse::LibrarySection;
-use notae_android::{AppWindow, SetCard, Theme};
-use slint::platform::PointerEventButton;
-use slint::{Global, ModelRc, VecModel};
+use notae_android::{AppWindow, LibraryRow, SetCard, Theme};
+use slint::platform::{Key, PointerEventButton, WindowEvent};
+use slint::{ComponentHandle, Global, ModelRc, SharedString, VecModel};
 use support::app_sized;
 
 fn wait(milliseconds: u64) {
@@ -260,6 +260,147 @@ fn edit_set_routes_the_set_id() {
     wait(500);
     assert_eq!(*edited.borrow(), ["aaaaaaaaaaaaaaaa"]);
     assert!(!app.get_library_menu_open(), "the sheet closes");
+}
+
+// --- Inside a set ---
+
+fn key(app: &AppWindow, key: Key) {
+    let text: SharedString = key.into();
+    app.window()
+        .dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+    app.window()
+        .dispatch_event(WindowEvent::KeyReleased { text });
+}
+
+fn set_row(position: &str, title: &str, missing: bool) -> LibraryRow {
+    LibraryRow {
+        title: title.into(),
+        note_key: title.repeat(8).into(),
+        relative_path: format!("{title}.pdf").into(),
+        item_id: format!("item-{position}").into(),
+        position: position.into(),
+        missing,
+        status: if missing { "Missing from library" } else { "" }.into(),
+        ..LibraryRow::default()
+    }
+}
+
+/// A settled open set with pieces at positions 1, 3 and 4 (4 is missing from the library).
+fn set_screen(width: u32, height: u32, list: bool, dark: bool, notes: &str) -> AppWindow {
+    let app = app_sized(width, height);
+    app.set_library_list_view(list);
+    app.set_selected_section("set:aaaaaaaaaaaaaaaa".into());
+    app.set_library_title("Wszystkich Świętych".into());
+    app.set_library_subtitle("1 Nov 2026 · 3 pieces · 1 note".into());
+    app.set_library_notes(notes.into());
+    app.set_library_rows(ModelRc::new(VecModel::from(vec![
+        set_row("1", "Kyrie", false),
+        set_row("3", "Gloria", false),
+        set_row("4", "Psalm 23", true),
+    ])));
+    Theme::get(&app).set_dark(dark);
+    wait(500);
+    app
+}
+
+#[test]
+fn set_header_back_returns_to_sets() {
+    each_tablet(|width, height, dark, context| {
+        let app = set_screen(width, height, false, dark, "Uroczystość · 10:00");
+        let selected = Rc::new(RefCell::new(Vec::new()));
+        let seen = Rc::clone(&selected);
+        app.on_section_selected(move |key| seen.borrow_mut().push(key.to_string()));
+
+        assert!(
+            labelled(&app, "Wszystkich Świętych").is_some(),
+            "{context}: title"
+        );
+        assert!(
+            labelled(&app, "1 Nov 2026 · 3 pieces · 1 note").is_some(),
+            "{context}: subtitle"
+        );
+        assert!(
+            labelled(&app, "Uroczystość · 10:00").is_some(),
+            "{context}: notes line"
+        );
+        for action in ["Add", "Reorder", "Search", "Scan library"] {
+            let button = labelled(&app, action).unwrap_or_else(|| panic!("{context}: {action}"));
+            let right = button.absolute_position().x + button.size().width;
+            assert!(right <= width as f32, "{context}: {action} fits the header");
+        }
+        assert!(
+            labelled(&app, "New set").is_none(),
+            "{context}: not the Sets list"
+        );
+
+        let back = labelled(&app, "Back to sets").expect("back arrow");
+        assert!(
+            back.size().width >= 48.0,
+            "{context}: back is a full target"
+        );
+        click(&back);
+        assert_eq!(*selected.borrow(), ["sets"], "{context}");
+
+        // Android Back (and Escape) inside a set goes to the list of sets.
+        key(&app, Key::Back);
+        key(&app, Key::Escape);
+        assert_eq!(*selected.borrow(), ["sets", "sets", "sets"], "{context}");
+    });
+
+    // No notes, no notes line; outside a set, no back arrow.
+    let app = set_screen(1280, 800, false, false, "");
+    assert_eq!(count_of(&app, "SetNotesLine"), 0);
+    app.set_selected_section("all".into());
+    wait(500);
+    assert!(labelled(&app, "Back to sets").is_none());
+    assert!(labelled(&app, "Reorder").is_none());
+}
+
+#[test]
+fn set_cards_show_position_numbers() {
+    each_tablet(|width, height, dark, context| {
+        for list in [false, true] {
+            let context = format!("{context} list={list}");
+            let app = set_screen(width, height, list, dark, "");
+            assert_eq!(count_of(&app, "PositionBadge"), 3, "{context}");
+            for label in ["1. Kyrie", "3. Gloria", "4. Psalm 23"] {
+                assert!(labelled(&app, label).is_some(), "{context}: {label}");
+            }
+
+            // A missing piece shows why and opens nothing; its ⋮ has nothing to offer yet.
+            assert!(
+                labelled(&app, "Missing from library").is_some(),
+                "{context}"
+            );
+            assert!(
+                labelled(&app, "More actions for Psalm 23").is_none(),
+                "{context}: no ⋮ on a missing row"
+            );
+            assert!(
+                labelled(&app, "More actions for Gloria").is_some(),
+                "{context}"
+            );
+            let opened = Rc::new(RefCell::new(Vec::new()));
+            let seen = Rc::clone(&opened);
+            app.on_open_pdf_requested(move |path, _| seen.borrow_mut().push(path.to_string()));
+            click(&labelled(&app, "4. Psalm 23").expect("missing row"));
+            assert!(
+                opened.borrow().is_empty(),
+                "{context}: a missing row opens nothing"
+            );
+            click(&labelled(&app, "3. Gloria").expect("row"));
+            assert_eq!(*opened.borrow(), ["Gloria.pdf"], "{context}");
+        }
+    });
+
+    // Outside a set, rows carry no position.
+    let app = app_sized(1280, 800);
+    app.set_library_rows(ModelRc::new(VecModel::from(vec![set_row(
+        "", "Kyrie", false,
+    )])));
+    wait(500);
+    assert_eq!(count_of(&app, "PositionBadge"), 0);
+    assert!(labelled(&app, "Kyrie").is_some());
 }
 
 // --- The model behind the dialog ---

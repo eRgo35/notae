@@ -3,10 +3,11 @@
 #![forbid(unsafe_code)]
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use crate::favorites::PieceRef;
 use crate::language::{pick, polish_plural};
-use crate::sets::{SetFieldError, SetStore};
+use crate::sets::{ItemKind, Set, SetFieldError, SetStore};
 use crate::ui::search::SearchRow;
 
 /// One entry of the library side panel.
@@ -167,8 +168,17 @@ pub fn section_rows(
             .filter_map(|piece| rows.iter().find(|row| row.note_key == piece.key))
             .cloned()
             .collect(),
-        // Sets are listed as folder cards (see [`set_cards`]); a set's own rows come later.
-        LibrarySection::Sets | LibrarySection::Set(_) => Vec::new(),
+        // Sets are listed as folder cards (see [`set_cards`]).
+        LibrarySection::Sets => Vec::new(),
+        LibrarySection::Set(id) => context.sets.get(id).map_or_else(Vec::new, |set| {
+            set_entries(rows, set)
+                .into_iter()
+                .filter_map(|entry| match entry {
+                    SetEntry::Piece { row, .. } => Some(row),
+                    SetEntry::Note { .. } => None,
+                })
+                .collect()
+        }),
         LibrarySection::Composer(name) => {
             let name = name.to_lowercase();
             rows.iter()
@@ -181,6 +191,105 @@ pub fn section_rows(
                 .collect()
         }
     }
+}
+
+/// One item of a set, numbered from 1 across pieces and notes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)] // A short list built per redraw; boxing the row buys nothing.
+pub enum SetEntry {
+    /// A piece; a PDF no longer in the library is a placeholder row with `missing` set.
+    Piece { position: usize, row: SearchRow },
+    /// A text note between pieces.
+    Note {
+        position: usize,
+        item_id: String,
+        text: String,
+    },
+}
+
+/// The set's items in set order, each piece matched to its library row by content key.
+#[must_use]
+pub fn set_entries(rows: &[SearchRow], set: &Set) -> Vec<SetEntry> {
+    set.items
+        .iter()
+        .zip(1..)
+        .map(|(item, position)| match &item.kind {
+            ItemKind::Piece(piece) => {
+                let mut row = rows
+                    .iter()
+                    .find(|row| row.note_key == piece.key)
+                    .cloned()
+                    .unwrap_or_else(|| missing_row(piece));
+                row.item_id = Some(item.id.clone());
+                SetEntry::Piece { position, row }
+            }
+            ItemKind::Note { text } => SetEntry::Note {
+                position,
+                item_id: item.id.clone(),
+                text: text.clone(),
+            },
+        })
+        .collect()
+}
+
+/// The stand-in for a piece whose PDF is not in the library, titled by its stored file name.
+fn missing_row(piece: &PieceRef) -> SearchRow {
+    let title = Path::new(&piece.path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(&piece.path);
+    SearchRow {
+        id: None,
+        title: title.to_owned(),
+        composer_or_artist: None,
+        tags: Vec::new(),
+        status: pick("Missing from library", "Brak w bibliotece").to_owned(),
+        relative_path: piece.path.clone(),
+        note_key: piece.key.clone(),
+        text_pending: false,
+        title_origin: String::new(),
+        composer_origin: String::new(),
+        text_snippet: None,
+        item_id: None,
+        missing: true,
+    }
+}
+
+/// An open set's subtitle: its date, then how many pieces and notes it holds; empty parts are
+/// left out.
+#[must_use]
+pub fn set_subtitle(set: &Set) -> String {
+    let notes = set
+        .items
+        .iter()
+        .filter(|item| matches!(item.kind, ItemKind::Note { .. }))
+        .count();
+    let pieces = set.items.len() - notes;
+    let mut parts: Vec<String> = set
+        .date
+        .as_deref()
+        .map(format_set_date)
+        .into_iter()
+        .collect();
+    if pieces > 0 {
+        parts.push(pick(
+            format!("{pieces} {}", if pieces == 1 { "piece" } else { "pieces" }),
+            format!(
+                "{pieces} {}",
+                polish_plural(pieces, "utwór", "utwory", "utworów")
+            ),
+        ));
+    }
+    if notes > 0 {
+        parts.push(pick(
+            format!("{notes} {}", if notes == 1 { "note" } else { "notes" }),
+            format!(
+                "{notes} {}",
+                polish_plural(notes, "notatka", "notatki", "notatek")
+            ),
+        ));
+    }
+    parts.join(" · ")
 }
 
 /// Where a row sits among its section's rows, with the keys of the rows either side.

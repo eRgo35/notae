@@ -109,6 +109,7 @@ export component AppWindow inherits Window {
     in property <string> selected_section: "all";
     in property <string> library_title: "All scores";
     in property <string> library_subtitle: "";
+    in property <string> library_notes: "";
     in property <LibraryRow> selected;
     // The previewed score's neighbours in the current section; empty at a boundary.
     in property <string> selected_previous_key: "";
@@ -237,6 +238,8 @@ export component AppWindow inherits Window {
                 if root.show_search { root.search_closed(); return accept; }
                 if root.show_settings { root.settings_closed(); return accept; }
                 if root.details_open { root.selection_cleared(); return accept; }
+                // Inside a set, Back returns to the list of sets.
+                if root.selected_section.starts-with("set:") { root.section_selected("sets"); return accept; }
             }
             if root.details_open && !root.show_search && !root.show_settings {
                 if event.text == Key.LeftArrow && root.selected_previous_key != "" { root.score_selected(root.selected_previous_key); return accept; }
@@ -326,6 +329,7 @@ export component AppWindow inherits Window {
                 selected-section: root.selected_section;
                 title: root.library_title;
                 subtitle: root.library_subtitle;
+                notes: root.library_notes;
                 rows: root.library_rows;
                 // A layout (not parent.width: `parent` here is LibraryScreen) fills the preview slot.
                 VerticalLayout {

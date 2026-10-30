@@ -12,6 +12,32 @@ export struct SetCard {
     edited: string,
 }
 
+// A set item's number, on its card's corner or at the start of its row.
+export component PositionBadge inherits Rectangle {
+    in property <string> text;
+    width: max(28px, number.preferred-width + 16px);
+    height: 28px;
+    border-radius: 14px;
+    background: Theme.accent-soft;
+    number := Text {
+        x: (parent.width - self.width) / 2;
+        height: parent.height;
+        vertical-alignment: center;
+        text: root.text;
+        color: Theme.on-accent-soft;
+        font-size: 14px;
+        font-weight: 600;
+        accessible-role: none;
+    }
+}
+
+// The open set's free-text notes under its title.
+export component SetNotesLine inherits Text {
+    color: Theme.foreground;
+    font-size: 15px;
+    overflow: elide;
+}
+
 // The ⋮ of a set, the way to Edit set and Delete set. A full 48 px target named after the set.
 component SetActions inherits IconButton {
     in property <string> name;

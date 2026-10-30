@@ -691,6 +691,8 @@ thread_local! {
     static LIBRARY_ROWS: RefCell<LibraryRowsCache> = RefCell::default();
 }
 
+type PushedRows = (Vec<SearchRow>, Vec<bool>, bool, Vec<PieceRef>, Vec<String>);
+
 /// Keeps `sync_window` from re-decoding thumbnail PNGs and from replacing an unchanged
 /// `library_rows` model (which would rebuild every card and drop keyboard focus).
 #[derive(Default)]
@@ -698,12 +700,20 @@ struct LibraryRowsCache {
     /// Decoded thumbnails by content key. A key's thumbnail is written once and never
     /// rewritten, so entries only need dropping when the key leaves the library.
     images: HashMap<String, slint::Image>,
-    /// The rows, per-row thumbnail availability, language and favorites last pushed to the window.
-    pushed: Option<(Vec<SearchRow>, Vec<bool>, bool, Vec<PieceRef>)>,
+    /// The rows, per-row thumbnail availability, language, favorites and set positions last
+    /// pushed to the window.
+    pushed: Option<PushedRows>,
 }
 
 impl LibraryRowsCache {
-    fn push(&mut self, window: &AppWindow, model: &UiModel, visible: Vec<SearchRow>) {
+    /// `positions` holds each row's number inside a set, and is empty elsewhere.
+    fn push(
+        &mut self,
+        window: &AppWindow,
+        model: &UiModel,
+        visible: Vec<SearchRow>,
+        positions: Vec<String>,
+    ) {
         let keys: HashSet<&str> = model
             .search_rows()
             .iter()
@@ -721,11 +731,12 @@ impl LibraryRowsCache {
         if self
             .pushed
             .as_ref()
-            .is_some_and(|(rows, flags, language, starred)| {
+            .is_some_and(|(rows, flags, language, starred, numbers)| {
                 *rows == visible
                     && *flags == available
                     && *language == polish
                     && starred.as_slice() == favorites
+                    && *numbers == positions
             })
         {
             return;
@@ -734,13 +745,16 @@ impl LibraryRowsCache {
             .iter()
             .cloned()
             .zip(thumbnails)
-            .map(|(row, thumbnail)| {
+            .enumerate()
+            .map(|(index, (row, thumbnail))| {
                 let favorite = model.is_favorite(&row.note_key);
-                crate::ui::search::library_row(row, thumbnail, favorite)
+                let mut row = crate::ui::search::library_row(row, thumbnail, favorite);
+                row.position = positions.get(index).cloned().unwrap_or_default().into();
+                row
             })
             .collect();
         window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
-        self.pushed = Some((visible, available, polish, favorites.to_vec()));
+        self.pushed = Some((visible, available, polish, favorites.to_vec(), positions));
     }
 
     /// The decoded thumbnail for `note_key`, loading it once the file exists. A file that fails
@@ -781,18 +795,6 @@ fn close_search(
     }
 }
 
-/// Pushes the currently visible fields of `UiModel` into the Slint
-/// window's properties.
-///
-/// The visible screens are derived from the storage state:
-/// * `Unconfigured` → setup screen.
-/// * `Ready(_)` → library screen.
-/// * `PermissionLost(root)` → recovery screen, with the root's display
-///   name in the body text.
-/// * `Error(_)` → setup screen; the picker button is still the recovery.
-///
-/// `Screen::Setup(_)` from the controller is not consulted here because
-/// the storage state is authoritative for the picker-driven flows.
 /// The Sets section's callbacks: open a set, the new/edit set dialog and the delete confirmation.
 fn wire_sets(window: &AppWindow, model: &Rc<RefCell<UiModel>>) {
     use crate::sets::SetFields;
@@ -908,6 +910,18 @@ fn wire_sets(window: &AppWindow, model: &Rc<RefCell<UiModel>>) {
     }
 }
 
+/// Pushes the currently visible fields of `UiModel` into the Slint
+/// window's properties.
+///
+/// The visible screens are derived from the storage state:
+/// * `Unconfigured` → setup screen.
+/// * `Ready(_)` → library screen.
+/// * `PermissionLost(root)` → recovery screen, with the root's display
+///   name in the body text.
+/// * `Error(_)` → setup screen; the picker button is still the recovery.
+///
+/// `Screen::Setup(_)` from the controller is not consulted here because
+/// the storage state is authoritative for the picker-driven flows.
 fn sync_window(window: &AppWindow, model: &UiModel) {
     let state = model.state();
     let (show_setup, show_recovery, recovery_folder_name, setup_error, library_display_name) =
@@ -992,6 +1006,22 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_show_settings(matches!(state.screen(), Screen::Settings));
     let visible = model.visible_rows();
     let row_count = visible.len();
+    // The open set, unless Search covers it. Its rows are its pieces in set order.
+    let open_set = match model.section() {
+        crate::ui::browse::LibrarySection::Set(id) if !matches!(state.screen(), Screen::Search) => {
+            model.sets().get(id)
+        }
+        _ => None,
+    };
+    let positions: Vec<String> = open_set.map_or_else(Vec::new, |set| {
+        crate::ui::browse::set_entries(model.search_rows(), set)
+            .into_iter()
+            .filter_map(|entry| match entry {
+                crate::ui::browse::SetEntry::Piece { position, .. } => Some(position.to_string()),
+                crate::ui::browse::SetEntry::Note { .. } => None,
+            })
+            .collect()
+    });
 
     let selected = model.selected_row();
     window.set_details_open(selected.is_some());
@@ -1023,7 +1053,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         let favorite = model.is_favorite(&row.note_key);
         window.set_selected(crate::ui::search::library_row(row, thumbnail, favorite));
     }
-    LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible));
+    LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible, positions));
 
     let all_rows = model.search_rows();
     let sections: Vec<crate::SectionItem> =
@@ -1054,6 +1084,8 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     let set_cards = crate::ui::browse::set_cards(model.sets(), crate::ui::unix_now());
     let subtitle = if model.section() == &crate::ui::browse::LibrarySection::Sets {
         crate::ui::browse::sets_subtitle(set_cards.len())
+    } else if let Some(set) = open_set {
+        crate::ui::browse::set_subtitle(set)
     } else {
         crate::language::pick(
             format!(
@@ -1067,6 +1099,12 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         )
     };
     window.set_library_subtitle(subtitle.into());
+    window.set_library_notes(
+        open_set
+            .and_then(|set| set.notes.as_deref())
+            .unwrap_or_default()
+            .into(),
+    );
     window.set_set_cards(slint::ModelRc::new(slint::VecModel::from(set_cards)));
     window.set_confirm_delete_set_name(model.pending_delete_set_name().unwrap_or_default().into());
     window.set_show_search(matches!(state.screen(), Screen::Search));

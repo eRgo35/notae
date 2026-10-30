@@ -365,3 +365,12 @@ msgstr "Ten zestaw jest pusty"
 
 msgid "Pieces you add to this set appear here."
 msgstr "Tu pojawią się utwory dodane do tego zestawu."
+
+msgid "Back to sets"
+msgstr "Wróć do zestawów"
+
+msgid "Add"
+msgstr "Dodaj"
+
+msgid "Reorder"
+msgstr "Zmień kolejność"

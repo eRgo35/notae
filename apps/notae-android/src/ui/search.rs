@@ -28,6 +28,10 @@ pub struct SearchRow {
     pub composer_origin: String,
     /// FTS5 snippet of matching lyrics/page text, with `\u{2}`/`\u{3}` around the match.
     pub text_snippet: Option<String>,
+    /// The set item this row shows; `None` outside a set.
+    pub item_id: Option<String>,
+    /// A set's piece whose PDF is no longer in the library.
+    pub missing: bool,
 }
 
 impl SearchRow {
@@ -53,6 +57,8 @@ impl SearchRow {
             note_key: note.fingerprint().sha256().to_string(),
             relative_path: note.path().as_str().to_owned(),
             text_snippet: None,
+            item_id: None,
+            missing: false,
         }
     }
 }
@@ -93,6 +99,11 @@ pub fn library_row(
         snippet_match: hit.into(),
         snippet_after: after.into(),
         favorite,
+        item_id: row.item_id.unwrap_or_default().into(),
+        // Set by the caller inside a set, where it knows the item's number.
+        position: "".into(),
+        missing: row.missing,
+        just_opened: false,
     }
 }
 

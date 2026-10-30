@@ -2,7 +2,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Motion, ViewPresence, Glyph, IconButton, ScanButton, PillButton, Card, NavRow, Chip, ActionInput } from "components.slint";
 import { Scrollbar } from "scrollbar.slint";
-import { SetCard, SetsPane } from "sets.slint";
+import { SetCard, SetsPane, PositionBadge, SetNotesLine } from "sets.slint";
 
 export struct LibraryRow {
     id: string,
@@ -20,6 +20,11 @@ export struct LibraryRow {
     snippet_match: string,
     snippet_after: string,
     favorite: bool,
+    // Inside a set: the set item's id, its 1-based number and whether its PDF is gone.
+    item_id: string,
+    position: string,
+    missing: bool,
+    just_opened: bool,
 }
 
 export struct SectionItem {
@@ -83,15 +88,17 @@ component ScoreCard inherits Rectangle {
     border-width: input.has-focus ? 2px : root.compact ? 1px : 0px;
     border-color: input.has-focus ? Theme.accent : Theme.divider;
     accessible-role: button;
-    accessible-label: root.score.title;
-    accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + @tr("Opens the score");
-    accessible-action-default => { if root.interactive && !Theme.modal-open { root.open(); } }
+    accessible-label: (root.score.position != "" ? root.score.position + ". " : "") + root.score.title;
+    accessible-description: root.score.missing ? root.score.status
+        : (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + @tr("Opens the score");
+    // A piece missing from the library only shows its status; there is nothing to open.
+    accessible-action-default => { if root.interactive && !Theme.modal-open && !root.score.missing { root.open(); } }
     forward-focus: input;
     input := ActionInput {
         enabled: root.interactive && !Theme.modal-open;
         clicked => {
             self.focus();
-            root.open();
+            if !root.score.missing { root.open(); }
         }
     }
     VerticalLayout {
@@ -108,18 +115,24 @@ component ScoreCard inherits Rectangle {
             padding-right: 44px;
             Text { text: root.score.title; color: Theme.foreground; font-size: root.compact ? 15px : 16px; font-weight: 600; overflow: elide; }
             Text {
-                text: (root.score.id != "" && root.score.composer_or_artist != "" ? root.score.id + " · " + root.score.composer_or_artist : root.score.id + root.score.composer_or_artist);
-                color: Theme.muted;
+                text: root.score.missing ? root.score.status
+                    : (root.score.id != "" && root.score.composer_or_artist != "" ? root.score.id + " · " + root.score.composer_or_artist : root.score.id + root.score.composer_or_artist);
+                color: root.score.missing ? Theme.error : Theme.muted;
                 font-size: root.compact ? 13px : 14px;
                 overflow: elide;
             }
         }
     }
+    if root.score.position != "" : PositionBadge {
+        text: root.score.position;
+        x: 14px;
+        y: 14px;
+    }
     if root.score.favorite : FavoriteBadge {
         x: root.width - self.width - 14px;
         y: 14px;
     }
-    MoreActions {
+    if !root.score.missing : MoreActions {
         title: root.score.title;
         enabled: root.interactive;
         x: root.width - self.width - 2px;
@@ -175,21 +188,23 @@ export component ScoreRow inherits Rectangle {
     border-width: input.has-focus ? 2px : 0px;
     border-color: Theme.accent;
     accessible-role: button;
-    accessible-label: root.score.title;
-    accessible-description: (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + @tr("Opens the score");
-    accessible-action-default => { if root.interactive && !Theme.modal-open { root.open(); } }
+    accessible-label: (root.score.position != "" ? root.score.position + ". " : "") + root.score.title;
+    accessible-description: root.score.missing ? root.score.status
+        : (root.score.composer_or_artist != "" ? root.score.composer_or_artist + ". " : "") + @tr("Opens the score");
+    accessible-action-default => { if root.interactive && !Theme.modal-open && !root.score.missing { root.open(); } }
     forward-focus: input;
     input := ActionInput {
         enabled: root.interactive && !Theme.modal-open;
         clicked => {
             self.focus();
-            root.open();
+            if !root.score.missing { root.open(); }
         }
     }
     HorizontalLayout {
         padding-left: 14px;
         padding-right: 8px;
         spacing: 14px;
+        if root.score.position != "" : VerticalLayout { alignment: center; PositionBadge { text: root.score.position; } }
         VerticalLayout { alignment: center; PagePreview { score: root.score; width: 44px; height: 58px; border-radius: 6px; } }
         VerticalLayout {
             horizontal-stretch: 1;
@@ -197,10 +212,11 @@ export component ScoreRow inherits Rectangle {
             spacing: 1px;
             Text { text: root.score.title; font-size: 16px; font-weight: 600; overflow: elide; color: Theme.foreground; }
             Text {
-                text: (root.score.id != "" && root.score.composer_or_artist != "" ? root.score.id + " · " + root.score.composer_or_artist : root.score.id + root.score.composer_or_artist);
+                text: root.score.missing ? root.score.status
+                    : (root.score.id != "" && root.score.composer_or_artist != "" ? root.score.id + " · " + root.score.composer_or_artist : root.score.id + root.score.composer_or_artist);
                 font-size: 14px;
                 overflow: elide;
-                color: Theme.muted;
+                color: root.score.missing ? Theme.error : Theme.muted;
             }
             if root.score.tags != "" : Text { text: root.score.tags; font-size: 13px; overflow: elide; color: Theme.muted; }
         }
@@ -208,7 +224,7 @@ export component ScoreRow inherits Rectangle {
             alignment: center;
             FavoriteBadge { }
         }
-        VerticalLayout {
+        if !root.score.missing : VerticalLayout {
             alignment: center;
             MoreActions {
                 title: root.score.title;
@@ -361,6 +377,8 @@ export component LibraryScreen inherits Rectangle {
     in property <string> selected-section;
     in property <string> title;
     in property <string> subtitle;
+    // An open set's free-text notes, shown under its subtitle.
+    in property <string> notes;
     in property <[LibraryRow]> rows;
     in property <[SetCard]> set-cards;
     in property <string> pdf-error;
@@ -388,6 +406,7 @@ export component LibraryScreen inherits Rectangle {
         root.menu-open = true;
     }
     private property <bool> sets-section: root.selected-section == "sets";
+    private property <bool> in-set: root.selected-section.starts-with("set:");
     init => { root.menu-open = false; }
     actions-presence := ViewPresence { active: root.menu-open; }
     callback rescan-clicked();
@@ -481,12 +500,21 @@ export component LibraryScreen inherits Rectangle {
                         clicked => { root.sidebar-toggle-clicked(); }
                     }
                 }
+                if root.in-set : VerticalLayout {
+                    alignment: center;
+                    IconButton {
+                        label: @tr("Back to sets");
+                        icon: @image-url("material-icons/arrow-back.svg");
+                        clicked => { root.section-selected("sets"); }
+                    }
+                }
                 VerticalLayout {
                     horizontal-stretch: 1;
                     alignment: center;
                     spacing: 4px;
                     Text { text: root.title; color: Theme.foreground; font-size: root.expanded ? 40px : root.available-width < 420px ? 24px : 30px; font-weight: 600; overflow: elide; }
                     Text { text: root.subtitle; color: Theme.muted; font-size: 15px; }
+                    if root.in-set && root.notes != "" : SetNotesLine { text: root.notes; }
                 }
                 // Header actions: Search, layout toggle, Settings (when the side panel is not showing), Scan. Scan is always right-most.
                 VerticalLayout {
@@ -505,6 +533,13 @@ export component LibraryScreen inherits Rectangle {
                             primary: true;
                             clicked => { root.new-set-requested(); }
                         }
+                        // Not wired yet: adding pieces and reorder mode come with their own screens.
+                        if root.in-set : PillButton {
+                            text: @tr("Add");
+                            icon: @image-url("material-icons/add.svg");
+                            primary: true;
+                        }
+                        if root.in-set : PillButton { text: @tr("Reorder"); tonal: true; }
                         if !root.sidebar-visible : IconButton { label: @tr("Settings"); icon: @image-url("material-icons/settings.svg"); clicked => { root.settings-clicked(); } }
                         ScanButton { enabled: root.rescan-enabled; clicked => { root.rescan-clicked(); } }
                     }

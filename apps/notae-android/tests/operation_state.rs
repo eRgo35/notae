@@ -278,6 +278,8 @@ fn worker_progress_and_completion_are_reflected_in_ui_state_and_rows() {
         title_origin: String::new(),
         composer_origin: String::new(),
         text_snippet: None,
+        item_id: None,
+        missing: false,
     }];
     model
         .apply_operation_event(OperationEvent::Completed {
@@ -317,6 +319,8 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         title_origin: String::new(),
         composer_origin: String::new(),
         text_snippet: None,
+        item_id: None,
+        missing: false,
     };
     model
         .apply_operation_event(OperationEvent::SearchRows(vec![pending_row.clone()]))
@@ -669,6 +673,8 @@ fn metadata_events_keep_errors_visible_and_close_after_success() {
                 title_origin: String::new(),
                 composer_origin: String::new(),
                 text_snippet: None,
+                item_id: None,
+                missing: false,
             }],
         })
         .expect("apply saved row projection");

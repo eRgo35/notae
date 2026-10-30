@@ -20,6 +20,8 @@ fn row(c: char, title: &str) -> SearchRow {
         title_origin: String::new(),
         composer_origin: String::new(),
         text_snippet: None,
+        item_id: None,
+        missing: false,
     }
 }
 

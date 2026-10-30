@@ -238,6 +238,8 @@ fn row(composer: &str) -> SearchRow {
         title_origin: "From filename".to_owned(),
         composer_origin: String::new(),
         text_snippet: None,
+        item_id: None,
+        missing: false,
     }
 }
 

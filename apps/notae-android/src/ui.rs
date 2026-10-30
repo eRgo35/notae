@@ -513,17 +513,11 @@ impl UiModel {
     /// Shows All instead of a composer none of the loaded rows has. While no rows are loaded yet
     /// the composer is kept, since a saved choice is restored before the library arrives.
     fn forget_missing_composer(&mut self) {
-        if let LibrarySection::Composer(name) = &self.section
+        if matches!(self.section, LibrarySection::Composer(_))
             && !self.search_rows.is_empty()
+            && section_rows(&self.search_rows, &self.section, &self.section_context()).is_empty()
         {
-            let name = name.to_lowercase();
-            if !self.search_rows.iter().any(|row| {
-                row.composer_or_artist
-                    .as_deref()
-                    .is_some_and(|composer| composer.to_lowercase() == name)
-            }) {
-                self.section = LibrarySection::All;
-            }
+            self.section = LibrarySection::All;
         }
     }
 
