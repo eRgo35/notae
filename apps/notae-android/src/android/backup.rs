@@ -139,7 +139,10 @@ pub(super) fn finish_export(
             }
         },
         (RESULT_OK, None) => export_failed_text(pick("no file was chosen", "nie wybrano pliku")),
-        (code, _) => export_failed_text(&format!("result code {code}")),
+        (code, _) => export_failed_text(&pick(
+            format!("result code {code}"),
+            format!("kod wyniku {code}"),
+        )),
     };
     let _ = export.window.upgrade_in_event_loop(move |window| {
         window.set_settings_backup_status(status.into());
