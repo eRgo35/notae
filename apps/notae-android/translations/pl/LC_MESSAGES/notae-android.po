@@ -401,3 +401,9 @@ msgstr "Usuń {} z zestawu"
 
 msgid "Done"
 msgstr "Gotowe"
+
+msgid "Sets and favorites"
+msgstr "Zestawy i ulubione"
+
+msgid "Export sets"
+msgstr "Eksportuj zestawy"

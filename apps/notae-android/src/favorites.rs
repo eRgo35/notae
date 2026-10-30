@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -38,14 +39,20 @@ impl Favorites {
     /// Invalid keys and repeats are dropped.
     #[must_use]
     pub fn from_json(text: &str) -> Self {
-        let mut favorites = Self::default();
         let Ok(file) = serde_json::from_str::<FavoritesFile>(text) else {
-            return favorites;
+            return Self::default();
         };
         if file.schema_version != SCHEMA_VERSION {
-            return favorites;
+            return Self::default();
         }
-        for piece in file.items {
+        Self::from_items(file.items)
+    }
+
+    /// Favorites in the given order; invalid keys and repeats are dropped.
+    #[must_use]
+    pub fn from_items(items: Vec<PieceRef>) -> Self {
+        let mut favorites = Self::default();
+        for piece in items {
             if is_content_key(&piece.key) && !favorites.contains(&piece.key) {
                 favorites.items.push(piece);
             }
@@ -111,13 +118,17 @@ impl Favorites {
     }
 
     /// Points each favorite whose key is not in `library` at the entry with the same path.
-    /// `library` holds `(key, path)` pairs. Returns whether anything changed.
+    /// `library` holds `(key, path)` pairs. A favorite that ends up with a key already listed
+    /// earlier is dropped. Returns whether anything changed.
     pub fn relink(&mut self, library: &[(String, String)]) -> bool {
         let mut changed = false;
         for piece in &mut self.items {
             changed |= piece.relink(library);
         }
-        changed
+        let before = self.items.len();
+        let mut seen = HashSet::new();
+        self.items.retain(|piece| seen.insert(piece.key.clone()));
+        changed || self.items.len() != before
     }
 }
 

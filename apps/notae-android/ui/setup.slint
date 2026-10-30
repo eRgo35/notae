@@ -185,6 +185,8 @@ export component SettingsScreen inherits Rectangle {
     // 0 follows the system language, 1 is English, 2 is Polish (see `LanguageChoice::index`).
     in property <int> language-choice;
     callback language-chosen(int);
+    in property <string> backup-status;
+    callback export-sets();
     callback back();
     callback change-library();
     callback cancel();
@@ -281,6 +283,19 @@ export component SettingsScreen inherits Rectangle {
                         // Language names stay in their own language so anyone can find theirs.
                         ChoiceRow { label: "English"; selected: root.language-choice == 1; clicked => { root.language-chosen(1); } }
                         ChoiceRow { label: "Polski"; selected: root.language-choice == 2; clicked => { root.language-chosen(2); } }
+                    }
+                }
+                Card {
+                    VerticalLayout {
+                        padding: 16px;
+                        alignment: start;
+                        spacing: 8px;
+                        Text { text: @tr("Sets and favorites"); color: Theme.foreground; font-size: 18px; font-weight: 600; }
+                        HorizontalLayout {
+                            alignment: start;
+                            PillButton { text: @tr("Export sets"); tonal: true; clicked => { root.export-sets(); } }
+                        }
+                        if root.backup-status != "" : Text { text: root.backup-status; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
                     }
                 }
             }

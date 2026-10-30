@@ -803,3 +803,31 @@ fn picker_untoggle_removes_only_this_sessions_item() {
         "tapping again adds a third copy"
     );
 }
+
+// --- Export from Settings ---
+
+#[test]
+fn export_sets_button_fires_the_callback_and_shows_the_status() {
+    each_tablet(|width, height, dark, case| {
+        let app = app_sized(width, height);
+        Theme::get(&app).set_dark(dark);
+        app.set_show_settings(true);
+        wait(500);
+        let requests = Rc::new(RefCell::new(0));
+        let counter = Rc::clone(&requests);
+        app.on_export_sets_requested(move || *counter.borrow_mut() += 1);
+        // The card is the last one in Settings; scroll down to it as the owner would.
+        for scroll in ElementHandle::find_by_element_type_name(&app, "ScrollView") {
+            scroll.scroll(0.0, -2_000.0);
+        }
+        wait(500);
+        assert!(labelled(&app, "Sets and favorites").is_some(), "{case}");
+        let button = labelled(&app, "Export sets").unwrap_or_else(|| panic!("{case}"));
+        button.invoke_accessible_default_action();
+        assert_eq!(*requests.borrow(), 1, "{case}");
+
+        assert!(labelled(&app, "Sets exported").is_none(), "{case}");
+        app.set_settings_backup_status("Sets exported".into());
+        assert!(labelled(&app, "Sets exported").is_some(), "{case}");
+    });
+}

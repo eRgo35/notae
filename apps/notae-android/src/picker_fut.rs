@@ -49,6 +49,7 @@ use std::task::{Context, Poll};
 
 use atomic_waker::AtomicWaker;
 
+use crate::backup::EXPORT_REQUEST_CODE;
 use crate::storage::{LibraryRoot, LibraryRootId, StorageError};
 use crate::voice_search::VOICE_REQUEST_CODE;
 
@@ -168,7 +169,7 @@ pub fn new_picker_state() -> PickerState {
 
 impl PickerState {
     /// Builds a fresh, empty state. Picker request codes start at `1`,
-    /// leaving `0` reserved and never allocating the voice-recognition code.
+    /// leaving `0` reserved and never allocating the voice-recognition or export code.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -181,11 +182,11 @@ impl PickerState {
     }
 
     /// Reserves a fresh request code for `startActivityForResult`.
-    /// The voice-recognition code is reserved for the separate JNI route.
+    /// The voice-recognition and export codes are reserved for their own routes.
     pub fn next_request_code(&self) -> i32 {
         loop {
             let code = self.inner.next_code.fetch_add(1, Ordering::Relaxed);
-            if code != VOICE_REQUEST_CODE {
+            if code != VOICE_REQUEST_CODE && code != EXPORT_REQUEST_CODE {
                 return code;
             }
         }
@@ -459,6 +460,18 @@ mod tests {
             assert_ne!(
                 code, VOICE_REQUEST_CODE,
                 "voice recognition reserves this code"
+            );
+        }
+    }
+
+    #[test]
+    fn request_codes_do_not_collide_with_export() {
+        let state = PickerState::new();
+        for _ in 0..=EXPORT_REQUEST_CODE {
+            let code = state.next_request_code();
+            assert_ne!(
+                code, EXPORT_REQUEST_CODE,
+                "the export picker reserves this code"
             );
         }
     }

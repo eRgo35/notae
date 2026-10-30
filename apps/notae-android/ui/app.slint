@@ -99,6 +99,8 @@ export component AppWindow inherits Window {
     in property <string> settings_scan_failures: "";
     in property <string> settings_indexed_count: "0";
     in property <string> settings_no_text_count: "0";
+    // The result of the last "Export sets"; empty when there is nothing to report.
+    in property <string> settings_backup_status;
     in property <string> app_version: "";
     in property <string> app_build_identity: "unknown";
     in property <string> repository_url: "https://github.com/eRgo35/notae";
@@ -127,6 +129,7 @@ export component AppWindow inherits Window {
     callback settings_clicked();
     callback settings_closed();
     callback language_chosen(int);
+    callback export_sets_requested();
     in property <int> language_choice: 0;
     callback setup_chosen();
     callback rescan_clicked();
@@ -472,6 +475,8 @@ export component AppWindow inherits Window {
                 back => { root.settings_closed(); }
                 language-choice: root.language_choice;
                 language-chosen(choice) => { root.language_chosen(choice); }
+                backup-status: root.settings_backup_status;
+                export-sets => { root.export_sets_requested(); }
             }
             }
         }

@@ -618,7 +618,28 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         window.on_settings_clicked(move || {
             report_transition(model.borrow_mut().dispatch(UiEvent::OpenSettings));
             if let Some(window) = window_weak.upgrade() {
+                window.set_settings_backup_status(slint::SharedString::new());
                 sync_window(&window, &model.borrow());
+            }
+        });
+    }
+
+    {
+        let model = Rc::clone(&model);
+        let window_weak = window.as_weak();
+        let app = app.clone();
+        window.on_export_sets_requested(move || {
+            let Some(window) = window_weak.upgrade() else {
+                return;
+            };
+            window.set_settings_backup_status(slint::SharedString::new());
+            let (file_name, text) = model.borrow().export_sets(crate::ui::unix_now());
+            if let Err(error) =
+                crate::android::backup::start_export(&app, window_weak.clone(), &file_name, text)
+            {
+                window.set_settings_backup_status(
+                    crate::android::backup::export_failed_text(&error.to_string()).into(),
+                );
             }
         });
     }

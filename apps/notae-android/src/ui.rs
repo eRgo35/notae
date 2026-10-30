@@ -309,6 +309,15 @@ impl UiModel {
         &self.sets
     }
 
+    /// The suggested file name and the text of a favorites-and-sets export made at `now`.
+    #[must_use]
+    pub fn export_sets(&self, now: u64) -> (String, String) {
+        (
+            crate::backup::suggested_file_name(now),
+            crate::backup::export_json(&self.favorites, &self.sets),
+        )
+    }
+
     /// Validates `fields`, adds the set and opens it. A set made from the "Add to set…"
     /// checklist's "New set" gets that piece instead, and the owner stays where they were.
     ///

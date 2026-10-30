@@ -557,22 +557,29 @@ pub extern "system" fn Java_org_notae_android_NotaeActivity_nativeOnActivityResu
     unowned_env
         .with_env(|env| -> Result<(), JniError> {
             let tree_uri = if tree_uri.is_null() {
-                None
+                Ok(None)
             } else {
-                match jstring_to_string(env, tree_uri) {
-                    Ok(uri) => Some(uri),
-                    Err(error) => {
-                        if env.exception_check() {
-                            env.exception_clear();
-                        }
-                        picker_state().dispatch(
-                            request_code,
-                            PickerOutcome::Platform {
-                                error: error.to_string(),
-                            },
-                        );
-                        return Ok(());
-                    }
+                jstring_to_string(env, tree_uri).map(Some)
+            };
+            if tree_uri.is_err() && env.exception_check() {
+                env.exception_clear();
+            }
+            // The save-file picker of "Export sets" shares this route; its URI is a document.
+            let document_uri = tree_uri.as_ref().ok().and_then(Option::as_deref);
+            if super::backup::finish_export(env, &activity, request_code, result_code, document_uri)
+            {
+                return Ok(());
+            }
+            let tree_uri = match tree_uri {
+                Ok(uri) => uri,
+                Err(error) => {
+                    picker_state().dispatch(
+                        request_code,
+                        PickerOutcome::Platform {
+                            error: error.to_string(),
+                        },
+                    );
+                    return Ok(());
                 }
             };
 

@@ -138,3 +138,30 @@ fn relink_leaves_missing_entries_in_place() {
         [piece('c', "c.pdf"), piece('a', "a.pdf")]
     );
 }
+
+#[test]
+fn relink_dedupes_keys() {
+    // Two stale favorites at one path both take that path's new key.
+    let mut favorites = Favorites::default();
+    favorites.toggle(piece('a', "x.pdf"));
+    favorites.toggle(piece('b', "x.pdf"));
+    let library = [(key('d'), "x.pdf".to_owned())];
+    assert!(favorites.relink(&library));
+    assert_eq!(favorites.items(), [piece('d', "x.pdf")]);
+
+    // A stale favorite whose path belongs to a favorite still in the library.
+    let mut favorites = Favorites::default();
+    favorites.toggle(piece('e', "y.pdf"));
+    favorites.toggle(piece('a', "y.pdf"));
+    favorites.toggle(piece('c', "c.pdf"));
+    let library = [
+        (key('e'), "y.pdf".to_owned()),
+        (key('c'), "c.pdf".to_owned()),
+    ];
+    assert!(favorites.relink(&library));
+    assert_eq!(
+        favorites.items(),
+        [piece('c', "c.pdf"), piece('e', "y.pdf")]
+    );
+    assert!(!favorites.relink(&library));
+}

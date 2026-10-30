@@ -48,6 +48,16 @@ pub struct Set {
     pub last_opened_item: Option<String>,
 }
 
+impl Set {
+    /// Drops piece items whose content key is not valid.
+    pub(crate) fn drop_invalid_pieces(&mut self) {
+        self.items.retain(|item| match &item.kind {
+            ItemKind::Piece(piece) => is_content_key(&piece.key),
+            ItemKind::Note { .. } => true,
+        });
+    }
+}
+
 /// The user-editable fields of a set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetFields {
@@ -174,10 +184,7 @@ impl SetStore {
         }
         let mut sets = file.sets;
         for set in &mut sets {
-            set.items.retain(|item| match &item.kind {
-                ItemKind::Piece(piece) => is_content_key(&piece.key),
-                ItemKind::Note { .. } => true,
-            });
+            set.drop_invalid_pieces();
         }
         Self { sets }
     }
@@ -217,6 +224,20 @@ impl SetStore {
                 .then_with(|| a.name.cmp(&b.name))
         });
         sets
+    }
+
+    /// All sets, in creation order.
+    #[must_use]
+    pub fn sets(&self) -> &[Set] {
+        &self.sets
+    }
+
+    /// Replaces the set with the same id in place, or adds it at the end.
+    pub fn put(&mut self, set: Set) {
+        match self.get_mut(&set.id) {
+            Some(existing) => *existing = set,
+            None => self.sets.push(set),
+        }
     }
 
     #[must_use]

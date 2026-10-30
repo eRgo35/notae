@@ -490,7 +490,7 @@ pub fn format_edited(modified: u64, now: u64) -> String {
 }
 
 /// The calendar date `days` after 1970-01-01 (Howard Hinnant's `civil_from_days`).
-fn civil_from_days(days: u64) -> (i64, u32, u32) {
+pub(crate) fn civil_from_days(days: u64) -> (i64, u32, u32) {
     let z = i64::try_from(days).unwrap_or(0) + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
