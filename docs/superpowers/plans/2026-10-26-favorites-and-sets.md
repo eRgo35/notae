@@ -188,6 +188,15 @@
 - [ ] **Step 4: Run** `cargo test -p notae-android`; pass.
 - [ ] **Step 5: Commit** `feat(sets): add and remove pieces from a set`.
 
+## Scope change (2026-10-30)
+
+The owner decided to move the UI to Jetpack Compose (ADR 0002 on `feat/compose-migration`). 0.3.0 is the last Slint release, so the rest of this plan is cut down:
+
+- **Task 8 (reorder), Task 9 (text notes):** moved to the Compose plan (Tasks 18–19 there). Not built in Slint.
+- **Task 10:** only the Rust re-linking (`Favorites::relink`, `SetStore::relink`, called from `UiModel::set_search_rows`, with its three store tests). The "Just opened" marking and highlight move to the Compose plan (Task 20).
+- **Task 11:** the pure `src/backup.rs` (export, parse, plan, apply, with its four tests) and an "Export sets" button in Settings, so users can carry favorites and sets to `com.c2yz.notae`. There is no import UI in Slint; import is Compose Task 20.
+- **Task 12:** the gates, a short emulator check (favorite, a set with a repeat, add and remove, export) and the CHANGELOG entry for 0.3.0. There is no drag and no "Just opened" check.
+
 ## Phase 4: Reorder
 
 ### Task 8: Reorder mode
