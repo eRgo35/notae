@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Opt-in pre-push hook: runs the fast gates. Install per clone with
+#   git config core.hooksPath scripts/hooks
+# and skip once with `git push --no-verify`.
+set -euo pipefail
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh" fast

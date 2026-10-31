@@ -25,7 +25,7 @@ case "$mode" in
   *) echo "usage: $0 [release|dev]" >&2; exit 2 ;;
 esac
 
-repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo"
 
 export ANDROID_HOME=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}
