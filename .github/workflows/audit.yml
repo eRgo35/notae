@@ -1,7 +1,7 @@
 name: Dependency audit
 
 # New RustSec advisories appear without any code change, so audit on a schedule as well. This
-# workflow is separate from CI and Release: a failure here reports the advisory to the
+# workflow is separate from CI: a failure here reports the advisory to the
 # maintainers but never blocks a commit, a pull request or a release.
 on:
   schedule:
@@ -23,7 +23,17 @@ jobs:
       - uses: actions/checkout@v7
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
+      # The prebuilt release binary, checked against its published SHA-256, instead of a
+      # several-minute `cargo install`.
       - name: Install pinned cargo-deny
-        run: cargo install --locked --version 0.20.2 cargo-deny
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: cargo-deny-0.20.2-x86_64-unknown-linux-musl
+        run: |
+          gh release download 0.20.2 --repo EmbarkStudios/cargo-deny --pattern "$NAME.tar.gz*"
+          echo "$(cut -d' ' -f1 "$NAME.tar.gz.sha256")  $NAME.tar.gz" | sha256sum --check
+          tar -xzf "$NAME.tar.gz"
+          mkdir -p ~/.cargo/bin
+          mv "$NAME/cargo-deny" ~/.cargo/bin/
       - name: Check advisories
         run: cargo deny check advisories

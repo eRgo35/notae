@@ -1,17 +1,15 @@
 name: CI
 
+# A light check: formatting, both Clippy passes and the tests. The full gates (rustdoc, cargo deny,
+# coverage, the CLI smoke and the Android arm64 compile) run locally with `scripts/check.sh full`
+# and in every release (`scripts/release.sh`).
 on:
   # Branch work is covered by its pull request, so a push to a PR branch does not run twice.
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
   pull_request:
-  # Reused as the quality gate of the release workflow; `ref` selects the commit under test.
-  workflow_call:
-    inputs:
-      ref:
-        description: Git ref (tag or SHA) to check out; empty means the triggering ref.
-        type: string
-        default: ''
+    paths-ignore: ['**.md', 'docs/**']
   workflow_dispatch:
 
 permissions:
@@ -23,100 +21,40 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  rust-quality:
-    name: Rust quality gates
+  check:
+    name: fmt, clippy, tests
     # Pinned: `ubuntu-latest` now resolves to 26.04, whose preinstalled libclang 21/22 makes the
     # `leptonica-sys` 0.4.9 bindgen step fail (`unknown type name 'atomic_int'` in leptonica/environ.h).
     # Last green on ubuntu-24.04 (run 39125510213). Revisit when leptonica-sys or the image changes.
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       TESSDATA_PREFIX: /usr/share/tesseract-ocr/5/tessdata
       CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - name: Free preinstalled runner disk space
-        run: |
-          df -h
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
-          df -h
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
       - name: Install native host dependencies
         run: |
           sudo apt-get update
           sudo apt-get install --yes libtesseract-dev libleptonica-dev libfontconfig1-dev pkg-config tesseract-ocr-eng
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
-      - name: Install pinned Cargo tools
-        run: |
-          cargo install --locked --version 0.20.2 cargo-deny
-          cargo install --locked --version 0.9.1 cargo-llvm-cov
+      # Registry and git sources only: caching target/ fills the runner disk.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: Check formatting
         run: cargo fmt --check
       - name: Lint all targets
         run: cargo clippy --workspace --all-targets -- -D warnings -A clippy::unwrap_used -A clippy::expect_used
       - name: Enforce production panic policy
         run: cargo clippy --workspace --lib --bins -- -D warnings -D clippy::unwrap_used -D clippy::expect_used
-      - name: Record free disk before tests (diagnostic)
-        if: always()
-        continue-on-error: true
-        run: |
-          df -h || true
-          du -sh target 2>/dev/null || true
       - name: Run tests
         run: cargo test --workspace
-      - name: Disk usage after cargo test (diagnostic)
-        if: always()
-        continue-on-error: true
-        run: |
-          df -h || true
-          du -sh target target/debug target/debug/deps 2>/dev/null || true
-          du -sh target/debug/deps/* 2>/dev/null | sort -rh | head -n 20 || true
-      - name: Validate documentation
-        env:
-          RUSTDOCFLAGS: -D warnings
-        run: cargo doc --workspace --no-deps
-      - name: Audit dependencies
-        run: cargo deny check
-      # cargo-llvm-cov builds the whole workspace again, instrumented, in target/llvm-cov-target. The
-      # runner has about 30 GB free after the cleanup above and the earlier gates leave 16 GB of
-      # target/, so without this step the coverage build runs out of disk (ld: Bus error).
-      - name: Reclaim build output before coverage
-        run: cargo clean
-      - name: Enforce coverage floor
-        run: cargo llvm-cov --workspace --summary-only --fail-under-lines 84
-      - name: Smoke-test CLI interface
-        run: cargo run -p notae-index-cli -- --help
-      - name: Disk usage at end of job (diagnostic)
-        if: always()
-        continue-on-error: true
-        run: |
-          df -h || true
-          du -sh target 2>/dev/null || true
-
-  android-target:
-    name: Android arm64 compile
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.ref }}
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
-      - name: Install Android NDK r26d
-        run: |
-          sdkmanager "ndk;26.3.11579264"
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.3.11579264" >> "$GITHUB_ENV"
-      - name: Install pinned Rust toolchain and target
-        run: |
-          rustup show active-toolchain
-          rustup target add aarch64-linux-android
-      - name: Install pinned cargo-apk2
-        run: cargo install --locked --version 1.4.0 cargo-apk2
-      - name: Check Android target
-        run: cargo apk2 check -p notae-android --target aarch64-linux-android
