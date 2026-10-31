@@ -5,8 +5,9 @@
 //! the core as plain data through [`PlatformLibrary`]. [`PlatformCatalog`] turns that data into
 //! the [`LibraryCatalog`] the rescan worker reads.
 //!
-//! The trait's shape is meant to cross a foreign-function boundary unchanged: owned `String`s,
-//! no lifetimes, sizes as `u64`, and named fields on every enum variant that carries data.
+//! The trait crosses the UniFFI boundary unchanged: Kotlin implements it (`with_foreign`), with
+//! owned `String`s, no lifetimes, sizes as `u64`, and named fields on every enum variant that
+//! carries data.
 
 #![forbid(unsafe_code)]
 
@@ -23,7 +24,18 @@ use crate::storage::{LibraryCatalog, StorageError};
 ///
 /// `handle` is the library root's opaque handle ([`LibraryRoot::handle`](crate::storage::LibraryRoot::handle));
 /// `path` is a library-relative path as [`DocumentEntry::path`] reported it.
+///
+/// A foreign implementation that throws anything but a [`PlatformError`] reaches the core as
+/// [`PlatformError::Unavailable`].
+#[uniffi::export(with_foreign)]
 pub trait PlatformLibrary: Send + Sync {
+    /// Confirms that the library root can still be read, when it is opened or reopened.
+    ///
+    /// # Errors
+    /// [`PlatformError::PermissionLost`] when the grant was revoked or the folder is gone;
+    /// [`PlatformError::Unavailable`] when the platform cannot tell.
+    fn check_root(&self, handle: String) -> Result<(), PlatformError>;
+
     /// Lists every PDF below the library root.
     ///
     /// A PDF that cannot be read is still listed, with [`DocumentContent::Unreadable`] or
@@ -56,7 +68,7 @@ pub trait PlatformLibrary: Send + Sync {
 }
 
 /// One PDF the platform listed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct DocumentEntry {
     /// The library-relative path, `/`-separated.
     pub path: String,
@@ -69,7 +81,7 @@ pub struct DocumentEntry {
 }
 
 /// What the platform could read of one document.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum DocumentContent {
     /// Read end to end.
     Sha256 {
@@ -83,7 +95,7 @@ pub enum DocumentContent {
 }
 
 /// Why a platform call failed. `message` is the platform's own detail, not display text.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum PlatformError {
     /// The platform failed; `message` says how.
     #[error("{message}")]
@@ -94,6 +106,16 @@ pub enum PlatformError {
     /// The library root's permission was revoked.
     #[error("permission for the library root was lost")]
     PermissionLost,
+}
+
+/// A foreign call that failed with something other than a [`PlatformError`], such as an
+/// unexpected Kotlin exception.
+impl From<uniffi::UnexpectedUniFFICallbackError> for PlatformError {
+    fn from(error: uniffi::UnexpectedUniFFICallbackError) -> Self {
+        Self::Unavailable {
+            message: error.reason,
+        }
+    }
 }
 
 impl From<PlatformError> for StorageError {

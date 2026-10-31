@@ -7,6 +7,7 @@ ignore = [
     { id = "RUSTSEC-2026-0370", reason = "zvariant_derive is an unmaintained-notice transitive dependency of Slint's desktop accessibility stack (accesskit_unix via i-slint-backend-winit); absent from the aarch64-linux-android graph; cargo-deny reports no safe upgrade." },
     { id = "RUSTSEC-2026-0371", reason = "zbus_names is an unmaintained-notice transitive dependency of Slint's desktop accessibility stack (accesskit_unix via i-slint-backend-winit); absent from the aarch64-linux-android graph; cargo-deny reports no safe upgrade." },
     { id = "RUSTSEC-2026-0372", reason = "zvariant is an unmaintained-notice transitive dependency of Slint's desktop accessibility stack (accesskit_unix via i-slint-backend-winit); absent from the aarch64-linux-android graph; cargo-deny reports no safe upgrade." },
+    { id = "RUSTSEC-2026-0374", reason = "basic-toml is an unmaintained-notice build-time dependency of the UniFFI binding generator (askama_derive via uniffi_bindgen, only with the bindgen-cli feature); it never ships in the app; cargo-deny reports no safe upgrade." },
 ]
 [licenses]
 confidence-threshold = 0.8
@@ -22,6 +23,7 @@ allow = [
     "LicenseRef-Slint-Royalty-free-2.0",
     "LicenseRef-Slint-Software-3.0",
     "MIT",
+    "MPL-2.0",
     "Unicode-3.0",
     "Unlicense",
     "Zlib",

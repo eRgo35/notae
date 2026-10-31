@@ -75,14 +75,16 @@ pub struct SetChoice {
 }
 
 /// One score in the add picker.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct PickerRow {
     /// The score's content key.
     pub note_key: String,
     /// The score's title.
     pub title: String,
-    /// The note number and composer, when known.
-    pub detail: String,
+    /// The note number, when one is assigned.
+    pub number: Option<String>,
+    /// The composer or artist, when known.
+    pub composer: Option<String>,
     /// In the set before the picker opened.
     pub in_set: bool,
     /// Added during this picker session.
@@ -566,6 +568,14 @@ impl UiModel {
         self.add_picker = None;
     }
 
+    /// The picker's search text; empty when the picker is closed.
+    #[must_use]
+    pub fn add_picker_query(&self) -> &str {
+        self.add_picker
+            .as_ref()
+            .map_or("", |picker| picker.query.as_str())
+    }
+
     /// The picker's rows: the search hits, or the whole library for a blank query.
     #[must_use]
     pub fn add_picker_rows(&self) -> Vec<PickerRow> {
@@ -580,11 +590,8 @@ impl UiModel {
             .map(|row| PickerRow {
                 note_key: row.note_key.clone(),
                 title: row.title.clone(),
-                detail: [row.id.as_deref(), row.composer_or_artist.as_deref()]
-                    .into_iter()
-                    .flatten()
-                    .collect::<Vec<_>>()
-                    .join(" · "),
+                number: row.id.clone(),
+                composer: row.composer_or_artist.clone(),
                 in_set: picker.before.contains(&row.note_key),
                 added: picker.added.iter().any(|(key, _)| *key == row.note_key),
             })

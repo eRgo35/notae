@@ -1,8 +1,8 @@
 //! The worker thread that rescans the library and serializes all index access.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -22,9 +22,11 @@ const CANCEL_REQUESTED: u8 = 1;
 const CANCEL_CLOSED: u8 = 2;
 
 /// Owns the worker that serializes all index access away from the UI thread.
+///
+/// `Send` and `Sync`: one thread may wait for events while others send commands.
 pub struct OperationController {
     commands: Sender<WorkerCommand>,
-    events: Receiver<OperationEvent>,
+    events: Mutex<Receiver<OperationEvent>>,
     busy: Arc<AtomicBool>,
     cancellation: Arc<AtomicU8>,
     worker: Option<JoinHandle<()>>,
@@ -94,7 +96,7 @@ impl OperationController {
             .map_err(UiError::WorkerStart)?;
         Ok(Self {
             commands: command_tx,
-            events: event_rx,
+            events: Mutex::new(event_rx),
             busy,
             cancellation,
             worker: Some(worker),
@@ -164,13 +166,21 @@ impl OperationController {
 
     /// Receives one event without blocking the UI loop.
     pub fn try_event(&self) -> Option<OperationEvent> {
-        self.events.try_recv().ok()
+        self.events
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .try_recv()
+            .ok()
     }
 
     /// Receives one event with a bounded wait; useful to exercise the worker
     /// contract from host tests without polling or sleeping.
     pub fn recv_event_timeout(&self, timeout: Duration) -> Option<OperationEvent> {
-        self.events.recv_timeout(timeout).ok()
+        self.events
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .recv_timeout(timeout)
+            .ok()
     }
 
     fn begin_operation(&self) -> Result<(), UiError> {

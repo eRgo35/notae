@@ -927,6 +927,12 @@ fn catalog_detail(error: CatalogError) -> PlatformError {
 }
 
 impl PlatformLibrary for SafLibrary {
+    /// The Slint app checks the grant in [`SafLibraryRootProvider::reopen`] instead; only the
+    /// Kotlin app's core calls this.
+    fn check_root(&self, _handle: String) -> Result<(), PlatformError> {
+        Ok(())
+    }
+
     fn enumerate(&self, handle: String) -> Result<Vec<DocumentEntry>, PlatformError> {
         let tree = SafTree::new(self.app.clone(), handle);
         let root_id = tree

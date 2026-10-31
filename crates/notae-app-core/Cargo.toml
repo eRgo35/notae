@@ -5,6 +5,22 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 
+# `lib` for the Slint app and the tests, `cdylib` for the Kotlin app, which loads it through
+# UniFFI's generated bindings.
+[lib]
+crate-type = ["lib", "cdylib"]
+
+# Generates the Kotlin bindings from the built library (see `src/bin/uniffi-bindgen.rs`).
+[[bin]]
+name = "uniffi-bindgen"
+required-features = ["bindgen-cli"]
+
+[features]
+# On by default so `cargo run --bin uniffi-bindgen` works as written; Android builds of the
+# library turn it off to leave the bindgen CLI's dependencies out.
+default = ["bindgen-cli"]
+bindgen-cli = ["uniffi/cli"]
+
 [dependencies]
 notae-domain = { path = "../notae-domain", version = "0.4.0" }
 notae-index = { path = "../notae-index", version = "0.4.0" }
@@ -12,6 +28,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.11"
 thiserror = { workspace = true }
+uniffi = "=0.32.2"
 
 [dev-dependencies]
 pollster = "1.0"

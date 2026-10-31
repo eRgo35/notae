@@ -16,7 +16,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 slint = { version = "1.18", features = ["backend-android-activity-06"] }
-notae-app-core = { path = "../../crates/notae-app-core", version = "0.4.0" }
+# Without the default `bindgen-cli` feature: the app never runs the UniFFI binding generator.
+notae-app-core = { path = "../../crates/notae-app-core", version = "0.4.0", default-features = false }
 notae-domain = { path = "../../crates/notae-domain", version = "0.4.0" }
 notae-index = { path = "../../crates/notae-index", version = "0.4.0" }
 sha2 = "0.11"

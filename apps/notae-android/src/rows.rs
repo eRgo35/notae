@@ -88,7 +88,12 @@ impl From<notae_app_core::ui::PickerRow> for crate::PickerRow {
         Self {
             note_key: row.note_key.into(),
             title: row.title.into(),
-            detail: row.detail.into(),
+            detail: [row.number.as_deref(), row.composer.as_deref()]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" · ")
+                .into(),
             in_set: row.in_set,
             added: row.added,
         }

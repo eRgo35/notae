@@ -53,7 +53,7 @@ pub enum Edited {
 }
 
 /// A library row's state, shown in the details pane and on missing set pieces.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum RowStatus {
     /// Fully indexed.
     Ready,
@@ -115,7 +115,7 @@ pub struct PositionOf {
 /// Why a library operation or a metadata edit failed: [`UiError`], with the domain, index and
 /// catalog errors it wraps flattened into it. `detail` fields hold the platform's or the
 /// database's own message.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum Failure {
     /// The index refused a query or a write made for the library screens ([`UiError::Index`]).
     IndexQuery {
@@ -178,7 +178,7 @@ pub enum Failure {
 }
 
 /// What the local index reported ([`IndexError`]).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum IndexFailure {
     /// The database rejected a statement or returned an unreadable row.
     Database {

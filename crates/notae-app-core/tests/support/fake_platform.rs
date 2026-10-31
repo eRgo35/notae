@@ -6,6 +6,7 @@
 #![allow(dead_code)] // Each test binary uses a different part of the helper.
 
 use std::sync::{Mutex, MutexGuard};
+use std::thread::{self, ThreadId};
 
 use notae_app_core::platform::{DocumentContent, DocumentEntry, PlatformError, PlatformLibrary};
 use notae_domain::Sha256Digest;
@@ -13,19 +14,23 @@ use sha2::{Digest, Sha256};
 
 /// The platform's answers and the calls it received.
 pub struct FakePlatform {
+    root: Mutex<Result<(), PlatformError>>,
     entries: Mutex<Result<Vec<DocumentEntry>, PlatformError>>,
     text: Mutex<Result<Option<String>, PlatformError>>,
     thumbnail: Mutex<Result<bool, PlatformError>>,
     calls: Mutex<Vec<String>>,
+    threads: Mutex<Vec<ThreadId>>,
 }
 
 impl Default for FakePlatform {
     fn default() -> Self {
         Self {
+            root: Mutex::new(Ok(())),
             entries: Mutex::new(Ok(Vec::new())),
             text: Mutex::new(Ok(None)),
             thumbnail: Mutex::new(Ok(false)),
             calls: Mutex::new(Vec::new()),
+            threads: Mutex::new(Vec::new()),
         }
     }
 }
@@ -35,6 +40,11 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl FakePlatform {
+    /// What `check_root` returns.
+    pub fn set_root(&self, root: Result<(), PlatformError>) {
+        *lock(&self.root) = root;
+    }
+
     /// What the next `enumerate` returns.
     pub fn set_entries(&self, entries: Result<Vec<DocumentEntry>, PlatformError>) {
         *lock(&self.entries) = entries;
@@ -54,11 +64,26 @@ impl FakePlatform {
     pub fn calls(&self) -> Vec<String> {
         lock(&self.calls).clone()
     }
+
+    /// The thread each call ran on, in call order.
+    pub fn threads(&self) -> Vec<ThreadId> {
+        lock(&self.threads).clone()
+    }
+
+    fn record(&self, call: String) {
+        lock(&self.calls).push(call);
+        lock(&self.threads).push(thread::current().id());
+    }
 }
 
 impl PlatformLibrary for FakePlatform {
+    fn check_root(&self, handle: String) -> Result<(), PlatformError> {
+        self.record(format!("check_root {handle}"));
+        lock(&self.root).clone()
+    }
+
     fn enumerate(&self, handle: String) -> Result<Vec<DocumentEntry>, PlatformError> {
-        lock(&self.calls).push(format!("enumerate {handle}"));
+        self.record(format!("enumerate {handle}"));
         lock(&self.entries).clone()
     }
 
@@ -67,7 +92,7 @@ impl PlatformLibrary for FakePlatform {
         handle: String,
         path: String,
     ) -> Result<Option<String>, PlatformError> {
-        lock(&self.calls).push(format!("text {handle} {path}"));
+        self.record(format!("text {handle} {path}"));
         lock(&self.text).clone()
     }
 
@@ -77,7 +102,7 @@ impl PlatformLibrary for FakePlatform {
         path: String,
         out_png: String,
     ) -> Result<bool, PlatformError> {
-        lock(&self.calls).push(format!("thumbnail {handle} {path} {out_png}"));
+        self.record(format!("thumbnail {handle} {path} {out_png}"));
         lock(&self.thumbnail).clone()
     }
 }

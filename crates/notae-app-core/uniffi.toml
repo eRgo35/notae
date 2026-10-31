@@ -1,0 +1,3 @@
+# UniFFI binding settings for the Kotlin app.
+[bindings.kotlin]
+package_name = "com.c2yz.notae.core"

@@ -82,7 +82,7 @@ pub struct SetFields {
 }
 
 /// Why a set's fields were rejected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, uniffi::Enum)]
 pub enum SetFieldError {
     /// The name is empty.
     #[error("the set needs a name")]

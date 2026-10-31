@@ -11,7 +11,7 @@ use std::io;
 use std::path::Path;
 
 /// How the library lists scores. Applies to every section.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum LibraryView {
     /// Thumbnail cards.
     #[default]

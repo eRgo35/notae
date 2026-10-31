@@ -26,7 +26,7 @@ cargo apk2 check -p notae-android --target aarch64-linux-android
 
 An opt-in pre-push hook runs `fast`: enable it per clone with `git config core.hooksPath scripts/hooks` and skip it once with `git push --no-verify`. No hook is mandatory.
 
-Install the pinned tools with `cargo install --locked --version 0.20.2 cargo-deny` and `cargo install --locked --version 0.9.1 cargo-llvm-cov`. `cargo deny` reports existing transitive duplicate versions as warnings and ignores only the two unmaintained advisories with no safe upgrade; see `deny.toml`.
+Install the pinned tools with `cargo install --locked --version 0.20.2 cargo-deny` and `cargo install --locked --version 0.9.1 cargo-llvm-cov`. `cargo deny` reports existing transitive duplicate versions as warnings and ignores only the unmaintained-crate advisories with no safe upgrade, each with its reason; see `deny.toml`.
 
 The measured workspace line-coverage baseline was 85.48%; the enforced floor is 84%. Test targets may use `unwrap`/`expect` for fixtures and assertions. Workspace libraries and binaries are checked separately with both Clippy lints denied; narrowly justified lock/invariant checks are documented at their callsites.
 
@@ -81,4 +81,4 @@ Releases are not built on GitHub: the maintainer runs `scripts/release.sh` (see 
 | COND-007 | not-applicable | advisory | No latency or throughput requirement is claimed. |
 | COND-008 | pass | important | `scripts/check.sh full` and every release cross-compile the Android arm64 target; device installation and interaction remain a manual release/debug check. |
 
-`cargo deny` allows the MIT project license and the confirmed Slint license terms. Its remaining duplicate-version warnings come from transitive Slint dependencies; re-evaluate them during dependency upgrades.
+`cargo deny` allows the MIT project license, the confirmed Slint license terms and MPL-2.0 for UniFFI (owner-approved; file-level copyleft, used unmodified). UniFFI's generated scaffolding compiles under `#![forbid(unsafe_code)]`, so `notae-app-core` needs no exception. Its remaining duplicate-version warnings come from transitive Slint dependencies; re-evaluate them during dependency upgrades.

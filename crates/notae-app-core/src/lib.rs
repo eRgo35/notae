@@ -7,9 +7,14 @@
 //! host-testable; the UI that renders it lives in the app crates. The core builds no display
 //! text: titles, counts, dates and statuses come back as the [`text`] types, and each UI
 //! formats them in its own language.
+//!
+//! [`api`] is the UniFFI surface the Kotlin app uses: one [`api::NotaeCore`] object.
 
 #![forbid(unsafe_code)]
 
+uniffi::setup_scaffolding!();
+
+pub mod api;
 pub mod backup;
 pub mod favorites;
 pub mod operations;
