@@ -6,12 +6,12 @@ This records how the Slint Android app (0.3.0) looks and behaves, so the Compose
 
 - Device: the disposable `notae-test-api35` AVD (API 35 x86_64, 2560×1600 at 320 dpi, so 1280×800 logical in landscape). Portrait was `adb shell wm size 1600x2560` (800×1280 logical, reset afterwards), dark was `adb shell cmd uimode night yes`. Images are raw `adb exec-out screencap -p`, so landscape is 2560×1600 and portrait is 1600×2560.
 - App: the Android code of this tree is identical to v0.3.0 (0.4.0 changed scripts, CI and docs only). The emulator builds are `cargo apk2 build -p notae-android --target x86_64-linux-android --profile apk-dev`.
-- Library: a non-sensitive fixture of 20 generated one-line PDFs (not the owner's scores). It holds a long title, composers (Bach, Palestrina, Schubert), 3 favorites, 1 recent score and 3 sets: "Niedziela Palmowa" (9 pieces, Ave Maria twice, one piece missing from the library, a date and a notes line), "Pusty zestaw" (empty, no date) and a set with a long name. The setup screens do not depend on the library.
+- Library: a non-sensitive fixture of 20 generated one-line PDFs (not the owner's scores), listed exactly under "Fixture library" below. The setup screens do not depend on it.
 - Where a PDF thumbnail shows "?" in place of a Polish letter, that is the generated PDF's font, not the app.
 
 ### File names
 
-`<screen>-<state>-<portrait|landscape>-<light|dark>.png`. Full screens have both orientations; sheets and dialogs are landscape only. Screens:
+`<screen>-<state>-<portrait|landscape>-<light|dark>.png`. Every state has light and dark in landscape. Only these states also have portrait (light and dark): `details-in-set`, `details-library`, `library-all-grid`, `library-all-list`, `search-results`, `set-inside-grid`, `set-inside-list`, `sets-grid`, `settings`, `setup-error`, `setup-permission-lost`, `setup-unconfigured`. Every other state, including all sheets and dialogs, the other library sections, empty states, the sidebar-collapsed view, the scrolled set views, the banners, `search-empty`, `search-no-results`, `sets-list`, `set-inside-empty`, `settings-export-done` and `pdf-launch-error`, is landscape only. Screens:
 
 | Screen | States captured |
 | --- | --- |
@@ -35,6 +35,37 @@ This records how the Slint Android app (0.3.0) looks and behaves, so the Compose
 - `setup-error` is real: a corrupt local `index.sqlite` gives "storage error: cannot open local index: sqlite error: file is not a database" above the Choose button.
 - Screenshots of the 20-score fixture library were taken on 2026-10-30; the four `setup-*` states added on 2026-10-31 were taken on the same AVD with the same build setup.
 
+## Fixture library
+
+The generator is gone and the emulator no longer has the library, so this is what the screenshots show, read off them. Task 21 should capture the same set on Compose. The file name is the title plus `.pdf` (the details screen shows `Ave Maria.pdf` for Ave Maria; the other file names are not visible). Each PDF is one page holding the line `<title> lyrics line <N>`; N is given where it is visible. All 20 scores are in All scores, sorted by title, which is the order below.
+
+| # | Title (file name) | Composer | Number | Favorite | `lyrics line` |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Agnus Dei | none | none | no | 7 |
+| 2 | Alleluja | none | none | no | 5 |
+| 3 | Ave Maria | Schubert (edited in the app; the title is an edit too) | none | yes | 0 |
+| 4 | Ave verum corpus | none | none | no | 18 |
+| 5 | Bardzo długi tytuł utworu liturgicznego na wejście procesji z towarzyszeniem chóru i organów w uroczy… (the long title; the full text is cut off in every screenshot, so use a title of this length that starts and runs the same) | none | none | no | not visible |
+| 6 | Barka | none | none | no | 8 |
+| 7 | Bogurodzica | none | none | no | 1 |
+| 8 | Ciebie Boga wysławiamy | none | none | no | not visible |
+| 9 | Gloria in excelsis | none | none | no | 4 |
+| 10 | Jezu ufam Tobie | none | none | no | 12 |
+| 11 | Kyrie eleison | none | none | no | 3 |
+| 12 | Lacrimosa dies illa | none | none | no | 15 |
+| 13 to 20 | Magnificat, Sanctus and Te Deum laudamus, plus five more titles | see below | none | Magnificat and Te Deum laudamus: yes | Magnificat 13, Sanctus 6 |
+
+- Rows 13 to 20 are not fully visible: no screenshot scrolls the All list past row 12 (`library-all-sidebar-collapsed-landscape-*` shows rows 1 to 12). Magnificat and Sanctus are seen only inside the first set and in Favorites, Te Deum laudamus only in Favorites. The other five titles never appear on screen, so any five titles will do; no capture depends on them. Every count in the captures is 20 scores.
+- Composers (side panel and chips): Bach 1, Palestrina 1, Schubert 1. Schubert is Ave Maria. Bach and Palestrina belong to two of rows 13 to 20 (not to any of rows 1 to 12, whose cards show no composer line) and which two is not visible. Captures taken before about 2:50 on 2026-10-30 (for example `library-all-grid-*`, `library-all-list-*`, `library-favorites-*`, `library-recent-*`, `sets-*`) show no composer on Ave Maria and no Composers list; the later ones (for example `library-composer-*`, `library-all-sidebar-collapsed-*`, `details-library-*`, `metadata-editor-*`, `set-dialog-*`, `add-picker-*`) show Schubert, Bach and Palestrina. The early captures therefore have no Composers list in the side panel and no composer chips; the Compose captures should use the later state (with the Composers list).
+- Favorites (newest first): Te Deum laudamus, Magnificat, Ave Maria. That is 3.
+- Recent (newest first): Alleluja in the early captures (count 1); later captures show a count of 2 and the second entry is not visible.
+- Sets, most recently edited first:
+  1. "Niedziela Palmowa", date 2026-03-29, notes "Msza 10:00, kantor: Anna", 9 items in this order: 1 Ave Maria, 2 Kyrie eleison, 3 Magnificat, 4 Ave Maria (a repeat), 5 Alleluja, 6 Sanctus, 7 the long-title score (row 5 above), 8 "Pan Jezus już się zbliża" (not in the library: shows "Missing from library"), 9 Alleluja (a repeat).
+  2. "Pusty zestaw", no date, no items. Its notes are not visible.
+  3. "Wielki Piatek - liturgia Meki Panskiej z adoracja krzyza i procesja do Grob…" (a long name, cut off in every screenshot), date 2026-04-03, no items. Its notes are not visible.
+- Not in the fixture: tags (the Tags row of the details screen shows "—"), score numbers, text notes.
+
+
 ## Checklist
 
 Each line is one action and what should happen. Section and screen names are the English UI strings; every string also exists in Polish and follows the Language setting.
@@ -43,7 +74,7 @@ Each line is one action and what should happen. Section and screen names are the
 
 - [ ] Launch with no saved folder → Welcome screen: logo, "Welcome to Notae", the one-line intro, a card with "Files stay where they are" and "Find any score fast", **Choose score folder** and "Pick a folder on device storage or an SD card."
 - [ ] Launch while the library is still loading → a plain "Loading library…" screen, never the Welcome screen, until the saved folder is known.
-- [ ] Launch with a saved folder whose grant was revoked → Welcome screen (as unconfigured), not the recovery screen.
+- [ ] Launch with a saved folder whose grant was revoked → the "permission lost" setup screen: "Reconnect your library", "Notae no longer has access to “<folder>”. Choose it again to reconnect your scores." and **Reconnect folder** (Pick again). 0.3.0 shows the plain Welcome screen here instead; Compose must show the recovery screen.
 - [ ] Tap **Choose score folder** → Android's folder picker opens, starting at the saved folder when there is one.
 - [ ] Choose a folder in the picker and allow access → the Library screen opens on the chosen folder.
 - [ ] Cancel the picker → Welcome stays as it was, nothing changes, no error.
