@@ -3372,7 +3372,7 @@ If Task 1 needed the launch-time fallback, add: "Light/dark is read at launch; s
 
 - [ ] **Step 4: Verify on the tablet**
 
-Build the aarch64 APK (keep a copy of the x86_64 one first), install with `adb -s <tablet-serial> install -r target/release/apk/notae-android.apk`, and run the smoke checks above. Also confirm the system font is Samsung's UI font (compare the "All scores" title with the Samsung Settings app). Capture crash logs with `adb -s <tablet-serial> logcat -b crash -v threadtime` if anything fails.
+Build the aarch64 APK (keep a copy of the x86_64 one first), install with `adb -s "$TABLET_SERIAL" install -r target/release/apk/notae-android.apk`, and run the smoke checks above. Also confirm the system font is Samsung's UI font (compare the "All scores" title with the Samsung Settings app). Capture crash logs with `adb -s "$TABLET_SERIAL" logcat -b crash -v threadtime` if anything fails.
 
 - [ ] **Step 5: Record state**
 
