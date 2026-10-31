@@ -483,8 +483,8 @@ fn add_to_set_sheet_lists_sets_with_checks() {
     }
 }
 
-fn search_row(key: char, title: &str) -> notae_android::ui::search::SearchRow {
-    notae_android::ui::search::SearchRow {
+fn search_row(key: char, title: &str) -> notae_app_core::ui::search::SearchRow {
+    notae_app_core::ui::search::SearchRow {
         id: None,
         title: title.to_owned(),
         composer_or_artist: None,
@@ -504,8 +504,8 @@ fn search_row(key: char, title: &str) -> notae_android::ui::search::SearchRow {
 
 #[test]
 fn add_to_set_checklist_checks_appends_and_removes_the_last_copy() {
-    use notae_android::sets::{ItemKind, SetFields, SetStore};
-    use notae_android::ui::UiModel;
+    use notae_app_core::sets::{ItemKind, SetFields, SetStore};
+    use notae_app_core::ui::UiModel;
 
     let dir = std::env::temp_dir().join(format!("notae-add-to-set-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -570,7 +570,7 @@ fn add_to_set_checklist_checks_appends_and_removes_the_last_copy() {
     let first_copy = pieces(&stored, &older)[0].0.clone();
     model.add_to_set_closed();
     model
-        .select_section(notae_android::ui::browse::LibrarySection::Set(
+        .select_section(notae_app_core::ui::browse::LibrarySection::Set(
             older.clone(),
         ))
         .expect("no prefs file");
@@ -597,9 +597,9 @@ fn add_to_set_checklist_checks_appends_and_removes_the_last_copy() {
 
 #[test]
 fn new_set_from_the_checklist_holds_the_piece() {
-    use notae_android::sets::{ItemKind, SetFields};
-    use notae_android::ui::UiModel;
-    use notae_android::ui::browse::LibrarySection;
+    use notae_app_core::sets::{ItemKind, SetFields};
+    use notae_app_core::ui::UiModel;
+    use notae_app_core::ui::browse::LibrarySection;
 
     let mut model = UiModel::new();
     model.set_search_rows(vec![search_row('a', "Kyrie")]);

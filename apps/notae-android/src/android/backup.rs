@@ -16,8 +16,8 @@ use jni::objects::JObject;
 use jni::{JValue, jni_sig, jni_str};
 
 use crate::AppWindow;
-use crate::backup::{EXPORT_REQUEST_CODE, MIME_TYPE};
-use crate::language::pick;
+use notae_app_core::backup::{EXPORT_REQUEST_CODE, MIME_TYPE};
+use notae_app_core::language::pick;
 
 const RESULT_OK: i32 = -1;
 const RESULT_CANCELED: i32 = 0;

@@ -10,8 +10,8 @@ use jni::errors::Error as JniError;
 use jni::objects::{JObject, JString};
 use jni::{JValue, jni_sig, jni_str};
 
-use crate::pdf_intent::ContentUri;
-use crate::pdf_pages::{PdfDocumentMetadata, PdfError, PdfPageBackend};
+use notae_app_core::pdf_intent::ContentUri;
+use notae_app_core::pdf_pages::{PdfDocumentMetadata, PdfError, PdfPageBackend};
 
 const API_PDF_TEXT_CONTENTS: i32 = 35;
 

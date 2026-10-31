@@ -12,9 +12,9 @@ mod support;
 use std::{cell::Cell, rc::Rc};
 
 use i_slint_backend_testing::ElementHandle;
-use notae_android::ui::library::LibraryViewModel;
-use notae_android::ui::search::library_row;
+use notae_android::rows::library_row;
 use notae_android::{AppWindow, LibraryRow};
+use notae_app_core::ui::library::LibraryViewModel;
 use notae_domain::{
     IndexedNote, MetadataOrigin, NoteId, NoteMetadata, PdfFingerprint, RelativePdfPath,
     Sha256Digest,

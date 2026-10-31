@@ -4,15 +4,15 @@
 //! when `libnotae-android.so` is loaded. It:
 //!
 //! 1. Initialises the Slint Android platform via `slint::android::init`.
-//! 2. Builds an [`AppController`](crate::state::AppController) — a fresh
+//! 2. Builds an [`AppController`](notae_app_core::state::AppController) — a fresh
 //!    one, so the device boots into `Setup::Unconfigured` / `Idle`.
-//! 3. Constructs a [`UiModel`](crate::ui::UiModel) around it and an
-//!    empty [`StorageState`](crate::storage::StorageState).
+//! 3. Constructs a [`UiModel`](notae_app_core::ui::UiModel) around it and an
+//!    empty [`StorageState`](notae_app_core::storage::StorageState).
 //! 4. Wires the Slint `AppWindow`'s properties (visible fields of the
 //!    state) and callbacks (forwarded as `UiEvent`s).
 //! 5. Drives the Storage Access Framework picker through the
 //!    [`SafLibraryRootProvider`](crate::android::saf::SafLibraryRootProvider),
-//!    and the resulting [`LibraryRoot`](crate::storage::LibraryRoot)
+//!    and the resulting [`LibraryRoot`](notae_app_core::storage::LibraryRoot)
 //!    transitions the storage state from `Unconfigured` to `Ready`.
 //! 6. Runs the Slint event loop until the OS asks us to stop.
 //!
@@ -51,13 +51,15 @@ use std::time::Duration;
 use slint::ComponentHandle;
 
 use crate::android::saf::{SafHandles, SafLibraryRootProvider};
-use crate::favorites::PieceRef;
-use crate::operations::rescan::OperationController;
-use crate::state::{EventError, OperationState, Screen, Setup, Transition, UiEvent};
-use crate::storage::{LibraryRootProvider, SharedLibraryCatalog, StorageError, StorageState};
-use crate::thumbnails::ThumbnailCache;
-use crate::ui::UiModel;
-use crate::ui::search::SearchRow;
+use notae_app_core::favorites::PieceRef;
+use notae_app_core::operations::rescan::OperationController;
+use notae_app_core::state::{EventError, OperationState, Screen, Setup, Transition, UiEvent};
+use notae_app_core::storage::{
+    LibraryRootProvider, SharedLibraryCatalog, StorageError, StorageState,
+};
+use notae_app_core::thumbnails::ThumbnailCache;
+use notae_app_core::ui::UiModel;
+use notae_app_core::ui::search::SearchRow;
 use notae_index::IndexStore;
 
 // `AppWindow` and `set_*` callbacks are emitted by
@@ -137,7 +139,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         debug_assert!(
             matches!(
                 snapshot.storage_kind(),
-                crate::ui::StorageStateKindView::Unconfigured
+                notae_app_core::ui::StorageStateKindView::Unconfigured
             ),
             "fresh UiModel must boot with StorageState::Unconfigured",
         );
@@ -183,7 +185,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
         window.on_language_chosen(move |index| {
-            let choice = crate::language::LanguageChoice::from_index(index);
+            let choice = notae_app_core::language::LanguageChoice::from_index(index);
             if !crate::android::language::write_choice(&app, choice)
                 && let Err(error) = model.borrow_mut().set_language(choice)
             {
@@ -234,11 +236,11 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
                     let result = operations
                         .borrow()
                         .as_ref()
-                        .ok_or(crate::ui::search::UiError::WorkerStopped)
+                        .ok_or(notae_app_core::ui::search::UiError::WorkerStopped)
                         .and_then(OperationController::start_rescan);
                     if let Err(error) = result {
                         let _ = model.borrow_mut().apply_operation_event(
-                            crate::operations::events::OperationEvent::Failed {
+                            notae_app_core::operations::events::OperationEvent::Failed {
                                 reason: error.to_string(),
                             },
                         );
@@ -283,10 +285,9 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
         window.on_section_selected(move |key| {
-            if let Err(error) = model
-                .borrow_mut()
-                .select_section(crate::ui::browse::LibrarySection::from_key(key.as_str()))
-            {
+            if let Err(error) = model.borrow_mut().select_section(
+                notae_app_core::ui::browse::LibrarySection::from_key(key.as_str()),
+            ) {
                 eprintln!("notae: cannot save UI preferences: {error}");
             }
             if let Some(window) = window_weak.upgrade() {
@@ -402,11 +403,11 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
             let result = operations
                 .borrow()
                 .as_ref()
-                .ok_or(crate::ui::search::UiError::WorkerStopped)
+                .ok_or(notae_app_core::ui::search::UiError::WorkerStopped)
                 .and_then(|controller| controller.load_metadata(note_key));
             if let Err(error) = result {
                 let _ = model.borrow_mut().apply_operation_event(
-                    crate::operations::events::OperationEvent::MetadataFailed {
+                    notae_app_core::operations::events::OperationEvent::MetadataFailed {
                         reason: error.to_string(),
                     },
                 );
@@ -422,7 +423,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         let operations = Rc::clone(&operations);
         let window_weak = window.as_weak();
         window.on_metadata_save_requested(move |note_key, id, title, composer, tags| {
-            let metadata = crate::ui::metadata_editor::EditableMetadata {
+            let metadata = notae_app_core::ui::metadata_editor::EditableMetadata {
                 note_key: note_key.to_string(),
                 id: id.to_string(),
                 title: title.to_string(),
@@ -438,11 +439,11 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
             let result = operations
                 .borrow()
                 .as_ref()
-                .ok_or(crate::ui::search::UiError::WorkerStopped)
+                .ok_or(notae_app_core::ui::search::UiError::WorkerStopped)
                 .and_then(|controller| controller.save_metadata(metadata));
             if let Err(error) = result {
                 let _ = model.borrow_mut().apply_operation_event(
-                    crate::operations::events::OperationEvent::MetadataFailed {
+                    notae_app_core::operations::events::OperationEvent::MetadataFailed {
                         reason: error.to_string(),
                     },
                 );
@@ -468,9 +469,9 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         let model = Rc::clone(&model);
         window.on_library_view_changed(move |view| {
             let view = if view.as_str() == "list" {
-                crate::ui_prefs::LibraryView::List
+                notae_app_core::ui_prefs::LibraryView::List
             } else {
-                crate::ui_prefs::LibraryView::Grid
+                notae_app_core::ui_prefs::LibraryView::Grid
             };
             if let Err(error) = model.borrow_mut().set_library_view(view) {
                 eprintln!("notae: cannot save UI preferences: {error}");
@@ -534,8 +535,8 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
                 .borrow()
                 .library_root_handle()
                 .ok_or_else(|| {
-                    crate::pdf_intent::ViewerError::Platform(
-                        crate::language::pick(
+                    notae_app_core::pdf_intent::ViewerError::Platform(
+                        notae_app_core::language::pick(
                             "No active library folder is available.",
                             "Brak aktywnego folderu biblioteki.",
                         )
@@ -586,7 +587,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
                 return;
             };
             window.set_settings_backup_status(slint::SharedString::new());
-            let (file_name, text) = model.borrow().export_sets(crate::ui::unix_now());
+            let (file_name, text) = model.borrow().export_sets(notae_app_core::ui::unix_now());
             if let Err(error) =
                 crate::android::backup::start_export(&app, window_weak.clone(), &file_name, text)
             {
@@ -701,7 +702,7 @@ impl LibraryRowsCache {
             .collect();
         let available: Vec<bool> = thumbnails.iter().map(Option::is_some).collect();
         // Row labels are translated in Rust, so a language switch must re-push them.
-        let polish = crate::language::pick(false, true);
+        let polish = notae_app_core::language::pick(false, true);
         let favorites = model.favorites();
         if self
             .pushed
@@ -721,7 +722,7 @@ impl LibraryRowsCache {
             .zip(thumbnails)
             .map(|(row, thumbnail)| {
                 let favorite = model.is_favorite(&row.note_key);
-                crate::ui::search::library_row(row, thumbnail, favorite)
+                crate::rows::library_row(row, thumbnail, favorite)
             })
             .collect();
         window.set_library_rows(slint::ModelRc::new(slint::VecModel::from(rows)));
@@ -773,8 +774,8 @@ fn wire_sets(
     model: &Rc<RefCell<UiModel>>,
     operations: &Rc<RefCell<Option<OperationController>>>,
 ) {
-    use crate::sets::SetFields;
-    use crate::ui::browse::LibrarySection;
+    use notae_app_core::sets::SetFields;
+    use notae_app_core::ui::browse::LibrarySection;
 
     /// A callback that runs `change` on the model, then redraws the window.
     fn redraw_after(
@@ -960,8 +961,9 @@ fn wire_sets(
             };
             match result {
                 Ok(()) => window.set_show_set_dialog(false),
-                Err(error) => window
-                    .set_set_dialog_error(crate::ui::browse::set_field_error_text(error).into()),
+                Err(error) => window.set_set_dialog_error(
+                    notae_app_core::ui::browse::set_field_error_text(error).into(),
+                ),
             }
             sync_window(&window, &model.borrow());
         });
@@ -1003,16 +1005,16 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     let state = model.state();
     let (show_setup, show_recovery, recovery_folder_name, setup_error, library_display_name) =
         match model.storage_kind() {
-            crate::ui::StorageStateKindView::Unconfigured => {
+            notae_app_core::ui::StorageStateKindView::Unconfigured => {
                 (true, false, String::new(), String::new(), String::new())
             }
-            crate::ui::StorageStateKindView::Ready { display_name } => {
+            notae_app_core::ui::StorageStateKindView::Ready { display_name } => {
                 (false, false, String::new(), String::new(), display_name)
             }
-            crate::ui::StorageStateKindView::PermissionLost(name) => {
+            notae_app_core::ui::StorageStateKindView::PermissionLost(name) => {
                 (false, true, name, String::new(), String::new())
             }
-            crate::ui::StorageStateKindView::Error(message) => {
+            notae_app_core::ui::StorageStateKindView::Error(message) => {
                 // The setup screen stays visible so the user can
                 // re-tap "Select folder"; the error label is the body
                 // text the user sees.
@@ -1024,11 +1026,13 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_show_recovery(show_recovery);
     window.set_recovery_folder_name(recovery_folder_name.into());
     window.set_setup_error_text(setup_error.into());
-    window.set_startup_ready(model.startup_presentation() == crate::ui::StartupPresentation::Ready);
+    window.set_startup_ready(
+        model.startup_presentation() == notae_app_core::ui::StartupPresentation::Ready,
+    );
     let status = model.status();
     let operation = &status.operation;
     window.set_rescan_enabled(model.rescan_enabled());
-    let banner = crate::ui::OperationBanner::project(operation);
+    let banner = notae_app_core::ui::OperationBanner::project(operation);
     window.set_cancel_enabled(banner.cancel_enabled);
     window.set_acknowledge_enabled(banner.acknowledge_enabled);
     // The banner reports the running operation or its outcome on every screen. The latest scan
@@ -1036,15 +1040,18 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     let (scan_summary, scan_conflicts, scan_failures) = status.latest_rescan.map_or_else(
         || {
             (
-                crate::language::pick("No scan this session", "Brak skanowania w tej sesji")
-                    .to_owned(),
+                notae_app_core::language::pick(
+                    "No scan this session",
+                    "Brak skanowania w tej sesji",
+                )
+                .to_owned(),
                 String::new(),
                 String::new(),
             )
         },
         |summary| {
             (
-                crate::language::pick(
+                notae_app_core::language::pick(
                     format!(
                         "{} added, {} updated, {} moved, {} deleted",
                         summary.added, summary.updated, summary.moved, summary.deleted,
@@ -1074,7 +1081,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     // Slint reads a negative fraction as "total unknown" (indeterminate).
     window.set_operation_fraction(banner.fraction.unwrap_or(-1.0));
     let prefs = model.ui_prefs();
-    window.set_library_list_view(prefs.library_view == crate::ui_prefs::LibraryView::List);
+    window.set_library_list_view(prefs.library_view == notae_app_core::ui_prefs::LibraryView::List);
     window.set_sidebar_collapsed_portrait(prefs.sidebar_collapsed_portrait);
     window.set_sidebar_collapsed_landscape(prefs.sidebar_collapsed_landscape);
     window.set_search_text(state.search().query.as_str().into());
@@ -1084,7 +1091,9 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     let row_count = visible.len();
     // The open set, unless Search covers it. Its rows are its pieces in set order.
     let open_set = match model.section() {
-        crate::ui::browse::LibrarySection::Set(id) if !matches!(state.screen(), Screen::Search) => {
+        notae_app_core::ui::browse::LibrarySection::Set(id)
+            if !matches!(state.screen(), Screen::Search) =>
+        {
             model.sets().get(id)
         }
         _ => None,
@@ -1115,13 +1124,13 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         let thumbnail = LIBRARY_ROWS
             .with_borrow_mut(|cache| cache.thumbnail(model.thumbnail_cache(), &row.note_key));
         let favorite = model.is_favorite(&row.note_key);
-        window.set_selected(crate::ui::search::library_row(row, thumbnail, favorite));
+        window.set_selected(crate::rows::library_row(row, thumbnail, favorite));
     }
     LIBRARY_ROWS.with_borrow_mut(|cache| cache.push(window, model, visible));
 
     let all_rows = model.search_rows();
     let sections: Vec<crate::SectionItem> =
-        crate::ui::browse::sections(all_rows, &model.section_context())
+        notae_app_core::ui::browse::sections(all_rows, &model.section_context())
             .into_iter()
             .map(|view| crate::SectionItem {
                 key: view.key.into(),
@@ -1131,10 +1140,10 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
             })
             .collect();
     window.set_sections(slint::ModelRc::new(slint::VecModel::from(sections)));
-    let composers: Vec<crate::SectionItem> = crate::ui::browse::composers(all_rows)
+    let composers: Vec<crate::SectionItem> = notae_app_core::ui::browse::composers(all_rows)
         .into_iter()
         .map(|composer| crate::SectionItem {
-            key: crate::ui::browse::LibrarySection::Composer(composer.name.clone())
+            key: notae_app_core::ui::browse::LibrarySection::Composer(composer.name.clone())
                 .key()
                 .into(),
             label: composer.name.into(),
@@ -1145,20 +1154,21 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_composers(slint::ModelRc::new(slint::VecModel::from(composers)));
     window.set_selected_section(model.section().key().into());
     window.set_library_title(model.section_title().into());
-    let set_cards = crate::ui::browse::set_cards(model.sets(), crate::ui::unix_now());
-    let subtitle = if model.section() == &crate::ui::browse::LibrarySection::Sets {
-        crate::ui::browse::sets_subtitle(set_cards.len())
+    let set_cards =
+        notae_app_core::ui::browse::set_cards(model.sets(), notae_app_core::ui::unix_now());
+    let subtitle = if model.section() == &notae_app_core::ui::browse::LibrarySection::Sets {
+        notae_app_core::ui::browse::sets_subtitle(set_cards.len())
     } else if let Some(set) = open_set {
-        crate::ui::browse::set_subtitle(set)
+        notae_app_core::ui::browse::set_subtitle(set)
     } else {
-        crate::language::pick(
+        notae_app_core::language::pick(
             format!(
                 "{row_count} {}",
                 if row_count == 1 { "score" } else { "scores" }
             ),
             format!(
                 "{row_count} {}",
-                crate::language::polish_plural(row_count, "utwór", "utwory", "utworów")
+                notae_app_core::language::polish_plural(row_count, "utwór", "utwory", "utworów")
             ),
         )
     };
@@ -1169,6 +1179,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
             .unwrap_or_default()
             .into(),
     );
+    let set_cards: Vec<crate::SetCard> = set_cards.into_iter().map(Into::into).collect();
     window.set_set_cards(slint::ModelRc::new(slint::VecModel::from(set_cards)));
     window.set_confirm_delete_set_name(model.pending_delete_set_name().unwrap_or_default().into());
     window.set_show_add_to_set(model.add_to_set_key().is_some());
@@ -1176,7 +1187,11 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_add_to_set_title(model.add_to_set_title().into());
     refresh_rows(
         &window.get_add_to_set_choices(),
-        model.add_to_set_choices(),
+        model
+            .add_to_set_choices()
+            .into_iter()
+            .map(Into::into)
+            .collect(),
         |rows| {
             window.set_add_to_set_choices(rows);
         },
@@ -1185,7 +1200,11 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_add_picker_footer(model.add_picker_footer_text().into());
     refresh_rows(
         &window.get_add_picker_rows(),
-        model.add_picker_rows(),
+        model
+            .add_picker_rows()
+            .into_iter()
+            .map(Into::into)
+            .collect(),
         |rows| {
             window.set_add_picker_rows(rows);
         },
@@ -1295,7 +1314,7 @@ fn apply_picker_result(
     operations: &Rc<RefCell<Option<OperationController>>>,
     index_path: &Path,
     thumbnails: &ThumbnailCache,
-    result: Result<crate::storage::LibraryRoot, StorageError>,
+    result: Result<notae_app_core::storage::LibraryRoot, StorageError>,
 ) {
     let mut initial_query_error = None;
     let next_state = match result {
@@ -1347,9 +1366,9 @@ fn apply_picker_result(
     };
     model.borrow_mut().set_storage(next_state);
     if let Some(reason) = initial_query_error {
-        let _ = model
-            .borrow_mut()
-            .apply_operation_event(crate::operations::events::OperationEvent::Failed { reason });
+        let _ = model.borrow_mut().apply_operation_event(
+            notae_app_core::operations::events::OperationEvent::Failed { reason },
+        );
     }
     if let Some(window) = window_weak.upgrade() {
         sync_window(&window, &model.borrow());

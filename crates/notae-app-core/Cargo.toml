@@ -1,0 +1,21 @@
+[package]
+name = "notae-app-core"
+description = "UI-toolkit-free app logic for Notae: state machine, stores, browse, search and operations."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+notae-domain = { path = "../notae-domain", version = "0.4.0" }
+notae-index = { path = "../notae-index", version = "0.4.0" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.11"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+pollster = "1.0"
+tempfile = "3"
+
+[lints]
+workspace = true

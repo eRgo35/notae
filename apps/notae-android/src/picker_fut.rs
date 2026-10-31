@@ -11,7 +11,7 @@
 //!   its waker only if the outcome is not yet present, and returns
 //!   `Poll::Ready` once the outcome is in place.
 //! * [`SelectRootHandshake`] is the future returned by
-//!   [`select_root`](super::storage::LibraryRootProvider::select_root).
+//!   [`select_root`](notae_app_core::storage::LibraryRootProvider::select_root).
 //!   On Android it is built with the `request_code` the JNI helper
 //!   returned when it called `startActivityForResult`; the activity
 //!   result callback looks up the same request code in
@@ -49,9 +49,9 @@ use std::task::{Context, Poll};
 
 use atomic_waker::AtomicWaker;
 
-use crate::backup::EXPORT_REQUEST_CODE;
-use crate::storage::{LibraryRoot, LibraryRootId, StorageError};
 use crate::voice_search::VOICE_REQUEST_CODE;
+use notae_app_core::backup::EXPORT_REQUEST_CODE;
+use notae_app_core::storage::{LibraryRoot, LibraryRootId, StorageError};
 
 const RESULT_OK: i32 = -1;
 const RESULT_CANCELED: i32 = 0;

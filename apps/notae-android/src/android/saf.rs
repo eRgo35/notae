@@ -10,7 +10,7 @@
 //! The provider is split into:
 //!
 //! * [`SafLibraryRootProvider`] — implements
-//!   [`LibraryRootProvider`](crate::storage::LibraryRootProvider). It
+//!   [`LibraryRootProvider`](notae_app_core::storage::LibraryRootProvider). It
 //!   launches the picker with `ACTION_OPEN_DOCUMENT_TREE`, takes
 //!   persistable read permission, and re-checks the permission on
 //!   reopen.
@@ -75,7 +75,7 @@ use crate::picker_fut::{
     FLAG_GRANT_READ_URI_PERMISSION, PickerOutcome, PickerState, decode_activity_result,
     new_picker_state, poll_outcome,
 };
-use crate::storage::{
+use notae_app_core::storage::{
     LibraryCatalog, LibraryRoot, LibraryRootId, LibraryRootProvider, LibrarySource, StorageError,
 };
 
@@ -908,19 +908,24 @@ impl LibraryCatalog for SafPdfCatalog {
     fn extract_text_layer(
         &self,
         path: &notae_domain::RelativePdfPath,
-    ) -> Result<Option<String>, crate::pdf_pages::PdfError> {
+    ) -> Result<Option<String>, notae_app_core::pdf_pages::PdfError> {
         let uri = document_content_uri(self.app.clone(), &self.tree_uri, path.as_str())
-            .map_err(|error| crate::pdf_pages::PdfError::Platform(error.to_string()))?;
-        let document = crate::pdf_pages::AndroidPdfDocument::open(self.app.clone(), uri)?;
+            .map_err(|error| notae_app_core::pdf_pages::PdfError::Platform(error.to_string()))?;
+        let document = notae_app_core::pdf_pages::AndroidPdfDocument::open_with_backend(
+            uri,
+            Box::new(crate::android::pdf_pages::AndroidPdfPageBackend::new(
+                self.app.clone(),
+            )),
+        )?;
         Ok(document.extract_text().map(str::to_owned))
     }
     fn render_thumbnail(
         &self,
         path: &notae_domain::RelativePdfPath,
         out: &std::path::Path,
-    ) -> Result<bool, crate::pdf_pages::PdfError> {
+    ) -> Result<bool, notae_app_core::pdf_pages::PdfError> {
         let uri = document_content_uri(self.app.clone(), &self.tree_uri, path.as_str())
-            .map_err(|error| crate::pdf_pages::PdfError::Platform(error.to_string()))?;
+            .map_err(|error| notae_app_core::pdf_pages::PdfError::Platform(error.to_string()))?;
         let uri = uri.as_str().to_owned();
         let out = out.to_string_lossy().into_owned();
         let activity_ptr = self.app.activity_as_ptr();
@@ -935,12 +940,12 @@ impl LibraryCatalog for SafPdfCatalog {
                 &[
                     JValue::Object(&uri),
                     JValue::Object(&out),
-                    JValue::Int(crate::thumbnails::THUMBNAIL_WIDTH_PX),
+                    JValue::Int(notae_app_core::thumbnails::THUMBNAIL_WIDTH_PX),
                 ],
             )?
             .z()
         })
-        .map_err(|error| crate::pdf_pages::PdfError::Platform(error.to_string()))
+        .map_err(|error| notae_app_core::pdf_pages::PdfError::Platform(error.to_string()))
     }
 }
 
@@ -964,13 +969,13 @@ pub fn document_content_uri(
     app: AndroidApp,
     tree_uri: &str,
     relative_path: &str,
-) -> Result<crate::pdf_intent::ContentUri, crate::pdf_intent::ViewerError> {
+) -> Result<notae_app_core::pdf_intent::ContentUri, notae_app_core::pdf_intent::ViewerError> {
     let catalog = SafPdfCatalog::new(app.clone(), tree_uri.to_owned());
     let root_id = catalog
         .root_document_id()
-        .map_err(|error| crate::pdf_intent::ViewerError::Platform(error.to_string()))?;
+        .map_err(|error| notae_app_core::pdf_intent::ViewerError::Platform(error.to_string()))?;
     let document_id = crate::saf_tree::find_document_id(&catalog, &root_id, relative_path)
-        .map_err(|error| crate::pdf_intent::ViewerError::Platform(error.to_string()))?;
+        .map_err(|error| notae_app_core::pdf_intent::ViewerError::Platform(error.to_string()))?;
     let value = with_env(&app, |env| {
         let tree_uri = parse_uri(env, tree_uri)?;
         let document_id = env.new_string(document_id)?;
@@ -1002,8 +1007,8 @@ pub fn document_content_uri(
         let value = unsafe { JString::from_raw(env, value.as_raw() as jni::sys::jstring) };
         jstring_to_string(env, value)
     })
-    .map_err(|error| crate::pdf_intent::ViewerError::Platform(error.to_string()))?;
-    crate::pdf_intent::ContentUri::new(value)
+    .map_err(|error| notae_app_core::pdf_intent::ViewerError::Platform(error.to_string()))?;
+    notae_app_core::pdf_intent::ContentUri::new(value)
 }
 
 pub(super) fn parse_uri<'local>(

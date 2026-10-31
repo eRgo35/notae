@@ -6,10 +6,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use i_slint_backend_testing::ElementHandle;
-use notae_android::sets::{SetFieldError, SetFields, SetStore};
-use notae_android::ui::UiModel;
-use notae_android::ui::browse::LibrarySection;
 use notae_android::{AppWindow, LibraryRow, SetCard, Theme};
+use notae_app_core::sets::{SetFieldError, SetFields, SetStore};
+use notae_app_core::ui::UiModel;
+use notae_app_core::ui::browse::LibrarySection;
 use slint::platform::{Key, PointerEventButton, WindowEvent};
 use slint::{ComponentHandle, Global, ModelRc, SharedString, VecModel};
 use support::app_sized;
@@ -519,8 +519,8 @@ fn deleting_waits_for_confirmation_and_leaves_an_open_set() {
 
 // --- Adding and removing pieces ---
 
-fn search_row(key: char, title: &str) -> notae_android::ui::search::SearchRow {
-    notae_android::ui::search::SearchRow {
+fn search_row(key: char, title: &str) -> notae_app_core::ui::search::SearchRow {
+    notae_app_core::ui::search::SearchRow {
         id: None,
         title: title.to_owned(),
         composer_or_artist: Some("Anonim".to_owned()),
@@ -564,10 +564,10 @@ fn item_keys(model: &UiModel, id: &str) -> Vec<(String, String)> {
         .items
         .iter()
         .filter_map(|item| match &item.kind {
-            notae_android::sets::ItemKind::Piece(piece) => {
+            notae_app_core::sets::ItemKind::Piece(piece) => {
                 Some((item.id.clone(), piece.key.clone()))
             }
-            notae_android::sets::ItemKind::Note { .. } => None,
+            notae_app_core::sets::ItemKind::Note { .. } => None,
         })
         .collect()
 }
@@ -771,7 +771,7 @@ fn picker_adds_at_end_and_counts() {
     model.add_picker_search_changed("Glo");
     model
         .apply_operation_event(
-            notae_android::operations::events::OperationEvent::PickerRows {
+            notae_app_core::operations::events::OperationEvent::PickerRows {
                 query: "Kyr".to_owned(),
                 rows: vec![search_row('a', "Kyrie")],
             },
@@ -784,7 +784,7 @@ fn picker_adds_at_end_and_counts() {
     );
     model
         .apply_operation_event(
-            notae_android::operations::events::OperationEvent::PickerRows {
+            notae_app_core::operations::events::OperationEvent::PickerRows {
                 query: "Glo".to_owned(),
                 rows: vec![search_row('b', "Gloria")],
             },

@@ -6,6 +6,7 @@ resolver = "3"
 members = [
     "crates/notae-domain",
     "crates/notae-index",
+    "crates/notae-app-core",
     "apps/notae-android",
 ]
 

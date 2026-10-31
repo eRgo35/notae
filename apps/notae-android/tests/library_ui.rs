@@ -705,8 +705,8 @@ fn details_star_has_accessible_label() {
     );
 }
 
-fn set_piece(key: char, title: &str) -> notae_android::ui::search::SearchRow {
-    notae_android::ui::search::SearchRow {
+fn set_piece(key: char, title: &str) -> notae_app_core::ui::search::SearchRow {
+    notae_app_core::ui::search::SearchRow {
         id: None,
         title: title.to_owned(),
         composer_or_artist: None,
@@ -725,7 +725,7 @@ fn set_piece(key: char, title: &str) -> notae_android::ui::search::SearchRow {
 }
 
 /// Pushes the model's selection to the details pane the way `sync_window` does.
-fn show_selection(app: &AppWindow, model: &notae_android::ui::UiModel) {
+fn show_selection(app: &AppWindow, model: &notae_app_core::ui::UiModel) {
     let nav = model.preview_neighbours();
     app.set_selected_previous_key(
         nav.as_ref()
@@ -748,7 +748,7 @@ fn show_selection(app: &AppWindow, model: &notae_android::ui::UiModel) {
     let selected = model.selected_row();
     app.set_details_open(selected.is_some());
     if let Some(row) = selected {
-        app.set_selected(notae_android::ui::search::library_row(row, None, false));
+        app.set_selected(notae_android::rows::library_row(row, None, false));
     }
 }
 
@@ -756,10 +756,10 @@ fn show_selection(app: &AppWindow, model: &notae_android::ui::UiModel) {
 /// pane and previous/next on the second copy act on that copy, never the first.
 #[test]
 fn selecting_second_copy_keeps_its_position() {
-    use notae_android::favorites::PieceRef;
-    use notae_android::sets::{SetFields, SetStore};
-    use notae_android::ui::UiModel;
-    use notae_android::ui::browse::LibrarySection;
+    use notae_app_core::favorites::PieceRef;
+    use notae_app_core::sets::{SetFields, SetStore};
+    use notae_app_core::ui::UiModel;
+    use notae_app_core::ui::browse::LibrarySection;
 
     let dir = tempfile::tempdir().expect("temporary directory");
     let mut store = SetStore::default();
@@ -801,7 +801,7 @@ fn selecting_second_copy_keeps_its_position() {
         .borrow()
         .visible_rows()
         .into_iter()
-        .map(|row| notae_android::ui::search::library_row(row, None, false))
+        .map(|row| notae_android::rows::library_row(row, None, false))
         .collect();
     app.set_library_rows(ModelRc::new(VecModel::from(rows)));
     settle();

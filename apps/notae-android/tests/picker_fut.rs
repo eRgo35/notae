@@ -19,7 +19,7 @@ use notae_android::picker_fut::{
     DispatchOutcome, PickerOutcome, SelectRootHandshake, decode_activity_result, new_picker_state,
     poll_outcome,
 };
-use notae_android::storage::{LibraryRootId, StorageError};
+use notae_app_core::storage::{LibraryRootId, StorageError};
 
 /// Polls `future` once and returns the `Poll`. If `Poll::Pending` is
 /// returned the helper has consumed the waker — the test can drive

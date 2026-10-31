@@ -16,12 +16,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 slint = { version = "1.18", features = ["backend-android-activity-06"] }
-thiserror = { workspace = true }
+notae-app-core = { path = "../../crates/notae-app-core", version = "0.4.0" }
 notae-domain = { path = "../../crates/notae-domain", version = "0.4.0" }
 notae-index = { path = "../../crates/notae-index", version = "0.4.0" }
 sha2 = "0.11"
-serde = { workspace = true }
-serde_json = { workspace = true }
 # `atomic-waker` is the standard library the SAF picker handshake
 # uses to bridge the Slint main thread (where `select_root` is
 # polled) and the Java main looper (where the activity-result
@@ -53,7 +51,7 @@ jni = "0.22"
 # Cross-compiling `notae-index` to Android is non-trivial because it bundles
 # SQLite via `cc-rs`. The build expects the NDK clang in the PATH for
 # `aarch64-linux-android`; `cargo apk2` sets that up. The host test
-# links only the trait types — see `apps/notae-android/tests/storage_state.rs`.
+# links only the trait types — see `crates/notae-app-core/tests/storage_state.rs`.
 
 [build-dependencies]
 # `slint-build` parses the .slint file at build time, emits a Rust module
@@ -64,7 +62,6 @@ slint-build = "1.18"
 [dev-dependencies]
 # `tempfile` is what the host tests build a temporary library root out of.
 tempfile = "3"
-pollster = "1.0"
 i-slint-backend-testing = "=1.18.1"
 # `cargo-apk2` compiles the Java result adapter and generates the
 # launcher manifest from the metadata below.
@@ -129,7 +126,7 @@ target_sdk_version = 34
 #
 # We drop the level from `forbid` to `deny` here so the FFI shim can
 # use `#[allow(unsafe_code)]` locally, and the host-testable core
-# (`state.rs`, `ui.rs`) keeps a strict `#![forbid(unsafe_code)]` of its
+# (`crates/notae-app-core`) keeps a strict `#![forbid(unsafe_code)]` of its
 # own. Everywhere else in the workspace, `forbid` remains in force.
 [lints.rust]
 unsafe_code = "deny"

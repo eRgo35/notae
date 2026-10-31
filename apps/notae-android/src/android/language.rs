@@ -13,7 +13,7 @@ use jni::errors::Error as JniError;
 use jni::objects::{JObject, JString};
 use jni::{EnvUnowned, JValue, jni_sig, jni_str};
 
-use crate::language::{LanguageChoice, bundle_for};
+use notae_app_core::language::{LanguageChoice, bundle_for};
 
 thread_local! {
     /// Runs on the Slint thread when Android reports a language change.
@@ -71,7 +71,7 @@ pub fn select(app: &AndroidApp, choice: LanguageChoice) {
         .unwrap_or_default();
     let bundle = bundle_for(choice, &system_tag);
     eprintln!("notae: language choice={choice:?} system={system_tag:?} bundle={bundle:?}");
-    crate::language::set_active_bundle(bundle);
+    notae_app_core::language::set_active_bundle(bundle);
     if let Err(error) = slint::select_bundled_translation(bundle) {
         eprintln!("notae: cannot select translation {bundle:?}: {error}");
     }

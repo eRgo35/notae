@@ -3,7 +3,7 @@ use jni::errors::Error as JniError;
 use jni::objects::JObject;
 use jni::{JValue, jni_sig, jni_str};
 
-use crate::pdf_intent::{
+use notae_app_core::pdf_intent::{
     ContentUri, LaunchResult, PdfIntentSpec, ViewerError, launch_result, pdf_intent_spec,
 };
 

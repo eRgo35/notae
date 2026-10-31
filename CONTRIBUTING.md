@@ -60,6 +60,7 @@ Notae is an Android app; the host tests and the Android cross-compile run on Lin
 | --- | --- |
 | `crates/notae-domain` | Filename convention, metadata, file identity |
 | `crates/notae-index` | SQLite store, FTS5 search, rescan reconciliation |
+| `crates/notae-app-core` | App state machine, stores, browse/search, rescan worker, backup |
 | `apps/notae-android` | Slint UI, Storage Access Framework adapter, Java shim |
 
 Put domain, indexing and search logic in the host-tested crates; keep the
