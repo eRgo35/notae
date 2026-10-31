@@ -192,3 +192,39 @@ fn manual_edits_survive_rescan() {
         ["manual tag"]
     );
 }
+
+#[test]
+fn duplicate_id_save_gives_a_typed_metadata_failure() {
+    use notae_app_core::operations::events::OperationEvent;
+    use notae_app_core::text::{Failure, IndexFailure};
+    use notae_app_core::ui::UiModel;
+
+    let store = IndexStore::open(":memory:").expect("open test index");
+    let first = note("01 - First.pdf", b"first", 1, "First");
+    let second = note("02 - Second.pdf", b"second", 2, "Second");
+    store.reindex_note(&first).expect("insert first record");
+    store.reindex_note(&second).expect("insert second record");
+    let error = MetadataEditor::new(&store)
+        .save(editable(
+            second.fingerprint().sha256().to_string(),
+            Some(1),
+            "Changed",
+            None,
+            &[],
+        ))
+        .expect_err("the id belongs to the first record");
+
+    let mut model = UiModel::new();
+    model.begin_metadata_edit(second.fingerprint().sha256().to_string());
+    model
+        .apply_operation_event(OperationEvent::MetadataFailed {
+            failure: Failure::from(&error),
+        })
+        .expect("metadata failure");
+    assert_eq!(
+        model.metadata_error(),
+        Some(&Failure::IndexQuery {
+            index: IndexFailure::DuplicateNoteId { id: 1 }
+        })
+    );
+}

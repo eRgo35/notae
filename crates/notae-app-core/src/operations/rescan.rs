@@ -11,6 +11,7 @@ use notae_index::{IndexStore, OcrText, PdfFile, Reconciler, SearchScope};
 
 use crate::operations::events::{OperationEvent, RescanSummary};
 use crate::storage::LibraryCatalog;
+use crate::text::Failure;
 use crate::thumbnails::ThumbnailCache;
 use crate::ui::library::LibraryViewModel;
 use crate::ui::metadata_editor::{EditableMetadata, MetadataEditor};
@@ -223,7 +224,7 @@ fn run_worker(
                     Err(error) => send(
                         &events,
                         OperationEvent::Failed {
-                            reason: error.to_string(),
+                            failure: (&error).into(),
                         },
                     ),
                 }
@@ -234,7 +235,7 @@ fn run_worker(
                     Err(error) => send(
                         &events,
                         OperationEvent::Failed {
-                            reason: error.to_string(),
+                            failure: (&error).into(),
                         },
                     ),
                 }
@@ -245,7 +246,7 @@ fn run_worker(
                     Err(error) => send(
                         &events,
                         OperationEvent::MetadataFailed {
-                            reason: error.to_string(),
+                            failure: (&error).into(),
                         },
                     ),
                 }
@@ -260,14 +261,14 @@ fn run_worker(
                         Err(error) => send(
                             &events,
                             OperationEvent::MetadataFailed {
-                                reason: error.to_string(),
+                                failure: (&error).into(),
                             },
                         ),
                     },
                     Err(error) => send(
                         &events,
                         OperationEvent::MetadataFailed {
-                            reason: error.to_string(),
+                            failure: (&error).into(),
                         },
                     ),
                 }
@@ -302,7 +303,7 @@ fn run_rescan(
             send(
                 events,
                 OperationEvent::Failed {
-                    reason: error.to_string(),
+                    failure: (&error).into(),
                 },
             );
             busy.store(false, Ordering::Release);
@@ -320,7 +321,7 @@ fn run_rescan(
             send(
                 events,
                 OperationEvent::Failed {
-                    reason: error.to_string(),
+                    failure: (&error).into(),
                 },
             );
             busy.store(false, Ordering::Release);
@@ -350,7 +351,7 @@ fn run_rescan(
             send(
                 events,
                 OperationEvent::Failed {
-                    reason: "rescan cancellation state closed unexpectedly".to_owned(),
+                    failure: Failure::CancellationStateClosed,
                 },
             );
             busy.store(false, Ordering::Release);
@@ -427,7 +428,7 @@ fn run_rescan(
                 Err(error) => send(
                     events,
                     OperationEvent::Failed {
-                        reason: error.to_string(),
+                        failure: (&error).into(),
                     },
                 ),
             }
@@ -435,7 +436,7 @@ fn run_rescan(
         Err(error) => send(
             events,
             OperationEvent::Failed {
-                reason: error.to_string(),
+                failure: (&error).into(),
             },
         ),
     }

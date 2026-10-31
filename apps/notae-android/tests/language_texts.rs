@@ -9,7 +9,7 @@ use notae_android::language::{bundle_for, polish_plural, set_active_bundle};
 use notae_android::texts;
 use notae_app_core::operations::events::RescanSummary;
 use notae_app_core::state::{OperationState, RescanPhase};
-use notae_app_core::text::{RowStatus, SetSubtitle};
+use notae_app_core::text::{Failure, RowStatus, SetSubtitle};
 use notae_app_core::ui::OperationBanner;
 use notae_app_core::ui::browse::{Neighbours, edited};
 use notae_app_core::ui_prefs::LanguageChoice;
@@ -112,9 +112,9 @@ fn banner_text_follows_each_phase_and_the_scan_summary() {
     assert_eq!(finished(RescanSummary::default()), "Finished: No changes");
     assert_eq!(
         banner(OperationState::Failed {
-            reason: "boom".to_owned(),
+            failure: Failure::WorkerStopped,
         }),
-        "boom"
+        "the index worker has stopped"
     );
 
     set_active_bundle("pl");
@@ -255,4 +255,95 @@ fn system_choice_falls_back_to_english_for_other_languages() {
 fn an_explicit_choice_ignores_the_system_language() {
     assert_eq!(bundle_for(LanguageChoice::English, "pl-PL"), "");
     assert_eq!(bundle_for(LanguageChoice::Polish, "en-US"), "pl");
+}
+
+/// Every failure kind shows exactly the text its error has always displayed.
+#[test]
+fn failure_texts_match_the_errors_own_messages() {
+    use notae_app_core::pdf_intent::ViewerError;
+    use notae_app_core::storage::StorageError;
+    use notae_app_core::ui::search::UiError;
+    use notae_domain::{DomainError, NoteId, Sha256Digest};
+    use notae_index::{CatalogError, IndexError, IndexStore, ReconcileError};
+
+    let _language = language();
+    set_active_bundle("pl");
+    let index_errors = || {
+        let Err(sqlite) = IndexStore::open("/nonexistent-notae-dir/index.sqlite") else {
+            panic!("an index in a missing directory cannot open");
+        };
+        assert!(matches!(sqlite, IndexError::Sqlite(_)), "{sqlite:?}");
+        [
+            sqlite,
+            IndexError::DuplicateNoteId(NoteId::new(5)),
+            IndexError::UnsupportedSchemaVersion {
+                found: 9,
+                supported: 3,
+            },
+            IndexError::IncompleteSchema {
+                version: 2,
+                missing: "notes, notes_fts".to_owned(),
+            },
+            IndexError::UnknownNote {
+                hash: Sha256Digest::from_bytes([10; 32]),
+            },
+        ]
+    };
+    let mut ui_errors: Vec<UiError> = index_errors().into_iter().map(UiError::Index).collect();
+    ui_errors.extend(
+        [
+            DomainError::InvalidNoteId("x1".to_owned()),
+            DomainError::EmptyTitle,
+            DomainError::InvalidSha256Digest,
+            DomainError::InvalidRelativePath("../up.pdf".to_owned()),
+            DomainError::MissingProvenance,
+        ]
+        .map(UiError::Domain),
+    );
+    ui_errors.extend([
+        UiError::NoteNotFound("abc".to_owned()),
+        UiError::OperationAlreadyInProgress,
+        UiError::NoOperationInProgress,
+        UiError::RescanNotCancellable,
+        UiError::WorkerStopped,
+        UiError::WorkerStart(std::io::Error::other("no threads")),
+    ]);
+    for error in &ui_errors {
+        assert_eq!(texts::failure(&Failure::from(error)), error.to_string());
+    }
+    let mut reconcile_errors: Vec<ReconcileError> = index_errors()
+        .into_iter()
+        .map(ReconcileError::Index)
+        .collect();
+    reconcile_errors.extend(
+        [
+            CatalogError::Unreadable("revoked".to_owned()),
+            CatalogError::Failed("gone".to_owned()),
+        ]
+        .map(ReconcileError::Catalog),
+    );
+    for error in &reconcile_errors {
+        assert_eq!(texts::failure(&Failure::from(error)), error.to_string());
+    }
+    assert_eq!(
+        texts::failure(&Failure::CancellationStateClosed),
+        "rescan cancellation state closed unexpectedly"
+    );
+    for error in [
+        StorageError::Cancelled,
+        StorageError::NotADirectory,
+        StorageError::PermissionLost,
+        StorageError::PermissionDenied,
+        StorageError::Other("cannot open local index: locked".to_owned()),
+    ] {
+        assert_eq!(texts::storage_error(&error), error.to_string());
+    }
+    for error in [
+        ViewerError::InvalidContentUri,
+        ViewerError::NoCompatibleViewer,
+        ViewerError::Platform("Brak aktywnego folderu biblioteki.".to_owned()),
+    ] {
+        assert_eq!(texts::viewer_error(&error), error.to_string());
+    }
+    set_active_bundle("");
 }

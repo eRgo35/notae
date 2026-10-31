@@ -129,7 +129,7 @@ fn rescan_writes_a_thumbnail_for_each_indexed_score() {
             .expect("event")
         {
             OperationEvent::Completed { .. } => break,
-            OperationEvent::Failed { reason } => panic!("{reason}"),
+            OperationEvent::Failed { failure } => panic!("{failure:?}"),
             _ => {}
         }
     }

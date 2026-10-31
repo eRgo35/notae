@@ -1,5 +1,6 @@
 //! What the worker reports back to the UI thread.
 
+use crate::text::Failure;
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
 
@@ -71,12 +72,12 @@ pub enum OperationEvent {
     /// A metadata load or save was rejected without changing the index.
     MetadataFailed {
         /// Why it was rejected.
-        reason: String,
+        failure: Failure,
     },
     /// An operation failed before it could complete.
     Failed {
         /// Why it failed.
-        reason: String,
+        failure: Failure,
     },
     /// The complete library size, independent of the active query or scope.
     IndexedCount(usize),

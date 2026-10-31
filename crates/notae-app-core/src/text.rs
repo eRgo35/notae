@@ -5,7 +5,11 @@
 
 #![forbid(unsafe_code)]
 
+use notae_domain::DomainError;
+use notae_index::{CatalogError, IndexError, ReconcileError};
+
 use crate::operations::events::RescanSummary;
+use crate::ui::search::UiError;
 
 /// The large title above the score grid, and the side panel's labels.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,10 +96,10 @@ pub enum StatusMessage {
     },
     /// A rescan finished; the summary holds what it changed (all zero for no changes).
     Finished(RescanSummary),
-    /// An operation failed. The reason is the error's own detail, not translated text.
+    /// An operation failed.
     Failed {
-        /// The error detail.
-        reason: String,
+        /// What failed.
+        failure: Failure,
     },
 }
 
@@ -106,4 +110,184 @@ pub struct PositionOf {
     pub position: usize,
     /// Rows in the section.
     pub total: usize,
+}
+
+/// Why a library operation or a metadata edit failed: [`UiError`], with the domain, index and
+/// catalog errors it wraps flattened into it. `detail` fields hold the platform's or the
+/// database's own message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Failure {
+    /// The index refused a query or a write made for the library screens ([`UiError::Index`]).
+    IndexQuery {
+        /// What the index reported.
+        index: IndexFailure,
+    },
+    /// The index refused the rescan's reconciliation ([`ReconcileError::Index`]).
+    IndexUpdate {
+        /// What the index reported.
+        index: IndexFailure,
+    },
+    /// A note number was not a non-negative decimal integer.
+    InvalidNoteId {
+        /// The rejected text.
+        value: String,
+    },
+    /// A title was empty after trimming.
+    EmptyTitle,
+    /// A content key was not 64 lowercase hex characters.
+    InvalidSha256Digest,
+    /// A PDF path was not a valid root-relative path.
+    InvalidRelativePath {
+        /// The rejected path.
+        path: String,
+    },
+    /// A stored record had no metadata provenance.
+    MissingProvenance,
+    /// The content key is not in the index.
+    NoteNotFound {
+        /// The content key.
+        key: String,
+    },
+    /// Another rescan is already running.
+    OperationAlreadyInProgress,
+    /// Cancel was asked for while nothing was running.
+    NoOperationInProgress,
+    /// The rescan has committed and can no longer be canceled.
+    RescanNotCancellable,
+    /// The background worker has stopped.
+    WorkerStopped,
+    /// The background worker could not be started.
+    WorkerStart {
+        /// The operating system's message.
+        detail: String,
+    },
+    /// The library root could not be opened or traversed.
+    LibraryUnreadable {
+        /// The platform's message.
+        detail: String,
+    },
+    /// Enumerating the library failed part way through.
+    EnumerationFailed {
+        /// The platform's message.
+        detail: String,
+    },
+    /// The rescan's cancellation state closed unexpectedly (an internal error).
+    CancellationStateClosed,
+}
+
+/// What the local index reported ([`IndexError`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IndexFailure {
+    /// The database rejected a statement or returned an unreadable row.
+    Database {
+        /// The database's message.
+        detail: String,
+    },
+    /// The note number is already used by another record.
+    DuplicateNoteId {
+        /// The note number.
+        id: u32,
+    },
+    /// The index was written by a newer Notae.
+    UnsupportedSchemaVersion {
+        /// The version found.
+        found: u32,
+        /// The newest version this build reads.
+        supported: u32,
+    },
+    /// The index claims a version whose tables are not all present.
+    IncompleteSchema {
+        /// The claimed version.
+        version: u32,
+        /// The missing objects, comma-separated.
+        missing: String,
+    },
+    /// No record has the content hash.
+    UnknownNote {
+        /// The content hash.
+        hash: String,
+    },
+}
+
+impl From<&IndexError> for IndexFailure {
+    fn from(error: &IndexError) -> Self {
+        match error {
+            IndexError::Sqlite(error) => Self::Database {
+                detail: error.to_string(),
+            },
+            IndexError::DuplicateNoteId(id) => Self::DuplicateNoteId { id: id.get() },
+            IndexError::UnsupportedSchemaVersion { found, supported } => {
+                Self::UnsupportedSchemaVersion {
+                    found: *found,
+                    supported: *supported,
+                }
+            }
+            IndexError::IncompleteSchema { version, missing } => Self::IncompleteSchema {
+                version: *version,
+                missing: missing.clone(),
+            },
+            IndexError::UnknownNote { hash } => Self::UnknownNote {
+                hash: hash.to_string(),
+            },
+        }
+    }
+}
+
+impl From<&UiError> for Failure {
+    fn from(error: &UiError) -> Self {
+        match error {
+            UiError::Index(error) => Self::IndexQuery {
+                index: error.into(),
+            },
+            UiError::Domain(error) => error.into(),
+            UiError::NoteNotFound(key) => Self::NoteNotFound { key: key.clone() },
+            UiError::OperationAlreadyInProgress => Self::OperationAlreadyInProgress,
+            UiError::NoOperationInProgress => Self::NoOperationInProgress,
+            UiError::RescanNotCancellable => Self::RescanNotCancellable,
+            UiError::WorkerStopped => Self::WorkerStopped,
+            UiError::WorkerStart(error) => Self::WorkerStart {
+                detail: error.to_string(),
+            },
+        }
+    }
+}
+
+impl From<&DomainError> for Failure {
+    fn from(error: &DomainError) -> Self {
+        match error {
+            DomainError::InvalidNoteId(value) => Self::InvalidNoteId {
+                value: value.clone(),
+            },
+            DomainError::EmptyTitle => Self::EmptyTitle,
+            DomainError::InvalidSha256Digest => Self::InvalidSha256Digest,
+            DomainError::InvalidRelativePath(path) => {
+                Self::InvalidRelativePath { path: path.clone() }
+            }
+            DomainError::MissingProvenance => Self::MissingProvenance,
+        }
+    }
+}
+
+impl From<&CatalogError> for Failure {
+    fn from(error: &CatalogError) -> Self {
+        match error {
+            CatalogError::Unreadable(detail) => Self::LibraryUnreadable {
+                detail: detail.clone(),
+            },
+            CatalogError::Failed(detail) => Self::EnumerationFailed {
+                detail: detail.clone(),
+            },
+        }
+    }
+}
+
+impl From<&ReconcileError> for Failure {
+    fn from(error: &ReconcileError) -> Self {
+        match error {
+            ReconcileError::Index(error) => Self::IndexUpdate {
+                index: error.into(),
+            },
+            ReconcileError::Catalog(error) => error.into(),
+        }
+    }
 }

@@ -69,7 +69,7 @@ fn failed_initial_query_shows_an_actionable_failure() {
     model.set_storage(StorageState::Ready(Arc::new(Mutex::new(source))));
     model
         .apply_operation_event(OperationEvent::Failed {
-            reason: "Could not load library rows".to_owned(),
+            failure: notae_app_core::text::Failure::WorkerStopped,
         })
         .expect("worker failure is projected");
     assert_eq!(model.startup_presentation(), StartupPresentation::Ready);
@@ -88,7 +88,7 @@ fn storage_error_during_restore_shows_setup_error() {
     assert_eq!(model.startup_presentation(), StartupPresentation::Ready);
     assert!(matches!(
         model.storage_kind(),
-        notae_app_core::ui::StorageStateKindView::Error(message)
-            if message.contains("Could not open saved library")
+        notae_app_core::ui::StorageStateKindView::Error(StorageError::Other(detail))
+            if detail == "Could not open saved library"
     ));
 }

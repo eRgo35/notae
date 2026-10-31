@@ -19,13 +19,14 @@ use std::sync::{Arc, Mutex};
 
 use crate::favorites::{Favorites, PieceRef};
 use crate::operations::events::{OperationEvent, RescanSummary};
+use crate::pdf_intent::ViewerError;
 use crate::recent::RecentScores;
 use crate::sets::{ItemKind, SetFieldError, SetFields, SetStore};
 use crate::state::{
     AppController, AppState, EventError, OperationState, RescanPhase, Transition, UiEvent,
 };
-use crate::storage::StorageState;
-use crate::text::{SectionTitle, StatusMessage};
+use crate::storage::{StorageError, StorageState};
+use crate::text::{Failure, SectionTitle, StatusMessage};
 use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::{
     LibrarySection, Neighbours, SectionContext, neighbours, row_id, section_rows,
@@ -105,8 +106,8 @@ pub struct UiModel {
     indexed_count: usize,
     latest_rescan: Option<RescanSummary>,
     metadata_editor: Option<EditableMetadata>,
-    metadata_error: Option<String>,
-    pdf_launch_error: Option<String>,
+    metadata_error: Option<Failure>,
+    pdf_launch_error: Option<ViewerError>,
     section: LibrarySection,
     recent: RecentScores,
     recent_path: Option<PathBuf>,
@@ -249,12 +250,12 @@ impl UiModel {
 
     /// Returns the latest PDF launch error, when a viewer could not be opened.
     #[must_use]
-    pub fn pdf_launch_error(&self) -> Option<&str> {
-        self.pdf_launch_error.as_deref()
+    pub fn pdf_launch_error(&self) -> Option<&ViewerError> {
+        self.pdf_launch_error.as_ref()
     }
 
-    /// Replaces the user-facing PDF launch error.
-    pub fn set_pdf_launch_error(&mut self, error: Option<String>) {
+    /// Replaces the PDF launch error.
+    pub fn set_pdf_launch_error(&mut self, error: Option<ViewerError>) {
         self.pdf_launch_error = error;
     }
 
@@ -888,8 +889,8 @@ impl UiModel {
 
     /// Error from the latest metadata load/save attempt, if any.
     #[must_use]
-    pub fn metadata_error(&self) -> Option<&str> {
-        self.metadata_error.as_deref()
+    pub fn metadata_error(&self) -> Option<&Failure> {
+        self.metadata_error.as_ref()
     }
 
     /// Closes the editor and clears its error message.
@@ -954,11 +955,11 @@ impl UiModel {
                 self.relink_saved_pieces();
                 self.close_metadata_editor();
             }
-            OperationEvent::MetadataFailed { reason } => {
-                self.metadata_error = Some(reason);
+            OperationEvent::MetadataFailed { failure } => {
+                self.metadata_error = Some(failure);
             }
-            OperationEvent::Failed { reason } => {
-                self.controller.fail_operation(reason);
+            OperationEvent::Failed { failure } => {
+                self.controller.fail_operation(failure);
                 self.startup_presentation = StartupPresentation::Ready;
             }
         }
@@ -1108,8 +1109,8 @@ impl OperationBanner {
                 }
             }),
             OperationState::Completed { summary } => Some(StatusMessage::Finished(*summary)),
-            OperationState::Failed { reason } => Some(StatusMessage::Failed {
-                reason: reason.clone(),
+            OperationState::Failed { failure } => Some(StatusMessage::Failed {
+                failure: failure.clone(),
             }),
         };
         let fraction = match operation {
@@ -1152,9 +1153,9 @@ pub enum StorageStateKindView {
     /// The string is the root's display name, used as the body text
     /// of the recovery screen.
     PermissionLost(String),
-    /// Storage failed in a way the user has to dismiss. The string is
-    /// the user-facing error message the setup screen surfaces.
-    Error(String),
+    /// Storage failed in a way the user has to dismiss; the setup
+    /// screen shows the error.
+    Error(StorageError),
 }
 
 impl UiModel {
@@ -1178,7 +1179,7 @@ impl UiModel {
             StorageState::PermissionLost(root) => {
                 StorageStateKindView::PermissionLost(root.display_name().to_owned())
             }
-            StorageState::Error(error) => StorageStateKindView::Error(error.to_string()),
+            StorageState::Error(error) => StorageStateKindView::Error(error.clone()),
         }
     }
 }

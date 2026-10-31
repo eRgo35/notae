@@ -173,8 +173,8 @@ pub enum OperationState {
     },
     /// A long-running operation failed.
     Failed {
-        /// Short, user-facing reason — not a raw error chain.
-        reason: String,
+        /// What failed.
+        failure: crate::text::Failure,
     },
 }
 
@@ -448,8 +448,8 @@ impl AppController {
     }
 
     /// Records a user-visible failure from the background worker.
-    pub fn fail_operation(&mut self, reason: String) {
-        self.state.operation = OperationState::Failed { reason };
+    pub fn fail_operation(&mut self, failure: crate::text::Failure) {
+        self.state.operation = OperationState::Failed { failure };
     }
 
     fn start_rescan(&mut self) -> Result<Transition, EventError> {

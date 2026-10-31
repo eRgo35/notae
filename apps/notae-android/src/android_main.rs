@@ -241,7 +241,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
                     if let Err(error) = result {
                         let _ = model.borrow_mut().apply_operation_event(
                             notae_app_core::operations::events::OperationEvent::Failed {
-                                reason: error.to_string(),
+                                failure: (&error).into(),
                             },
                         );
                     }
@@ -408,7 +408,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
             if let Err(error) = result {
                 let _ = model.borrow_mut().apply_operation_event(
                     notae_app_core::operations::events::OperationEvent::MetadataFailed {
-                        reason: error.to_string(),
+                        failure: (&error).into(),
                     },
                 );
             }
@@ -444,7 +444,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
             if let Err(error) = result {
                 let _ = model.borrow_mut().apply_operation_event(
                     notae_app_core::operations::events::OperationEvent::MetadataFailed {
-                        reason: error.to_string(),
+                        failure: (&error).into(),
                     },
                 );
             }
@@ -554,9 +554,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
                     crate::android::pdf_intent::PdfLauncher::new(app.clone()).open(uri)
                 });
             let opened = result.is_ok();
-            model
-                .borrow_mut()
-                .set_pdf_launch_error(result.err().map(|error| error.to_string()));
+            model.borrow_mut().set_pdf_launch_error(result.err());
             if opened && let Err(error) = model.borrow_mut().record_opened(note_key.as_str()) {
                 eprintln!("notae: cannot save recent scores: {error}");
             }
@@ -1014,11 +1012,17 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
             notae_app_core::ui::StorageStateKindView::PermissionLost(name) => {
                 (false, true, name, String::new(), String::new())
             }
-            notae_app_core::ui::StorageStateKindView::Error(message) => {
+            notae_app_core::ui::StorageStateKindView::Error(error) => {
                 // The setup screen stays visible so the user can
                 // re-tap "Select folder"; the error label is the body
                 // text the user sees.
-                (true, false, String::new(), message, String::new())
+                (
+                    true,
+                    false,
+                    String::new(),
+                    crate::texts::storage_error(&error),
+                    String::new(),
+                )
             }
         };
     window.set_library_display_name(library_display_name.into());
@@ -1240,8 +1244,18 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
             .map_or_else(String::new, |metadata| metadata.tags.join(", "))
             .into(),
     );
-    window.set_metadata_error_text(model.metadata_error().unwrap_or_default().into());
-    window.set_pdf_launch_error_text(model.pdf_launch_error().unwrap_or_default().into());
+    window.set_metadata_error_text(
+        model
+            .metadata_error()
+            .map_or_else(String::new, crate::texts::failure)
+            .into(),
+    );
+    window.set_pdf_launch_error_text(
+        model
+            .pdf_launch_error()
+            .map_or_else(String::new, crate::texts::viewer_error)
+            .into(),
+    );
 }
 
 /// Logs the outcome of a state transition at the level the platform
@@ -1323,7 +1337,7 @@ fn apply_picker_result(
     thumbnails: &ThumbnailCache,
     result: Result<notae_app_core::storage::LibraryRoot, StorageError>,
 ) {
-    let mut initial_query_error = None;
+    let mut initial_query_error: Option<notae_app_core::text::Failure> = None;
     let next_state = match result {
         Ok(root) => match provider.reopen(&root) {
             Ok(source) => match IndexStore::open(index_path) {
@@ -1340,7 +1354,7 @@ fn apply_picker_result(
                             if let Some(controller) = operations.borrow().as_ref()
                                 && let Err(error) = controller.set_query(query)
                             {
-                                initial_query_error = Some(error.to_string());
+                                initial_query_error = Some((&error).into());
                             }
                             StorageState::Ready(source)
                         }
@@ -1372,9 +1386,9 @@ fn apply_picker_result(
         }
     };
     model.borrow_mut().set_storage(next_state);
-    if let Some(reason) = initial_query_error {
+    if let Some(failure) = initial_query_error {
         let _ = model.borrow_mut().apply_operation_event(
-            notae_app_core::operations::events::OperationEvent::Failed { reason },
+            notae_app_core::operations::events::OperationEvent::Failed { failure },
         );
     }
     if let Some(window) = window_weak.upgrade() {

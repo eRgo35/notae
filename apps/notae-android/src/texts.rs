@@ -6,9 +6,11 @@
 #![forbid(unsafe_code)]
 
 use notae_app_core::operations::events::RescanSummary;
+use notae_app_core::pdf_intent::ViewerError;
 use notae_app_core::sets::SetFieldError;
+use notae_app_core::storage::StorageError;
 use notae_app_core::text::{
-    Edited, PositionOf, RowStatus, SectionTitle, SetSubtitle, StatusMessage,
+    Edited, Failure, IndexFailure, PositionOf, RowStatus, SectionTitle, SetSubtitle, StatusMessage,
 };
 use notae_domain::MetadataOrigin;
 
@@ -136,7 +138,7 @@ pub fn status_message(message: &StatusMessage) -> String {
                 format!("Zakończono: {summary}"),
             )
         }
-        StatusMessage::Failed { reason } => reason.clone(),
+        StatusMessage::Failed { failure: kind } => failure(kind),
     }
 }
 
@@ -168,6 +170,80 @@ fn add_count(parts: &mut Vec<String>, count: usize, english: &str, polish: &str)
             format!("{count} {english}"),
             format!("{polish}: {count}"),
         ));
+    }
+}
+
+/// A failed operation or metadata edit. These messages were never translated, so both languages
+/// show the English the errors have always carried.
+#[must_use]
+pub fn failure(failure: &Failure) -> String {
+    match failure {
+        Failure::IndexQuery { index } => format!("library search failed: {}", index_failure(index)),
+        Failure::IndexUpdate { index } => index_failure(index),
+        Failure::InvalidNoteId { value } => format!("invalid note id: {value}"),
+        Failure::EmptyTitle => "title must not be empty".to_owned(),
+        Failure::InvalidSha256Digest => "invalid sha256 digest".to_owned(),
+        Failure::InvalidRelativePath { path } => format!("invalid root-relative path: {path}"),
+        Failure::MissingProvenance => {
+            "missing metadata provenance: expected `provenance` or legacy `origin`".to_owned()
+        }
+        Failure::NoteNotFound { key } => format!("indexed note not found: {key}"),
+        Failure::OperationAlreadyInProgress => "a rescan is already in progress".to_owned(),
+        Failure::NoOperationInProgress => "no operation is in progress".to_owned(),
+        Failure::RescanNotCancellable => {
+            "the rescan has already committed and can no longer be canceled".to_owned()
+        }
+        Failure::WorkerStopped => "the index worker has stopped".to_owned(),
+        Failure::WorkerStart { detail } => format!("failed to start the index worker: {detail}"),
+        Failure::LibraryUnreadable { detail } => format!("library root is not readable: {detail}"),
+        Failure::EnumerationFailed { detail } => format!("library enumeration failed: {detail}"),
+        Failure::CancellationStateClosed => {
+            "rescan cancellation state closed unexpectedly".to_owned()
+        }
+    }
+}
+
+fn index_failure(failure: &IndexFailure) -> String {
+    match failure {
+        IndexFailure::Database { detail } => format!("sqlite error: {detail}"),
+        IndexFailure::DuplicateNoteId { id } => {
+            format!("note id {id} is already used by another indexed record")
+        }
+        IndexFailure::UnsupportedSchemaVersion { found, supported } => {
+            format!("index schema version {found} is newer than the supported version {supported}")
+        }
+        IndexFailure::IncompleteSchema { version, missing } => {
+            format!("index schema version {version} is incomplete: {missing}")
+        }
+        IndexFailure::UnknownNote { hash } => format!("no indexed record has content hash {hash}"),
+    }
+}
+
+/// The setup screen's storage error, in English as it always was.
+#[must_use]
+pub fn storage_error(error: &StorageError) -> String {
+    match error {
+        StorageError::Cancelled => "no library root was selected".to_owned(),
+        StorageError::NotADirectory => "the selected item is not a directory".to_owned(),
+        StorageError::PermissionLost => {
+            "permission for the library root was lost; reauthorize to continue".to_owned()
+        }
+        StorageError::PermissionDenied => {
+            "the platform refused to grant the SAF permission".to_owned()
+        }
+        StorageError::Other(detail) => format!("storage error: {detail}"),
+    }
+}
+
+/// Why the PDF viewer could not be opened, in English as it always was.
+#[must_use]
+pub fn viewer_error(error: &ViewerError) -> String {
+    match error {
+        ViewerError::InvalidContentUri => {
+            "external PDF access requires a SAF content URI".to_owned()
+        }
+        ViewerError::NoCompatibleViewer => "no installed application can open PDFs".to_owned(),
+        ViewerError::Platform(detail) => format!("could not launch PDF viewer: {detail}"),
     }
 }
 

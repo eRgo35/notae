@@ -193,7 +193,7 @@ fn next_root_id() -> LibraryRootId {
 }
 
 /// Errors a [`LibraryRootProvider`] can surface.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StorageError {
     /// The user dismissed the SAF picker without choosing anything.
     #[error("no library root was selected")]

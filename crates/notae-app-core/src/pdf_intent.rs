@@ -43,7 +43,7 @@ pub enum LaunchResult {
 }
 
 /// Failures while validating or launching an external PDF viewer.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 pub enum ViewerError {
     /// Only SAF content URIs may cross the app boundary.
     #[error("external PDF access requires a SAF content URI")]

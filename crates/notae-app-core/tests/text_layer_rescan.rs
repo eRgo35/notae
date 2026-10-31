@@ -162,7 +162,7 @@ fn wait_for_scan(controller: &OperationController) -> Vec<notae_app_core::ui::se
     loop {
         match controller.recv_event_timeout(Duration::from_secs(2)) {
             Some(OperationEvent::Completed { rows, .. }) => return rows,
-            Some(OperationEvent::Failed { reason }) => panic!("rescan failed: {reason}"),
+            Some(OperationEvent::Failed { failure }) => panic!("rescan failed: {failure:?}"),
             Some(_) => {}
             None => panic!("rescan did not finish"),
         }
@@ -279,7 +279,7 @@ fn rescan_reports_pdf_text_extraction_failure_and_marks_record_incomplete() {
                 assert_eq!(rows[0].status, RowStatus::TextPending);
                 break;
             }
-            Some(OperationEvent::Failed { reason }) => panic!("rescan failed: {reason}"),
+            Some(OperationEvent::Failed { failure }) => panic!("rescan failed: {failure:?}"),
             Some(_) => {}
             None => panic!("rescan did not finish"),
         }
@@ -323,7 +323,7 @@ fn rescan_cannot_be_canceled_after_reconciliation_commits() {
                 break;
             }
             Some(OperationEvent::Canceled) => panic!("committed rescan cannot be canceled"),
-            Some(OperationEvent::Failed { reason }) => panic!("rescan failed: {reason}"),
+            Some(OperationEvent::Failed { failure }) => panic!("rescan failed: {failure:?}"),
             Some(_) => {}
             None => panic!("rescan did not finish"),
         }

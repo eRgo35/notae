@@ -360,3 +360,15 @@ fn chosen_storage_enables_settings_without_starting_a_scan() {
         .expect("return to library");
     assert_eq!(model.state().screen(), &Screen::Library);
 }
+
+#[test]
+fn refused_grant_is_a_typed_storage_error() {
+    use notae_app_core::ui::{StorageStateKindView, UiModel};
+
+    let mut model = UiModel::new();
+    model.set_storage(StorageState::Error(StorageError::PermissionDenied));
+    assert!(matches!(
+        model.storage_kind(),
+        StorageStateKindView::Error(StorageError::PermissionDenied)
+    ));
+}

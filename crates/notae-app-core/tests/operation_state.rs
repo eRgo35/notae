@@ -324,13 +324,13 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         .expect("start failed");
     model
         .apply_operation_event(OperationEvent::Failed {
-            reason: "scan failed".to_owned(),
+            failure: notae_app_core::text::Failure::WorkerStopped,
         })
         .expect("fail scan");
     assert_eq!(
         model.status().operation,
         OperationState::Failed {
-            reason: "scan failed".to_owned(),
+            failure: notae_app_core::text::Failure::WorkerStopped,
         }
     );
     assert_eq!(model.status().latest_rescan, Some(summary));
@@ -559,10 +559,13 @@ fn metadata_events_keep_errors_visible_and_close_after_success() {
 
     model
         .apply_operation_event(OperationEvent::MetadataFailed {
-            reason: "duplicate note ID".to_owned(),
+            failure: notae_app_core::text::Failure::EmptyTitle,
         })
         .expect("retain save error in editor");
-    assert_eq!(model.metadata_error(), Some("duplicate note ID"));
+    assert_eq!(
+        model.metadata_error(),
+        Some(&notae_app_core::text::Failure::EmptyTitle)
+    );
     assert!(model.metadata_editor().is_some());
 
     model
@@ -892,7 +895,7 @@ fn successful_result_clears_itself_but_failures_do_not() {
     let mut failed = scanning_model();
     failed
         .apply_operation_event(OperationEvent::Failed {
-            reason: "boom".to_owned(),
+            failure: notae_app_core::text::Failure::WorkerStopped,
         })
         .expect("failure");
     assert!(!failed.expire_finished_result(start));
@@ -946,4 +949,38 @@ fn reading_progress_never_moves_backwards() {
         previous = fraction;
     }
     assert_eq!(previous, 1.0);
+}
+
+#[test]
+fn worker_and_search_failures_reach_the_banner_as_typed_kinds() {
+    use notae_app_core::text::{Failure, IndexFailure};
+    use notae_app_core::ui::search::UiError;
+    use notae_index::IndexError;
+
+    let mut model = scanning_model();
+    model
+        .apply_operation_event(OperationEvent::Failed {
+            failure: Failure::from(&UiError::WorkerStopped),
+        })
+        .expect("failure");
+    assert_eq!(
+        banner(&model).message,
+        Some(StatusMessage::Failed {
+            failure: Failure::WorkerStopped
+        })
+    );
+
+    let search = UiError::Index(IndexError::UnsupportedSchemaVersion {
+        found: 9,
+        supported: 3,
+    });
+    assert_eq!(
+        Failure::from(&search),
+        Failure::IndexQuery {
+            index: IndexFailure::UnsupportedSchemaVersion {
+                found: 9,
+                supported: 3
+            }
+        }
+    );
 }
