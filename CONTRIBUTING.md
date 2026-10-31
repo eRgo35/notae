@@ -2,8 +2,8 @@
 
 Thanks for helping. Notae is a small, local-first project, so contributions
 that keep it simple, private and well-tested are the most welcome. This guide
-covers the development setup, the quality gates CI enforces, and the
-conventions the repository follows.
+covers the development setup, the quality gates, the development workflow and
+the conventions the repository follows.
 
 By contributing you agree that your work is released under the
 [MIT License](LICENSE). Security problems go to [`SECURITY.md`](SECURITY.md),
@@ -79,26 +79,24 @@ Android crate to UI and platform glue. The product scope is in the
 
 ## Quality gates
 
-CI runs these on every pull request and on `main`. Run them locally before you
-push; they are the same commands listed in
-[`docs/engineering-standards.md`](docs/engineering-standards.md):
+`scripts/check.sh` runs the gates listed in
+[`docs/engineering-standards.md`](docs/engineering-standards.md), from any
+directory, and stops at the first failure:
 
 ```sh
-cargo fmt --check
-cargo clippy --workspace --all-targets -- -D warnings -A clippy::unwrap_used -A clippy::expect_used
-cargo clippy --workspace --lib --bins -- -D warnings -D clippy::unwrap_used -D clippy::expect_used
-cargo test --workspace
-RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
-cargo deny check
-cargo llvm-cov --workspace --summary-only --fail-under-lines 84
-cargo run -p notae-index-cli -- --help
+scripts/check.sh        # fast: fmt, both Clippy passes, tests
+scripts/check.sh full   # fast plus rustdoc, cargo deny, coverage, CLI smoke,
+                        # and the Android target check
 ```
 
-The Android arm64 compile gate is a separate CI job:
+Run `fast` while working and `full` before merging. `full` checks first that
+`cargo-deny`, `cargo-llvm-cov`, `cargo-apk2` and the NDK are installed. GitHub
+CI runs only fmt, Clippy and the tests, and skips changes that touch only
+Markdown or `docs/`; everything else is checked locally.
 
-```sh
-cargo apk2 check -p notae-android --target aarch64-linux-android
-```
+The opt-in pre-push hook runs `scripts/check.sh fast`. Enable it per clone with
+`git config core.hooksPath scripts/hooks`; skip it once with
+`git push --no-verify`.
 
 Notes:
 
@@ -169,15 +167,42 @@ by the official release APK (and vice versa); see
   `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`. Reference issues
   in the body (`Refs #12`, `Fixes #12`).
 - Keep commits small and focused; do not mix refactors with behaviour changes.
-  No Git hook is installed, so run the gates yourself.
-- Open a pull request against `main` and fill in the template. CI must pass
-  both jobs (**Rust quality gates** and **Android arm64 compile**). A newer push
-  cancels the older run on the same branch.
+  No hook is mandatory, so run the gates yourself (or enable the opt-in hook).
+- Open a pull request against `main` and fill in the template. The CI job
+  (**fmt, clippy, tests**) must pass, and `scripts/check.sh full` must pass
+  locally; say so in the pull request. A newer push cancels the older run on
+  the same branch.
 - Update documentation and [`CHANGELOG.md`](CHANGELOG.md) (under
   `[Unreleased]`) for user-visible changes.
-- Releases are cut by the maintainer from a version tag; see
-  [`docs/android-release.md`](docs/android-release.md). Contributors do not need
-  to bump versions.
+- Releases are cut by the maintainer from a version tag with
+  `scripts/release.sh`; see [`docs/android-release.md`](docs/android-release.md).
+  Contributors do not need to bump versions.
+
+## Development workflow
+
+Notae has one maintainer, working with Claude. Each change goes through these
+steps:
+
+1. **Issue.** Open or pick an issue, give it a triage label and a milestone.
+2. **Branch.** Branch from `main` (`feat/…`, `fix/…`) or use a worktree under
+   `.worktrees/`. Multi-step work gets a plan in `docs/superpowers/plans/`. UI
+   or architecture ideas can be mocked as a private Claude Artifact before any
+   code.
+3. **Build test-first.** Write the failing test, then the code. Run
+   `scripts/check.sh fast` while working, or let the opt-in hook run it on
+   push.
+4. **Pull request.** Open a PR to `main`. The light CI runs; run
+   `scripts/check.sh full` locally before merging and say so in the PR.
+5. **Device check.** Build with `scripts/build-apk.sh dev` and try it on the
+   emulator or the Galaxy Tab S10 FE+, following the checklist in
+   [`docs/android-debugging.md`](docs/android-debugging.md).
+6. **Merge**, with an entry under `[Unreleased]` in
+   [`CHANGELOG.md`](CHANGELOG.md).
+7. **Release.** Bump the version and the lockfile, write
+   `docs/release-notes/vX.Y.Z.md`, commit and push `main`, tag and push the
+   tag, then run `scripts/release.sh vX.Y.Z`
+   ([`docs/android-release.md`](docs/android-release.md)).
+8. **Close issues** only after the change is verified on a device.
 
 ## Issues and labels
 

@@ -11,15 +11,8 @@
 
 Quality gates (see [CONTRIBUTING.md](https://github.com/eRgo35/notae/blob/main/CONTRIBUTING.md) and `docs/engineering-standards.md`):
 
-- [ ] `cargo fmt --check`
-- [ ] `cargo clippy --workspace --all-targets -- -D warnings -A clippy::unwrap_used -A clippy::expect_used`
-- [ ] `cargo clippy --workspace --lib --bins -- -D warnings -D clippy::unwrap_used -D clippy::expect_used`
-- [ ] `cargo test --workspace`
-- [ ] `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps`
-- [ ] `cargo deny check`
-- [ ] `cargo llvm-cov --workspace --summary-only --fail-under-lines 84`
-- [ ] `cargo run -p notae-index-cli -- --help`
-- [ ] `cargo apk2 check -p notae-android --target aarch64-linux-android` (if Android code changed)
+- [ ] `scripts/check.sh full` passed locally
+- [ ] or only `scripts/check.sh fast` (say why `full` was not run)
 
 Change hygiene:
 

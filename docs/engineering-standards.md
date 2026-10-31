@@ -4,6 +4,15 @@
 
 Use Rust 1.98.1 from `rust-toolchain.toml`, including `rustfmt` and `clippy`. On Linux, install `pkg-config`, Tesseract development headers, Leptonica development headers, Fontconfig development headers, and the English Tesseract language data used by CLI integration tests. On Ubuntu, the packages are `pkg-config libtesseract-dev libleptonica-dev libfontconfig1-dev tesseract-ocr-eng`. Ubuntu installs that language data under `/usr/share/tesseract-ocr/5/tessdata`; CI sets `TESSDATA_PREFIX` to this directory so subprocess tests use the installed pack. Fedora/RHEL hosts without system pkg-config files can follow [`crates/notae-ocr/README.md`](../crates/notae-ocr/README.md) and set `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` for Cargo commands; Fontconfig must also be discoverable by pkg-config. For CLI integration tests on such hosts, install an English Tesseract pack and point `TESSDATA_PREFIX` at its data directory.
 
+`scripts/check.sh` runs the gates from any directory and stops at the first failure:
+
+```sh
+scripts/check.sh        # fast: the first four gates below
+scripts/check.sh full   # all nine, including the Android target gate
+```
+
+`full` first checks that `cargo-deny`, `cargo-llvm-cov`, `cargo-apk2` and the NDK are installed and names the install command for anything missing. On the maintainer workstation (16 threads, warm `target/`) `fast` takes about 2 minutes and `full` about 9. Run `fast` while working and `full` before merging; every release runs `full` again (see [`android-release.md`](android-release.md)). The gates, in order:
+
 ```sh
 cargo fmt --check
 cargo clippy --workspace --all-targets -- -D warnings -A clippy::unwrap_used -A clippy::expect_used
@@ -13,7 +22,10 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo deny check
 cargo llvm-cov --workspace --summary-only --fail-under-lines 84
 cargo run -p notae-index-cli -- --help
+cargo apk2 check -p notae-android --target aarch64-linux-android
 ```
+
+An opt-in pre-push hook runs `fast`: enable it per clone with `git config core.hooksPath scripts/hooks` and skip it once with `git push --no-verify`. No hook is mandatory.
 
 Install the pinned tools with `cargo install --locked --version 0.20.2 cargo-deny` and `cargo install --locked --version 0.9.1 cargo-llvm-cov`. `cargo deny` reports existing transitive duplicate versions as warnings and ignores only the two unmaintained advisories with no safe upgrade; see `deny.toml`.
 
@@ -21,28 +33,19 @@ The measured workspace line-coverage baseline was 85.48%; the enforced floor is 
 
 ## Android target gate
 
-Install JDK 17, Android SDK command-line tools, NDK r26d, and `cargo-apk2` 1.4.0. Then run:
-
-CI explicitly installs `platform-tools`, `platforms;android-34`, and `build-tools;34.0.0` through `android-actions/setup-android`, then NDK `26.3.11579264`. Do not use the action's default package list: it includes the retired `tools` SDK package, which causes setup to fail before the target gate runs.
-
-```sh
-cargo apk2 check -p notae-android --target aarch64-linux-android
-```
-
-CI runs the same arm64 target check; the signed release build runs only from a version tag (see [`android-release.md`](android-release.md)). Installing and visually reviewing the app on the Galaxy Tab S10 FE+ remains manual; follow [`android-debugging.md`](android-debugging.md).
+Install JDK 17, the Android SDK (`platform-tools`, `platforms;android-34`, `build-tools;34.0.0`), NDK r26d (`26.3.11579264`), the `aarch64-linux-android` Rust target and `cargo-apk2` 1.4.0. `scripts/check.sh full` then runs `cargo apk2 check -p notae-android --target aarch64-linux-android`, with the same `ANDROID_HOME`, `ANDROID_NDK_ROOT` and Java 17 defaults as `scripts/build-apk.sh`. GitHub CI does not run it. Installing and visually reviewing the app on the Galaxy Tab S10 FE+ remains manual; follow [`android-debugging.md`](android-debugging.md).
 
 ## GitHub workflows
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `ci.yml` | push to `main`, pull requests, manual, reusable | The host gates above and the arm64 compile gate, with `contents: read`. Superseded branch/PR runs are cancelled; `main` runs are not. The host job frees preinstalled runner directories and sets `CARGO_INCREMENTAL=0` because the build fills the runner disk, and prints `df`/`du` diagnostics. A `cargo clean` step runs before `cargo llvm-cov`, which rebuilds the workspace instrumented in `target/llvm-cov-target` and otherwise exhausts the disk (`ld: Bus error`, run 39052021642). No `target/` cache is used for the same reason. |
-| `release.yml` | `v*` tag, manual with a tag | Verifies the tag, reruns `ci.yml` on the tagged commit, builds and signs the arm64 APK from repository secrets, verifies it and attaches it to the GitHub Release. See [`android-release.md`](android-release.md) for the secrets, the release procedure and the debug-key/release-key incompatibility. |
+| `ci.yml` | push to `main`, pull requests, manual; skipped when only Markdown or `docs/` changed | One job: `cargo fmt --check`, both Clippy passes and `cargo test --workspace`, with `contents: read`. Superseded branch/PR runs are cancelled; `main` runs are not. It frees preinstalled runner directories and sets `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=0` because the build fills the runner disk. It caches the Cargo registry and git sources (keyed on `Cargo.lock`) but not `target/`, for the same reason. The other gates run locally with `scripts/check.sh full`. |
 | `audit.yml` | weekly, manual | `cargo deny check advisories` so new RustSec entries surface without code changes; never blocks a release. |
 | `dependabot.yml` | weekly | Grouped Cargo and GitHub Actions update PRs, merged by hand. |
 
-Third-party actions are pinned by major version. Workflows can be checked locally with `actionlint`.
+Releases are not built on GitHub: the maintainer runs `scripts/release.sh` (see [`android-release.md`](android-release.md)). The workflows use only first-party `actions/*`, pinned by major version. Workflows can be checked locally with `actionlint`.
 
-The **Rust quality gates** job runs on `ubuntu-24.04`, not `ubuntu-latest`: on the 26.04 image the `leptonica-sys` 0.4.9 bindgen step fails with `unknown type name 'atomic_int'` when it picks libclang 21 or 22 (the image ships clang 20, 21 and 22; a 26.04 container reproduces the failure and passes with `LIBCLANG_PATH=/usr/lib/llvm-20/lib`). Move the pin only after confirming the host build on the newer image.
+The CI job runs on `ubuntu-24.04`, not `ubuntu-latest`: on the 26.04 image the `leptonica-sys` 0.4.9 bindgen step fails with `unknown type name 'atomic_int'` when it picks libclang 21 or 22 (the image ships clang 20, 21 and 22; a 26.04 container reproduces the failure and passes with `LIBCLANG_PATH=/usr/lib/llvm-20/lib`). Move the pin only after confirming the host build on the newer image.
 
 ## Audit summary
 
@@ -51,20 +54,20 @@ The **Rust quality gates** job runs on `ubuntu-24.04`, not `ubuntu-latest`: on t
 | BASE-001 | pass | important | `AGENTS.md` is canonical and points to these commands. |
 | BASE-002 | pass | blocking | `rust-toolchain.toml` pins Rust 1.98.1, rustfmt, and clippy. |
 | BASE-003 | pass | blocking | Root `Cargo.lock` is present. |
-| BASE-004 | pass | blocking | `.github/workflows/ci.yml` runs the documented host gates and Android target command without hidden flags. |
-| BASE-005 | pass | advisory | `cargo fmt --check` runs locally and in CI. |
+| BASE-004 | pass | blocking | `scripts/check.sh` runs the documented gates and the Android target command without hidden flags; CI runs fmt, Clippy and tests. |
+| BASE-005 | pass | advisory | `cargo fmt --check` runs in `scripts/check.sh` and in CI. |
 | BASE-006 | pass | important | Clippy warnings are denied across all targets. |
 | BASE-007 | pass | important | Workspace and production-only Clippy passes provide static analysis. |
 | BASE-008 | pass | blocking | `cargo test --workspace` exercises the behavioral suite and real fixtures. |
 | BASE-009 | pass | important | `cargo llvm-cov` enforces a measured 84% line-coverage floor. |
 | BASE-010 | pass | important | `cargo deny check` audits advisories, licenses, duplicate versions, and sources. |
 | BASE-011 | pass | advisory | `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps` passes. |
-| BASE-012 | pass | blocking | CI smokes CLI `--help` and compiles Android arm64; device UI review remains manual. |
+| BASE-012 | pass | blocking | `scripts/check.sh full` smokes CLI `--help` and compiles Android arm64; device UI review remains manual. |
 | BASE-013 | pass | important | Rescan cancellation and worker cleanup are covered by tests; worker startup errors are returned rather than panicking. |
 | BASE-014 | pass | advisory | Remaining deviations below include their reason, owner, and review condition. |
 | RUST-001 | pass | blocking | Exact toolchain and formatter/linter components are pinned. |
 | RUST-002 | conflict | important | `apps/notae-android/Cargo.toml` retains its separate `unsafe_code = "deny"` policy because workspace `forbid` cannot be lowered at the FFI shim. Other members inherit workspace lints. Owner: Notae maintainers. Revisit when the Android FFI boundary changes. |
-| RUST-003 | pass | blocking | `cargo fmt --check` runs locally and in CI. |
+| RUST-003 | pass | blocking | `cargo fmt --check` runs in `scripts/check.sh` and in CI. |
 | RUST-004 | pass | blocking | Clippy runs across all workspace targets; no mutually exclusive features are declared. |
 | RUST-005 | pass | blocking | `cargo test --workspace` runs the host behavioral suite. |
 | RUST-006 | pass | advisory | Rustdoc warning-denied build passes. |
@@ -79,6 +82,6 @@ The **Rust quality gates** job runs on `ubuntu-24.04`, not `ubuntu-latest`: on t
 | COND-005 | gap | important | Android UI has no deterministic headless visual baseline; current verification requires an emulator/tablet. Keep the manual checklist in `docs/android-debugging.md`; add screenshot comparison when a stable emulator rendering environment is available. Owner: Notae maintainers. |
 | COND-006 | gap | important | PDF and sidecar inputs are parsed from files, but no fuzz harness exists. Add fuzz targets for sidecar validation and PDF ingestion. Owner: Notae maintainers. Review before accepting a new parser or broader untrusted-input surface. |
 | COND-007 | not-applicable | advisory | No latency or throughput requirement is claimed. |
-| COND-008 | pass | important | CI cross-compiles the Android arm64 target; device installation and interaction remain a manual release/debug check. |
+| COND-008 | pass | important | `scripts/check.sh full` and every release cross-compile the Android arm64 target; device installation and interaction remain a manual release/debug check. |
 
 `cargo deny` allows the MIT project license and the confirmed Slint license terms. Its remaining duplicate-version warnings come from transitive OCR, PDF, and Slint dependencies; re-evaluate them during dependency upgrades.
