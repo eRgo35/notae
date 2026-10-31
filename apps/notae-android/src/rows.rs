@@ -7,6 +7,8 @@
 
 use notae_app_core::ui::search::{SearchRow, split_snippet};
 
+use crate::texts;
+
 /// Projects a search result onto the Slint row the Library and Search screens show.
 ///
 /// `android_main` calls this for every row it publishes; host tests call it to
@@ -28,17 +30,17 @@ pub fn library_row(
         tags: row.tags.join(", ").into(),
         // An image-only PDF is searchable by title and metadata; the library does not nag about it.
         status: if row.text_pending {
-            String::new()
+            ""
         } else {
-            row.status
+            texts::row_status(row.status)
         }
         .into(),
         note_key: row.note_key.into(),
         relative_path: row.relative_path.into(),
         has_thumbnail: thumbnail.is_some(),
         thumbnail: thumbnail.unwrap_or_default(),
-        title_origin: row.title_origin.into(),
-        composer_origin: row.composer_origin.into(),
+        title_origin: texts::origin(row.title_origin).into(),
+        composer_origin: texts::origin(row.composer_origin).into(),
         snippet_before: before.into(),
         snippet_match: hit.into(),
         snippet_after: after.into(),
@@ -58,9 +60,9 @@ impl From<notae_app_core::ui::browse::SetCard> for crate::SetCard {
         Self {
             id: card.id.into(),
             name: card.name.into(),
-            date: card.date.into(),
-            count: card.count.into(),
-            edited: card.edited.into(),
+            date: texts::set_date(card.date.as_deref()).into(),
+            count: texts::item_count(card.count).into(),
+            edited: texts::edited(&card.edited).into(),
         }
     }
 }
@@ -70,7 +72,12 @@ impl From<notae_app_core::ui::SetChoice> for crate::SetChoice {
         Self {
             id: choice.id.into(),
             name: choice.name.into(),
-            detail: choice.detail.into(),
+            detail: format!(
+                "{} · {}",
+                texts::set_date(choice.date.as_deref()),
+                texts::item_count(choice.count)
+            )
+            .into(),
             checked: choice.checked,
         }
     }

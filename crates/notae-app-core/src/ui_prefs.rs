@@ -10,8 +10,6 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::language::LanguageChoice;
-
 /// How the library lists scores. Applies to every section.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum LibraryView {
@@ -141,4 +139,62 @@ impl UiPrefs {
         fs::write(&temporary, self.to_text())?;
         fs::rename(temporary, path)
     }
+}
+
+/// The language picked in Settings, or in Android's per-app language setting.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LanguageChoice {
+    /// Follow the system language.
+    #[default]
+    System,
+    /// English, whatever the system language.
+    English,
+    /// Polish, whatever the system language.
+    Polish,
+}
+
+impl LanguageChoice {
+    /// The BCP 47 tag Android stores for this choice; empty for [`Self::System`].
+    #[must_use]
+    pub const fn tag(self) -> &'static str {
+        match self {
+            Self::System => "",
+            Self::English => "en",
+            Self::Polish => "pl",
+        }
+    }
+
+    /// Reads an Android locale tag. Unsupported languages mean "follow the system".
+    #[must_use]
+    pub fn from_tag(tag: &str) -> Self {
+        match primary_language(tag) {
+            "en" => Self::English,
+            "pl" => Self::Polish,
+            _ => Self::System,
+        }
+    }
+
+    /// Position in the Settings list.
+    #[must_use]
+    pub const fn index(self) -> i32 {
+        match self {
+            Self::System => 0,
+            Self::English => 1,
+            Self::Polish => 2,
+        }
+    }
+
+    /// Reads a Settings list position; unknown positions mean "follow the system".
+    #[must_use]
+    pub const fn from_index(index: i32) -> Self {
+        match index {
+            1 => Self::English,
+            2 => Self::Polish,
+            _ => Self::System,
+        }
+    }
+}
+
+fn primary_language(tag: &str) -> &str {
+    tag.split(['-', '_']).next().unwrap_or_default()
 }

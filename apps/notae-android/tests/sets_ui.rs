@@ -465,7 +465,10 @@ fn saving_a_new_set_opens_it_and_writes_the_file() {
         .create_set(fields("  Dzień Zaduszny ", Some("2026-11-02")))
         .expect("valid fields");
     assert_eq!(model.section(), &LibrarySection::Set(id.clone()));
-    assert_eq!(model.section_title(), "Dzień Zaduszny");
+    assert_eq!(
+        model.section_title(),
+        notae_app_core::text::SectionTitle::Set("Dzień Zaduszny".to_owned())
+    );
     let stored = SetStore::load(&path);
     let set = stored.get(&id).expect("saved to sets.json");
     assert_eq!(set.date.as_deref(), Some("2026-11-02"));
@@ -525,12 +528,12 @@ fn search_row(key: char, title: &str) -> notae_app_core::ui::search::SearchRow {
         title: title.to_owned(),
         composer_or_artist: Some("Anonim".to_owned()),
         tags: Vec::new(),
-        status: String::new(),
+        status: notae_app_core::text::RowStatus::Ready,
         relative_path: format!("{title}.pdf"),
         note_key: key.to_string().repeat(64),
         text_pending: false,
-        title_origin: String::new(),
-        composer_origin: String::new(),
+        title_origin: notae_domain::MetadataOrigin::Unset,
+        composer_origin: notae_domain::MetadataOrigin::Unset,
         text_snippet: None,
         item_id: None,
         position: None,
@@ -743,7 +746,7 @@ fn picker_adds_at_end_and_counts() {
     );
     assert!(!rows[1].in_set && !rows[1].added);
     assert_eq!(
-        model.add_picker_footer_text(),
+        notae_android::texts::add_picker_footer(model.add_picker_added_count()),
         "0 added at the end of the set"
     );
 
@@ -763,7 +766,7 @@ fn picker_adds_at_end_and_counts() {
     assert!(rows[0].in_set && rows[0].added);
     assert!(rows[2].added);
     assert_eq!(
-        model.add_picker_footer_text(),
+        notae_android::texts::add_picker_footer(model.add_picker_added_count()),
         "2 added at the end of the set"
     );
 
@@ -822,7 +825,7 @@ fn picker_untoggle_removes_only_this_sessions_item() {
     );
     assert!(model.add_picker_rows()[0].in_set && !model.add_picker_rows()[0].added);
     assert_eq!(
-        model.add_picker_footer_text(),
+        notae_android::texts::add_picker_footer(model.add_picker_added_count()),
         "0 added at the end of the set"
     );
 

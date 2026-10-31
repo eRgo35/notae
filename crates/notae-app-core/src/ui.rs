@@ -18,7 +18,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use crate::favorites::{Favorites, PieceRef};
-use crate::language::{pick, polish_plural};
 use crate::operations::events::{OperationEvent, RescanSummary};
 use crate::recent::RecentScores;
 use crate::sets::{ItemKind, SetFieldError, SetFields, SetStore};
@@ -26,6 +25,7 @@ use crate::state::{
     AppController, AppState, EventError, OperationState, RescanPhase, Transition, UiEvent,
 };
 use crate::storage::StorageState;
+use crate::text::{SectionTitle, StatusMessage};
 use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::{
     LibrarySection, Neighbours, SectionContext, neighbours, row_id, section_rows,
@@ -65,8 +65,10 @@ pub struct SetChoice {
     pub id: String,
     /// The set's name.
     pub name: String,
-    /// The set's date and item count.
-    pub detail: String,
+    /// The set's ISO `YYYY-MM-DD` date, if it has one.
+    pub date: Option<String>,
+    /// How many items (pieces and notes) the set holds.
+    pub count: usize,
     /// Whether the set holds the piece the checklist is open for.
     pub checked: bool,
 }
@@ -438,7 +440,8 @@ impl UiModel {
             .map(|card| SetChoice {
                 id: card.id.clone(),
                 name: card.name.clone(),
-                detail: format!("{} · {}", card.date, card.count),
+                date: card.date.clone(),
+                count: card.count,
                 checked: containing.iter().any(|id| card.id == id.as_str()),
             })
             .collect()
@@ -587,14 +590,12 @@ impl UiModel {
             .collect()
     }
 
-    /// The picker's footer: how many pieces this session added.
+    /// How many pieces this picker session added, for the picker's footer.
     #[must_use]
-    pub fn add_picker_footer_text(&self) -> String {
-        add_picker_footer(
-            self.add_picker
-                .as_ref()
-                .map_or(0, |picker| picker.added.len()),
-        )
+    pub fn add_picker_added_count(&self) -> usize {
+        self.add_picker
+            .as_ref()
+            .map_or(0, |picker| picker.added.len())
     }
 
     /// Validates `fields` and replaces the set's name, date and notes.
@@ -721,7 +722,7 @@ impl UiModel {
     /// Returns the I/O error when the preferences cannot be saved; the choice stays in effect.
     pub fn set_language(
         &mut self,
-        language: crate::language::LanguageChoice,
+        language: crate::ui_prefs::LanguageChoice,
     ) -> std::io::Result<()> {
         if self.ui_prefs.language == language {
             return Ok(());
@@ -797,7 +798,7 @@ impl UiModel {
 
     /// The large title of the section on display; an open set's title is its name.
     #[must_use]
-    pub fn section_title(&self) -> String {
+    pub fn section_title(&self) -> SectionTitle {
         self.section.title(&self.sets)
     }
 
@@ -928,7 +929,7 @@ impl UiModel {
                 self.search_rows = rows;
                 self.relink_saved_pieces();
                 self.startup_presentation = StartupPresentation::Ready;
-                self.controller.complete_operation(rescan_summary(&summary));
+                self.controller.complete_operation(summary);
             }
             OperationEvent::SearchRows(rows) => {
                 self.startup_presentation = StartupPresentation::Ready;
@@ -1054,18 +1055,6 @@ struct AddPicker {
     rows: Option<Vec<SearchRow>>,
 }
 
-/// "3 added at the end of the set" (Polish "Dodano 3 utwory na końcu zestawu").
-#[must_use]
-pub fn add_picker_footer(count: usize) -> String {
-    pick(
-        format!("{count} added at the end of the set"),
-        format!(
-            "Dodano {count} {} na końcu zestawu",
-            polish_plural(count, "utwór", "utwory", "utworów")
-        ),
-    )
-}
-
 fn log_prefs_error(result: std::io::Result<()>) {
     if let Err(error) = result {
         eprintln!("notae: cannot save UI preferences: {error}");
@@ -1090,8 +1079,8 @@ impl Default for UiModel {
 /// Library, Search and Settings always agree.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OperationBanner {
-    /// One-line description of the work or outcome; empty when idle.
-    pub text: String,
+    /// The work in progress or its outcome; `None` when idle.
+    pub message: Option<StatusMessage>,
     /// Whether work is in progress.
     pub busy: bool,
     /// Whether the banner reports a failure.
@@ -1109,29 +1098,19 @@ impl OperationBanner {
     /// Projects `operation` into banner fields.
     #[must_use]
     pub fn project(operation: &OperationState) -> Self {
-        let text = match operation {
-            OperationState::Idle => String::new(),
-            OperationState::Rescan { phase } => match phase {
-                RescanPhase::Enumerating => {
-                    pick("Scanning library…", "Skanowanie biblioteki…").to_owned()
+        let message = match operation {
+            OperationState::Idle => None,
+            OperationState::Rescan { phase } => Some(match *phase {
+                RescanPhase::Enumerating => StatusMessage::ScanningLibrary,
+                RescanPhase::Indexing { total } => StatusMessage::Indexing { total },
+                RescanPhase::ReadingText { completed, total } => {
+                    StatusMessage::ReadingText { completed, total }
                 }
-                RescanPhase::Indexing { total: 1 } => {
-                    pick("Indexing 1 PDF…", "Indeksowanie 1 pliku PDF…").to_owned()
-                }
-                RescanPhase::Indexing { total } => pick(
-                    format!("Indexing {total} PDFs…"),
-                    format!("Indeksowanie {total} plików PDF…"),
-                ),
-                RescanPhase::ReadingText { completed, total } => pick(
-                    format!("Reading PDF text and thumbnails: {completed} of {total}"),
-                    format!("Odczyt tekstu i miniatur PDF: {completed} z {total}"),
-                ),
-            },
-            OperationState::Completed { summary } => pick(
-                format!("Finished: {summary}"),
-                format!("Zakończono: {summary}"),
-            ),
-            OperationState::Failed { reason } => reason.clone(),
+            }),
+            OperationState::Completed { summary } => Some(StatusMessage::Finished(*summary)),
+            OperationState::Failed { reason } => Some(StatusMessage::Failed {
+                reason: reason.clone(),
+            }),
         };
         let fraction = match operation {
             OperationState::Rescan {
@@ -1140,7 +1119,7 @@ impl OperationBanner {
             _ => None,
         };
         Self {
-            text,
+            message,
             busy: matches!(operation, OperationState::Rescan { .. }),
             failed: matches!(operation, OperationState::Failed { .. }),
             fraction,
@@ -1153,36 +1132,6 @@ impl OperationBanner {
                 OperationState::Completed { .. } | OperationState::Failed { .. }
             ),
         }
-    }
-}
-
-fn rescan_summary(summary: &RescanSummary) -> String {
-    let mut parts = Vec::new();
-    add_count(&mut parts, summary.added, "added", "dodano");
-    add_count(&mut parts, summary.updated, "updated", "zaktualizowano");
-    add_count(&mut parts, summary.moved, "moved", "przeniesiono");
-    add_count(&mut parts, summary.deleted, "deleted", "usunięto");
-    add_count(
-        &mut parts,
-        summary.conflicts,
-        "ID conflicts",
-        "konflikty numerów",
-    );
-    add_count(&mut parts, summary.failures, "failures", "błędy");
-    if parts.is_empty() {
-        pick("No changes", "Bez zmian").to_owned()
-    } else {
-        parts.join(", ")
-    }
-}
-
-/// English reads "3 added"; Polish reads "dodano: 3", which needs no plural agreement.
-fn add_count(parts: &mut Vec<String>, count: usize, english: &str, polish: &str) {
-    if count != 0 {
-        parts.push(pick(
-            format!("{count} {english}"),
-            format!("{polish}: {count}"),
-        ));
     }
 }
 

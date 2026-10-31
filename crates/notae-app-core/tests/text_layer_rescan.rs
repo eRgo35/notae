@@ -10,6 +10,7 @@ use notae_app_core::pdf_pages::{
     AndroidPdfDocument, PdfDocumentMetadata, PdfError, PdfPageBackend, classify_text_layer,
 };
 use notae_app_core::storage::LibraryCatalog;
+use notae_app_core::text::RowStatus;
 use notae_domain::{IndexStatus, PdfFingerprint, RelativePdfPath, Sha256Digest};
 use notae_index::{CatalogError, IndexStore, OcrText, PdfCatalog, PdfFile};
 use sha2::{Digest, Sha256};
@@ -187,7 +188,7 @@ fn rescan_marks_image_only_pdf_pending_without_overwriting_search_state() {
     let rows = wait_for_scan(&controller);
 
     assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].status, "OCR pending");
+    assert_eq!(rows[0].status, RowStatus::TextPending);
     drop(controller);
     let store = IndexStore::open(&database).expect("reopen index");
     assert!(
@@ -226,7 +227,7 @@ fn rescan_preserves_stored_ocr_when_platform_has_no_text_layer() {
     .expect("start test worker");
     let rows = wait_for_scan(&controller);
 
-    assert_eq!(rows[0].status, "Ready");
+    assert_eq!(rows[0].status, RowStatus::Ready);
     drop(controller);
     let store = IndexStore::open(&database).expect("reopen index after scan");
     assert_eq!(
@@ -275,7 +276,7 @@ fn rescan_reports_pdf_text_extraction_failure_and_marks_record_incomplete() {
                 assert!(saw_file_failure);
                 assert_eq!(summary.failures, 1);
                 assert_eq!(rows.len(), 1);
-                assert_eq!(rows[0].status, "OCR incomplete");
+                assert_eq!(rows[0].status, RowStatus::TextPending);
                 break;
             }
             Some(OperationEvent::Failed { reason }) => panic!("rescan failed: {reason}"),
@@ -318,7 +319,7 @@ fn rescan_cannot_be_canceled_after_reconciliation_commits() {
             Some(OperationEvent::Completed { rows, .. }) => {
                 assert!(saw_finalizing);
                 assert_eq!(rows.len(), 1);
-                assert_eq!(rows[0].status, "OCR pending");
+                assert_eq!(rows[0].status, RowStatus::TextPending);
                 break;
             }
             Some(OperationEvent::Canceled) => panic!("committed rescan cannot be canceled"),

@@ -1,16 +1,15 @@
 //! Library sections, composers, Recent and Favorites over projected rows, and row neighbours.
 
-use std::sync::Mutex;
-
 use notae_app_core::favorites::PieceRef;
-use notae_app_core::language::set_active_bundle;
 use notae_app_core::sets::{SetFields, SetStore};
+use notae_app_core::text::RowStatus;
 use notae_app_core::ui::UiModel;
 use notae_app_core::ui::browse::{
-    ComposerCount, LibrarySection, SectionContext, SetEntry, composers, format_edited,
-    format_set_date, neighbours, section_rows, sections, set_entries, set_subtitle,
+    ComposerCount, LibrarySection, SectionContext, SetEntry, composers, neighbours, section_rows,
+    sections, set_entries, set_subtitle,
 };
 use notae_app_core::ui::search::SearchRow;
+use notae_domain::MetadataOrigin;
 
 fn row(
     key: char,
@@ -24,12 +23,16 @@ fn row(
         title: title.to_owned(),
         composer_or_artist: composer.map(str::to_owned),
         tags: Vec::new(),
-        status: if pending { "OCR pending" } else { "Ready" }.to_owned(),
+        status: if pending {
+            RowStatus::TextPending
+        } else {
+            RowStatus::Ready
+        },
         relative_path: format!("{title}.pdf"),
         note_key: key.to_string().repeat(64),
         text_pending: pending,
-        title_origin: "From filename".to_owned(),
-        composer_origin: String::new(),
+        title_origin: MetadataOrigin::FilenameDerived,
+        composer_origin: MetadataOrigin::Unset,
         text_snippet: None,
         item_id: None,
         position: None,
@@ -318,9 +321,6 @@ fn empty_library_has_no_preview() {
     assert!(model.preview_neighbours().is_none());
 }
 
-/// The active language is process-wide; tests that switch it take turns.
-static LANGUAGE: Mutex<()> = Mutex::new(());
-
 fn set_fields(name: &str) -> SetFields {
     SetFields {
         name: name.to_owned(),
@@ -367,49 +367,6 @@ fn set_key_round_trips() {
 
 const NOV_1_2026: u64 = 1_793_491_200;
 const DAY: u64 = 86_400;
-
-#[test]
-fn format_edited_buckets() {
-    let _language = LANGUAGE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let now = NOV_1_2026 + 30 * DAY + 12 * 3600;
-    let today = now - 3600;
-    let yesterday = now - DAY;
-    let three_days = now - 3 * DAY;
-    let long_ago = NOV_1_2026 + 600;
-
-    set_active_bundle("");
-    assert_eq!(format_edited(today, now), "Edited today");
-    assert_eq!(format_edited(yesterday, now), "Edited yesterday");
-    assert_eq!(format_edited(three_days, now), "Edited 3 days ago");
-    assert_eq!(format_edited(long_ago, now), "Edited 1 Nov 2026");
-    // A clock that went backwards is not "in the future".
-    assert_eq!(format_edited(now + DAY, now), "Edited today");
-
-    set_active_bundle("pl");
-    assert_eq!(format_edited(today, now), "Edytowano dziś");
-    assert_eq!(format_edited(yesterday, now), "Edytowano wczoraj");
-    assert_eq!(format_edited(three_days, now), "Edytowano 3 dni temu");
-    assert_eq!(format_edited(long_ago, now), "Edytowano 1 lis 2026");
-    set_active_bundle("");
-}
-
-#[test]
-fn format_set_date_en_and_pl() {
-    let _language = LANGUAGE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    set_active_bundle("");
-    assert_eq!(format_set_date("2026-11-01"), "1 Nov 2026");
-    assert_eq!(format_set_date("2027-05-24"), "24 May 2027");
-    set_active_bundle("pl");
-    assert_eq!(format_set_date("2026-11-01"), "1 lis 2026");
-    assert_eq!(format_set_date("2027-05-24"), "24 maj 2027");
-    set_active_bundle("");
-    // Anything that is not a stored ISO date is shown as written.
-    assert_eq!(format_set_date("soon"), "soon");
-}
 
 /// A store with one set holding `items` (a key letter, or `None` for a note), in order.
 fn store_with(items: &[Option<char>]) -> (SetStore, String) {
@@ -485,10 +442,6 @@ fn set_rows_follow_set_order_with_repeats() {
 
 #[test]
 fn missing_piece_becomes_placeholder_in_place() {
-    let _language = LANGUAGE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    set_active_bundle("");
     let (store, id) = store_with(&[Some('a'), Some('f'), Some('c')]);
     let context = SectionContext {
         sets: &store,
@@ -499,16 +452,10 @@ fn missing_piece_becomes_placeholder_in_place() {
     assert_eq!(titles, ["Clair de lune", "Psalm 23", "Scarborough Fair"]);
     let missing = &rows[1];
     assert!(missing.missing);
-    assert_eq!(missing.status, "Missing from library");
     assert_eq!(missing.note_key, "f".repeat(64));
     assert_eq!(missing.relative_path, "Psalmy/Psalm 23.pdf");
     assert_eq!(missing.item_id.as_ref(), Some(&item_ids(&store, &id)[1]));
     assert!(!rows[0].missing && !rows[2].missing);
-
-    set_active_bundle("pl");
-    let rows = section_rows(&library(), &LibrarySection::Set(id), &context);
-    assert_eq!(rows[1].status, "Brak w bibliotece");
-    set_active_bundle("");
 }
 
 #[test]
@@ -548,44 +495,6 @@ fn set_entries_number_notes_and_pieces() {
         }
         other => panic!("fourth entry is a piece: {other:?}"),
     }
-}
-
-#[test]
-fn set_subtitle_joins_date_and_counts() {
-    let _language = LANGUAGE
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let (mut store, id) =
-        store_with(&[Some('a'), None, Some('b'), Some('c'), Some('d'), Some('e')]);
-    store.update(
-        &id,
-        SetFields {
-            name: "Wszystkich Świętych".to_owned(),
-            date: Some("2026-11-01".to_owned()),
-            notes: None,
-        },
-        10,
-    );
-    set_active_bundle("");
-    assert_eq!(
-        set_subtitle(store.get(&id).expect("set")),
-        "1 Nov 2026 · 5 pieces · 1 note"
-    );
-    set_active_bundle("pl");
-    assert_eq!(
-        set_subtitle(store.get(&id).expect("set")),
-        "1 lis 2026 · 5 utworów · 1 notatka"
-    );
-
-    // Zero counts and a missing date are left out.
-    let (store, id) = store_with(&[Some('a'), Some('b')]);
-    set_active_bundle("");
-    assert_eq!(set_subtitle(store.get(&id).expect("set")), "2 pieces");
-    set_active_bundle("pl");
-    assert_eq!(set_subtitle(store.get(&id).expect("set")), "2 utwory");
-    let (store, id) = store_with(&[]);
-    assert_eq!(set_subtitle(store.get(&id).expect("set")), "");
-    set_active_bundle("");
 }
 
 #[test]
@@ -649,4 +558,86 @@ fn set_rows_carry_their_set_position() {
             .iter()
             .all(|row| row.position.is_none())
     );
+}
+
+#[test]
+fn set_subtitle_counts_pieces_and_notes() {
+    use notae_app_core::text::SetSubtitle;
+    let (mut store, id) =
+        store_with(&[Some('a'), None, Some('b'), Some('c'), Some('d'), Some('e')]);
+    store.update(
+        &id,
+        SetFields {
+            name: "Wszystkich Świętych".to_owned(),
+            date: Some("2026-11-01".to_owned()),
+            notes: None,
+        },
+        10,
+    );
+    assert_eq!(
+        set_subtitle(store.get(&id).expect("set")),
+        SetSubtitle {
+            date: Some("2026-11-01".to_owned()),
+            pieces: 5,
+            notes: 1,
+        }
+    );
+    let (store, id) = store_with(&[Some('a'), Some('b')]);
+    assert_eq!(
+        set_subtitle(store.get(&id).expect("set")),
+        SetSubtitle {
+            date: None,
+            pieces: 2,
+            notes: 0,
+        }
+    );
+    let (store, id) = store_with(&[]);
+    assert_eq!(
+        set_subtitle(store.get(&id).expect("set")),
+        SetSubtitle {
+            date: None,
+            pieces: 0,
+            notes: 0,
+        }
+    );
+}
+
+#[test]
+fn edited_buckets_by_day() {
+    use notae_app_core::text::Edited;
+    use notae_app_core::ui::browse::edited;
+    // 1 December 2026, noon UTC.
+    let now = NOV_1_2026 + 30 * DAY + 12 * 3600;
+    assert_eq!(edited(now - 3600, now), Edited::Today);
+    assert_eq!(edited(now - DAY, now), Edited::Yesterday);
+    assert_eq!(edited(now - 3 * DAY, now), Edited::DaysAgo(3));
+    // Within a week the age is counted in days; from the seventh day on, the date is shown.
+    assert_eq!(edited(now - 6 * DAY, now), Edited::DaysAgo(6));
+    assert_eq!(
+        edited(now - 7 * DAY, now),
+        Edited::On("2026-11-24".to_owned())
+    );
+    assert_eq!(
+        edited(now - 10 * DAY, now),
+        Edited::On("2026-11-21".to_owned())
+    );
+    assert_eq!(
+        edited(NOV_1_2026 + 600, now),
+        Edited::On("2026-11-01".to_owned())
+    );
+    // A clock that went backwards is not "in the future".
+    assert_eq!(edited(now + DAY, now), Edited::Today);
+}
+
+#[test]
+fn missing_piece_has_missing_status() {
+    use notae_app_core::text::RowStatus;
+    let (store, id) = store_with(&[Some('a'), Some('f')]);
+    let context = SectionContext {
+        sets: &store,
+        ..SectionContext::default()
+    };
+    let rows = section_rows(&library(), &LibrarySection::Set(id), &context);
+    assert_eq!(rows[1].status, RowStatus::MissingFromLibrary);
+    assert_eq!(rows[0].status, RowStatus::Ready);
 }

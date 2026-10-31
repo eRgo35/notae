@@ -1,10 +1,10 @@
 //! The UI preferences file and the choices the UI model restores from it.
 
-use notae_app_core::language::LanguageChoice;
 use notae_app_core::sets::{SetFields, SetStore};
 use notae_app_core::ui::UiModel;
 use notae_app_core::ui::browse::LibrarySection;
 use notae_app_core::ui::search::SearchRow;
+use notae_app_core::ui_prefs::LanguageChoice;
 use notae_app_core::ui_prefs::{LibraryView, UiPrefs};
 
 #[test]
@@ -233,12 +233,12 @@ fn row(composer: &str) -> SearchRow {
         title: "Pavane".to_owned(),
         composer_or_artist: Some(composer.to_owned()),
         tags: Vec::new(),
-        status: "Ready".to_owned(),
+        status: notae_app_core::text::RowStatus::Ready,
         relative_path: "Pavane.pdf".to_owned(),
         note_key: "d".repeat(64),
         text_pending: false,
-        title_origin: "From filename".to_owned(),
-        composer_origin: String::new(),
+        title_origin: notae_domain::MetadataOrigin::FilenameDerived,
+        composer_origin: notae_domain::MetadataOrigin::Unset,
         text_snippet: None,
         item_id: None,
         position: None,

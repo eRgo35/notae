@@ -1,27 +1,6 @@
-//! The language choice, its Android tags and the bundled translation it selects.
+//! The language choice and its Android tags.
 
-use notae_app_core::language::{LanguageChoice, bundle_for};
-use notae_app_core::ui_prefs::UiPrefs;
-
-#[test]
-fn system_choice_follows_a_polish_system_language() {
-    assert_eq!(bundle_for(LanguageChoice::System, "pl-PL"), "pl");
-    assert_eq!(bundle_for(LanguageChoice::System, "pl"), "pl");
-}
-
-#[test]
-fn system_choice_falls_back_to_english_for_other_languages() {
-    assert_eq!(bundle_for(LanguageChoice::System, "en-GB"), "");
-    assert_eq!(bundle_for(LanguageChoice::System, "de-DE"), "");
-    assert_eq!(bundle_for(LanguageChoice::System, ""), "");
-    assert_eq!(bundle_for(LanguageChoice::System, "plx"), "");
-}
-
-#[test]
-fn an_explicit_choice_ignores_the_system_language() {
-    assert_eq!(bundle_for(LanguageChoice::English, "pl-PL"), "");
-    assert_eq!(bundle_for(LanguageChoice::Polish, "en-US"), "pl");
-}
+use notae_app_core::ui_prefs::{LanguageChoice, UiPrefs};
 
 #[test]
 fn android_locale_tags_map_to_choices() {

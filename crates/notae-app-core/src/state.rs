@@ -168,8 +168,8 @@ pub enum OperationState {
     /// controller moves this back to `Idle` once the user dismisses the
     /// banner.
     Completed {
-        /// Short, human-readable summary (e.g. "47 indexed").
-        summary: String,
+        /// What the operation changed.
+        summary: crate::operations::events::RescanSummary,
     },
     /// A long-running operation failed.
     Failed {
@@ -429,7 +429,7 @@ impl AppController {
     }
 
     /// Marks a worker operation as successfully completed.
-    pub fn complete_operation(&mut self, summary: String) {
+    pub fn complete_operation(&mut self, summary: crate::operations::events::RescanSummary) {
         self.state.operation = OperationState::Completed { summary };
     }
 

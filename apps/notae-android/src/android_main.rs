@@ -185,7 +185,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
         let model = Rc::clone(&model);
         let window_weak = window.as_weak();
         window.on_language_chosen(move |index| {
-            let choice = notae_app_core::language::LanguageChoice::from_index(index);
+            let choice = notae_app_core::ui_prefs::LanguageChoice::from_index(index);
             if !crate::android::language::write_choice(&app, choice)
                 && let Err(error) = model.borrow_mut().set_language(choice)
             {
@@ -536,7 +536,7 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
                 .library_root_handle()
                 .ok_or_else(|| {
                     notae_app_core::pdf_intent::ViewerError::Platform(
-                        notae_app_core::language::pick(
+                        crate::language::pick(
                             "No active library folder is available.",
                             "Brak aktywnego folderu biblioteki.",
                         )
@@ -702,7 +702,7 @@ impl LibraryRowsCache {
             .collect();
         let available: Vec<bool> = thumbnails.iter().map(Option::is_some).collect();
         // Row labels are translated in Rust, so a language switch must re-push them.
-        let polish = notae_app_core::language::pick(false, true);
+        let polish = crate::language::pick(false, true);
         let favorites = model.favorites();
         if self
             .pushed
@@ -961,9 +961,9 @@ fn wire_sets(
             };
             match result {
                 Ok(()) => window.set_show_set_dialog(false),
-                Err(error) => window.set_set_dialog_error(
-                    notae_app_core::ui::browse::set_field_error_text(error).into(),
-                ),
+                Err(error) => {
+                    window.set_set_dialog_error(crate::texts::set_field_error(error).into())
+                }
             }
             sync_window(&window, &model.borrow());
         });
@@ -1040,18 +1040,15 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     let (scan_summary, scan_conflicts, scan_failures) = status.latest_rescan.map_or_else(
         || {
             (
-                notae_app_core::language::pick(
-                    "No scan this session",
-                    "Brak skanowania w tej sesji",
-                )
-                .to_owned(),
+                crate::language::pick("No scan this session", "Brak skanowania w tej sesji")
+                    .to_owned(),
                 String::new(),
                 String::new(),
             )
         },
         |summary| {
             (
-                notae_app_core::language::pick(
+                crate::language::pick(
                     format!(
                         "{} added, {} updated, {} moved, {} deleted",
                         summary.added, summary.updated, summary.moved, summary.deleted,
@@ -1075,7 +1072,13 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_app_build_identity(env!("NOTAE_BUILD_ID").into());
     window.set_repository_url("https://github.com/eRgo35/notae".into());
     window.set_app_license("MIT License".into());
-    window.set_operation_progress_text(banner.text.into());
+    window.set_operation_progress_text(
+        banner
+            .message
+            .as_ref()
+            .map_or_else(String::new, crate::texts::status_message)
+            .into(),
+    );
     window.set_operation_failed(banner.failed);
     window.set_operation_busy(banner.busy);
     // Slint reads a negative fraction as "total unknown" (indeterminate).
@@ -1117,7 +1120,9 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     );
     window.set_selected_position(
         preview_neighbours
-            .map_or_else(String::new, |nav| nav.label())
+            .map_or_else(String::new, |nav| {
+                crate::texts::position_of(nav.position_of())
+            })
             .into(),
     );
     if let Some(row) = selected {
@@ -1134,7 +1139,7 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
             .into_iter()
             .map(|view| crate::SectionItem {
                 key: view.key.into(),
-                label: view.label.into(),
+                label: crate::texts::section_title(&view.label).into(),
                 count: i32::try_from(view.count).unwrap_or(i32::MAX),
                 kind: view.kind.into(),
             })
@@ -1153,22 +1158,22 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         .collect();
     window.set_composers(slint::ModelRc::new(slint::VecModel::from(composers)));
     window.set_selected_section(model.section().key().into());
-    window.set_library_title(model.section_title().into());
+    window.set_library_title(crate::texts::section_title(&model.section_title()).into());
     let set_cards =
         notae_app_core::ui::browse::set_cards(model.sets(), notae_app_core::ui::unix_now());
     let subtitle = if model.section() == &notae_app_core::ui::browse::LibrarySection::Sets {
-        notae_app_core::ui::browse::sets_subtitle(set_cards.len())
+        crate::texts::sets_subtitle(set_cards.len())
     } else if let Some(set) = open_set {
-        notae_app_core::ui::browse::set_subtitle(set)
+        crate::texts::set_subtitle(&notae_app_core::ui::browse::set_subtitle(set))
     } else {
-        notae_app_core::language::pick(
+        crate::language::pick(
             format!(
                 "{row_count} {}",
                 if row_count == 1 { "score" } else { "scores" }
             ),
             format!(
                 "{row_count} {}",
-                notae_app_core::language::polish_plural(row_count, "utwór", "utwory", "utworów")
+                crate::language::polish_plural(row_count, "utwór", "utwory", "utworów")
             ),
         )
     };
@@ -1197,7 +1202,9 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
         },
     );
     window.set_show_add_picker(model.add_picker_open());
-    window.set_add_picker_footer(model.add_picker_footer_text().into());
+    window.set_add_picker_footer(
+        crate::texts::add_picker_footer(model.add_picker_added_count()).into(),
+    );
     refresh_rows(
         &window.get_add_picker_rows(),
         model

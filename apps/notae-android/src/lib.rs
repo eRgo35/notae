@@ -2,7 +2,8 @@
 //!
 //! The state machine, stores and view models live in `notae-app-core`
 //! and are host-testable on Linux. This crate holds the Slint glue — the
-//! generated bindings and the row projections in [`rows`] — and the
+//! generated bindings, the row projections in [`rows`], and the English and
+//! Polish text for the core's typed values in [`texts`] — and the
 //! `android_main` entry point, which only has to compile for Android.
 //!
 //! * On Android, `android_main` is the entry symbol the
@@ -25,6 +26,7 @@
 //! it off here keeps the per-module policies in control.
 
 pub mod accessibility;
+pub mod language;
 pub mod picker_fut;
 pub mod saf_tree;
 
@@ -34,6 +36,7 @@ mod android;
 mod android_main;
 
 pub mod rows;
+pub mod texts;
 
 pub mod motion;
 pub mod voice_search;

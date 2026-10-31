@@ -3,6 +3,7 @@
 use notae_app_core::operations::events::OperationEvent;
 use notae_app_core::operations::rescan::OperationController;
 use notae_app_core::state::RescanPhase;
+use notae_app_core::text::StatusMessage;
 use notae_domain::{
     IndexedNote, MetadataOrigin, NoteId, NoteMetadata, PdfFingerprint, RelativePdfPath,
     Sha256Digest,
@@ -191,12 +192,12 @@ fn worker_progress_and_completion_are_reflected_in_ui_state_and_rows() {
         title: "Autumn Leaves".to_owned(),
         composer_or_artist: Some("Joseph Kosma".to_owned()),
         tags: vec![],
-        status: "Ready".to_owned(),
+        status: notae_app_core::text::RowStatus::Ready,
         note_key: "stable-key".to_owned(),
         relative_path: "12 - Autumn Leaves.pdf".to_owned(),
         text_pending: false,
-        title_origin: String::new(),
-        composer_origin: String::new(),
+        title_origin: notae_domain::MetadataOrigin::Unset,
+        composer_origin: notae_domain::MetadataOrigin::Unset,
         text_snippet: None,
         item_id: None,
         position: None,
@@ -215,7 +216,10 @@ fn worker_progress_and_completion_are_reflected_in_ui_state_and_rows() {
     assert_eq!(
         model.state().operation(),
         &OperationState::Completed {
-            summary: "1 added".to_owned(),
+            summary: RescanSummary {
+                added: 1,
+                ..RescanSummary::default()
+            },
         }
     );
 }
@@ -232,12 +236,12 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         title: "Pending".to_owned(),
         composer_or_artist: None,
         tags: vec![],
-        status: "OCR pending".to_owned(),
+        status: notae_app_core::text::RowStatus::TextPending,
         note_key: "pending".to_owned(),
         relative_path: "pending.pdf".to_owned(),
         text_pending: true,
-        title_origin: String::new(),
-        composer_origin: String::new(),
+        title_origin: notae_domain::MetadataOrigin::Unset,
+        composer_origin: notae_domain::MetadataOrigin::Unset,
         text_snippet: None,
         item_id: None,
         position: None,
@@ -296,9 +300,7 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         .expect("complete scan");
     assert_eq!(
         model.status().operation,
-        OperationState::Completed {
-            summary: "2 added, 1 ID conflicts, 1 failures".to_owned(),
-        }
+        OperationState::Completed { summary }
     );
     assert_eq!(model.status().latest_rescan, Some(summary));
     assert_eq!(model.status().no_text_count, 1);
@@ -570,12 +572,12 @@ fn metadata_events_keep_errors_visible_and_close_after_success() {
                 title: "Edited Leaves".to_owned(),
                 composer_or_artist: Some("Joseph Kosma".to_owned()),
                 tags: vec!["jazz".to_owned()],
-                status: "Ready".to_owned(),
+                status: notae_app_core::text::RowStatus::Ready,
                 note_key: "content-key".to_owned(),
                 relative_path: "12 - Autumn Leaves.pdf".to_owned(),
                 text_pending: false,
-                title_origin: String::new(),
-                composer_origin: String::new(),
+                title_origin: notae_domain::MetadataOrigin::Unset,
+                composer_origin: notae_domain::MetadataOrigin::Unset,
                 text_snippet: None,
                 item_id: None,
                 position: None,
@@ -723,7 +725,7 @@ fn banner(model: &notae_app_core::ui::UiModel) -> notae_app_core::ui::OperationB
 fn banner_follows_each_real_phase_in_order() {
     let mut model = scanning_model();
     let enumerating = banner(&model);
-    assert_eq!(enumerating.text, "Scanning library…");
+    assert_eq!(enumerating.message, Some(StatusMessage::ScanningLibrary));
     assert!(enumerating.busy && enumerating.cancel_enabled);
     assert_eq!(enumerating.fraction, None, "enumeration has no total");
 
@@ -731,7 +733,7 @@ fn banner_follows_each_real_phase_in_order() {
         .apply_operation_event(OperationEvent::Indexing { total: 3 })
         .expect("indexing");
     let indexing = banner(&model);
-    assert_eq!(indexing.text, "Indexing 3 PDFs…");
+    assert_eq!(indexing.message, Some(StatusMessage::Indexing { total: 3 }));
     assert!(indexing.busy && !indexing.cancel_enabled);
     assert_eq!(
         indexing.fraction, None,
@@ -742,7 +744,13 @@ fn banner_follows_each_real_phase_in_order() {
         .apply_operation_event(OperationEvent::RescanFinalizing { total: 3 })
         .expect("reading text");
     let started = banner(&model);
-    assert_eq!(started.text, "Reading PDF text and thumbnails: 0 of 3");
+    assert_eq!(
+        started.message,
+        Some(StatusMessage::ReadingText {
+            completed: 0,
+            total: 3
+        })
+    );
     assert_eq!(
         started.fraction,
         Some(0.0),
@@ -755,7 +763,13 @@ fn banner_follows_each_real_phase_in_order() {
         })
         .expect("progress");
     let reading = banner(&model);
-    assert_eq!(reading.text, "Reading PDF text and thumbnails: 1 of 3");
+    assert_eq!(
+        reading.message,
+        Some(StatusMessage::ReadingText {
+            completed: 1,
+            total: 3
+        })
+    );
     assert_eq!(reading.fraction, Some(1.0 / 3.0));
     assert!(reading.busy && !reading.cancel_enabled);
 }
@@ -769,7 +783,10 @@ fn zero_files_never_show_a_zero_of_zero_phase() {
     model
         .apply_operation_event(OperationEvent::RescanFinalizing { total: 0 })
         .expect("finalizing an empty library");
-    assert!(!banner(&model).text.contains("0 of 0"));
+    assert!(!matches!(
+        banner(&model).message,
+        Some(StatusMessage::ReadingText { total: 0, .. })
+    ));
     assert!(
         model
             .apply_operation_event(OperationEvent::Progress {
@@ -870,7 +887,7 @@ fn successful_result_clears_itself_but_failures_do_not() {
     ));
     assert!(model.expire_finished_result(start + RESULT_VISIBLE_FOR));
     assert_eq!(model.state().operation(), &OperationState::Idle);
-    assert_eq!(banner(&model).text, "", "idle shows no bar");
+    assert_eq!(banner(&model).message, None, "idle shows no bar");
 
     let mut failed = scanning_model();
     failed

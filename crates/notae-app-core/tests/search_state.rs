@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use notae_app_core::state::{AppController, EventError, Screen, Transition, UiEvent};
+use notae_app_core::text::RowStatus;
 use notae_app_core::ui::library::LibraryViewModel;
 use notae_app_core::ui::search::split_snippet;
 use notae_domain::{
@@ -102,9 +103,9 @@ fn empty_query_projects_rows_in_numeric_order_with_metadata_status_and_stable_ke
         Some("Ludwig van Beethoven")
     );
     assert_eq!(rows[1].tags, ["classical", "piano"]);
-    assert_eq!(rows[0].status, "OCR incomplete");
-    assert_eq!(rows[1].status, "OCR pending");
-    assert_eq!(rows[2].status, "ID conflict");
+    assert_eq!(rows[0].status, RowStatus::TextPending);
+    assert_eq!(rows[1].status, RowStatus::TextPending);
+    assert_eq!(rows[2].status, RowStatus::IdConflict);
     assert_eq!(
         rows[1].note_key,
         "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"

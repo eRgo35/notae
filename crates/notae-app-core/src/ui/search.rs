@@ -1,6 +1,6 @@
 //! The row every library list shows, and the errors library operations report.
 
-use crate::language::pick;
+use crate::text::RowStatus;
 use notae_domain::{IndexStatus, IndexedNote, MetadataField, MetadataOrigin};
 use notae_index::IndexError;
 
@@ -15,8 +15,8 @@ pub struct SearchRow {
     pub composer_or_artist: Option<String>,
     /// Normalized tags in their stable order.
     pub tags: Vec<String>,
-    /// User-facing indexing/OCR status.
-    pub status: String,
+    /// The row's indexing state, or missing from the library.
+    pub status: RowStatus,
     /// Library-relative path used to resolve the SAF document for PDF viewing.
     pub relative_path: String,
     /// Stable content key used by open and edit actions.
@@ -24,10 +24,10 @@ pub struct SearchRow {
     /// Whether the PDF has no extractable text (OCR pending or incomplete). It stays in the
     /// library and is searchable by title and metadata; only the Settings count surfaces it.
     pub text_pending: bool,
-    /// Where the title came from, as a short label ("From filename", "From desktop", "Edited").
-    pub title_origin: String,
-    /// Where the composer came from; empty when there is no composer.
-    pub composer_origin: String,
+    /// Where the title came from: the file name, the desktop, or an edit.
+    pub title_origin: MetadataOrigin,
+    /// Where the composer came from; [`MetadataOrigin::Unset`] when there is no composer.
+    pub composer_origin: MetadataOrigin,
     /// FTS5 snippet of matching lyrics/page text, with `\u{2}`/`\u{3}` around the match.
     pub text_snippet: Option<String>,
     /// The set item this row shows; `None` outside a set.
@@ -46,18 +46,18 @@ impl SearchRow {
             id: note.id().map(|id| id.to_string()),
             title: note.title().to_owned(),
             composer_origin: if composer.is_some() {
-                origin_label(metadata.origin_of(MetadataField::ComposerOrArtist)).to_owned()
+                metadata.origin_of(MetadataField::ComposerOrArtist)
             } else {
-                String::new()
+                MetadataOrigin::Unset
             },
             composer_or_artist: composer,
             tags: metadata.tags().iter().cloned().collect(),
-            status: status_label(note.status()).to_owned(),
+            status: row_status(note.status()),
             text_pending: matches!(
                 note.status(),
                 IndexStatus::OcrPending | IndexStatus::OcrIncomplete
             ),
-            title_origin: origin_label(metadata.origin_of(MetadataField::Title)).to_owned(),
+            title_origin: metadata.origin_of(MetadataField::Title),
             note_key: note.fingerprint().sha256().to_string(),
             relative_path: note.path().as_str().to_owned(),
             text_snippet: None,
@@ -68,27 +68,17 @@ impl SearchRow {
     }
 }
 
-fn origin_label(origin: MetadataOrigin) -> &'static str {
-    match origin {
-        MetadataOrigin::FilenameDerived => pick("From filename", "Z nazwy pliku"),
-        MetadataOrigin::PcImported => pick("From desktop", "Z komputera"),
-        MetadataOrigin::Manual => pick("Edited", "Edytowano"),
-        _ => "",
-    }
-}
-
-fn status_label(status: IndexStatus) -> &'static str {
+const fn row_status(status: IndexStatus) -> RowStatus {
     match status {
-        IndexStatus::Discovered => pick("Discovered", "Wykryto"),
-        IndexStatus::Indexing => pick("Indexing", "Indeksowanie"),
-        IndexStatus::Ready => pick("Ready", "Gotowe"),
-        IndexStatus::OcrPending => pick("OCR pending", "Czeka na OCR"),
-        IndexStatus::OcrIncomplete => pick("OCR incomplete", "OCR niepełny"),
-        IndexStatus::Stale => pick("Stale", "Nieaktualne"),
-        IndexStatus::DuplicateIdConflict => pick("ID conflict", "Konflikt numeru"),
-        IndexStatus::Inaccessible => pick("Inaccessible", "Niedostępne"),
-        IndexStatus::InvalidPdf => pick("Invalid PDF", "Nieprawidłowy PDF"),
-        IndexStatus::ImportMismatch => pick("Import mismatch", "Niezgodność importu"),
+        IndexStatus::Discovered => RowStatus::Discovered,
+        IndexStatus::Indexing => RowStatus::Indexing,
+        IndexStatus::Ready => RowStatus::Ready,
+        IndexStatus::OcrPending | IndexStatus::OcrIncomplete => RowStatus::TextPending,
+        IndexStatus::Stale => RowStatus::Stale,
+        IndexStatus::DuplicateIdConflict => RowStatus::IdConflict,
+        IndexStatus::Inaccessible => RowStatus::Unreadable,
+        IndexStatus::InvalidPdf => RowStatus::InvalidPdf,
+        IndexStatus::ImportMismatch => RowStatus::ImportMismatch,
     }
 }
 
