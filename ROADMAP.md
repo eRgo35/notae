@@ -1,6 +1,6 @@
 # Roadmap
 
-Notae is a private project with one maintainer. Work is tracked in
+Notae has one maintainer. Work is tracked in
 [GitHub issues](https://github.com/eRgo35/notae/issues) and
 [milestones](https://github.com/eRgo35/notae/milestones); this page is the
 short version.

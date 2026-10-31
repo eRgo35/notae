@@ -5,7 +5,7 @@
 **Index your sheet-music PDFs on a Linux desktop, then browse and search them
 on an Android tablet. No cloud, no account, no network access.**
 
-<sub>Version 0.3.0 · Android tablet (arm64) · private repository · next:
+<sub>Version 0.3.0 · Android tablet (arm64) · one maintainer · next:
 <a href="ROADMAP.md">0.4.0 maintenance, then the 0.5.0 Compose app</a></sub>
 
 [![CI](https://github.com/eRgo35/notae/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eRgo35/notae/actions/workflows/ci.yml)
