@@ -9,6 +9,12 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-31
+
+Maintenance release: tooling and documentation only, no app changes. The APK
+is functionally v0.3.0. See
+[`docs/release-notes/v0.4.0.md`](docs/release-notes/v0.4.0.md).
+
 ### Added
 
 - `ROADMAP.md` and `GLOSSARY.md`, and a "Development workflow" section in
@@ -27,11 +33,21 @@ The hand-written release notes for each version live in
 
 ### Removed
 
-- The GitHub release workflow (`release.yml`) and its signing secrets, and the
-  Android arm64 compile job in CI (it runs in `scripts/check.sh full` and in
-  every release).
+- The GitHub release workflow (`release.yml`), which held the signing key in
+  repository secrets, and the Android arm64 compile job in CI (it runs in
+  `scripts/check.sh full` and in every release).
+- The unused `apps/notae-android/.cargo/config.toml` with machine-specific NDK
+  linker paths; `cargo-apk2` configures the linker itself.
 - `docs/superpowers/IMPLEMENTATION-STATE.md`, replaced by `ROADMAP.md` and the
   milestones.
+
+### Security
+
+- The repository is public. Its history was rewritten on 2026-10-31 to remove
+  local paths, a device serial number, a personal screenshot and committed
+  agent reports, and every commit was re-signed; all commit hashes changed and
+  the release tags moved to the rewritten commits. Secret scanning with push
+  protection is enabled.
 
 ## [0.3.0] - 2026-10-30
 
@@ -290,7 +306,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/eRgo35/notae/releases/tag/v0.4.0
 [0.3.0]: https://github.com/eRgo35/notae/releases/tag/v0.3.0
 [0.2.2]: https://github.com/eRgo35/notae/releases/tag/v0.2.2
 [0.2.1]: https://github.com/eRgo35/notae/releases/tag/v0.2.1

@@ -52,7 +52,7 @@ cargo-apk2 1.4.0 reads the release key from `CARGO_APK_RELEASE_KEYSTORE` (path) 
 
 ## Cutting a release
 
-1. On `main`, bump `[workspace.package] version` in the root `Cargo.toml` and regenerate the lockfile (`cargo update --workspace`). cargo-apk2 derives the Android `versionName` from that version and `versionCode` as `(1 << 24) | major << 16 | minor << 8 | patch`, so the code rises with every semantic-version increase; do not set either in `apps/notae-android/Cargo.toml` (cargo-apk2 rejects it). Version 0.1.0 is `16777472`, 0.2.0 is `16777728`, 0.2.2 is `16777730`.
+1. On `main`, bump `[workspace.package] version` in the root `Cargo.toml` and the `version = "…"` of every internal path dependency in the crates' `Cargo.toml` files, then regenerate the lockfile (`cargo update --workspace`). cargo-apk2 derives the Android `versionName` from that version and `versionCode` as `(1 << 24) | major << 16 | minor << 8 | patch`, so the code rises with every semantic-version increase; do not set either in `apps/notae-android/Cargo.toml` (cargo-apk2 rejects it). Version 0.1.0 is `16777472`, 0.2.0 is `16777728`, 0.2.2 is `16777730`.
 2. Add `docs/release-notes/vX.Y.Z.md`. It becomes the hand-written section of the GitHub Release; GitHub's generated notes are appended after it. State what was and was not verified on a physical device.
 3. Run `scripts/check.sh full`, then commit (`chore(release): vX.Y.Z`) and push `main`.
 4. Tag that commit and push the tag:

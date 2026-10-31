@@ -11,7 +11,7 @@ path = "src/lib.rs"
 
 [dependencies]
 image = "0.25"
-notae-domain = { path = "../notae-domain", version = "0.3.0" }
+notae-domain = { path = "../notae-domain", version = "0.4.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tesseract = "0.15.2"

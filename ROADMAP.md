@@ -5,7 +5,7 @@ Notae has one maintainer. Work is tracked in
 [milestones](https://github.com/eRgo35/notae/milestones); this page is the
 short version.
 
-## Now: 0.4.0
+## Released: 0.4.0
 
 [Milestone v0.4.0](https://github.com/eRgo35/notae/milestone/4). Maintenance
 only, with no app changes: quality gates and releases run on the maintainer's
@@ -13,7 +13,7 @@ PC (`scripts/check.sh`, `scripts/release.sh`), GitHub CI runs a light check,
 and the README, ROADMAP, GLOSSARY and CONTRIBUTING describe the project as it
 is. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-workflow).
 
-## Next: 0.5.0
+## Now: 0.5.0
 
 [Milestone v0.5.0](https://github.com/eRgo35/notae/milestone/5). The Slint UI
 is replaced by a Jetpack Compose app over a UniFFI Rust core, with the new

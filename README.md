@@ -5,8 +5,8 @@
 **Index your sheet-music PDFs on a Linux desktop, then browse and search them
 on an Android tablet. No cloud, no account, no network access.**
 
-<sub>Version 0.3.0 · Android tablet (arm64) · one maintainer · next:
-<a href="ROADMAP.md">0.4.0 maintenance, then the 0.5.0 Compose app</a></sub>
+<sub>Version 0.4.0 · Android tablet (arm64) · one maintainer · next:
+<a href="ROADMAP.md">the 0.5.0 Compose app</a></sub>
 
 [![CI](https://github.com/eRgo35/notae/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eRgo35/notae/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/eRgo35/notae)](https://github.com/eRgo35/notae/releases/latest)
@@ -140,7 +140,8 @@ tablet builds its own private index from it. There is no on-device OCR yet;
 ## Install
 
 > [!NOTE]
-> Notae is young. v0.3.0 is verified with host tests and on an Android tablet
+> Notae is young. v0.4.0 changes only tooling and docs; its app is the same as
+> v0.3.0, which is verified with host tests and on an Android tablet
 > emulator but has **not yet been accepted on a physical tablet** (see the
 > [release notes](docs/release-notes/v0.3.0.md)). Please report anything odd.
 
@@ -155,7 +156,7 @@ and verifies it from the release tag with `scripts/release.sh`. The desktop inde
    check is what proves the APK came from the Notae release key.
 
    ```sh
-   V=0.3.0
+   V=0.4.0
    sha256sum -c "notae-$V-arm64.apk.sha256"
    apksigner verify --print-certs "notae-$V-arm64.apk" \
      | grep -i 'SHA-256 digest: be27cd781766c5c28a9db106c07b051ceee4e0003105964595e2a848f371f601'
