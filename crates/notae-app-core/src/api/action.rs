@@ -13,7 +13,8 @@ use crate::ui_prefs::LibraryView;
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum Action {
     /// "Choose score folder", "Reconnect folder" or Settings' "Change": asks Kotlin for the
-    /// folder picker ([`Effect::PickLibraryRoot`](super::Effect::PickLibraryRoot)).
+    /// folder picker ([`Effect::PickLibraryRoot`](super::Effect::PickLibraryRoot)), starting at the
+    /// open or saved folder.
     PickLibraryRoot,
     /// "Scan library".
     Rescan,

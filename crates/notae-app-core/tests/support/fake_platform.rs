@@ -5,6 +5,8 @@
 //! with `#[path = "support/fake_platform.rs"] mod fake_platform;`.
 #![allow(dead_code)] // Each test binary uses a different part of the helper.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Mutex, MutexGuard};
 use std::thread::{self, ThreadId};
 
@@ -20,6 +22,9 @@ pub struct FakePlatform {
     thumbnail: Mutex<Result<bool, PlatformError>>,
     calls: Mutex<Vec<String>>,
     threads: Mutex<Vec<ThreadId>>,
+    /// The next `enumerate` waits on this until the test sends or drops the sender.
+    enumerate_hold: Mutex<Option<Receiver<()>>>,
+    enumerate_panics: AtomicBool,
 }
 
 impl Default for FakePlatform {
@@ -31,6 +36,8 @@ impl Default for FakePlatform {
             thumbnail: Mutex::new(Ok(false)),
             calls: Mutex::new(Vec::new()),
             threads: Mutex::new(Vec::new()),
+            enumerate_hold: Mutex::new(None),
+            enumerate_panics: AtomicBool::new(false),
         }
     }
 }
@@ -48,6 +55,19 @@ impl FakePlatform {
     /// What the next `enumerate` returns.
     pub fn set_entries(&self, entries: Result<Vec<DocumentEntry>, PlatformError>) {
         *lock(&self.entries) = entries;
+    }
+
+    /// Makes the next `enumerate` block, as a slow Kotlin call does, until the returned sender
+    /// sends or is dropped.
+    pub fn hold_enumerate(&self) -> Sender<()> {
+        let (release, hold) = mpsc::channel();
+        *lock(&self.enumerate_hold) = Some(hold);
+        release
+    }
+
+    /// Makes every later `enumerate` panic, which kills the worker thread that called it.
+    pub fn panic_on_enumerate(&self) {
+        self.enumerate_panics.store(true, Ordering::SeqCst);
     }
 
     /// What `extract_text_layer` returns.
@@ -84,6 +104,14 @@ impl PlatformLibrary for FakePlatform {
 
     fn enumerate(&self, handle: String) -> Result<Vec<DocumentEntry>, PlatformError> {
         self.record(format!("enumerate {handle}"));
+        let hold = lock(&self.enumerate_hold).take();
+        if let Some(hold) = hold {
+            let _ = hold.recv();
+        }
+        assert!(
+            !self.enumerate_panics.load(Ordering::SeqCst),
+            "the fake platform was told to panic in enumerate"
+        );
         lock(&self.entries).clone()
     }
 

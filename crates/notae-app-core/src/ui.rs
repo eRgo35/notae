@@ -15,7 +15,7 @@ pub mod search;
 
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::favorites::{Favorites, PieceRef};
 use crate::operations::events::{OperationEvent, RescanSummary};
@@ -25,7 +25,7 @@ use crate::sets::{ItemKind, SetFieldError, SetFields, SetStore};
 use crate::state::{
     AppController, AppState, EventError, OperationState, RescanPhase, Transition, UiEvent,
 };
-use crate::storage::{StorageError, StorageState};
+use crate::storage::{LibraryRoot, StorageError, StorageState};
 use crate::text::{Failure, SectionTitle, StatusMessage};
 use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::{
@@ -104,6 +104,10 @@ pub struct PickerRow {
 pub struct UiModel {
     controller: AppController,
     storage: Arc<Mutex<StorageState>>,
+    /// The open library's root, copied when storage became ready. The worker holds the
+    /// [`LibrarySource`](crate::storage::LibrarySource) lock for a whole platform call, so the
+    /// UI reads the root from here instead.
+    ready_root: Option<LibraryRoot>,
     search_rows: Vec<SearchRow>,
     indexed_count: usize,
     latest_rescan: Option<RescanSummary>,
@@ -146,6 +150,7 @@ impl UiModel {
         Self {
             controller,
             storage,
+            ready_root: None,
             search_rows: Vec::new(),
             indexed_count: 0,
             latest_rescan: None,
@@ -213,8 +218,9 @@ impl UiModel {
     }
 
     /// Updates the storage state in place.
-    // Storage state is UI-thread-owned; this lock protects brief, callback-free access.
-    #[allow(clippy::expect_used)]
+    ///
+    /// A ready source is locked once here to copy its root; call this before the worker
+    /// starts a scan over the source.
     pub fn set_storage(&mut self, state: StorageState) {
         if self.startup_presentation == StartupPresentation::Restoring {
             self.startup_presentation = if matches!(&state, StorageState::Ready(_)) {
@@ -232,22 +238,27 @@ impl UiModel {
             // scheduling remains explicit: choosing a folder does not scan it.
             self.controller.library_ready();
         }
-        *self.storage.lock().expect("storage mutex poisoned") = state;
+        self.ready_root = match &state {
+            StorageState::Ready(source) => Some(
+                source
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .root()
+                    .clone(),
+            ),
+            StorageState::Unconfigured
+            | StorageState::PermissionLost(_)
+            | StorageState::Error(_) => None,
+        };
+        *self.storage.lock().unwrap_or_else(PoisonError::into_inner) = state;
     }
 
     /// Returns the persisted SAF tree URI for the active library.
     #[must_use]
     pub fn library_root_handle(&self) -> Option<String> {
-        let guard = self.storage.lock().ok()?;
-        match &*guard {
-            StorageState::Ready(source) => source
-                .lock()
-                .ok()
-                .map(|source| source.root().handle().to_owned()),
-            StorageState::Unconfigured
-            | StorageState::PermissionLost(_)
-            | StorageState::Error(_) => None,
-        }
+        self.ready_root
+            .as_ref()
+            .map(|root| root.handle().to_owned())
     }
 
     /// Returns the latest PDF launch error, when a viewer could not be opened.
@@ -1168,20 +1179,19 @@ pub enum StorageStateKindView {
 impl UiModel {
     /// Returns the [`StorageStateKindView`] of the current storage
     /// state. The view drops the contained source or root.
+    ///
+    /// It never waits for the worker: the ready root's name comes from the copy
+    /// [`UiModel::set_storage`] made.
     #[must_use]
-    // Storage state is UI-thread-owned; this read invokes no user callback.
-    #[allow(clippy::expect_used)]
     pub fn storage_kind(&self) -> StorageStateKindView {
-        let guard = self.storage.lock().expect("storage mutex poisoned");
+        let guard = self.storage.lock().unwrap_or_else(PoisonError::into_inner);
         match &*guard {
             StorageState::Unconfigured => StorageStateKindView::Unconfigured,
-            StorageState::Ready(source) => StorageStateKindView::Ready {
-                display_name: source
-                    .lock()
-                    .expect("library source mutex poisoned")
-                    .root()
-                    .display_name()
-                    .to_owned(),
+            StorageState::Ready(_) => StorageStateKindView::Ready {
+                display_name: self
+                    .ready_root
+                    .as_ref()
+                    .map_or_else(String::new, |root| root.display_name().to_owned()),
             },
             StorageState::PermissionLost(root) => {
                 StorageStateKindView::PermissionLost(root.display_name().to_owned())

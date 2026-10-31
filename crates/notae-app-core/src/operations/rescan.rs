@@ -174,13 +174,28 @@ impl OperationController {
     }
 
     /// Receives one event with a bounded wait; useful to exercise the worker
-    /// contract from host tests without polling or sleeping.
+    /// contract from host tests without polling or sleeping. A stopped worker looks like a
+    /// timeout here; [`OperationController::wait_event`] tells the two apart.
     pub fn recv_event_timeout(&self, timeout: Duration) -> Option<OperationEvent> {
-        self.events
+        self.wait_event(timeout).ok().flatten()
+    }
+
+    /// Waits up to `timeout` for one event; `Ok(None)` when none arrived in time.
+    ///
+    /// # Errors
+    /// [`UiError::WorkerStopped`] once the worker has exited (for example after a panic in a
+    /// platform call) and every event it sent has been received.
+    pub fn wait_event(&self, timeout: Duration) -> Result<Option<OperationEvent>, UiError> {
+        match self
+            .events
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .recv_timeout(timeout)
-            .ok()
+        {
+            Ok(event) => Ok(Some(event)),
+            Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(UiError::WorkerStopped),
+        }
     }
 
     fn begin_operation(&self) -> Result<(), UiError> {

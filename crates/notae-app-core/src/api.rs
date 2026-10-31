@@ -10,7 +10,9 @@
 //!
 //! The state lives behind one mutex. [`NotaeCore::dispatch`] applies an action under it,
 //! releases it, then calls the listener on the caller's thread; it never calls the
-//! [`PlatformLibrary`]. A core thread (`notae-core`) opens the library root (the only
+//! [`PlatformLibrary`] and never waits for a platform call: the worker holds the library
+//! source's lock while it calls the platform, and nothing on this path takes that lock. A core
+//! thread (`notae-core`) opens the library root (the only
 //! [`PlatformLibrary::check_root`] call), drains the operation worker's events, applies each
 //! batch under the lock and pushes a snapshot after releasing it. The worker thread makes every
 //! other platform call. Because the listener is never called with the lock held, it may call
@@ -191,15 +193,14 @@ impl NotaeCore {
         }
     }
 
-    /// The export from [`Effect::WriteExport`] was saved (`true`) or failed (`false`). A
-    /// cancelled save-file picker reports nothing.
-    pub fn file_written(&self, ok: bool) {
+    /// The export from [`Effect::WriteExport`] was saved (`None`), or failed with the
+    /// platform's message. A cancelled save-file picker reports nothing.
+    pub fn file_written(&self, error: Option<String>) {
         let snapshot = {
             let mut state = self.shared.lock();
-            state.export = Some(if ok {
-                ExportStatus::Exported
-            } else {
-                ExportStatus::Failed
+            state.export = Some(match error {
+                None => ExportStatus::Exported,
+                Some(detail) => ExportStatus::Failed { detail },
             });
             state.next_snapshot()
         };
@@ -277,26 +278,36 @@ impl Shared {
                 continue;
             }
             let first = match &controller {
-                Some(controller) => controller.recv_event_timeout(POLL),
+                Some(controller) => controller.wait_event(POLL),
                 None => {
                     thread::park_timeout(POLL);
-                    None
+                    Ok(None)
                 }
             };
             let (snapshot, retired) = {
                 let mut state = self.lock();
                 let mut changed = false;
                 let mut retired = None;
-                if let (Some(controller), Some(first)) = (&controller, first)
-                    && state.is_current(controller)
-                {
-                    changed = true;
-                    retired = state.apply_event(first);
-                    while retired.is_none()
-                        && let Some(event) = controller.try_event()
-                    {
-                        retired = state.apply_event(event);
+                match (&controller, first) {
+                    (Some(controller), Ok(Some(first))) if state.is_current(controller) => {
+                        changed = true;
+                        retired = state.apply_event(first);
+                        while retired.is_none()
+                            && let Some(event) = controller.try_event()
+                        {
+                            retired = state.apply_event(event);
+                        }
                     }
+                    // The worker died (a panic in a platform call): retire it, so this loop
+                    // parks instead of spinning on the closed channel, and say so.
+                    (Some(controller), Err(error)) if state.is_current(controller) => {
+                        changed = true;
+                        retired = state.operations.take();
+                        state.apply_event(OperationEvent::Failed {
+                            failure: (&error).into(),
+                        });
+                    }
+                    _ => {}
                 }
                 changed |= state.model.expire_finished_result(Instant::now());
                 (changed.then(|| state.next_snapshot()), retired)
@@ -328,6 +339,9 @@ impl Shared {
             let mut state = self.lock();
             match opened {
                 Ok((controller, source)) => {
+                    // Before the worker gets its first command, so copying the root out of
+                    // the source never waits for it.
+                    state.model.set_storage(StorageState::Ready(source));
                     let search = state.model.state().search().clone();
                     if let Err(error) = controller.set_search(search.query, search.scope) {
                         state.apply_event(OperationEvent::Failed {
@@ -335,7 +349,6 @@ impl Shared {
                         });
                     }
                     state.operations = Some(Arc::new(controller));
-                    state.model.set_storage(StorageState::Ready(source));
                     if let Err(error) = save_root(&self.data_dir.join(ROOT_FILE), &root) {
                         eprintln!("notae: cannot save the library folder: {error}");
                     }
@@ -347,7 +360,10 @@ impl Shared {
                         .set_storage(StorageState::PermissionLost(root.clone()));
                     state.root = Some(root);
                 }
-                Err(error) => state.model.set_storage(StorageState::Error(error)),
+                Err(error) => {
+                    state.model.set_storage(StorageState::Error(error));
+                    state.root = Some(root);
+                }
             }
             state.next_snapshot()
         };
@@ -382,7 +398,7 @@ struct CoreState {
     model: UiModel,
     /// The worker over the open library.
     operations: Option<Arc<OperationController>>,
-    /// The library folder that is open, or whose permission was lost.
+    /// The library folder last opened, whether it is open, lost or failed to open.
     root: Option<LibraryRoot>,
     /// A folder the core thread should open next.
     open_request: Option<LibraryRoot>,
@@ -400,7 +416,7 @@ impl CoreState {
             &snapshot::Extras {
                 revision: self.revision,
                 set_dialog: self.set_dialog.as_ref(),
-                export: self.export,
+                export: self.export.as_ref(),
             },
         )
     }
@@ -454,7 +470,11 @@ impl CoreState {
     fn apply(&mut self, action: Action) -> Vec<Effect> {
         let model = &mut self.model;
         match action {
-            Action::PickLibraryRoot => return vec![Effect::PickLibraryRoot],
+            Action::PickLibraryRoot => {
+                return vec![Effect::PickLibraryRoot {
+                    initial_uri: self.root.as_ref().map(|root| root.handle().to_owned()),
+                }];
+            }
             Action::Rescan => match model.start_rescan() {
                 Ok(Transition::BeginRescan) => {
                     if let Err(error) = self.on_worker(OperationController::start_rescan) {

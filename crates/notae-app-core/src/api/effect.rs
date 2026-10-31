@@ -8,7 +8,11 @@ pub enum Effect {
     /// Launch the folder picker; report the folder with
     /// [`NotaeCore::library_root_picked`](super::NotaeCore::library_root_picked). A cancelled
     /// picker reports nothing.
-    PickLibraryRoot,
+    PickLibraryRoot {
+        /// The open or saved folder's handle (the SAF tree URI), to start the picker there
+        /// (`EXTRA_INITIAL_URI`); `None` before a folder was ever chosen.
+        initial_uri: Option<String>,
+    },
     /// Open a PDF in the external viewer; report the outcome with
     /// [`NotaeCore::pdf_opened`](super::NotaeCore::pdf_opened).
     OpenPdf {

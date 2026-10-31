@@ -527,12 +527,15 @@ pub struct SettingsInfo {
 }
 
 /// The outcome of an export.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum ExportStatus {
     /// "Favorites and sets exported".
     Exported,
-    /// "Could not export sets".
-    Failed,
+    /// "Could not export sets: …" followed by `detail`.
+    Failed {
+        /// The platform's own message.
+        detail: String,
+    },
 }
 
 /// The saved layout choices.
@@ -668,7 +671,7 @@ pub(super) fn count(value: usize) -> u32 {
 pub(super) struct Extras<'a> {
     pub(super) revision: u64,
     pub(super) set_dialog: Option<&'a SetDialog>,
-    pub(super) export: Option<ExportStatus>,
+    pub(super) export: Option<&'a ExportStatus>,
 }
 
 /// Builds the snapshot of `model`.
@@ -785,7 +788,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
             indexed_count: count(status.indexed_count),
             no_text_count: count(status.no_text_count),
             latest_scan: status.latest_rescan.map(Into::into),
-            export: extras.export,
+            export: extras.export.cloned(),
         },
         layout: LayoutPrefs {
             library_view: prefs.library_view,

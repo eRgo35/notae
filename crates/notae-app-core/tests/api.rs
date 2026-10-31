@@ -5,15 +5,18 @@
 mod fake_platform;
 
 use std::path::Path;
+use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use fake_platform::{FakePlatform, entry, readable};
 use notae_app_core::api::{
-    Action, CoreListener, Effect, NotaeCore, Screen, SetEntry, SetupScreen, Snapshot, StatusMessage,
+    Action, CoreListener, Effect, ExportStatus, NotaeCore, Screen, SetEntry, SetupScreen, Snapshot,
+    StatusMessage,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
+use notae_app_core::text::Failure;
 
 const ROOT: &str = "content://tree/scores";
 
@@ -188,9 +191,20 @@ fn picking_root_and_rescan_produces_library_rows() {
     let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
 
     harness.core.dispatch(Action::PickLibraryRoot);
-    assert_eq!(harness.listener.effects(), vec![Effect::PickLibraryRoot]);
+    assert_eq!(
+        harness.listener.effects(),
+        vec![Effect::PickLibraryRoot { initial_uri: None }]
+    );
 
     let scanned = open_and_scan(&harness);
+    harness.core.dispatch(Action::PickLibraryRoot);
+    assert_eq!(
+        harness.listener.effects().last(),
+        Some(&Effect::PickLibraryRoot {
+            initial_uri: Some(ROOT.to_owned())
+        }),
+        "Change starts the picker at the open folder"
+    );
 
     assert_eq!(titles(&scanned), vec!["Ave Maria", "Barka"]);
     assert_eq!(scanned.settings.library_name.as_deref(), Some("Scores"));
@@ -345,6 +359,14 @@ fn revoked_root_snapshot_is_permission_lost() {
             .all(|snapshot| snapshot.screen != welcome),
         "never the Welcome screen for a saved folder"
     );
+    relaunched.core.dispatch(Action::PickLibraryRoot);
+    assert_eq!(
+        relaunched.listener.effects(),
+        vec![Effect::PickLibraryRoot {
+            initial_uri: Some(ROOT.to_owned())
+        }],
+        "Reconnect starts the picker at the saved folder"
+    );
 
     // During a scan: the grant goes while the library is open.
     platform.set_root(Ok(()));
@@ -476,5 +498,133 @@ fn snapshot_of_2000_rows_is_built() {
     eprintln!(
         "snapshot of {ROWS} rows: built in {built:?}, dispatch round trip {dispatched:?}, \
          serialized to {bytes} bytes in {serialized:?}"
+    );
+}
+
+/// Runs `calls` on another thread and fails, instead of hanging, if it does not return soon.
+fn returns_promptly<T: Send + 'static>(
+    what: &str,
+    calls: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    let (done, finished) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = done.send(calls());
+    });
+    finished
+        .recv_timeout(Duration::from_secs(5))
+        .unwrap_or_else(|_| panic!("{what} did not return while the platform call was blocked"))
+}
+
+#[test]
+fn dispatch_never_waits_for_a_platform_call() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    harness.core.dispatch(Action::AcknowledgeOperation);
+    // Dropping `release` (also on a failed assertion) lets the scan finish.
+    let release = harness.platform.hold_enumerate();
+    harness.core.dispatch(Action::Rescan);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while harness
+        .platform
+        .calls()
+        .iter()
+        .filter(|call| call.starts_with("enumerate"))
+        .count()
+        < 2
+    {
+        assert!(
+            Instant::now() < deadline,
+            "the second scan never enumerated"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    let core = Arc::clone(&harness.core);
+    let row = library.rows[0].clone();
+    let (during, closed) = returns_promptly("dispatch, snapshot and back", move || {
+        core.dispatch(Action::SelectScore {
+            selection_id: row.selection_id.clone(),
+        });
+        core.dispatch(Action::OpenPdf {
+            relative_path: row.relative_path.clone(),
+            note_key: row.note_key.clone(),
+            item_id: None,
+        });
+        let during = core.snapshot();
+        (during, core.back())
+    });
+
+    assert!(during.banner.busy, "the scan is still enumerating");
+    assert!(during.selection.is_some());
+    assert_eq!(during.settings.library_name.as_deref(), Some("Scores"));
+    assert!(closed, "back closed the details");
+    assert!(matches!(
+        harness.listener.effects().last(),
+        Some(Effect::OpenPdf { .. })
+    ));
+    drop(release);
+    harness.listener.wait_for("the second scan", is_finished);
+}
+
+#[test]
+fn a_stopped_worker_is_reported_without_spinning() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    open_and_scan(&harness);
+    harness.core.dispatch(Action::AcknowledgeOperation);
+    harness.platform.panic_on_enumerate();
+
+    harness.core.dispatch(Action::Rescan);
+
+    let stopped = |snapshot: &Snapshot| {
+        matches!(
+            &snapshot.banner.message,
+            Some(StatusMessage::Failed {
+                failure: Failure::WorkerStopped
+            })
+        )
+    };
+    let reported = harness
+        .listener
+        .wait_for("the stopped worker in the banner", stopped);
+    assert!(!reported.banner.busy, "no banner stuck on scanning");
+    // The core keeps answering: a new scan fails at once instead of waiting on a dead worker.
+    let core = Arc::clone(&harness.core);
+    let retried = returns_promptly("a second scan", move || {
+        core.dispatch(Action::AcknowledgeOperation);
+        core.dispatch(Action::Rescan);
+        core.snapshot()
+    });
+    assert!(stopped(&retried), "{:?}", retried.banner);
+}
+
+#[test]
+fn export_failure_keeps_the_platform_reason() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), Arc::new(FakePlatform::default()));
+
+    harness.core.dispatch(Action::ExportSets);
+    let Some(Effect::WriteExport { suggested_name, .. }) = harness.listener.effects().pop() else {
+        panic!("export asks Kotlin to write the file");
+    };
+    assert!(
+        suggested_name.starts_with("notae-sets-"),
+        "{suggested_name}"
+    );
+
+    harness
+        .core
+        .file_written(Some("No space left on device".to_owned()));
+    assert_eq!(
+        harness.core.snapshot().settings.export,
+        Some(ExportStatus::Failed {
+            detail: "No space left on device".to_owned()
+        })
+    );
+    harness.core.file_written(None);
+    assert_eq!(
+        harness.core.snapshot().settings.export,
+        Some(ExportStatus::Exported)
     );
 }
