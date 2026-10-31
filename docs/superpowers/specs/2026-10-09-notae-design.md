@@ -317,6 +317,8 @@ Android layout rules: the window draws edge-to-edge and the UI pads itself by th
 
 ### Linux CLI
 
+> **Superseded (2026-10-30)** by [ADR 0002](../../adr/0002-compose-ui-over-ffi.md): the desktop indexer (`apps/notae-index`) and `notae-ocr` are removed; the OCR crate is kept on the `archive/notae-ocr` branch.
+
 The PC tool is Linux-only for the first release:
 
 ```text

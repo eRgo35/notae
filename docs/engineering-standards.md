@@ -2,13 +2,13 @@
 
 ## Local Rust gates
 
-Use Rust 1.98.1 from `rust-toolchain.toml`, including `rustfmt` and `clippy`. On Linux, install `pkg-config`, Tesseract development headers, Leptonica development headers, Fontconfig development headers, and the English Tesseract language data used by CLI integration tests. On Ubuntu, the packages are `pkg-config libtesseract-dev libleptonica-dev libfontconfig1-dev tesseract-ocr-eng`. Ubuntu installs that language data under `/usr/share/tesseract-ocr/5/tessdata`; CI sets `TESSDATA_PREFIX` to this directory so subprocess tests use the installed pack. Fedora/RHEL hosts without system pkg-config files can follow [`crates/notae-ocr/README.md`](../crates/notae-ocr/README.md) and set `PKG_CONFIG_PATH=/tmp/tesseract-pkgconfig` for Cargo commands; Fontconfig must also be discoverable by pkg-config. For CLI integration tests on such hosts, install an English Tesseract pack and point `TESSDATA_PREFIX` at its data directory.
+Use Rust 1.98.1 from `rust-toolchain.toml`, including `rustfmt` and `clippy`. On Linux the host build also needs `pkg-config` and the Fontconfig development headers (`libfontconfig1-dev` on Ubuntu, `fontconfig-devel` on Fedora) because Slint's font stack links Fontconfig; the SQLite index bundles its own SQLite.
 
 `scripts/check.sh` runs the gates from any directory and stops at the first failure:
 
 ```sh
 scripts/check.sh        # fast: the first four gates below
-scripts/check.sh full   # all nine, including the Android target gate
+scripts/check.sh full   # all eight, including the Android target gate
 ```
 
 `full` first checks that `cargo-deny`, `cargo-llvm-cov`, `cargo-apk2` and the NDK are installed and names the install command for anything missing. On the maintainer workstation (16 threads, warm `target/`) `fast` takes about 2 minutes and `full` about 9. Run `fast` while working and `full` before merging; every release runs `full` again (see [`android-release.md`](android-release.md)). The gates, in order:
@@ -21,7 +21,6 @@ cargo test --workspace
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo deny check
 cargo llvm-cov --workspace --summary-only --fail-under-lines 84
-cargo run -p notae-index-cli -- --help
 cargo apk2 check -p notae-android --target aarch64-linux-android
 ```
 
@@ -45,8 +44,6 @@ Install JDK 17, the Android SDK (`platform-tools`, `platforms;android-34`, `buil
 
 Releases are not built on GitHub: the maintainer runs `scripts/release.sh` (see [`android-release.md`](android-release.md)). The workflows use only first-party `actions/*`, pinned by major version. Workflows can be checked locally with `actionlint`.
 
-The CI job runs on `ubuntu-24.04`, not `ubuntu-latest`: on the 26.04 image the `leptonica-sys` 0.4.9 bindgen step fails with `unknown type name 'atomic_int'` when it picks libclang 21 or 22 (the image ships clang 20, 21 and 22; a 26.04 container reproduces the failure and passes with `LIBCLANG_PATH=/usr/lib/llvm-20/lib`). Move the pin only after confirming the host build on the newer image.
-
 ## Audit summary
 
 | Rule | Status | Severity | Evidence / remediation |
@@ -62,7 +59,7 @@ The CI job runs on `ubuntu-24.04`, not `ubuntu-latest`: on the 26.04 image the `
 | BASE-009 | pass | important | `cargo llvm-cov` enforces a measured 84% line-coverage floor. |
 | BASE-010 | pass | important | `cargo deny check` audits advisories, licenses, duplicate versions, and sources. |
 | BASE-011 | pass | advisory | `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps` passes. |
-| BASE-012 | pass | blocking | `scripts/check.sh full` smokes CLI `--help` and compiles Android arm64; device UI review remains manual. |
+| BASE-012 | pass | blocking | `scripts/check.sh full` compiles Android arm64; device UI review remains manual. |
 | BASE-013 | pass | important | Rescan cancellation and worker cleanup are covered by tests; worker startup errors are returned rather than panicking. |
 | BASE-014 | pass | advisory | Remaining deviations below include their reason, owner, and review condition. |
 | RUST-001 | pass | blocking | Exact toolchain and formatter/linter components are pinned. |
@@ -75,13 +72,13 @@ The CI job runs on `ubuntu-24.04`, not `ubuntu-latest`: on the 26.04 image the `
 | RUST-008 | pass | important | 85.48% baseline measured; 84% floor enforced. |
 | RUST-009 | pass | important | Workspace libraries and binaries deny `unwrap_used` and `expect_used`; only narrow, documented invariant exceptions remain. |
 | RUST-010 | pass | blocking | Workspace forbids unsafe by default; Android uses a stricter package-level `deny` and safe core modules forbid unsafe locally. |
-| COND-001 | gap | important | The workspace has domain/index/OCR/application layers, but Cargo manifests are the only direction constraint. Add a `cargo metadata`-based allowed-edge gate before introducing new internal crate dependencies. Owner: Notae maintainers. Review on the next workspace dependency change. |
+| COND-001 | gap | important | The workspace has domain/index/application layers, but Cargo manifests are the only direction constraint. Add a `cargo metadata`-based allowed-edge gate before introducing new internal crate dependencies. Owner: Notae maintainers. Review on the next workspace dependency change. |
 | COND-002 | gap | important | Real PDF, image, and sidecar fixtures are tested, but there is no measured parser/render parity score. Add a fixture corpus score and floor before changing parser/rendering dependencies. Owner: Notae maintainers. Review on the next parser or renderer replacement. |
 | COND-003 | not-applicable | advisory | No checked-in generated Rust or metadata artifacts require regeneration. |
-| COND-004 | pass | blocking | CLI argument/exit-code integration tests and the CLI `--help` smoke exercise the public interface. |
+| COND-004 | not-applicable | advisory | The workspace has no command-line interface; the importer and state machines are exercised through their public APIs in integration tests. |
 | COND-005 | gap | important | Android UI has no deterministic headless visual baseline; current verification requires an emulator/tablet. Keep the manual checklist in `docs/android-debugging.md`; add screenshot comparison when a stable emulator rendering environment is available. Owner: Notae maintainers. |
 | COND-006 | gap | important | PDF and sidecar inputs are parsed from files, but no fuzz harness exists. Add fuzz targets for sidecar validation and PDF ingestion. Owner: Notae maintainers. Review before accepting a new parser or broader untrusted-input surface. |
 | COND-007 | not-applicable | advisory | No latency or throughput requirement is claimed. |
 | COND-008 | pass | important | `scripts/check.sh full` and every release cross-compile the Android arm64 target; device installation and interaction remain a manual release/debug check. |
 
-`cargo deny` allows the MIT project license and the confirmed Slint license terms. Its remaining duplicate-version warnings come from transitive OCR, PDF, and Slint dependencies; re-evaluate them during dependency upgrades.
+`cargo deny` allows the MIT project license and the confirmed Slint license terms. Its remaining duplicate-version warnings come from transitive Slint dependencies; re-evaluate them during dependency upgrades.

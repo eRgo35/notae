@@ -2,9 +2,8 @@
 //!
 //! This module defines the contract every `LibraryRootProvider`
 //! implementation satisfies. The Android implementation lives in
-//! `crate::android::saf` (Android-only); the Linux implementation lives
-//! in this file under `#[cfg(not(target_os = "android"))]` and is what
-//! the host tests drive.
+//! `crate::android::saf` (Android-only); the host tests drive a
+//! directory-backed provider in `tests/support/fs_catalog.rs`.
 //!
 //! # Why the root is opaque
 //!
@@ -48,8 +47,7 @@
 //! [`LibrarySource`] is `Send` and intentionally not `Sync`. A rescan
 //! takes exclusive ownership of one source for the duration of the
 //! enumeration, and the platform-specific catalogs underneath are not
-//! safe to share (`FilesystemCatalog` uses `RefCell` for failure
-//! accumulation; the SAF adapter streams documents off the
+//! safe to share (the SAF adapter streams documents off the
 //! `ContentResolver`). Promoting one to `Sync` would force a `Mutex`
 //! into a hot path that does not need it.
 
@@ -407,8 +405,8 @@ pub trait LibraryRootProvider {
     ///
     /// On Android this is the `ACTION_OPEN_DOCUMENT_TREE` intent and
     /// the persisted permission is taken before this method returns.
-    /// On the host test this is a synchronous pop off a
-    /// [`FilesystemLibraryRootProvider`]'s internal queue.
+    /// On the host test this is a synchronous pop off the test
+    /// provider's internal queue.
     ///
     /// # Errors
     /// - [`StorageError::Cancelled`] when the user dismisses the
@@ -430,220 +428,6 @@ pub trait LibraryRootProvider {
     /// - [`StorageError::Other`] for any other failure.
     fn reopen(&self, root: &LibraryRoot) -> Result<LibrarySource, StorageError>;
 }
-
-// ---------------------------------------------------------------------------
-// Host-only Linux implementation.
-//
-// `FilesystemLibraryRootProvider` is what the host tests drive. It
-// adapts `notae-index-cli`'s `FilesystemCatalog` (the same catalog the
-// Linux CLI uses) to the `LibraryRootProvider` trait, with a test
-// queue standing in for the SAF picker.
-// ---------------------------------------------------------------------------
-
-#[cfg(not(target_os = "android"))]
-mod host {
-    use std::collections::HashMap;
-    use std::path::PathBuf;
-    use std::sync::{Mutex, MutexGuard};
-
-    use notae_index::{CatalogError, PdfCatalog, PdfFile, SidecarManifest};
-    use notae_index_cli::catalog::{FilesystemCatalog, ValidatedRoot};
-
-    use super::{LibraryCatalog, LibraryRoot, LibraryRootId, LibrarySource, StorageError};
-
-    struct HostLibraryCatalog {
-        catalog: FilesystemCatalog,
-        root: PathBuf,
-    }
-
-    impl PdfCatalog for HostLibraryCatalog {
-        fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
-            self.catalog.enumerate()
-        }
-    }
-
-    impl LibraryCatalog for HostLibraryCatalog {
-        fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
-            let directory = self.root.join(".notae");
-            let directory_metadata = match std::fs::symlink_metadata(&directory) {
-                Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(error) => return Err(CatalogError::Failed(error.to_string())),
-            };
-            if directory_metadata.file_type().is_symlink() || !directory_metadata.is_dir() {
-                return Err(CatalogError::Failed(
-                    "sidecar directory is not a regular directory".to_owned(),
-                ));
-            }
-            let manifest_path = directory.join("manifest.json");
-            let manifest_metadata = match std::fs::symlink_metadata(&manifest_path) {
-                Ok(metadata) => metadata,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-                Err(error) => return Err(CatalogError::Failed(error.to_string())),
-            };
-            if manifest_metadata.file_type().is_symlink() || !manifest_metadata.is_file() {
-                return Err(CatalogError::Failed(
-                    "sidecar manifest is not a regular file".to_owned(),
-                ));
-            }
-            SidecarManifest::read(manifest_path)
-                .map(Some)
-                .map_err(|error| CatalogError::Failed(error.to_string()))
-        }
-    }
-    /// What the next
-    /// [`select_root`](super::LibraryRootProvider::select_root)
-    /// call should return. Tests queue a path before calling
-    /// `select_root`; an empty queue produces
-    /// [`StorageError::Cancelled`].
-    #[derive(Debug)]
-    enum QueuedSelection {
-        /// Pick a real directory.
-        Directory(PathBuf),
-        /// Pick a path that is not a directory, to assert
-        /// [`StorageError::NotADirectory`]. The payload is the path
-        /// the user "selected" so the error variant carries the
-        /// context the production impl would attach; the path itself
-        /// is not consumed by `select_root` because the error does not
-        /// include it.
-        #[allow(dead_code)]
-        NotADirectory(PathBuf),
-    }
-
-    /// Internal state shared by `select_root` (which takes it mutably)
-    /// and the test helpers.
-    #[derive(Debug, Default)]
-    struct Inner {
-        next_selection: Option<QueuedSelection>,
-        persisted: HashMap<LibraryRootId, LibraryRoot>,
-    }
-
-    /// The Linux-side `LibraryRootProvider`.
-    ///
-    /// Drives `select_root` from an in-memory queue so the host test
-    /// can exercise the state machine without a UI. The implementation
-    /// wraps [`FilesystemCatalog`] from `notae-index-cli`, so the same
-    /// catalog the Linux CLI ships is what the test re-uses — the host
-    /// tests therefore re-hash files the same way production does, and
-    /// the host test re-hashes them independently to assert the
-    /// catalog's hashes are not fabricated.
-    #[derive(Debug, Default)]
-    pub struct FilesystemLibraryRootProvider {
-        inner: Mutex<Inner>,
-    }
-
-    impl FilesystemLibraryRootProvider {
-        /// Returns a provider with an empty selection queue.
-        #[must_use]
-        pub fn new() -> Self {
-            Self::default()
-        }
-
-        /// Locks the internal state. Exposed to `select_root` and test helpers.
-        // This in-memory test provider executes no callbacks while holding its private lock.
-        #[allow(clippy::expect_used)]
-        fn lock(&self) -> MutexGuard<'_, Inner> {
-            self.inner.lock().expect("provider mutex poisoned")
-        }
-
-        /// Queues a directory for the next `select_root` call. The
-        /// directory must exist and be readable; the provider
-        /// verifies both at the moment of selection.
-        pub fn queue_directory(&self, path: impl Into<PathBuf>) {
-            self.lock().next_selection = Some(QueuedSelection::Directory(path.into()));
-        }
-
-        /// Queues a non-directory path (typically a single file) for
-        /// the next `select_root` call. The provider rejects it with
-        /// [`StorageError::NotADirectory`] instead of treating it as a
-        /// usable root.
-        pub fn queue_non_directory(&self, path: impl Into<PathBuf>) {
-            self.lock().next_selection = Some(QueuedSelection::NotADirectory(path.into()));
-        }
-
-        /// Persists a root as if the platform had granted its
-        /// permission. The provider's `reopen` will accept it
-        /// afterwards; [`revoke_persisted`](Self::revoke_persisted)
-        /// removes the entry so the provider reports `PermissionLost`.
-        pub fn remember(&self, root: LibraryRoot) {
-            self.lock().persisted.insert(root.id().clone(), root);
-        }
-
-        /// Drops the persisted entry for `root`. The next
-        /// `reopen(root)` will report [`StorageError::PermissionLost`].
-        pub fn revoke_persisted(&self, root: &LibraryRoot) {
-            self.lock().persisted.remove(root.id());
-        }
-    }
-
-    impl super::LibraryRootProvider for FilesystemLibraryRootProvider {
-        async fn select_root(&self) -> Result<LibraryRoot, StorageError> {
-            let queued = self.lock().next_selection.take();
-            let path = match queued {
-                Some(QueuedSelection::Directory(path)) => path,
-                Some(QueuedSelection::NotADirectory(_)) => {
-                    return Err(StorageError::NotADirectory);
-                }
-                None => return Err(StorageError::Cancelled),
-            };
-            let metadata = std::fs::symlink_metadata(&path)
-                .map_err(|error| StorageError::Other(error.to_string()))?;
-            if metadata.file_type().is_symlink() {
-                return Err(StorageError::Other(format!(
-                    "{} is a symbolic link, which is never followed",
-                    path.display()
-                )));
-            }
-            if !metadata.is_dir() {
-                return Err(StorageError::NotADirectory);
-            }
-            let display_name = path
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| path.display().to_string());
-            let root = LibraryRoot::new(display_name, path.to_string_lossy());
-            self.remember(root.clone());
-            Ok(root)
-        }
-
-        fn reopen(&self, root: &LibraryRoot) -> Result<LibrarySource, StorageError> {
-            // The host provider requires that `remember` was called
-            // for `root`. On a real device the persisted permission
-            // flag plays the same role.
-            if !self.lock().persisted.contains_key(root.id()) {
-                return Err(StorageError::PermissionLost);
-            }
-            let path = PathBuf::from(root.handle());
-            // The root boundary: refuse if the path no longer
-            // resolves to a directory. `ValidatedRoot::open` does the
-            // symlink-and-identity checks the CLI relies on, so the
-            // host adapter inherits the production root boundary.
-            //
-            // A name that is gone, is not a directory, or cannot be
-            // listed is collapsed to `PermissionLost`: from the UI's
-            // point of view, every such failure has the same remedy
-            // (re-select the folder), and mapping them all to the same
-            // variant is what lets the recovery screen offer one
-            // affordance rather than three.
-            let validated = ValidatedRoot::open(&path).map_err(|rejection| {
-                let message = rejection.to_string();
-                if message.contains("No such file") || message.contains("not a directory") {
-                    StorageError::PermissionLost
-                } else {
-                    StorageError::Other(message)
-                }
-            })?;
-            let catalog = HostLibraryCatalog {
-                catalog: FilesystemCatalog::new(validated),
-                root: path,
-            };
-            Ok(LibrarySource::new(root.clone(), Box::new(catalog)))
-        }
-    }
-}
-
-#[cfg(not(target_os = "android"))]
-pub use host::FilesystemLibraryRootProvider;
 
 // ---------------------------------------------------------------------------
 // Android implementation lives in `crate::android::saf`.

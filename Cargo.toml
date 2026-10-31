@@ -6,8 +6,6 @@ resolver = "3"
 members = [
     "crates/notae-domain",
     "crates/notae-index",
-    "crates/notae-ocr",
-    "apps/notae-index",
     "apps/notae-android",
 ]
 
@@ -38,7 +36,7 @@ expect_used = "warn"
 [patch.crates-io]
 i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
 
-# Quick local APK for trying a change on a device (`.github/scripts/build-apk.sh dev`). It is NOT the
+# Quick local APK for trying a change on a device (`scripts/build-apk.sh dev`). It is NOT the
 # shipped build: the Release workflow and `build-apk.sh release` use the stock `release` profile,
 # which this table does not touch. Signed with the SDK debug key, never the release key.
 [profile.apk-dev]

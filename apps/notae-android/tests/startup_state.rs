@@ -1,10 +1,12 @@
 use std::sync::{Arc, Mutex};
 
 use notae_android::operations::events::OperationEvent;
-use notae_android::storage::{
-    FilesystemLibraryRootProvider, LibraryRootProvider, StorageError, StorageState,
-};
+use notae_android::storage::{LibraryRootProvider, StorageError, StorageState};
 use notae_android::ui::{StartupPresentation, UiModel};
+
+#[path = "support/fs_catalog.rs"]
+mod fs_catalog;
+use fs_catalog::FilesystemLibraryRootProvider;
 
 fn selected_source() -> (
     tempfile::TempDir,

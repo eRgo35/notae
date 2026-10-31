@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in Notae (the Android app or the notae-index indexer) does not work as expected.
+description: Something in Notae (the Android app) does not work as expected.
 title: "bug: "
 labels: ["bug", "needs-triage"]
 body:
@@ -15,8 +15,7 @@ body:
       label: Component
       options:
         - Android app
-        - notae-index (Linux indexer)
-        - Sidecar import/export
+        - Sidecar import
         - Documentation
         - Other / not sure
     validations:
@@ -25,7 +24,7 @@ body:
     id: version
     attributes:
       label: Notae version
-      description: Android, Settings, About. Indexer, `notae-index --version`. Say "built from main" with the commit if you built it yourself.
+      description: Android, Settings, About. Say "built from main" with the commit if you built it yourself.
       placeholder: "0.3.0"
     validations:
       required: true
@@ -37,7 +36,6 @@ body:
         - Signed APK from GitHub Releases
         - Built from source (debug build)
         - Built from source (release build)
-        - Not applicable (indexer)
     validations:
       required: true
   - type: input
@@ -75,6 +73,6 @@ body:
     attributes:
       label: Logs
       description: |
-        For a crash, the `adb logcat -b crash -v threadtime` block (see docs/android-debugging.md). For the indexer, the
-        command you ran and its stderr. Remove personal identifiers first.
+        For a crash, the `adb logcat -b crash -v threadtime` block (see docs/android-debugging.md). Remove personal
+        identifiers first.
       render: text

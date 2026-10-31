@@ -25,24 +25,15 @@ By contributing you agree that your work is released under the
 
 ## Development setup
 
-You need a Linux machine. macOS and Windows are not supported for the indexer.
+Notae is an Android app; the host tests and the Android cross-compile run on Linux, which is the supported development machine.
 
 1. Install the Rust toolchain with [rustup](https://rustup.rs). The repository
    pins **Rust 1.98.1** with `rustfmt` and `clippy` in
    [`rust-toolchain.toml`](rust-toolchain.toml); rustup installs it on first
    use.
-2. Install the native libraries used by the OCR and PDF stack. On Ubuntu:
-
-   ```sh
-   sudo apt-get install pkg-config libtesseract-dev libleptonica-dev \
-       libfontconfig1-dev tesseract-ocr-eng
-   ```
-
-   CI sets `TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata` so subprocess
-   tests find the language data. On Fedora/RHEL hosts without system
-   `pkg-config` files for Tesseract, follow
-   [`crates/notae-ocr/README.md`](crates/notae-ocr/README.md) and set
-   `PKG_CONFIG_PATH`.
+2. Install `pkg-config` and the Fontconfig headers, which the Slint host build
+   links (Ubuntu: `sudo apt-get install pkg-config libfontconfig1-dev`; Fedora:
+   `sudo dnf install pkgconf-pkg-config fontconfig-devel`).
 3. Install the pinned cargo tools used by the gates:
 
    ```sh
@@ -69,8 +60,6 @@ You need a Linux machine. macOS and Windows are not supported for the indexer.
 | --- | --- |
 | `crates/notae-domain` | Filename convention, metadata, file identity |
 | `crates/notae-index` | SQLite store, FTS5 search, sidecar format, importer |
-| `crates/notae-ocr` | Tesseract-backed OCR provider |
-| `apps/notae-index` | The `notae-index` command-line indexer |
 | `apps/notae-android` | Slint UI, Storage Access Framework adapter, Java shim |
 
 Put domain, indexing and search logic in the host-tested crates; keep the
@@ -85,7 +74,7 @@ directory, and stops at the first failure:
 
 ```sh
 scripts/check.sh        # fast: fmt, both Clippy passes, tests
-scripts/check.sh full   # fast plus rustdoc, cargo deny, coverage, CLI smoke,
+scripts/check.sh full   # fast plus rustdoc, cargo deny, coverage
                         # and the Android target check
 ```
 
@@ -113,11 +102,10 @@ Notes:
 ## Testing guidance
 
 - **Test behaviour, not implementation.** Prefer an integration test that goes
-  through the public interface (CLI arguments and exit codes, sidecar output,
-  the importer, search queries) over a test of private helpers.
-- **Use real fixtures.** The indexer tests use real PDF fixtures under
-  `apps/notae-index/tests/fixtures/`; add a small fixture rather than mocking
-  the PDF parser.
+  through the public interface (the importer, search queries, the storage and
+  operation state machines) over a test of private helpers.
+- **Use real fixtures.** Prefer a small generated or non-sensitive fixture over
+  mocking the code under test.
 - **UI changes need behavioural UI tests.** The Android UI is exercised on the
   host with Slint's testing backend: see
   [`apps/notae-android/tests/support/mod.rs`](apps/notae-android/tests/support/mod.rs)

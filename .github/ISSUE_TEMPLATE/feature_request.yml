@@ -15,8 +15,7 @@ body:
       label: Component
       options:
         - Android app
-        - notae-index (Linux indexer)
-        - Sidecar format
+        - Sidecar import
         - Documentation
         - Other / not sure
     validations:

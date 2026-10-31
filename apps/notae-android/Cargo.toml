@@ -38,15 +38,6 @@ atomic-waker = "1"
 # dispatches.
 i-slint-core = "=1.18.1"
 
-# `notae-index-cli` is the Linux indexer binary crate. It pulls in C/C++
-# deps (hayro, image, Tesseract via `notae-ocr`) that don't cross-compile,
-# so it is wired in only when the target is *not* Android. On host builds
-# we re-use its `FilesystemCatalog` as the host-side `PdfCatalog` for the
-# storage-state tests; on Android the SAF adapter in
-# `src/android/saf.rs` plays the same role.
-[target.'cfg(not(target_os = "android"))'.dependencies]
-notae-index-cli = { path = "../notae-index", version = "0.4.0" }
-
 # `jni` and `android-activity` are direct deps only on Android.
 # `android-activity` is the runtime the `android_main` FFI shim already
 # pulls in transitively; we list it explicitly so `saf.rs` can use the
@@ -57,10 +48,8 @@ notae-index-cli = { path = "../notae-index", version = "0.4.0" }
 android-activity = "0.6"
 jni = "0.22"
 
-# `notae-ocr` remains host/Linux-only: its current Tesseract and Leptonica
-# bindings do not support Android cross-compilation. Android uses PdfRenderer
-# for text-layer extraction only; image-only PDFs remain OCR-pending. PDFs
-# are rendered only to first-page thumbnails.
+# Android uses PdfRenderer for text-layer extraction only; image-only PDFs remain
+# OCR-pending. PDFs are rendered only to first-page thumbnails.
 # Cross-compiling `notae-index` to Android is non-trivial because it bundles
 # SQLite via `cc-rs`. The build expects the NDK clang in the PATH for
 # `aarch64-linux-android`; `cargo apk2` sets that up. The host test

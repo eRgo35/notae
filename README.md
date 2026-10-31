@@ -2,8 +2,8 @@
 
 <img src="docs/images/notae-banner.svg" alt="Notae: local-first sheet-music library for Android tablets" width="720">
 
-**Index your sheet-music PDFs on a Linux desktop, then browse and search them
-on an Android tablet. No cloud, no account, no network access.**
+**Browse and search your sheet-music PDFs on an Android tablet. No cloud, no
+account, no network access.**
 
 <sub>Version 0.4.0 · Android tablet (arm64) · one maintainer · next:
 <a href="ROADMAP.md">the 0.5.0 Compose app</a></sub>
@@ -40,18 +40,6 @@ annotate scores itself: it hands each PDF to the viewer you already use.
 
 ## Features
 
-**Desktop indexer (`notae-index`, Linux)**
-
-- Walks a folder of PDFs, parses `<number> - <title>.pdf` file names and
-  extracts the embedded text layer.
-- Runs Tesseract OCR on image-only (scanned) pages with the installed language
-  packs, keeping the best-scoring language per page.
-- Writes a portable, versioned **sidecar** (`.notae/index.sqlite` and
-  `manifest.json`) and re-indexes incrementally by SHA-256 content hash, so a
-  renamed file stays one record.
-
-**Android app (tablet-first)**
-
 - **Browse** as a card grid (two columns on a phone, like the Drive app) or a
   dense list, with a collapsible sidebar, a
   **Recent** section and a full-width **preview** with previous/next buttons.
@@ -65,13 +53,16 @@ annotate scores itself: it hands each PDF to the viewer you already use.
   `lodz` finds `Łódź` in titles, composers, tags and lyrics.
 - **Edit details** (number, title, composer, tags). Manual edits are kept when
   you import a sidecar again.
-- **Import preview** for sidecars: see what is new, changed or missing before
-  anything is applied. Nothing is imported automatically.
+- **Import preview** for a sidecar left by an earlier Notae version: see what
+  is new, changed or missing before anything is applied. Nothing is imported
+  automatically. Sidecar import is removed in 0.5.0.
 - **Open scores in your PDF viewer**: Samsung Notes when installed, otherwise
   the Android PDF chooser.
-- Reads a PDF's own text layer on-device on Android 15 (API 35) and later;
-  scanned PDFs get searchable text from the desktop sidecar. A failing PDF
-  never aborts a scan, and duplicate numbers are reported rather than
+- Parses `<number> - <title>.pdf` file names and re-indexes incrementally by
+  SHA-256 content hash, so a renamed file stays one record.
+- Reads a PDF's own text layer on-device on Android 15 (API 35) and later.
+  Scanned PDFs have no searchable text until on-device OCR exists. A failing
+  PDF never aborts a scan, and duplicate numbers are reported rather than
   overwritten.
 
 ## Screenshots
@@ -109,32 +100,21 @@ physical tablet.</sub>
 
 ## How it works
 
-The desktop and the tablet never need to share a filesystem or a network. They
-exchange a versioned sidecar that lives in the library folder.
+Notae reads the folder you pick through Android's Storage Access Framework and
+builds its own private index from it.
 
 ```mermaid
 flowchart LR
-    subgraph desktop["Linux desktop"]
-        pdfs[("PDF library")]
-        idx["notae-index<br/>catalog, text layer, Tesseract OCR"]
-        pdfs --> idx
-    end
-
-    idx -->|writes| sidecar[".notae/<br/>index.sqlite + manifest.json"]
-    pdfs -. "copy folder (USB, file sharing, ...)" .-> tablet_files
-    sidecar -. "copy with the PDFs" .-> tablet_files
-
     subgraph tablet["Android tablet"]
-        tablet_files[("Library folder<br/>PDFs + .notae/")]
-        app["Notae<br/>scan, import preview,<br/>browse, search, edit details"]
+        files[("Library folder<br/>PDFs")]
+        app["Notae<br/>scan, browse, search,<br/>edit details"]
         viewer["Your PDF viewer<br/>(Samsung Notes, ...)"]
-        tablet_files -->|"folder grant (SAF)"| app
+        files -->|"folder grant (SAF)"| app
         app -->|"open score"| viewer
     end
 ```
 
-Notae never syncs or uploads anything: you move the folder yourself, and the
-tablet builds its own private index from it. There is no on-device OCR yet;
+Notae never syncs or uploads anything. There is no on-device OCR yet;
 [ADR 0001](docs/adr/0001-on-device-ocr.md) accepts it as a manual, foreground step ([#28](https://github.com/eRgo35/notae/issues/28)), not yet built.
 
 ## Install
@@ -147,8 +127,7 @@ tablet builds its own private index from it. There is no on-device OCR yet;
 
 Notae ships one Android artifact: a signed **arm64** APK for Android 6.0 (API
 23) or newer, attached to each GitHub Release. The maintainer builds, signs
-and verifies it from the release tag with `scripts/release.sh`. The desktop indexer is built from source; see
-[Build from source](#build-from-source).
+and verifies it from the release tag with `scripts/release.sh`.
 
 1. Download `notae-<version>-arm64.apk` and its `.sha256` from the
    [latest release](https://github.com/eRgo35/notae/releases/latest).
@@ -184,28 +163,15 @@ and verifies it from the release tag with `scripts/release.sh`. The desktop inde
 
 ## Quick start
 
-**1. Index a folder on your Linux desktop.** Name PDFs `<number> - <title>.pdf`
-(for example `12 - Autumn Leaves.pdf`) to get a number and title for free;
-other names work and simply have no number. Install at least one Tesseract
-language pack first (`tesseract-ocr-eng` on Ubuntu, `tesseract-langpack-eng`
-on Fedora; add the `pol` pack for Polish), then:
+**1. Put your PDFs in a folder on the tablet.** Name them
+`<number> - <title>.pdf` (for example `12 - Autumn Leaves.pdf`) to get a number
+and title for free; other names work and simply have no number.
 
-```sh
-cargo build --release -p notae-index-cli       # prerequisites: see "Build from source"
-./target/release/notae-index /path/to/library  # writes /path/to/library/.notae/
-```
-
-Re-run it whenever the library changes; it is incremental. Options and the
-sidecar format are in [`apps/notae-index/README.md`](apps/notae-index/README.md).
-
-**2. Copy the folder to the tablet.** Copy the PDFs together with the `.notae/`
-directory (USB, a file-sharing app, `adb push`, ...), keeping the same relative
-paths.
-
-**3. Open Notae and choose the folder.** Tap **Choose score folder**, pick the
+**2. Open Notae and choose the folder.** Tap **Choose score folder**, pick the
 folder in the Android picker, allow access, then start a scan from the Library.
-Notae indexes the PDFs and, when it finds `.notae/manifest.json`, shows an
-import preview; confirm it to import the OCR text and metadata.
+Notae indexes the PDFs. If the folder holds a `.notae/manifest.json` from an
+earlier version, it shows an import preview; confirm it to import the text and
+metadata.
 
 ## Using Notae
 
@@ -229,37 +195,14 @@ import preview; confirm it to import the OCR text and metadata.
 
 - **Rust 1.98.1**, pinned by [`rust-toolchain.toml`](rust-toolchain.toml)
   (rustup selects it automatically, with `rustfmt` and `clippy`).
-- **Linux native libraries** for the indexer's OCR and PDF stack: `pkg-config`,
-  Tesseract and Leptonica headers, Fontconfig headers and a Tesseract language
-  pack.
-
-  ```sh
-  # Ubuntu / Debian
-  sudo apt-get install pkg-config libtesseract-dev libleptonica-dev \
-      libfontconfig1-dev tesseract-ocr-eng
-  # Fedora
-  sudo dnf install pkgconf-pkg-config tesseract-devel leptonica-devel \
-      fontconfig-devel tesseract-langpack-eng
-  ```
-
-  Hosts without system `pkg-config` files for Tesseract can follow
-  [`crates/notae-ocr/README.md`](crates/notae-ocr/README.md) and set
-  `PKG_CONFIG_PATH`.
-- **For the Android app:** JDK 17 (a newer JDK works if you compile the Java
+- **Linux host libraries:** `pkg-config` and the Fontconfig headers, which the
+  Slint host build links (`sudo apt-get install pkg-config libfontconfig1-dev`
+  on Ubuntu, `sudo dnf install pkgconf-pkg-config fontconfig-devel` on Fedora).
+- **Android toolchain:** JDK 17 (a newer JDK works if you compile the Java
   adapter as Java 17; see [`docs/android-debugging.md`](docs/android-debugging.md)),
   Android SDK platform 34 with build-tools 34.0.0, **NDK r26d**
   (`26.3.11579264`), the `aarch64-linux-android` Rust target and
   `cargo-apk2` 1.4.0.
-
-</details>
-
-<details>
-<summary><b>Build and run the indexer</b></summary>
-
-```sh
-cargo build --release -p notae-index-cli
-./target/release/notae-index --help
-```
 
 </details>
 
@@ -295,9 +238,7 @@ crates/
   notae-domain/     Filename convention, note metadata, file identity.
   notae-index/      SQLite persistence, FTS5 search, the sidecar format and
                     the importer the Android app uses.
-  notae-ocr/        Tesseract-backed OCR provider (Linux).
 apps/
-  notae-index/      The `notae-index` command-line indexer.
   notae-android/    The Android app: Slint UI, Storage Access Framework
                     adapter and a thin Java activity shim.
 docs/               Release procedure, engineering standards, debugging guide,
@@ -336,10 +277,6 @@ privately.
 
 ## Documentation
 
-- [`apps/notae-index/README.md`](apps/notae-index/README.md): indexer guide,
-  sidecar format, Android import contract.
-- [`crates/notae-ocr/README.md`](crates/notae-ocr/README.md): building against
-  system Tesseract and Leptonica.
 - [`ROADMAP.md`](ROADMAP.md): what is being built now, next and later.
 - [`GLOSSARY.md`](GLOSSARY.md): the domain terms (library, score, sidecar,
   scope, set, ...).
@@ -367,13 +304,14 @@ What comes next is in [`ROADMAP.md`](ROADMAP.md).
 - **0.3.0 is not yet run on the physical tablet.** Favorites, Sets and the
   Polish UI are verified with host tests and the tablet emulator only; the
   Galaxy Tab S10 FE+ check is pending.
-- **No on-device OCR.** Scanned PDFs get searchable text from the desktop
-  indexer ([#28](https://github.com/eRgo35/notae/issues/28),
-  [ADR 0001](docs/adr/0001-on-device-ocr.md)).
+- **No on-device OCR.** Scanned PDFs have no searchable text yet
+  ([#28](https://github.com/eRgo35/notae/issues/28),
+  [ADR 0001](docs/adr/0001-on-device-ocr.md)). The desktop indexer and its
+  Tesseract OCR were removed in 0.5.0.
 - **TalkBack has no long-press action**, so the long-press menu is not
   reachable that way; its actions are on the card itself and its Info button.
-- **Platforms:** the Android release is arm64 only (minSdk 23); the indexer is
-  Linux only. There is no iOS, Windows or macOS build.
+- **Platforms:** Notae is Android only, and the release is arm64 (minSdk 23).
+  There is no desktop, iOS, Windows or macOS build.
 - **No in-app PDF viewing or annotation, and no cloud sync**, by design.
 - Preview thumbnails are 400 px wide, so the full-width preview can look soft
   on a large tablet.

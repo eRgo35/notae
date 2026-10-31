@@ -6,23 +6,25 @@
 //! the *state machine* the device runs is the state machine Linux
 //! exercised.
 //!
-//! The tests drive [`FilesystemLibraryRootProvider`], the Linux
-//! implementation of [`LibraryRootProvider`]. The provider adapts
-//! [`notae_index_cli::catalog::FilesystemCatalog`] (the same catalog
-//! the production CLI ships) so the host tests re-hash files the same
-//! way production does, and the tests re-hash independently to assert
-//! the catalog's hashes are not fabricated.
+//! The tests drive [`FilesystemLibraryRootProvider`], the host
+//! implementation of [`LibraryRootProvider`] in
+//! `support/fs_catalog.rs`. Its catalog hashes the files it lists, and
+//! the tests re-hash independently to assert the catalog's hashes are
+//! not fabricated.
 
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use notae_android::storage::{
-    FilesystemLibraryRootProvider, LibraryRootProvider, LibrarySource, SharedLibraryCatalog,
-    StorageError, StorageState,
+    LibraryRootProvider, LibrarySource, SharedLibraryCatalog, StorageError, StorageState,
 };
 use notae_index::{CatalogError, FileCondition, PdfCatalog};
 use sha2::{Digest, Sha256};
+
+#[path = "support/fs_catalog.rs"]
+mod fs_catalog;
+use fs_catalog::FilesystemLibraryRootProvider;
 
 /// Awaits an async `select_root` future from a synchronous test body.
 fn select_root_blocking(

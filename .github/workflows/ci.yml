@@ -1,7 +1,7 @@
 name: CI
 
 # A light check: formatting, both Clippy passes and the tests. The full gates (rustdoc, cargo deny,
-# coverage, the CLI smoke and the Android arm64 compile) run locally with `scripts/check.sh full`
+# coverage and the Android arm64 compile) run locally with `scripts/check.sh full`
 # and in every release (`scripts/release.sh`).
 on:
   # Branch work is covered by its pull request, so a push to a PR branch does not run twice.
@@ -23,23 +23,15 @@ concurrency:
 jobs:
   check:
     name: fmt, clippy, tests
-    # Pinned: `ubuntu-latest` now resolves to 26.04, whose preinstalled libclang 21/22 makes the
-    # `leptonica-sys` 0.4.9 bindgen step fail (`unknown type name 'atomic_int'` in leptonica/environ.h).
-    # Last green on ubuntu-24.04 (run 39125510213). Revisit when leptonica-sys or the image changes.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      TESSDATA_PREFIX: /usr/share/tesseract-ocr/5/tessdata
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
     steps:
       - name: Free preinstalled runner disk space
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
       - uses: actions/checkout@v7
-      - name: Install native host dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libtesseract-dev libleptonica-dev libfontconfig1-dev pkg-config tesseract-ocr-eng
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
       # Registry and git sources only: caching target/ fills the runner disk.

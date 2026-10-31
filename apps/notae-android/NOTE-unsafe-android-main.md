@@ -45,6 +45,6 @@ and the `unsafe` blocks inside are minimal:
   deprecated APIs (e.g. `JObject::from_raw`); the review notes that the upgrade to
   `jni` 0.23 / `jni-sys` 0.4 lifts them. Until that lands, the allow keeps the
   build log clean. Re-verify on every `jni` bump.
-- If `notae-index` (rusqlite + bundled SQLite) or `notae-ocr` (Tesseract C++) is
+- If a native engine (for example an OCR library built from C++) is
   ever linked into this crate, expect more `extern "C"` boundaries. Same scoping
   rules apply: one file per boundary, `#![forbid(unsafe_code)]` everywhere else.

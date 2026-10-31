@@ -5,8 +5,8 @@
 #
 #   fast  (default) cargo fmt, both Clippy passes and the test suite. Run it while working;
 #         the opt-in pre-push hook (scripts/hooks/pre-push) runs it too.
-#   full  fast, then rustdoc, cargo deny, the coverage floor, the CLI smoke and the Android
-#         arm64 compile check. Run it before merging and in every release (scripts/release.sh).
+#   full  fast, then rustdoc, cargo deny, the coverage floor and the Android arm64 compile
+#         check. Run it before merging and in every release (scripts/release.sh).
 #
 # Stops at the first failing gate. Acts on the repository this script lives in, whatever the cwd.
 # Environment for `full` (all optional): ANDROID_HOME / ANDROID_SDK_ROOT (default ~/Android/Sdk),
@@ -67,7 +67,6 @@ if [ "$mode" = full ]; then
   gate cargo deny check
   # Reuses target/llvm-cov-target between runs; no `cargo clean` needed locally.
   gate cargo llvm-cov --workspace --summary-only --fail-under-lines 84
-  gate cargo run -p notae-index-cli -- --help
   gate cargo apk2 check -p notae-android --target aarch64-linux-android
 fi
 
