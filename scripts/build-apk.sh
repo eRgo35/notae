@@ -3,7 +3,7 @@
 #
 # Usage: build-apk.sh [release|dev]
 #
-#   release  (default) The shippable build. Runs exactly what the Release workflow runs:
+#   release  (default) The shippable build, as scripts/release.sh runs it:
 #            `cargo apk2 build -p notae-android --target aarch64-linux-android --release`.
 #            It needs the release key and never falls back to the debug key:
 #              CARGO_APK_RELEASE_KEYSTORE           single-entry .p12 (see prepare-release-keystore.sh)
@@ -16,7 +16,7 @@
 # Environment (all optional): ANDROID_HOME / ANDROID_SDK_ROOT (default ~/Android/Sdk),
 # ANDROID_NDK_ROOT (default: the r26d directory under the SDK), CARGO_TARGET_DIR.
 # The JDK's Java sources are compiled as Java 17 so a newer JDK (for example 25) still produces
-# class files that the bundled D8 accepts; CI uses JDK 17, which produces the same class files.
+# class files that the bundled D8 accepts.
 set -euo pipefail
 
 mode=${1:-release}
@@ -32,7 +32,7 @@ export ANDROID_HOME=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}
 export ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}
 export ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT:-$ANDROID_HOME/ndk/android-ndk-r26d}
 if [ ! -d "$ANDROID_NDK_ROOT" ]; then
-  echo "NDK not found at $ANDROID_NDK_ROOT; set ANDROID_NDK_ROOT (CI uses NDK r26d, 26.3.11579264)." >&2
+  echo "NDK not found at $ANDROID_NDK_ROOT; set ANDROID_NDK_ROOT (NDK r26d, 26.3.11579264)." >&2
   exit 1
 fi
 export JDK_JAVAC_OPTIONS=${JDK_JAVAC_OPTIONS:--source 17 -target 17}
