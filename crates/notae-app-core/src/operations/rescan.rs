@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use notae_domain::IndexStatus;
+use notae_domain::{DomainError, IndexStatus};
 use notae_index::{IndexStore, OcrText, PdfFile, Reconciler, SearchScope};
 
 use crate::operations::events::{OperationEvent, RescanSummary};
@@ -296,8 +296,8 @@ fn run_rescan(
     if stop_if_cancelled(cancellation, events, busy) {
         return;
     }
-    let files = match catalog.enumerate() {
-        Ok(files) => files,
+    let (files, rejected) = match catalog.enumerate() {
+        Ok(files) => (files, catalog.take_rejected_paths()),
         Err(error) => {
             cancellation.store(CANCEL_CLOSED, Ordering::Release);
             send(
@@ -372,8 +372,12 @@ fn run_rescan(
                 moved: report.moves().len(),
                 deleted: report.deletions().len(),
                 conflicts: report.conflicts().len(),
-                failures: report.failures().len(),
+                failures: report.failures().len() + rejected.len(),
             };
+            for path in rejected {
+                let reason = DomainError::InvalidRelativePath(path.clone()).to_string();
+                send(events, OperationEvent::FileFailed { path, reason });
+            }
             for (index, file) in files.iter().enumerate() {
                 let path = file.path().as_str().to_owned();
                 let plan_failure = failures.get(&path).cloned();

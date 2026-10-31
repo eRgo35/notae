@@ -4,8 +4,9 @@ use std::io;
 use notae_android::saf_tree::{
     DocumentRow, DocumentTreeReader, enumerate_document_tree, find_document_id,
 };
-use notae_domain::{PdfFingerprint, Sha256Digest};
-use notae_index::{CatalogError, FileCondition};
+use notae_app_core::platform::DocumentContent;
+use notae_domain::Sha256Digest;
+use notae_index::CatalogError;
 use sha2::{Digest, Sha256};
 
 const DIRECTORY_MIME: &str = "vnd.android.document/directory";
@@ -52,12 +53,12 @@ fn row(document_id: &str, display_name: &str, mime_type: &str) -> DocumentRow {
     }
 }
 
-fn fingerprint(bytes: &[u8]) -> PdfFingerprint {
-    PdfFingerprint::new(
-        Sha256Digest::from_bytes(Sha256::digest(bytes).into()),
-        u64::try_from(bytes.len()).expect("fixture length fits in u64"),
-        None,
-    )
+fn sha256(bytes: &[u8]) -> DocumentContent {
+    DocumentContent::Sha256(Sha256Digest::from_bytes(Sha256::digest(bytes).into()).to_string())
+}
+
+fn size(bytes: &[u8]) -> u64 {
+    u64::try_from(bytes.len()).expect("fixture length fits in u64")
 }
 
 #[test]
@@ -84,13 +85,16 @@ fn recursive_enumeration_fingerprints_nested_pdfs_and_reports_unreadable_files()
     tree.unreadable.insert("locked".to_owned());
 
     let files = enumerate_document_tree(&tree, "root").expect("tree traversal succeeds");
-    let paths: Vec<_> = files.iter().map(|file| file.path().as_str()).collect();
+    let paths: Vec<_> = files.iter().map(|file| file.path.as_str()).collect();
 
     assert_eq!(paths, ["root.pdf", "nested/practice.pdf", "locked.pdf"]);
-    assert_eq!(files[0].fingerprint(), Some(&fingerprint(&root_bytes)));
-    assert_eq!(files[1].fingerprint(), Some(&fingerprint(&nested_bytes)));
-    assert!(matches!(files[2].condition(), FileCondition::Unreadable));
-    assert!(files.iter().all(|file| file.filename() != "notes.txt"));
+    assert_eq!(files[0].content, sha256(&root_bytes));
+    assert_eq!(files[0].size, size(&root_bytes));
+    assert_eq!(files[1].content, sha256(&nested_bytes));
+    assert_eq!(files[1].size, size(&nested_bytes));
+    assert_eq!(files[1].display_name, "practice.pdf");
+    assert_eq!(files[2].content, DocumentContent::Unreadable);
+    assert!(files.iter().all(|file| file.display_name != "notes.txt"));
 }
 
 #[test]

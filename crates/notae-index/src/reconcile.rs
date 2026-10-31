@@ -92,6 +92,9 @@ pub enum CatalogError {
     /// Traversal started but failed part way through the tree.
     #[error("library enumeration failed: {0}")]
     Failed(String),
+    /// The platform revoked the permission to read the library root.
+    #[error("permission for the library root was lost; reauthorize to continue")]
+    PermissionLost,
 }
 
 /// What a catalog observed when it tried to read one file.

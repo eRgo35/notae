@@ -302,6 +302,12 @@ pub trait LibraryCatalog: PdfCatalog + Send {
     fn render_thumbnail(&self, _path: &RelativePdfPath, _out: &Path) -> Result<bool, PdfError> {
         Ok(false)
     }
+
+    /// Takes the paths the last [`enumerate`](PdfCatalog::enumerate) dropped because the domain
+    /// rejects them as library-relative paths; the rescan reports each as a failed file.
+    fn take_rejected_paths(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 impl LibrarySource {
@@ -344,6 +350,9 @@ impl LibraryCatalog for LibrarySource {
     fn render_thumbnail(&self, path: &RelativePdfPath, out: &Path) -> Result<bool, PdfError> {
         self.catalog.render_thumbnail(path, out)
     }
+    fn take_rejected_paths(&self) -> Vec<String> {
+        self.catalog.take_rejected_paths()
+    }
 }
 
 /// A `PdfCatalog` adapter for the UI-owned shared library source.
@@ -374,6 +383,12 @@ impl LibraryCatalog for SharedLibraryCatalog {
             .lock()
             .map_err(|_| PdfError::Platform("library source lock poisoned".to_owned()))?
             .render_thumbnail(path, out)
+    }
+    fn take_rejected_paths(&self) -> Vec<String> {
+        self.0
+            .lock()
+            .map(|source| source.take_rejected_paths())
+            .unwrap_or_default()
     }
 }
 

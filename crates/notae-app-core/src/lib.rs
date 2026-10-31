@@ -15,6 +15,7 @@ pub mod favorites;
 pub mod operations;
 pub mod pdf_intent;
 pub mod pdf_pages;
+pub mod platform;
 pub mod recent;
 pub mod sets;
 pub mod state;

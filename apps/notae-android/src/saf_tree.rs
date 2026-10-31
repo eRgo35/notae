@@ -2,8 +2,9 @@
 
 use std::io;
 
-use notae_domain::{PdfFingerprint, RelativePdfPath, Sha256Digest};
-use notae_index::{CatalogError, FileCondition, PdfFile};
+use notae_app_core::platform::{DocumentContent, DocumentEntry};
+use notae_domain::{RelativePdfPath, Sha256Digest};
+use notae_index::CatalogError;
 use sha2::{Digest, Sha256};
 
 const DIRECTORY_MIME: &str = "vnd.android.document/directory";
@@ -61,11 +62,14 @@ pub fn find_document_id(
     Ok(parent_id)
 }
 
-/// Recursively enumerates PDFs below a SAF root as root-relative index rows.
+/// Recursively enumerates PDFs below a SAF root as root-relative, hashed entries.
+///
+/// A display name that is not one path segment, or a joined path the domain rejects, fails the
+/// whole enumeration.
 pub fn enumerate_document_tree(
     reader: &impl DocumentTreeReader,
     root_id: &str,
-) -> Result<Vec<PdfFile>, CatalogError> {
+) -> Result<Vec<DocumentEntry>, CatalogError> {
     let mut files = Vec::new();
     enumerate_children(reader, root_id, "", &mut files)?;
     Ok(files)
@@ -75,7 +79,7 @@ fn enumerate_children(
     reader: &impl DocumentTreeReader,
     parent_id: &str,
     parent_path: &str,
-    files: &mut Vec<PdfFile>,
+    files: &mut Vec<DocumentEntry>,
 ) -> Result<(), CatalogError> {
     for child in reader.children(parent_id)? {
         if child.mime_type == DIRECTORY_MIME {
@@ -84,11 +88,19 @@ fn enumerate_children(
         } else if is_pdf_name(&child.display_name) {
             let path = RelativePdfPath::new(join_path(parent_path, &child.display_name)?)
                 .map_err(|error| CatalogError::Failed(format!("invalid SAF path: {error}")))?;
-            let condition = match reader.read_pdf(&child.document_id) {
-                Ok(bytes) => FileCondition::Readable(fingerprint(&bytes)),
-                Err(_) => FileCondition::Unreadable,
+            let (content, size) = match reader.read_pdf(&child.document_id) {
+                Ok(bytes) => (
+                    DocumentContent::Sha256(sha256_hex(&bytes)),
+                    byte_len(&bytes),
+                ),
+                Err(_) => (DocumentContent::Unreadable, 0),
             };
-            files.push(PdfFile::with_condition(path, child.display_name, condition));
+            files.push(DocumentEntry {
+                path: path.as_str().to_owned(),
+                display_name: child.display_name,
+                size,
+                content,
+            });
         }
     }
     Ok(())
@@ -112,13 +124,12 @@ fn is_pdf_name(name: &str) -> bool {
     bytes.len() >= 4 && bytes[bytes.len() - 4..].eq_ignore_ascii_case(b".pdf")
 }
 
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256Digest::from_bytes(Sha256::digest(bytes).into()).to_string()
+}
+
 // The SAF byte slice is bounded by addressable Android memory, which fits u64 on supported targets.
 #[allow(clippy::expect_used)]
-fn fingerprint(bytes: &[u8]) -> PdfFingerprint {
-    let digest = Sha256::digest(bytes);
-    PdfFingerprint::new(
-        Sha256Digest::from_bytes(digest.into()),
-        u64::try_from(bytes.len()).expect("a byte vector length fits in u64"),
-        None,
-    )
+fn byte_len(bytes: &[u8]) -> u64 {
+    u64::try_from(bytes.len()).expect("a byte vector length fits in u64")
 }

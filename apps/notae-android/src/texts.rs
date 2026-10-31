@@ -197,6 +197,9 @@ pub fn failure(failure: &Failure) -> String {
         Failure::WorkerStart { detail } => format!("failed to start the index worker: {detail}"),
         Failure::LibraryUnreadable { detail } => format!("library root is not readable: {detail}"),
         Failure::EnumerationFailed { detail } => format!("library enumeration failed: {detail}"),
+        Failure::LibraryPermissionLost => {
+            "permission for the library root was lost; reauthorize to continue".to_owned()
+        }
         Failure::CancellationStateClosed => {
             "rescan cancellation state closed unexpectedly".to_owned()
         }

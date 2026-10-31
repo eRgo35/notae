@@ -166,6 +166,8 @@ pub enum Failure {
         /// The platform's message.
         detail: String,
     },
+    /// The platform revoked the permission to read the library root.
+    LibraryPermissionLost,
     /// Enumerating the library failed part way through.
     EnumerationFailed {
         /// The platform's message.
@@ -277,6 +279,7 @@ impl From<&CatalogError> for Failure {
             CatalogError::Failed(detail) => Self::EnumerationFailed {
                 detail: detail.clone(),
             },
+            CatalogError::PermissionLost => Self::LibraryPermissionLost,
         }
     }
 }

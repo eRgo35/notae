@@ -319,6 +319,7 @@ fn failure_texts_match_the_errors_own_messages() {
         [
             CatalogError::Unreadable("revoked".to_owned()),
             CatalogError::Failed("gone".to_owned()),
+            CatalogError::PermissionLost,
         ]
         .map(ReconcileError::Catalog),
     );

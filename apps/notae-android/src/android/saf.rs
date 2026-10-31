@@ -14,11 +14,12 @@
 //!   launches the picker with `ACTION_OPEN_DOCUMENT_TREE`, takes
 //!   persistable read permission, and re-checks the permission on
 //!   reopen.
-//! * [`SafPdfCatalog`] — implements
-//!   [`PdfCatalog`](notae_index::PdfCatalog). It walks the tree via
-//!   `ContentResolver`, opens each PDF through
-//!   `openInputStream`, hashes the bytes, and yields the same
-//!   [`PdfFile`](notae_index::PdfFile) values the rescan consumes.
+//! * [`SafLibrary`] — implements
+//!   [`PlatformLibrary`](notae_app_core::platform::PlatformLibrary). It walks the tree via
+//!   `ContentResolver`, opens each PDF through `openInputStream`, hashes the bytes, and yields
+//!   the [`DocumentEntry`](notae_app_core::platform::DocumentEntry) values the core's
+//!   [`PlatformCatalog`] turns into the rescan's files. It also reads text layers and renders
+//!   thumbnails.
 //!
 //! # Why `unsafe` is scoped to this module
 //!
@@ -67,7 +68,8 @@ use jni::errors::Error as JniError;
 use jni::objects::{JObject, JString};
 use jni::{EnvUnowned, JValue, jni_sig, jni_str};
 
-use notae_index::{CatalogError, PdfCatalog, PdfFile};
+use notae_app_core::platform::{DocumentEntry, PlatformCatalog, PlatformError, PlatformLibrary};
+use notae_index::CatalogError;
 
 use crate::saf_tree::{DocumentRow, DocumentTreeReader, enumerate_document_tree};
 
@@ -76,7 +78,7 @@ use crate::picker_fut::{
     new_picker_state, poll_outcome,
 };
 use notae_app_core::storage::{
-    LibraryCatalog, LibraryRoot, LibraryRootId, LibraryRootProvider, LibrarySource, StorageError,
+    LibraryRoot, LibraryRootId, LibraryRootProvider, LibrarySource, StorageError,
 };
 
 // ---------------------------------------------------------------------------
@@ -653,7 +655,8 @@ impl LibraryRootProvider for SafLibraryRootProvider {
             }
         };
 
-        let catalog = SafPdfCatalog::new(self.app.clone(), persisted.tree_uri);
+        let library = Arc::new(SafLibrary::new(self.app.clone()));
+        let catalog = PlatformCatalog::new(library, persisted.tree_uri);
         Ok(LibrarySource::new(persisted.root, Box::new(catalog)))
     }
 }
@@ -748,14 +751,14 @@ const DOCUMENT_ID: &str = "document_id";
 const DOCUMENT_MIME_TYPE: &str = "mime_type";
 const INPUT_STREAM_BUFFER_SIZE: usize = 64 * 1024;
 
-/// The Android [`PdfCatalog`] over a persisted SAF tree URI.
-pub struct SafPdfCatalog {
+/// One SAF document tree, read through `ContentResolver`.
+struct SafTree {
     app: AndroidApp,
     tree_uri: String,
 }
 
-impl SafPdfCatalog {
-    /// Builds a catalog over an opaque tree URI.
+impl SafTree {
+    /// Builds a reader over an opaque tree URI.
     #[must_use]
     pub fn new(app: AndroidApp, tree_uri: String) -> Self {
         Self { app, tree_uri }
@@ -895,44 +898,77 @@ impl SafPdfCatalog {
     }
 }
 
-impl PdfCatalog for SafPdfCatalog {
-    fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
-        let root_id = self
-            .root_document_id()
-            .map_err(|error| CatalogError::Failed(format!("cannot identify SAF root: {error}")))?;
-        enumerate_document_tree(self, &root_id)
+/// The Android [`PlatformLibrary`]: SAF trees, `PdfRenderer` text layers and thumbnails.
+pub struct SafLibrary {
+    app: AndroidApp,
+}
+
+impl SafLibrary {
+    /// Builds the platform library for the supplied activity.
+    #[must_use]
+    pub fn new(app: AndroidApp) -> Self {
+        Self { app }
     }
 }
 
-impl LibraryCatalog for SafPdfCatalog {
+fn unavailable(message: impl ToString) -> PlatformError {
+    PlatformError::Unavailable {
+        message: message.to_string(),
+    }
+}
+
+fn catalog_detail(error: CatalogError) -> PlatformError {
+    match error {
+        CatalogError::Unreadable(message) | CatalogError::Failed(message) => {
+            PlatformError::Unavailable { message }
+        }
+        CatalogError::PermissionLost => PlatformError::PermissionLost,
+    }
+}
+
+impl PlatformLibrary for SafLibrary {
+    fn enumerate(&self, handle: String) -> Result<Vec<DocumentEntry>, PlatformError> {
+        let tree = SafTree::new(self.app.clone(), handle);
+        let root_id = tree
+            .root_document_id()
+            .map_err(|error| unavailable(format!("cannot identify SAF root: {error}")))?;
+        enumerate_document_tree(&tree, &root_id).map_err(catalog_detail)
+    }
+
     fn extract_text_layer(
         &self,
-        path: &notae_domain::RelativePdfPath,
-    ) -> Result<Option<String>, notae_app_core::pdf_pages::PdfError> {
-        let uri = document_content_uri(self.app.clone(), &self.tree_uri, path.as_str())
-            .map_err(|error| notae_app_core::pdf_pages::PdfError::Platform(error.to_string()))?;
+        handle: String,
+        path: String,
+    ) -> Result<Option<String>, PlatformError> {
+        let uri = document_content_uri(self.app.clone(), &handle, &path).map_err(unavailable)?;
         let document = notae_app_core::pdf_pages::AndroidPdfDocument::open_with_backend(
             uri,
             Box::new(crate::android::pdf_pages::AndroidPdfPageBackend::new(
                 self.app.clone(),
             )),
-        )?;
+        )
+        .map_err(|error| match error {
+            notae_app_core::pdf_pages::PdfError::Platform(message) => {
+                PlatformError::Unavailable { message }
+            }
+            error @ notae_app_core::pdf_pages::PdfError::EmptyDocument => unavailable(error),
+        })?;
         Ok(document.extract_text().map(str::to_owned))
     }
+
     fn render_thumbnail(
         &self,
-        path: &notae_domain::RelativePdfPath,
-        out: &std::path::Path,
-    ) -> Result<bool, notae_app_core::pdf_pages::PdfError> {
-        let uri = document_content_uri(self.app.clone(), &self.tree_uri, path.as_str())
-            .map_err(|error| notae_app_core::pdf_pages::PdfError::Platform(error.to_string()))?;
+        handle: String,
+        path: String,
+        out_png: String,
+    ) -> Result<bool, PlatformError> {
+        let uri = document_content_uri(self.app.clone(), &handle, &path).map_err(unavailable)?;
         let uri = uri.as_str().to_owned();
-        let out = out.to_string_lossy().into_owned();
         let activity_ptr = self.app.activity_as_ptr();
         with_env(&self.app, move |env| {
             let activity = activity_as_jobject(env, activity_ptr)?;
             let uri = env.new_string(&uri)?;
-            let out = env.new_string(&out)?;
+            let out = env.new_string(&out_png)?;
             env.call_method(
                 &activity,
                 jni_str!("renderNotaeThumbnail"),
@@ -945,11 +981,11 @@ impl LibraryCatalog for SafPdfCatalog {
             )?
             .z()
         })
-        .map_err(|error| notae_app_core::pdf_pages::PdfError::Platform(error.to_string()))
+        .map_err(unavailable)
     }
 }
 
-impl DocumentTreeReader for SafPdfCatalog {
+impl DocumentTreeReader for SafTree {
     fn children(&self, parent_id: &str) -> Result<Vec<DocumentRow>, CatalogError> {
         self.children_jni(parent_id).map_err(|error| {
             CatalogError::Failed(format!(
@@ -970,11 +1006,11 @@ pub fn document_content_uri(
     tree_uri: &str,
     relative_path: &str,
 ) -> Result<notae_app_core::pdf_intent::ContentUri, notae_app_core::pdf_intent::ViewerError> {
-    let catalog = SafPdfCatalog::new(app.clone(), tree_uri.to_owned());
-    let root_id = catalog
+    let tree = SafTree::new(app.clone(), tree_uri.to_owned());
+    let root_id = tree
         .root_document_id()
         .map_err(|error| notae_app_core::pdf_intent::ViewerError::Platform(error.to_string()))?;
-    let document_id = crate::saf_tree::find_document_id(&catalog, &root_id, relative_path)
+    let document_id = crate::saf_tree::find_document_id(&tree, &root_id, relative_path)
         .map_err(|error| notae_app_core::pdf_intent::ViewerError::Platform(error.to_string()))?;
     let value = with_env(&app, |env| {
         let tree_uri = parse_uri(env, tree_uri)?;
