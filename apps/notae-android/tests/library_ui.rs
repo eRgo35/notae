@@ -651,22 +651,10 @@ fn items_show_no_missing_text_badge_or_text_pending_copy() {
         let app = app();
         app.set_library_list_view(list);
         with_library(&app, 3);
-        for label in [
-            "No text yet",
-            "Text pending",
-            "Text unavailable — run desktop OCR or import a sidecar",
-        ] {
+        for label in ["No text yet", "Text pending"] {
             assert!(labelled(&app, label).is_none(), "{label} list={list}");
         }
         open_preview(&app, 2, 3);
-        assert!(
-            labelled(
-                &app,
-                "Text unavailable — run desktop OCR or import a sidecar"
-            )
-            .is_none(),
-            "the preview does not nag about missing text"
-        );
     }
 }
 

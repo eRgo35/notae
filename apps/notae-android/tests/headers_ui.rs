@@ -426,13 +426,11 @@ fn settings_about_lists_build_facts_in_one_place() {
     app.set_show_settings(true);
     app.set_app_version("9.8.7".into());
     app.set_app_build_identity("abc1234".into());
-    app.set_sidecar_schema_version("2".into());
     for label in [
         "Version: 9.8.7",
         "Build: abc1234",
         "License: MIT License",
         "Repository: https://github.com/eRgo35/notae",
-        "Sidecar schema: 2",
     ] {
         assert!(label_exists(&app, label), "About exposes {label}");
     }

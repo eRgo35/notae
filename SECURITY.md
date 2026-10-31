@@ -34,9 +34,8 @@ they ask not to be.
 
 ## Scope
 
-Notae is a local application: the Android app (`org.notae.android`), its import
-of an earlier version's `.notae/` sidecar, and the release pipeline that signs
-the APK. Notae has no server and no network service.
+Notae is a local application: the Android app (`org.notae.android`) and the
+release pipeline that signs the APK. Notae has no server and no network service.
 
 In scope:
 

@@ -357,7 +357,7 @@ impl<'de> Deserialize<'de> for RelativePdfPath {
 
 impl<'de> Deserialize<'de> for EpochTimestamp {
     /// Validates the invariant the constructor enforces, so a hand-written or
-    /// hostile sidecar cannot smuggle in out-of-range nanoseconds.
+    /// hostile JSON value cannot smuggle in out-of-range nanoseconds.
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         struct Raw {

@@ -81,7 +81,7 @@ pub struct PdfTextOutcome {
     pub failure: Option<PdfError>,
 }
 
-/// Maps local PDF text extraction to an index status without discarding sidecar OCR.
+/// Maps local PDF text extraction to an index status without discarding stored OCR text.
 #[must_use]
 pub fn classify_text_layer(
     extracted: Result<Option<String>, PdfError>,

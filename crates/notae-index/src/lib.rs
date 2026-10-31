@@ -54,33 +54,20 @@
 //! library, both are marked [`notae_domain::IndexStatus::DuplicateIdConflict`],
 //! and only one of them holds the ID until the user resolves it.
 //!
-//! # The PC sidecar
+//! # Provenance written by the removed desktop import
 //!
-//! [`SidecarWriter`] turns an index into a portable, versioned manifest that the
-//! Linux CLI writes beside its SQLite payload, and [`SidecarImporter`] brings
-//! one into an existing library. [`SidecarImporter::preview`] is read-only and
-//! classifies every entry as new, changed, unchanged, absent, unreadable, or a
-//! hash mismatch — against the files in the library root, read through a
-//! [`PdfCatalog`], not against what the index last fingerprinted — and reports
-//! missing records, OCR availability, duplicate-ID conflicts, and the metadata
-//! that is preserved locally versus proposed by the sidecar.
-//! [`SidecarImporter::apply`] performs only what the user confirmed.
-//! [`SidecarManifest::validate`] runs before any mutation, so a malformed or
-//! unsupported sidecar leaves the library untouched.
+//! Notae 0.5.0 no longer imports a desktop sidecar, but indexes written by
+//! earlier versions still hold rows whose fields carry the stored provenance
+//! `pc_imported`. That value keeps parsing and round-tripping, so those
+//! indexes open and search exactly as before.
 
 mod fold;
-mod import;
 mod provenance;
 mod reconcile;
 mod schema;
 mod search;
-mod sidecar;
 mod store;
 
-pub use crate::import::{
-    EntryChange, ImportConflict, ImportEntry, ImportFailure, ImportPreview, ImportReport,
-    MetadataImport, OcrAssessment, SidecarImporter,
-};
 pub use crate::provenance::{
     MetadataRefreshError, RefreshOutcome, metadata_from_filename, refresh_from_filename,
 };
@@ -91,7 +78,4 @@ pub use crate::reconcile::{
 };
 pub use crate::schema::{MIGRATIONS, Migration, SCHEMA_VERSION};
 pub use crate::search::{SearchHit, SearchScope};
-pub use crate::sidecar::{
-    SIDECAR_SCHEMA_VERSION, SidecarEntry, SidecarError, SidecarManifest, SidecarOcr, SidecarWriter,
-};
 pub use crate::store::{IndexError, IndexStore, OcrText, ReindexOutcome};

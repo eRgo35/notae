@@ -15,7 +15,6 @@ body:
       label: Component
       options:
         - Android app
-        - Sidecar import
         - Documentation
         - Other / not sure
     validations:

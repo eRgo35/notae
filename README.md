@@ -52,10 +52,7 @@ annotate scores itself: it hands each PDF to the viewer you already use.
   `ą ć ę ń ó ś ź ż` match their plain letters and `ł`/`Ł` match `l`/`L`, so
   `lodz` finds `Łódź` in titles, composers, tags and lyrics.
 - **Edit details** (number, title, composer, tags). Manual edits are kept when
-  you import a sidecar again.
-- **Import preview** for a sidecar left by an earlier Notae version: see what
-  is new, changed or missing before anything is applied. Nothing is imported
-  automatically. Sidecar import is removed in 0.5.0.
+  a scan runs again.
 - **Open scores in your PDF viewer**: Samsung Notes when installed, otherwise
   the Android PDF chooser.
 - Parses `<number> - <title>.pdf` file names and re-indexes incrementally by
@@ -236,8 +233,8 @@ maintainer's signing key and are produced only by `scripts/release.sh`
 ```text
 crates/
   notae-domain/     Filename convention, note metadata, file identity.
-  notae-index/      SQLite persistence, FTS5 search, the sidecar format and
-                    the importer the Android app uses.
+  notae-index/      SQLite persistence, FTS5 search and the
+                    rescan reconciler the Android app uses.
 apps/
   notae-android/    The Android app: Slint UI, Storage Access Framework
                     adapter and a thin Java activity shim.
@@ -278,8 +275,8 @@ privately.
 ## Documentation
 
 - [`ROADMAP.md`](ROADMAP.md): what is being built now, next and later.
-- [`GLOSSARY.md`](GLOSSARY.md): the domain terms (library, score, sidecar,
-  scope, set, ...).
+- [`GLOSSARY.md`](GLOSSARY.md): the domain terms (library, score, scope,
+  set, ...).
 - [`CONTRIBUTING.md`](CONTRIBUTING.md#development-workflow): setup, quality
   gates and the development workflow from issue to release.
 - [`docs/android-release.md`](docs/android-release.md): cutting a release,

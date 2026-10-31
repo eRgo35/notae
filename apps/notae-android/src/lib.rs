@@ -1,4 +1,4 @@
-//! Slint + android-activity UI for the Notae portable sidecar.
+//! Slint + android-activity UI for the Notae score library.
 //!
 //! The crate is structured so the state machine in [`state`] is
 //! host-testable on Linux, while the Slint glue in [`ui`] and the

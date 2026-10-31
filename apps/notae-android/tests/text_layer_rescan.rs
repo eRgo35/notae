@@ -119,7 +119,7 @@ fn missing_text_layer_stays_ocr_pending_without_existing_searchable_text() {
 }
 
 #[test]
-fn missing_text_layer_preserves_existing_sidecar_ocr() {
+fn missing_text_layer_preserves_existing_stored_ocr() {
     let outcome = classify_text_layer(Ok(Some(" \n ".to_owned())), true);
 
     assert_eq!(outcome.status, IndexStatus::Ready);
@@ -197,7 +197,7 @@ fn rescan_marks_image_only_pdf_pending_without_overwriting_search_state() {
 }
 
 #[test]
-fn rescan_preserves_sidecar_ocr_when_platform_has_no_text_layer() {
+fn rescan_preserves_stored_ocr_when_platform_has_no_text_layer() {
     let directory = tempfile::tempdir().expect("temporary database directory");
     let database = directory.path().join("index.sqlite");
     let bytes = b"%PDF-1.4\nimage only";
@@ -210,8 +210,8 @@ fn rescan_preserves_sidecar_ocr_when_platform_has_no_text_layer() {
     );
     let store = IndexStore::open(&database).expect("open test index");
     store
-        .reindex_note_with_ocr(&note, Some(&OcrText::new("sidecar searchable text")))
-        .expect("seed sidecar text");
+        .reindex_note_with_ocr(&note, Some(&OcrText::new("stored searchable text")))
+        .expect("seed stored text");
     drop(store);
 
     let controller = OperationController::new(
@@ -229,14 +229,14 @@ fn rescan_preserves_sidecar_ocr_when_platform_has_no_text_layer() {
     let store = IndexStore::open(&database).expect("reopen index after scan");
     assert_eq!(
         store
-            .search("sidecar searchable text", 10)
+            .search("stored searchable text", 10)
             .expect("search imported OCR")
             .len(),
         1
     );
     assert_eq!(
         store.ocr_text(&hash).expect("read OCR text"),
-        Some(OcrText::new("sidecar searchable text"))
+        Some(OcrText::new("stored searchable text"))
     );
 }
 

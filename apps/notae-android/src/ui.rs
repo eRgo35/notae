@@ -20,9 +20,7 @@ use std::sync::Mutex;
 
 use crate::favorites::{Favorites, PieceRef};
 use crate::language::{pick, polish_plural};
-use crate::operations::events::{
-    DesktopImportCheck, ImportPreviewSummary, ImportSummary, OperationEvent, RescanSummary,
-};
+use crate::operations::events::{OperationEvent, RescanSummary};
 use crate::recent::RecentScores;
 use crate::sets::{ItemKind, SetFieldError, SetFields, SetStore};
 use crate::state::{
@@ -73,7 +71,6 @@ pub struct UiModel {
     storage: Rc<Mutex<StorageState>>,
     search_rows: Vec<SearchRow>,
     indexed_count: usize,
-    import_preview_summary: Option<ImportPreviewSummary>,
     latest_rescan: Option<RescanSummary>,
     metadata_editor: Option<EditableMetadata>,
     metadata_error: Option<String>,
@@ -116,7 +113,6 @@ impl UiModel {
             storage,
             search_rows: Vec::new(),
             indexed_count: 0,
-            import_preview_summary: None,
             latest_rescan: None,
             metadata_editor: None,
             metadata_error: None,
@@ -854,18 +850,6 @@ impl UiModel {
         )
     }
 
-    /// The current read-only sidecar preview counts, when one is awaiting
-    /// confirmation.
-    #[must_use]
-    pub fn import_preview_summary(&self) -> Option<&ImportPreviewSummary> {
-        self.import_preview_summary.as_ref()
-    }
-
-    /// Hides a sidecar preview that the user declined to apply.
-    pub fn clear_import_preview(&mut self) {
-        self.import_preview_summary = None;
-    }
-
     /// The metadata currently shown by the editor, if one is open.
     #[must_use]
     pub fn metadata_editor(&self) -> Option<&EditableMetadata> {
@@ -905,55 +889,17 @@ impl UiModel {
             OperationEvent::RescanFinalizing { total } => {
                 self.controller.begin_rescan_finalization(total)?;
             }
-            OperationEvent::CheckingDesktopImport => self
-                .controller
-                .set_rescan_phase(RescanPhase::CheckingDesktopImport)?,
             OperationEvent::Progress { completed, total } => {
                 self.controller.update_rescan_progress(completed, total)?;
             }
             OperationEvent::FileSucceeded { .. } | OperationEvent::FileFailed { .. } => {}
             OperationEvent::Canceled => self.controller.cancel_operation()?,
-            OperationEvent::Completed {
-                summary,
-                rows,
-                desktop_import,
-            } => {
+            OperationEvent::Completed { summary, rows } => {
                 self.latest_rescan = Some(summary);
                 self.search_rows = rows;
                 self.relink_saved_pieces();
                 self.startup_presentation = StartupPresentation::Ready;
-                match desktop_import {
-                    DesktopImportCheck::NoSidecar => {
-                        self.controller.complete_operation(rescan_summary(&summary));
-                    }
-                    DesktopImportCheck::PreviewReady(preview) => {
-                        let candidate_count = preview.new + preview.changed;
-                        self.import_preview_summary = Some(preview);
-                        self.controller.import_preview_ready(candidate_count);
-                    }
-                    DesktopImportCheck::Failed { reason } => {
-                        let scan = rescan_summary(&summary);
-                        self.controller.fail_operation(pick(
-                            format!(
-                                "Scan finished ({scan}), but the desktop sidecar check failed: {reason}"
-                            ),
-                            format!(
-                                "Skanowanie zakończone ({scan}), ale sprawdzenie pliku sidecar nie powiodło się: {reason}"
-                            ),
-                        ));
-                    }
-                }
-            }
-            OperationEvent::ImportPreviewReady { summary } => {
-                let candidate_count = summary.new + summary.changed;
-                self.import_preview_summary = Some(summary);
-                self.controller.import_preview_ready(candidate_count);
-            }
-            OperationEvent::ImportApplied { summary, rows } => {
-                self.import_preview_summary = None;
-                self.search_rows = rows;
-                self.relink_saved_pieces();
-                self.controller.complete_operation(import_summary(&summary));
+                self.controller.complete_operation(rescan_summary(&summary));
             }
             OperationEvent::SearchRows(rows) => {
                 self.startup_presentation = StartupPresentation::Ready;
@@ -994,7 +940,7 @@ impl UiModel {
     /// Clears a successful result once it has been visible for [`RESULT_VISIBLE_FOR`].
     ///
     /// `now` is sampled by the caller; the first call that sees a result starts its clock.
-    /// Failures and pending decisions are never cleared here. Returns whether the banner
+    /// Failures are never cleared here. Returns whether the banner
     /// changed.
     pub fn expire_finished_result(&mut self, now: std::time::Instant) -> bool {
         if !matches!(
@@ -1045,7 +991,7 @@ impl UiModel {
     /// # Errors
     ///
     /// Returns [`EventError::OperationAlreadyInProgress`] when an event
-    /// would overlap an existing rescan/import. The UI is supposed to
+    /// would overlap an existing rescan. The UI is supposed to
     /// disable the relevant controls while the operation is in flight,
     /// so this is a guard rather than a control-flow signal.
     pub fn dispatch(&mut self, event: UiEvent) -> Result<Transition, EventError> {
@@ -1149,21 +1095,7 @@ impl OperationBanner {
                     format!("Reading PDF text and thumbnails: {completed} of {total}"),
                     format!("Odczyt tekstu i miniatur PDF: {completed} z {total}"),
                 ),
-                RescanPhase::CheckingDesktopImport => pick(
-                    "Checking for a desktop sidecar…",
-                    "Sprawdzanie pliku sidecar z komputera…",
-                )
-                .to_owned(),
             },
-            OperationState::ImportPreviewPending { candidate_count } => pick(
-                format!("Review {candidate_count} proposed sidecar changes"),
-                format!("Przejrzyj proponowane zmiany z pliku sidecar: {candidate_count}"),
-            ),
-            OperationState::ImportApplying => pick(
-                "Applying sidecar import…",
-                "Stosowanie importu z pliku sidecar…",
-            )
-            .to_owned(),
             OperationState::Completed { summary } => pick(
                 format!("Finished: {summary}"),
                 format!("Zakończono: {summary}"),
@@ -1178,10 +1110,7 @@ impl OperationBanner {
         };
         Self {
             text,
-            busy: matches!(
-                operation,
-                OperationState::Rescan { .. } | OperationState::ImportApplying
-            ),
+            busy: matches!(operation, OperationState::Rescan { .. }),
             failed: matches!(operation, OperationState::Failed { .. }),
             fraction,
             cancel_enabled: matches!(
@@ -1211,31 +1140,6 @@ fn rescan_summary(summary: &RescanSummary) -> String {
     add_count(&mut parts, summary.failures, "failures", "błędy");
     if parts.is_empty() {
         pick("No changes", "Bez zmian").to_owned()
-    } else {
-        parts.join(", ")
-    }
-}
-
-fn import_summary(summary: &ImportSummary) -> String {
-    let mut parts = Vec::new();
-    add_count(&mut parts, summary.imported, "imported", "zaimportowano");
-    add_count(
-        &mut parts,
-        summary.mismatches,
-        "hash mismatches",
-        "niezgodne sumy kontrolne",
-    );
-    add_count(&mut parts, summary.missing, "missing", "brakujące");
-    add_count(&mut parts, summary.unreadable, "unreadable", "nieczytelne");
-    add_count(
-        &mut parts,
-        summary.conflicts,
-        "ID conflicts",
-        "konflikty numerów",
-    );
-    add_count(&mut parts, summary.failures, "failures", "błędy");
-    if parts.is_empty() {
-        pick("No import changes", "Import bez zmian").to_owned()
     } else {
         parts.join(", ")
     }

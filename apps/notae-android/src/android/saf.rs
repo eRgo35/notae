@@ -67,11 +67,9 @@ use jni::errors::Error as JniError;
 use jni::objects::{JObject, JString};
 use jni::{EnvUnowned, JValue, jni_sig, jni_str};
 
-use notae_index::{CatalogError, PdfCatalog, PdfFile, SidecarManifest};
+use notae_index::{CatalogError, PdfCatalog, PdfFile};
 
-use crate::saf_tree::{
-    DocumentRow, DocumentTreeReader, discover_sidecar_manifest, enumerate_document_tree,
-};
+use crate::saf_tree::{DocumentRow, DocumentTreeReader, enumerate_document_tree};
 
 use crate::picker_fut::{
     FLAG_GRANT_READ_URI_PERMISSION, PickerOutcome, PickerState, decode_activity_result,
@@ -907,12 +905,6 @@ impl PdfCatalog for SafPdfCatalog {
 }
 
 impl LibraryCatalog for SafPdfCatalog {
-    fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
-        let root_id = self
-            .root_document_id()
-            .map_err(|error| CatalogError::Failed(format!("cannot identify SAF root: {error}")))?;
-        discover_sidecar_manifest(self, &root_id)
-    }
     fn extract_text_layer(
         &self,
         path: &notae_domain::RelativePdfPath,

@@ -1,5 +1,5 @@
 // Notae's adaptive score library. Rust remains authoritative for library operations.
-import { ListView, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { WelcomeScreen, SettingsScreen } from "setup.slint";
 import { Theme, ScreenTransition, ViewPresence, PillButton, TextField, IconButton } from "components.slint";
 import { LibraryScreen, LibraryRow, SectionItem, OperationBanner } from "library.slint";
@@ -7,16 +7,6 @@ import { SearchScreen } from "search.slint";
 import { ScoreDetails } from "details.slint";
 import { SetCard, SetChoice, PickerRow, SetDialog, DeleteSetDialog, AddToSetSheet, AddPiecesDialog } from "sets.slint";
 export { Theme, LibraryRow, SectionItem, SetCard, SetChoice, PickerRow }
-export struct ImportRow {
-    path: string,
-    change: string,
-    local_metadata: string,
-    proposed_metadata: string,
-    fields: string,
-    ocr: string,
-    conflict: string,
-}
-
 component Label inherits Text {
     color: Theme.foreground;
     font-size: 16px;
@@ -28,35 +18,6 @@ component SupportingText inherits Label {
     color: Theme.muted;
     font-size: 14px;
 }
-component ImportCard inherits Rectangle {
-    in property <ImportRow> item;
-    background: Theme.background;
-    border-radius: 20px;
-    VerticalLayout {
-        padding: 16px;
-        spacing: 8px;
-        HorizontalLayout {
-            spacing: 8px;
-            Label { text: root.item.path; font-weight: 500; horizontal-stretch: 1; }
-            SupportingText { text: root.item.change; color: Theme.accent-text; }
-        }
-        Text { text: @tr("On device: {}", root.item.local_metadata); color: Theme.muted; font-size: 14px; wrap: word-wrap; }
-        Rectangle { height: 1px; background: Theme.divider; }
-        Text { text: @tr("From desktop: {}", root.item.proposed_metadata); color: Theme.foreground; font-size: 14px; wrap: word-wrap; }
-        Text { text: root.item.fields + root.item.ocr; color: Theme.muted; font-size: 13px; wrap: word-wrap; }
-        if root.item.conflict != "" : Text { text: root.item.conflict; color: Theme.error; font-size: 14px; wrap: word-wrap; }
-    }
-}
-
-// A `ListView` stacks its rows without spacing, so each row carries its own gap below the card.
-component ImportEntry inherits Rectangle {
-    in property <ImportRow> item;
-    VerticalLayout {
-        padding-bottom: 8px;
-        ImportCard { item: root.item; }
-    }
-}
-
 export component AppWindow inherits Window {
     title: "Notae";
     background: Theme.background;
@@ -75,7 +36,6 @@ export component AppWindow inherits Window {
     in property <bool> acknowledge_enabled: false;
     in property <bool> show_settings: false;
     in property <[LibraryRow]> library_rows: [];
-    in property <[ImportRow]> import_rows: [];
     in-out property <string> search_text: "";
     in property <bool> hardware_keyboard_present: false;
     in property <bool> voice_search_available: false;
@@ -83,8 +43,6 @@ export component AppWindow inherits Window {
     in property <bool> cancel_enabled: false;
     in property <bool> operation_busy: false;
     in property <float> operation_fraction: -1;
-    in property <bool> show_import_preview: false;
-    in property <string> import_preview_text: "";
     in property <bool> show_metadata_editor: false;
     in-out property <string> metadata_note_key: "";
     in-out property <string> metadata_id: "";
@@ -105,7 +63,6 @@ export component AppWindow inherits Window {
     in property <string> app_build_identity: "unknown";
     in property <string> repository_url: "https://github.com/eRgo35/notae";
     in property <string> app_license: "MIT License";
-    in property <string> sidecar_schema_version: "";
     in property <[SectionItem]> sections: [];
     in property <[SectionItem]> composers: [];
     in property <string> selected_section: "all";
@@ -135,8 +92,6 @@ export component AppWindow inherits Window {
     callback rescan_clicked();
     callback cancel_rescan_clicked();
     callback acknowledge_clicked();
-    callback import_confirmed();
-    callback import_cancelled();
     callback search_changed(string);
     callback edit_metadata_requested(string);
     callback metadata_save_requested(string, string, string, string, string);
@@ -206,18 +161,17 @@ export component AppWindow inherits Window {
     // Widths are derived from the window, never from child layouts, so adaptive screens cannot loop.
     private property <length> window-width: root.width - root.safe-area-insets.left - root.safe-area-insets.right;
     private property <length> available-height: (root.virtual-keyboard-size.height > 0px ? root.virtual-keyboard-position.y : root.height - root.safe-area-insets.bottom) - root.safe-area-insets.top;
-    private property <float> sheet-progress: root.show_metadata_editor || root.show_import_preview ? 1 : 0;
+    private property <float> sheet-progress: root.show_metadata_editor ? 1 : 0;
     animate sheet-progress { duration: Theme.motion-medium; easing: ease-in-out; }
     private property <float> sheet-visual-progress: Theme.animations-enabled
-        ? root.sheet-progress : ((root.show_metadata_editor || root.show_import_preview) ? 1 : 0);
+        ? root.sheet-progress : (root.show_metadata_editor ? 1 : 0);
     private property <bool> set-modal-open: root.show_set_dialog || root.confirm_delete_set_name != ""
         || root.show_add_to_set || root.show_add_picker;
-    private property <bool> modal-open: root.show_metadata_editor || root.show_import_preview || root.set-modal-open;
+    private property <bool> modal-open: root.show_metadata_editor || root.set-modal-open;
     set-dialog-presence := ViewPresence { active: root.show_set_dialog; }
     delete-set-presence := ViewPresence { active: root.confirm_delete_set_name != ""; }
     add-to-set-presence := ViewPresence { active: root.show_add_to_set; }
     add-picker-presence := ViewPresence { active: root.show_add_picker; }
-    private property <bool> sheet-import-content: false;
     // One presence per top-level view: the logical destination is active at once, while a view
     // that was just left stays mounted (and blocked) until its exit has played.
     private property <bool> welcome-active: !root.configured && root.startup-ready;
@@ -238,7 +192,6 @@ export component AppWindow inherits Window {
         if root.set-modal-open {
             // The set dialogs focus their own first control when they appear.
         } else if root.modal-open {
-            root.sheet-import-content = root.show_import_preview;
             dialog-scope.focus();
         } else {
             shortcuts.focus();
@@ -464,7 +417,6 @@ export component AppWindow inherits Window {
                 build-identity: root.app_build_identity;
                 repository: root.repository_url;
                 license: root.app_license;
-                schema-version: root.sidecar_schema_version;
                 progress-text: root.operation_progress_text;
                 busy: root.operation_busy;
                 failed: root.operation_failed;
@@ -498,8 +450,8 @@ export component AppWindow inherits Window {
     }
     sheet := Rectangle {
         visible: root.sheet-visual-progress > 0;
-        width: min(root.width - 32px, root.sheet-import-content ? 880px : 600px);
-        height: min(max(0px, root.available-height - 32px), root.sheet-import-content ? 680px : 620px);
+        width: min(root.width - 32px, 600px);
+        height: min(max(0px, root.available-height - 32px), 620px);
         x: (root.width - self.width) / 2;
         y: root.safe-area-insets.top + (root.available-height - self.height) / 2 + (1 - root.sheet-visual-progress) * 32px;
         opacity: root.sheet-visual-progress;
@@ -507,7 +459,7 @@ export component AppWindow inherits Window {
         border-radius: 26px;
         clip: true;
         accessible-role: form;
-        accessible-label: root.sheet-import-content ? @tr("Review desktop import dialog") : @tr("Score details dialog");
+        accessible-label: @tr("Score details dialog");
         accessible-description: @tr("Modal dialog. Close or cancel to return to your library.");
         TouchArea { }
         dialog-scope := FocusScope {
@@ -515,7 +467,7 @@ export component AppWindow inherits Window {
             forward-focus: dialog-close;
             key-pressed(event) => {
                 if event.text == Key.Escape || event.text == Key.Back {
-                    if root.show_import_preview { root.import_cancelled(); } else { root.metadata_cancelled(); }
+                    root.metadata_cancelled();
                     return accept;
                 }
                 return reject;
@@ -527,29 +479,14 @@ export component AppWindow inherits Window {
             spacing: 16px;
             HorizontalLayout {
                 spacing: 12px;
-                Label { text: root.sheet-import-content ? @tr("Review desktop import") : @tr("Score details"); font-size: 24px; font-weight: 600; color: Theme.foreground; horizontal-stretch: 1; }
+                Label { text: @tr("Score details"); font-size: 24px; font-weight: 600; color: Theme.foreground; horizontal-stretch: 1; }
                 dialog-close := IconButton {
                     in-dialog: true;
                     icon: @image-url("material-icons/close.svg");
-                    clicked => { if root.sheet-import-content { root.import_cancelled(); } else { root.metadata_cancelled(); } }
+                    clicked => { root.metadata_cancelled(); }
                 }
             }
-            if root.sheet-import-content : VerticalLayout {
-                spacing: 16px;
-                Text { text: root.import_preview_text; color: Theme.muted; font-size: 14px; wrap: word-wrap; }
-                ListView {
-                    min-height: 120px;
-                    vertical-stretch: 1;
-                    for entry in root.import_rows : ImportEntry { item: entry; }
-                }
-                HorizontalLayout {
-                    alignment: end;
-                    spacing: 12px;
-                    PillButton { in-dialog: true; text: @tr("Keep local"); clicked => { root.import_cancelled(); } }
-                    PillButton { in-dialog: true; text: @tr("Apply import"); primary: true; clicked => { root.import_confirmed(); } }
-                }
-            }
-            if !root.sheet-import-content : VerticalLayout {
+            VerticalLayout {
                 spacing: 16px;
                 SupportingText { text: @tr("Update the details without renaming your PDF."); }
                 VerticalLayout {

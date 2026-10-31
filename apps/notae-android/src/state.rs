@@ -3,8 +3,8 @@
 //! [`AppState`] is the single source of truth for what the user sees.
 //! It owns four sub-states: the current [`Screen`], the [`LibraryState`]
 //! (rows shown in the library list), the [`SearchState`] (the query
-//! the user typed), and the [`OperationState`] (whether a rescan or
-//! import preview is in flight).
+//! the user typed), and the [`OperationState`] (whether a rescan is
+//! in flight).
 //!
 //! State transitions are driven by [`UiEvent`] values. The transitions
 //! live on [`AppController`]: it wraps an `AppState` and enforces the
@@ -39,10 +39,6 @@ pub enum UiEvent {
         /// The directory the user selected.
         root: PathBuf,
     },
-    /// The user confirmed the import preview the sidecar importer produced.
-    ConfirmImport,
-    /// The user cancelled the import preview.
-    CancelImport,
     /// The user dismissed a success or failure banner after a long-running
     /// operation completed.
     AcknowledgeOperation,
@@ -86,7 +82,7 @@ pub enum EventError {
     /// in flight. The UI is supposed to disable the rescan button while
     /// `OperationState::Rescan`, so reaching this branch means
     /// the wiring let a stale click through.
-    #[error("a rescan or import is already in progress")]
+    #[error("a rescan is already in progress")]
     OperationAlreadyInProgress,
     /// Settings are only available while a configured library is open.
     #[error("settings are unavailable until a library is open")]
@@ -171,13 +167,6 @@ pub enum OperationState {
         /// The work the worker is actually doing right now.
         phase: RescanPhase,
     },
-    /// A sidecar import is ready for the user to confirm.
-    ImportPreviewPending {
-        /// How many records the importer wants the user to confirm.
-        candidate_count: usize,
-    },
-    /// A confirmed sidecar import is being written.
-    ImportApplying,
     /// A long-running operation just finished successfully. The
     /// controller moves this back to `Idle` once the user dismisses the
     /// banner.
@@ -213,9 +202,6 @@ pub enum RescanPhase {
         /// Files found by the catalog (always greater than zero).
         total: usize,
     },
-    /// Every file is processed; the worker is checking for and comparing a desktop sidecar.
-    /// Android never runs OCR, so this is the only phase that follows reading text.
-    CheckingDesktopImport,
 }
 
 impl RescanPhase {
@@ -266,8 +252,8 @@ impl AppState {
         &self.search
     }
 
-    /// Returns the current [`OperationState`] (whether a rescan or
-    /// import is in flight, or what just finished).
+    /// Returns the current [`OperationState`] (whether a rescan is
+    /// in flight, or what just finished).
     pub fn operation(&self) -> &OperationState {
         &self.operation
     }
@@ -322,7 +308,7 @@ impl AppController {
     /// worker should run.
     ///
     /// Returns `Err(EventError::OperationAlreadyInProgress)` when the
-    /// event would overlap an existing rescan/import — the UI disables
+    /// event would overlap an existing rescan — the UI disables
     /// the relevant controls in that case, so this is a wiring error.
     pub fn dispatch(&mut self, event: UiEvent) -> Result<Transition, EventError> {
         match event {
@@ -335,26 +321,6 @@ impl AppController {
                 self.library_ready();
                 let _ = root;
                 Ok(Transition::BeginRescan)
-            }
-            UiEvent::ConfirmImport => {
-                if !matches!(
-                    self.state.operation,
-                    OperationState::ImportPreviewPending { .. }
-                ) {
-                    return Err(EventError::OperationAlreadyInProgress);
-                }
-                self.state.operation = OperationState::ImportApplying;
-                Ok(Transition::NoOp)
-            }
-            UiEvent::CancelImport => {
-                if !matches!(
-                    self.state.operation,
-                    OperationState::ImportPreviewPending { .. }
-                ) {
-                    return Err(EventError::OperationAlreadyInProgress);
-                }
-                self.state.operation = OperationState::Idle;
-                Ok(Transition::NoOp)
             }
             UiEvent::AcknowledgeOperation => {
                 let was_terminal = matches!(
@@ -487,23 +453,6 @@ impl AppController {
     /// Records a user-visible failure from the background worker.
     pub fn fail_operation(&mut self, reason: String) {
         self.state.operation = OperationState::Failed { reason };
-    }
-
-    /// Marks the read-only import preview as awaiting confirmation.
-    pub fn import_preview_ready(&mut self, candidate_count: usize) {
-        self.state.operation = OperationState::ImportPreviewPending { candidate_count };
-    }
-
-    /// Marks a user-confirmed import as canceled.
-    pub fn cancel_import(&mut self) -> Result<(), EventError> {
-        if !matches!(
-            self.state.operation,
-            OperationState::ImportPreviewPending { .. }
-        ) {
-            return Err(EventError::OperationAlreadyInProgress);
-        }
-        self.state.operation = OperationState::Idle;
-        Ok(())
     }
 
     fn start_rescan(&mut self) -> Result<Transition, EventError> {

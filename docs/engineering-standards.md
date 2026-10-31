@@ -73,11 +73,11 @@ Releases are not built on GitHub: the maintainer runs `scripts/release.sh` (see 
 | RUST-009 | pass | important | Workspace libraries and binaries deny `unwrap_used` and `expect_used`; only narrow, documented invariant exceptions remain. |
 | RUST-010 | pass | blocking | Workspace forbids unsafe by default; Android uses a stricter package-level `deny` and safe core modules forbid unsafe locally. |
 | COND-001 | gap | important | The workspace has domain/index/application layers, but Cargo manifests are the only direction constraint. Add a `cargo metadata`-based allowed-edge gate before introducing new internal crate dependencies. Owner: Notae maintainers. Review on the next workspace dependency change. |
-| COND-002 | gap | important | Real PDF, image, and sidecar fixtures are tested, but there is no measured parser/render parity score. Add a fixture corpus score and floor before changing parser/rendering dependencies. Owner: Notae maintainers. Review on the next parser or renderer replacement. |
+| COND-002 | gap | important | Real PDF and image fixtures are tested, but there is no measured parser/render parity score. Add a fixture corpus score and floor before changing parser/rendering dependencies. Owner: Notae maintainers. Review on the next parser or renderer replacement. |
 | COND-003 | not-applicable | advisory | No checked-in generated Rust or metadata artifacts require regeneration. |
-| COND-004 | not-applicable | advisory | The workspace has no command-line interface; the importer and state machines are exercised through their public APIs in integration tests. |
+| COND-004 | not-applicable | advisory | The workspace has no command-line interface; the state machines are exercised through their public APIs in integration tests. |
 | COND-005 | gap | important | Android UI has no deterministic headless visual baseline; current verification requires an emulator/tablet. Keep the manual checklist in `docs/android-debugging.md`; add screenshot comparison when a stable emulator rendering environment is available. Owner: Notae maintainers. |
-| COND-006 | gap | important | PDF and sidecar inputs are parsed from files, but no fuzz harness exists. Add fuzz targets for sidecar validation and PDF ingestion. Owner: Notae maintainers. Review before accepting a new parser or broader untrusted-input surface. |
+| COND-006 | gap | important | PDF inputs are parsed from files, but no fuzz harness exists. Add a fuzz target for PDF ingestion. Owner: Notae maintainers. Review before accepting a new parser or broader untrusted-input surface. |
 | COND-007 | not-applicable | advisory | No latency or throughput requirement is claimed. |
 | COND-008 | pass | important | `scripts/check.sh full` and every release cross-compile the Android arm64 target; device installation and interaction remain a manual release/debug check. |
 

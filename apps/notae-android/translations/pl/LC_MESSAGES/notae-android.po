@@ -27,9 +27,6 @@ msgstr "Miejsce na Twoje nuty"
 msgid "All"
 msgstr "Wszystko"
 
-msgid "Apply import"
-msgstr "Zastosuj import"
-
 msgid "Back to library"
 msgstr "Wróć do biblioteki"
 
@@ -84,9 +81,6 @@ msgstr "Szybko znajdziesz każdy utwór"
 msgid "Find scores by title, composer, tag or lyrics."
 msgstr "Szukaj utworów po tytule, kompozytorze, tagu lub tekście."
 
-msgid "From desktop: {}"
-msgstr "Z komputera: {}"
-
 msgid "Hide sidebar"
 msgstr "Ukryj panel boczny"
 
@@ -95,9 +89,6 @@ msgstr "Konflikty numerów"
 
 msgid "Indexed scores"
 msgstr "Zindeksowane utwory"
-
-msgid "Keep local"
-msgstr "Zachowaj lokalne"
 
 msgid "Last scan"
 msgstr "Ostatnie skanowanie"
@@ -153,9 +144,6 @@ msgstr "Notae nie ma już dostępu do folderu „{}”. Wybierz go ponownie, aby
 msgid "Nothing is moved, renamed or uploaded"
 msgstr "Nic nie jest przenoszone, zmieniane ani wysyłane"
 
-msgid "On device: {}"
-msgstr "Na urządzeniu: {}"
-
 msgid "Open score"
 msgstr "Otwórz nuty"
 
@@ -179,12 +167,6 @@ msgstr "Połącz ponownie bibliotekę"
 
 msgid "Repository"
 msgstr "Repozytorium"
-
-msgid "Review desktop import"
-msgstr "Przejrzyj import z komputera"
-
-msgid "Review desktop import dialog"
-msgstr "Okno przeglądu importu z komputera"
 
 msgid "Save details"
 msgstr "Zapisz szczegóły"
@@ -242,9 +224,6 @@ msgstr "Ustawienia"
 
 msgid "Show sidebar"
 msgstr "Pokaż panel boczny"
-
-msgid "Sidecar schema"
-msgstr "Wersja schematu sidecar"
 
 msgid "Switch to grid view"
 msgstr "Przełącz na widok siatki"

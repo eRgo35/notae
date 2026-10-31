@@ -1,5 +1,5 @@
 use notae_android::favorites::PieceRef;
-use notae_android::operations::events::{DesktopImportCheck, OperationEvent, RescanSummary};
+use notae_android::operations::events::{OperationEvent, RescanSummary};
 use notae_android::sets::{ItemKind, SetFieldError, SetFields, SetStore, new_id};
 use notae_android::ui::UiModel;
 use notae_android::ui::search::SearchRow;
@@ -44,7 +44,6 @@ fn completed(rows: Vec<SearchRow>) -> OperationEvent {
     OperationEvent::Completed {
         summary: RescanSummary::default(),
         rows,
-        desktop_import: DesktopImportCheck::NoSidecar,
     }
 }
 

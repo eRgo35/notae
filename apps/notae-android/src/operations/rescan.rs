@@ -5,12 +5,9 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use notae_domain::IndexStatus;
-use notae_index::{
-    IndexStore, OcrText, PdfFile, Reconciler, SearchScope, SidecarImporter, SidecarManifest,
-};
+use notae_index::{IndexStore, OcrText, PdfFile, Reconciler, SearchScope};
 
-use crate::operations::events::{DesktopImportCheck, ImportSummary, OperationEvent, RescanSummary};
-use crate::operations::import::ImportPreviewViewModel;
+use crate::operations::events::{OperationEvent, RescanSummary};
 use crate::storage::LibraryCatalog;
 use crate::thumbnails::ThumbnailCache;
 use crate::ui::library::LibraryViewModel;
@@ -35,9 +32,6 @@ enum WorkerCommand {
     Search(String, SearchScope),
     /// The add picker's query: searched across every field without changing `Search`'s.
     PickerSearch(String),
-    PreviewImport(SidecarManifest),
-    ConfirmImport,
-    DiscardImport,
     LoadMetadata(String),
     SaveMetadata(EditableMetadata),
     Shutdown,
@@ -113,35 +107,6 @@ impl OperationController {
             self.cancellation.store(CANCEL_CLOSED, Ordering::Release);
             UiError::WorkerStopped
         })
-    }
-
-    /// Requests a read-only preview of the supplied sidecar manifest.
-    pub fn preview_import(&self, manifest: SidecarManifest) -> Result<(), UiError> {
-        self.begin_operation()?;
-        self.commands
-            .send(WorkerCommand::PreviewImport(manifest))
-            .map_err(|_| {
-                self.busy.store(false, Ordering::Release);
-                UiError::WorkerStopped
-            })
-    }
-
-    /// Applies the currently displayed preview after an explicit user action.
-    pub fn confirm_import(&self) -> Result<(), UiError> {
-        self.begin_operation()?;
-        self.commands
-            .send(WorkerCommand::ConfirmImport)
-            .map_err(|_| {
-                self.busy.store(false, Ordering::Release);
-                UiError::WorkerStopped
-            })
-    }
-
-    /// Discards the pending read-only preview without changing the index.
-    pub fn discard_import_preview(&self) -> Result<(), UiError> {
-        self.commands
-            .send(WorkerCommand::DiscardImport)
-            .map_err(|_| UiError::WorkerStopped)
     }
 
     /// Stops a running scan before reconciliation commits its plan.
@@ -233,7 +198,6 @@ fn run_worker(
 ) {
     let mut query = String::new();
     let mut scope = SearchScope::default();
-    let mut preview = ImportPreviewViewModel::default();
     while let Ok(command) = commands.recv() {
         match command {
             WorkerCommand::Rescan => run_rescan(
@@ -244,7 +208,6 @@ fn run_worker(
                 &cancellation,
                 &query,
                 scope,
-                &mut preview,
                 thumbnails.as_ref(),
             ),
             WorkerCommand::Search(next_query, next_scope) => {
@@ -307,59 +270,6 @@ fn run_worker(
                     ),
                 }
             }
-            WorkerCommand::PreviewImport(manifest) => {
-                match SidecarImporter::preview(&local, &manifest, catalog.as_ref()) {
-                    Ok(next_preview) => {
-                        preview.load(next_preview);
-                        if let Some(summary) = preview.summary() {
-                            send(&events, OperationEvent::ImportPreviewReady { summary });
-                        }
-                    }
-                    Err(error) => send(
-                        &events,
-                        OperationEvent::Failed {
-                            reason: error.to_string(),
-                        },
-                    ),
-                }
-                busy.store(false, Ordering::Release);
-            }
-            WorkerCommand::ConfirmImport => {
-                preview.confirm();
-                match preview.apply(&local) {
-                    Ok(report) => {
-                        let summary = ImportSummary {
-                            imported: report.imported().len(),
-                            unchanged: report.unchanged().len(),
-                            mismatches: report.mismatches().len(),
-                            missing: report.absent_entries().len(),
-                            unreadable: report.unreadable_entries().len(),
-                            conflicts: report.conflicts().len(),
-                            failures: report.failures().len(),
-                        };
-                        match project_rows(&local, &query, scope) {
-                            Ok(rows) => {
-                                send(&events, OperationEvent::ImportApplied { summary, rows });
-                                send_indexed_count(&local, &events);
-                            }
-                            Err(error) => send(
-                                &events,
-                                OperationEvent::Failed {
-                                    reason: error.to_string(),
-                                },
-                            ),
-                        }
-                    }
-                    Err(error) => send(
-                        &events,
-                        OperationEvent::Failed {
-                            reason: error.to_string(),
-                        },
-                    ),
-                }
-                busy.store(false, Ordering::Release);
-            }
-            WorkerCommand::DiscardImport => preview = ImportPreviewViewModel::default(),
             WorkerCommand::Shutdown => break,
         }
     }
@@ -377,7 +287,6 @@ fn run_rescan(
     cancellation: &AtomicU8,
     query: &str,
     scope: SearchScope,
-    preview: &mut ImportPreviewViewModel,
     thumbnails: Option<&ThumbnailCache>,
 ) {
     send(events, OperationEvent::Started);
@@ -511,16 +420,7 @@ fn run_rescan(
                     // Publish the whole-library count before `Completed`, which must stay the last
                     // event of a successful rescan.
                     send_indexed_count(local, events);
-                    send(events, OperationEvent::CheckingDesktopImport);
-                    let desktop_import = check_desktop_import(local, catalog, preview);
-                    send(
-                        events,
-                        OperationEvent::Completed {
-                            summary,
-                            rows,
-                            desktop_import,
-                        },
-                    );
+                    send(events, OperationEvent::Completed { summary, rows });
                 }
                 Err(error) => send(
                     events,
@@ -538,35 +438,6 @@ fn run_rescan(
         ),
     }
     busy.store(false, Ordering::Release);
-}
-
-/// Looks for a desktop sidecar and prepares its read-only preview.
-fn check_desktop_import(
-    local: &IndexStore,
-    catalog: &dyn LibraryCatalog,
-    preview: &mut ImportPreviewViewModel,
-) -> DesktopImportCheck {
-    let manifest = match catalog.sidecar_manifest() {
-        Ok(Some(manifest)) => manifest,
-        Ok(None) => return DesktopImportCheck::NoSidecar,
-        Err(error) => {
-            return DesktopImportCheck::Failed {
-                reason: error.to_string(),
-            };
-        }
-    };
-    match SidecarImporter::preview(local, &manifest, catalog) {
-        Ok(sidecar_preview) => {
-            preview.load(sidecar_preview);
-            match preview.summary() {
-                Some(summary) => DesktopImportCheck::PreviewReady(summary),
-                None => DesktopImportCheck::NoSidecar,
-            }
-        }
-        Err(error) => DesktopImportCheck::Failed {
-            reason: error.to_string(),
-        },
-    }
 }
 
 fn stop_if_cancelled(

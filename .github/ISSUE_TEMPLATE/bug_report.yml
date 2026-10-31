@@ -15,7 +15,6 @@ body:
       label: Component
       options:
         - Android app
-        - Sidecar import
         - Documentation
         - Other / not sure
     validations:
@@ -66,8 +65,7 @@ body:
     attributes:
       label: Library details
       description: |
-        Roughly how many PDFs, where the folder lives (internal storage, SD card, other provider), whether a
-        `.notae/` sidecar was imported, and whether the PDFs are scans or have a text layer. Do not share file names you consider private.
+        Roughly how many PDFs, where the folder lives (internal storage, SD card, other provider), and whether the PDFs are scans or have a text layer. Do not share file names you consider private.
   - type: textarea
     id: logs
     attributes:

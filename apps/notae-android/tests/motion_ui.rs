@@ -376,27 +376,6 @@ fn dismissing_sheet_keeps_its_modal_surface_until_exit_finishes() {
 }
 
 #[test]
-fn dismissing_import_preview_keeps_its_contents_mounted_until_exit_finishes() {
-    let app = app();
-    app.set_show_import_preview(true);
-    i_slint_backend_testing::mock_elapsed_time(Duration::from_millis(220));
-    app.set_show_import_preview(false);
-
-    assert!(
-        ElementHandle::find_by_accessible_label(&app, "Review desktop import dialog")
-            .next()
-            .is_some(),
-        "the import preview remains mounted during its exit"
-    );
-    i_slint_backend_testing::mock_elapsed_time(Duration::from_millis(220));
-    assert!(
-        ElementHandle::find_by_accessible_label(&app, "Review desktop import dialog")
-            .next()
-            .is_none()
-    );
-}
-
-#[test]
 fn zero_android_animator_scale_disables_motion_but_nonzero_scale_keeps_it() {
     assert!(!notae_android::motion::animations_enabled_for_scale(0.0));
     assert!(notae_android::motion::animations_enabled_for_scale(1.0));

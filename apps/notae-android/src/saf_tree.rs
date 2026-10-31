@@ -3,7 +3,7 @@
 use std::io;
 
 use notae_domain::{PdfFingerprint, RelativePdfPath, Sha256Digest};
-use notae_index::{CatalogError, FileCondition, PdfFile, SidecarManifest};
+use notae_index::{CatalogError, FileCondition, PdfFile};
 use sha2::{Digest, Sha256};
 
 const DIRECTORY_MIME: &str = "vnd.android.document/directory";
@@ -23,52 +23,6 @@ pub trait DocumentTreeReader {
 
     /// Reads one PDF document end-to-end.
     fn read_pdf(&self, document_id: &str) -> io::Result<Vec<u8>>;
-
-    /// Reads a non-PDF document through the same SAF document handle.
-    fn read_document(&self, document_id: &str) -> io::Result<Vec<u8>> {
-        self.read_pdf(document_id)
-    }
-}
-
-/// Finds and validates `<root>/.notae/manifest.json`, if the selected tree has one.
-pub fn discover_sidecar_manifest(
-    reader: &impl DocumentTreeReader,
-    root_id: &str,
-) -> Result<Option<SidecarManifest>, CatalogError> {
-    let root_children = reader.children(root_id)?;
-    let mut sidecar_dirs = root_children
-        .iter()
-        .filter(|row| row.display_name == ".notae" && row.mime_type == DIRECTORY_MIME);
-    let Some(directory) = sidecar_dirs.next() else {
-        return Ok(None);
-    };
-    if sidecar_dirs.next().is_some() {
-        return Err(CatalogError::Failed(
-            "SAF root contains multiple .notae directories".to_owned(),
-        ));
-    }
-
-    let children = reader.children(&directory.document_id)?;
-    let mut manifests = children
-        .iter()
-        .filter(|row| row.display_name == "manifest.json" && row.mime_type != DIRECTORY_MIME);
-    let Some(manifest) = manifests.next() else {
-        return Ok(None);
-    };
-    if manifests.next().is_some() {
-        return Err(CatalogError::Failed(
-            "sidecar contains multiple manifest.json documents".to_owned(),
-        ));
-    }
-
-    let bytes = reader
-        .read_document(&manifest.document_id)
-        .map_err(|error| CatalogError::Failed(format!("cannot read sidecar manifest: {error}")))?;
-    let text = std::str::from_utf8(&bytes)
-        .map_err(|error| CatalogError::Failed(format!("sidecar manifest is not UTF-8: {error}")))?;
-    SidecarManifest::from_json(text)
-        .map(Some)
-        .map_err(|error| CatalogError::Failed(format!("invalid sidecar manifest: {error}")))
 }
 
 /// Resolves a validated library-relative PDF path to its opaque SAF document ID.

@@ -4,10 +4,7 @@ use notae_domain::{
     EpochTimestamp, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId, NoteMetadata,
     PdfFingerprint, RelativePdfPath, Sha256Digest,
 };
-use notae_index::{
-    CatalogError, IndexError, IndexStore, OcrText, PdfCatalog, PdfFile, Reconciler, SidecarEntry,
-    SidecarImporter, SidecarManifest,
-};
+use notae_index::{IndexError, IndexStore, OcrText, PdfFile, Reconciler};
 use sha2::{Digest, Sha256};
 
 fn note(path: &str, bytes: &[u8], id: u32, title: &str) -> IndexedNote {
@@ -149,16 +146,8 @@ fn duplicate_manual_id_is_rejected_without_changing_either_record() {
     );
 }
 
-struct FilesCatalog(Vec<PdfFile>);
-
-impl PdfCatalog for FilesCatalog {
-    fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
-        Ok(self.0.clone())
-    }
-}
-
 #[test]
-fn manual_edits_survive_rescan_and_sidecar_preview() {
+fn manual_edits_survive_rescan() {
     let mut store = IndexStore::open(":memory:").expect("open test index");
     let path = "12 - Autumn Leaves.pdf";
     let bytes = b"stable pdf bytes";
@@ -199,40 +188,5 @@ fn manual_edits_survive_rescan_and_sidecar_preview() {
             .map(String::as_str)
             .collect::<Vec<_>>(),
         ["manual tag"]
-    );
-
-    let mut pc_metadata = NoteMetadata::new(
-        "PC title",
-        Some("PC composer".to_owned()),
-        ["PC tag".to_owned()],
-    )
-    .expect("valid PC metadata");
-    pc_metadata.assign_id(Some(NoteId::new(42)), MetadataOrigin::PcImported);
-    let pc_note = IndexedNote::new(
-        original.path().clone(),
-        original.fingerprint().clone(),
-        pc_metadata,
-    );
-    let manifest = SidecarManifest::new(
-        EpochTimestamp::new(0, 0).expect("valid timestamp"),
-        "test",
-        vec![SidecarEntry::new(&pc_note, None)],
-    );
-    let preview = SidecarImporter::preview(&store, &manifest, &FilesCatalog(vec![pdf]))
-        .expect("preview conflicting PC metadata");
-    let entry = &preview.entries()[0];
-    assert_eq!(
-        entry.metadata().preserved(),
-        &[
-            MetadataField::Title,
-            MetadataField::ComposerOrArtist,
-            MetadataField::Tags,
-        ]
-    );
-    let proposed = entry.resolved().expect("metadata has a resolved preview");
-    assert_eq!(proposed.title(), "Manual title");
-    assert_eq!(
-        proposed.metadata().composer_or_artist(),
-        Some("Manual composer")
     );
 }

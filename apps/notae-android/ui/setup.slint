@@ -175,7 +175,6 @@ export component SettingsScreen inherits Rectangle {
     in property <string> build-identity;
     in property <string> repository;
     in property <string> license;
-    in property <string> schema-version;
     in property <string> progress-text;
     in property <bool> busy;
     in property <bool> failed;
@@ -269,7 +268,6 @@ export component SettingsScreen inherits Rectangle {
                         FactRow { label: @tr("Build"); value: root.build-identity; }
                         FactRow { label: @tr("License"); value: root.license; }
                         FactRow { label: @tr("Repository"); value: root.repository; }
-                        FactRow { label: @tr("Sidecar schema"); value: root.schema-version; }
                         Text { text: @tr("Your library stays on this device. Notae does not send data over the network."); color: Theme.muted; font-size: 14px; wrap: word-wrap; }
                     }
                 }

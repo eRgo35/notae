@@ -60,7 +60,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use notae_domain::RelativePdfPath;
-use notae_index::{CatalogError, PdfCatalog, PdfFile, SidecarManifest};
+use notae_index::{CatalogError, PdfCatalog, PdfFile};
 
 use crate::pdf_pages::PdfError;
 
@@ -289,11 +289,6 @@ pub struct LibrarySource {
 
 /// Catalog capabilities consumed by the library worker.
 pub trait LibraryCatalog: PdfCatalog + Send {
-    /// Reads the optional root-level PC sidecar manifest without applying it.
-    fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
-        Ok(None)
-    }
-
     /// Extracts searchable PDF text available without local OCR execution.
     fn extract_text_layer(&self, _path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         Ok(None)
@@ -339,9 +334,6 @@ impl PdfCatalog for LibrarySource {
 }
 
 impl LibraryCatalog for LibrarySource {
-    fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
-        self.catalog.sidecar_manifest()
-    }
     fn extract_text_layer(&self, path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         self.catalog.extract_text_layer(path)
     }
@@ -367,12 +359,6 @@ impl PdfCatalog for SharedLibraryCatalog {
 }
 
 impl LibraryCatalog for SharedLibraryCatalog {
-    fn sidecar_manifest(&self) -> Result<Option<SidecarManifest>, CatalogError> {
-        self.0
-            .lock()
-            .map_err(|_| CatalogError::Failed("library source lock poisoned".to_owned()))?
-            .sidecar_manifest()
-    }
     fn extract_text_layer(&self, path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         self.0
             .lock()

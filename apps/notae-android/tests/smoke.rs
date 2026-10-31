@@ -107,14 +107,6 @@ fn shared_scan_eligibility_tracks_idle_operation_state() {
         .cancel_operation()
         .expect("cancel scan");
     assert!(model.rescan_enabled());
-
-    model.controller_mut().import_preview_ready(1);
-    assert!(!model.rescan_enabled());
-    model
-        .controller_mut()
-        .cancel_import()
-        .expect("cancel import");
-    assert!(model.rescan_enabled());
 }
 
 // P3 #7: `StorageState::Error(_)` carries a payload the UI can

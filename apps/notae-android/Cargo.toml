@@ -1,6 +1,6 @@
 [package]
 name = "notae-android"
-description = "Slint + android-activity UI for the Notae portable sidecar."
+description = "Slint + android-activity UI for the Notae score library."
 edition.workspace = true
 version.workspace = true
 publish = false

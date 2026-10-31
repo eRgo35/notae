@@ -281,53 +281,6 @@ fn run(app: slint::android::AndroidApp) -> Result<(), Box<dyn std::error::Error>
 
     {
         let model = Rc::clone(&model);
-        let operations = Rc::clone(&operations);
-        let window_weak = window.as_weak();
-        window.on_import_confirmed(move || {
-            let transition = model.borrow_mut().dispatch(UiEvent::ConfirmImport);
-            match transition {
-                Ok(_) => {
-                    let result = operations
-                        .borrow()
-                        .as_ref()
-                        .ok_or(crate::ui::search::UiError::WorkerStopped)
-                        .and_then(OperationController::confirm_import);
-                    if let Err(error) = result {
-                        let _ = model.borrow_mut().apply_operation_event(
-                            crate::operations::events::OperationEvent::Failed {
-                                reason: error.to_string(),
-                            },
-                        );
-                    }
-                }
-                Err(error) => report_transition(Err(error)),
-            }
-            if let Some(window) = window_weak.upgrade() {
-                sync_window(&window, &model.borrow());
-            }
-        });
-    }
-
-    {
-        let model = Rc::clone(&model);
-        let operations = Rc::clone(&operations);
-        let window_weak = window.as_weak();
-        window.on_import_cancelled(move || {
-            report_transition(model.borrow_mut().dispatch(UiEvent::CancelImport));
-            model.borrow_mut().clear_import_preview();
-            if let Some(controller) = operations.borrow().as_ref()
-                && let Err(error) = controller.discard_import_preview()
-            {
-                eprintln!("notae: cannot discard sidecar preview: {error}");
-            }
-            if let Some(window) = window_weak.upgrade() {
-                sync_window(&window, &model.borrow());
-            }
-        });
-    }
-
-    {
-        let model = Rc::clone(&model);
         let window_weak = window.as_weak();
         window.on_section_selected(move |key| {
             if let Err(error) = model
@@ -1115,7 +1068,6 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     window.set_app_build_identity(env!("NOTAE_BUILD_ID").into());
     window.set_repository_url("https://github.com/eRgo35/notae".into());
     window.set_app_license("MIT License".into());
-    window.set_sidecar_schema_version(notae_index::SIDECAR_SCHEMA_VERSION.to_string().into());
     window.set_operation_progress_text(banner.text.into());
     window.set_operation_failed(banner.failed);
     window.set_operation_busy(banner.busy);
@@ -1264,65 +1216,6 @@ fn sync_window(window: &AppWindow, model: &UiModel) {
     );
     window.set_metadata_error_text(model.metadata_error().unwrap_or_default().into());
     window.set_pdf_launch_error_text(model.pdf_launch_error().unwrap_or_default().into());
-    let preview = model.import_preview_summary();
-    window.set_show_import_preview(preview.is_some());
-    window.set_import_preview_text(preview.map_or_else(String::new, import_preview_text).into());
-    let import_rows: Vec<crate::ImportRow> = preview
-        .into_iter()
-        .flat_map(|preview| preview.rows.iter())
-        .map(|row| crate::ImportRow {
-            path: row.path.as_str().into(),
-            change: row.change.as_str().into(),
-            local_metadata: row.local_metadata.as_deref().unwrap_or("—").into(),
-            proposed_metadata: row.proposed_metadata.as_str().into(),
-            fields: crate::language::pick(
-                format!(
-                    "Imported: {}; preserved: {}; ",
-                    row.imported_fields.join(", "),
-                    row.preserved_fields.join(", ")
-                ),
-                format!(
-                    "Importowane: {}; zachowane: {}; ",
-                    row.imported_fields.join(", "),
-                    row.preserved_fields.join(", ")
-                ),
-            )
-            .into(),
-            ocr: if row.ocr_available {
-                crate::language::pick("OCR available. ", "OCR dostępny. ").into()
-            } else {
-                crate::language::pick("No sidecar OCR. ", "Brak OCR w pliku sidecar. ").into()
-            },
-            conflict: row
-                .conflict
-                .as_deref()
-                .map_or_else(String::new, |value| format!("{value}. "))
-                .into(),
-        })
-        .collect();
-    window.set_import_rows(slint::ModelRc::new(slint::VecModel::from(import_rows)));
-}
-
-fn import_preview_text(summary: &crate::operations::events::ImportPreviewSummary) -> String {
-    let crate::operations::events::ImportPreviewSummary {
-        new,
-        changed,
-        unchanged,
-        missing,
-        mismatches,
-        unreadable,
-        conflicts,
-        ocr_available,
-        ..
-    } = summary;
-    crate::language::pick(
-        format!(
-            "{new} new; {changed} changed; {unchanged} unchanged; {missing} missing; {mismatches} hash mismatches; {unreadable} unreadable; {conflicts} ID conflicts; {ocr_available} entries with OCR. Review proposed and preserved metadata below."
-        ),
-        format!(
-            "nowe: {new}; zmienione: {changed}; bez zmian: {unchanged}; brakujące: {missing}; niezgodne sumy kontrolne: {mismatches}; nieczytelne: {unreadable}; konflikty numerów: {conflicts}; z OCR: {ocr_available}. Sprawdź poniżej proponowane i zachowane dane."
-        ),
-    )
 }
 
 /// Logs the outcome of a state transition at the level the platform

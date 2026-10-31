@@ -148,17 +148,8 @@ pub enum UiError {
     /// The requested content key is not in the local index.
     #[error("indexed note not found: {0}")]
     NoteNotFound(String),
-    /// A sidecar preview could not be read or applied.
-    #[error(transparent)]
-    Import(#[from] notae_index::SidecarError),
-    /// The user has not confirmed the visible import preview.
-    #[error("sidecar import requires explicit confirmation")]
-    ConfirmationRequired,
-    /// No preview is available to apply.
-    #[error("there is no sidecar preview to apply")]
-    NoImportPreview,
     /// Another index operation is already running.
-    #[error("a rescan or import is already in progress")]
+    #[error("a rescan is already in progress")]
     OperationAlreadyInProgress,
     /// Cancellation was requested while no operation was active.
     #[error("no operation is in progress")]

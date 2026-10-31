@@ -12,8 +12,8 @@ By contributing you agree that your work is released under the
 ## Ground rules
 
 - **Never commit private data.** That includes personal score libraries and
-  PDFs, the maintainer's local `Nutki/` folder (git-ignored), the `.notae/`
-  sidecars generated from real libraries, keystores (`*.jks`, `*.p12`),
+  PDFs, the maintainer's local `Nutki/` folder (git-ignored), any `.notae/`
+  folders from older desktop-indexer libraries, keystores (`*.jks`, `*.p12`),
   passwords, tokens and `.env` files. Test fixtures must be small, generated or
   clearly non-sensitive.
 - **PDFs are never modified.** Notae must not copy, move, rename or rewrite a
@@ -59,7 +59,7 @@ Notae is an Android app; the host tests and the Android cross-compile run on Lin
 | Path | What it is |
 | --- | --- |
 | `crates/notae-domain` | Filename convention, metadata, file identity |
-| `crates/notae-index` | SQLite store, FTS5 search, sidecar format, importer |
+| `crates/notae-index` | SQLite store, FTS5 search, rescan reconciliation |
 | `apps/notae-android` | Slint UI, Storage Access Framework adapter, Java shim |
 
 Put domain, indexing and search logic in the host-tested crates; keep the
