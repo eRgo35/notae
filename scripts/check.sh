@@ -19,7 +19,9 @@ case "$mode" in
   *) echo "usage: $0 [fast|full]" >&2; exit 2 ;;
 esac
 
-cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+# Not `git rev-parse --show-toplevel`: hooks in a linked worktree run with GIT_DIR set, which
+# makes git report the cwd as the top level.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 if [ "$mode" = full ]; then
   # Same defaults as build-apk.sh.

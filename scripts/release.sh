@@ -19,33 +19,49 @@ die() { echo "$*" >&2; exit 1; }
 
 [ "$#" -eq 1 ] || { echo "usage: $0 vX.Y.Z" >&2; exit 2; }
 tag=$1
-cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
 repo=$PWD
 
-# 1. Preflight: nothing is built or published unless every check passes.
+# 1. Preflight: nothing is built or published unless every check passes. The version and the
+# release notes are read from the tag, not from this checkout.
 [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "tag $tag is not of the form vMAJOR.MINOR.PATCH"
 version=${tag#v}
-notes=$repo/docs/release-notes/$tag.md
-[ -f "$notes" ] || die "missing release notes docs/release-notes/$tag.md"
-pkgid=$(cargo pkgid -p notae-android)
-cargo_version=${pkgid##*[#@]}
-[ "$version" = "$cargo_version" ] || die "tag $tag does not match the Cargo version $cargo_version"
 git rev-parse -q --verify "refs/tags/$tag" > /dev/null || die "tag $tag does not exist locally"
-git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null || die "tag $tag is not on origin"
+commit=$(git rev-parse "$tag^{commit}")
+# An annotated tag lists its commit on the peeled `^{}` line; a lightweight tag has only one line.
+remote_tags=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
+remote_commit=$(awk -v ref="refs/tags/$tag^{}" '$2 == ref { print $1 }' <<< "$remote_tags")
+[ -n "$remote_commit" ] || remote_commit=$(awk '{ print $1; exit }' <<< "$remote_tags")
+[ -n "$remote_commit" ] || die "tag $tag is not on origin"
+[ "$remote_commit" = "$commit" ] \
+  || die "tag $tag on origin points at ${remote_commit:0:7}, the local tag at ${commit:0:7}"
+# notae-android inherits [workspace.package] version from the root Cargo.toml.
+cargo_version=$(git show "$commit:Cargo.toml" \
+  | awk '/^\[/ { in_pkg = ($0 == "[workspace.package]") } in_pkg && /^version *=/ { gsub(/^version *= *"|"$/, ""); print; exit }')
+[ "$version" = "$cargo_version" ] || die "tag $tag does not match the Cargo version ${cargo_version:-?} at the tag"
+git cat-file -e "$commit:docs/release-notes/$tag.md" 2> /dev/null \
+  || die "missing release notes docs/release-notes/$tag.md at the tag"
 git fetch -q origin main
-git merge-base --is-ancestor "$tag^{commit}" origin/main || die "tag $tag is not on origin/main"
-if gh release view "$tag" > /dev/null 2>&1; then
+git merge-base --is-ancestor "$commit" origin/main || die "tag $tag is not on origin/main"
+# Only "release not found" means there is no release; any other gh failure stops here.
+if gh_out=$(gh release view "$tag" 2>&1); then
   die "GitHub Release $tag already exists"
 fi
+[[ $gh_out == *"release not found"* ]] || die "cannot check GitHub Releases for $tag: $gh_out"
 keystore=${NOTAE_RELEASE_KEYSTORE:-$HOME/.android-keys/notae-release.p12}
 [ -f "$keystore" ] || die "release keystore not found at $keystore (set NOTAE_RELEASE_KEYSTORE)"
 
-# 2. Temporary worktree of the tag, removed on any exit, including Ctrl-C and a failed step.
-tmp=$(mktemp -d)
+# 2. Temporary worktree of the tag, removed on any exit, including Ctrl-C and a failed step. It
+# lives under the git-ignored .worktrees/ on disk, not in /tmp (often RAM-backed): the cold
+# build there takes tens of GB.
+mkdir -p "$repo/.worktrees"
+tmp=$(mktemp -d "$repo/.worktrees/release.XXXXXX")
 publishing=0
 cleanup() {
-  if [ "$publishing" = 1 ]; then
-    # gh uploads assets to a draft before publishing it; drop the draft if that did not finish.
+  # gh uploads assets to a draft before publishing it; drop that draft if publishing did not
+  # finish. A published release is never deleted.
+  if [ "$publishing" = 1 ] \
+    && [ "$(gh release view "$tag" --json isDraft --jq .isDraft 2> /dev/null)" = true ]; then
     gh release delete "$tag" --yes > /dev/null 2>&1 || true
   fi
   git -C "$repo" worktree remove --force "$tmp/src" > /dev/null 2>&1 || true
@@ -76,7 +92,7 @@ NOTAE_RELEASE_CERT_SHA256=$cert_sha256 \
 
 # 6. Publish.
 publishing=1
-gh release create "$tag" --verify-tag --title "Notae $tag" --notes-file "$notes" --generate-notes \
+gh release create "$tag" --verify-tag --title "Notae $tag" --notes-file "$src/docs/release-notes/$tag.md" --generate-notes \
   "$tmp/dist/notae-$version-arm64.apk" "$tmp/dist/notae-$version-arm64.apk.sha256"
 publishing=0
 gh release view "$tag" --json url --jq .url
