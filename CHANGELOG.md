@@ -9,6 +9,30 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+### Added
+
+- `ROADMAP.md` and `GLOSSARY.md`, and a "Development workflow" section in
+  `CONTRIBUTING.md`.
+
+### Changed
+
+- Quality gates and releases run on the maintainer's PC: `scripts/check.sh`
+  (`fast` or `full`) runs the gates, an opt-in pre-push hook runs the fast
+  ones, and `scripts/release.sh vX.Y.Z` builds, signs, verifies and publishes
+  a release from its tag. The APK build helpers moved from `.github/scripts/`
+  to `scripts/`.
+- GitHub CI runs one cached job (fmt, Clippy, tests) and skips changes that
+  touch only Markdown or `docs/`. The weekly audit uses the prebuilt
+  `cargo-deny` binary.
+
+### Removed
+
+- The GitHub release workflow (`release.yml`) and its signing secrets, and the
+  Android arm64 compile job in CI (it runs in `scripts/check.sh full` and in
+  every release).
+- `docs/superpowers/IMPLEMENTATION-STATE.md`, replaced by `ROADMAP.md` and the
+  milestones.
+
 ## [0.3.0] - 2026-10-30
 
 Polish UI, Favorites and Sets for preparing the music for each Mass. Verified

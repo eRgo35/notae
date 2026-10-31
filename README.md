@@ -5,6 +5,9 @@
 **Index your sheet-music PDFs on a Linux desktop, then browse and search them
 on an Android tablet. No cloud, no account, no network access.**
 
+<sub>Version 0.3.0 · Android tablet (arm64) · private repository · next:
+<a href="ROADMAP.md">0.4.0 maintenance, then the 0.5.0 Compose app</a></sub>
+
 [![CI](https://github.com/eRgo35/notae/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eRgo35/notae/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/eRgo35/notae)](https://github.com/eRgo35/notae/releases/latest)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -15,6 +18,7 @@ on an Android tablet. No cloud, no account, no network access.**
 [Quick start](#quick-start) ·
 [Documentation](#documentation) ·
 [Changelog](CHANGELOG.md) ·
+[Roadmap](ROADMAP.md) ·
 [Issues](https://github.com/eRgo35/notae/issues) ·
 [Contributing](CONTRIBUTING.md)
 
@@ -141,7 +145,8 @@ tablet builds its own private index from it. There is no on-device OCR yet;
 > [release notes](docs/release-notes/v0.3.0.md)). Please report anything odd.
 
 Notae ships one Android artifact: a signed **arm64** APK for Android 6.0 (API
-23) or newer. The desktop indexer is built from source; see
+23) or newer, attached to each GitHub Release. The maintainer builds, signs
+and verifies it from the release tag with `scripts/release.sh`. The desktop indexer is built from source; see
 [Build from source](#build-from-source).
 
 1. Download `notae-<version>-arm64.apk` and its `.sha256` from the
@@ -159,8 +164,8 @@ Notae ships one Android artifact: a signed **arm64** APK for Android 6.0 (API
    `apksigner` ships with the Android SDK build tools. The `grep` must print
    one line; if it prints nothing, do not install the APK. The same
    fingerprint, in the usual colon-separated form, is published in
-   [`docs/android-release.md`](docs/android-release.md) and pinned in the
-   release workflow:
+   [`docs/android-release.md`](docs/android-release.md) and pinned in
+   `scripts/release.sh`:
 
    ```text
    BE:27:CD:78:17:66:C5:C2:8A:9D:B1:06:C0:7B:05:1C:EE:E4:E0:00:31:05:96:45:95:E2:A8:48:F3:71:F6:01
@@ -265,21 +270,22 @@ rustup target add aarch64-linux-android
 cargo install --locked --version 1.4.0 cargo-apk2
 export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/26.3.11579264"
 
-cargo apk2 check -p notae-android --target aarch64-linux-android   # compile gate used in CI
+cargo apk2 check -p notae-android --target aarch64-linux-android   # the Android compile gate
 cargo apk2 build -p notae-android --target aarch64-linux-android   # debug-signed APK
 ```
 
 Debug builds are signed with your Android SDK debug key, so they are **not**
 update-compatible with the official release APK. Release builds need the
-maintainer's signing key and are produced only by the
-[Release workflow](docs/android-release.md). For an emulator, build with
+maintainer's signing key and are produced only by `scripts/release.sh`
+([`docs/android-release.md`](docs/android-release.md)). For an emulator, build with
 `--target x86_64-linux-android` and see
 [`docs/android-debugging.md`](docs/android-debugging.md) for AVD setup.
 
 </details>
 
-The quality gates that CI enforces (format, Clippy, tests, docs, `cargo deny`,
-coverage) are listed in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+`scripts/check.sh` runs the quality gates (format, Clippy, tests, docs,
+`cargo deny`, coverage, the Android compile check); see
+[`CONTRIBUTING.md`](CONTRIBUTING.md#quality-gates).
 
 ## Project layout
 
@@ -321,7 +327,7 @@ architecture are in the
 - **Voice search** is optional: it only launches Android's installed speech
   recognizer. That recognizer is not part of Notae and may use network services
   independently; Notae requests no microphone permission.
-- **Signed releases.** APKs are built in CI from version tags and signed with a
+- **Signed releases.** APKs are built from version tags and signed with a
   dedicated key whose fingerprint is published (see [Install](#install)).
 
 Found a vulnerability? Follow [`SECURITY.md`](SECURITY.md) and report it
@@ -333,7 +339,12 @@ privately.
   sidecar format, Android import contract.
 - [`crates/notae-ocr/README.md`](crates/notae-ocr/README.md): building against
   system Tesseract and Leptonica.
-- [`docs/android-release.md`](docs/android-release.md): release workflow,
+- [`ROADMAP.md`](ROADMAP.md): what is being built now, next and later.
+- [`GLOSSARY.md`](GLOSSARY.md): the domain terms (library, score, sidecar,
+  scope, set, ...).
+- [`CONTRIBUTING.md`](CONTRIBUTING.md#development-workflow): setup, quality
+  gates and the development workflow from issue to release.
+- [`docs/android-release.md`](docs/android-release.md): cutting a release,
   signing and verification.
 - [`docs/android-debugging.md`](docs/android-debugging.md): emulator setup,
   crash-log capture and the UI verification checklist.
@@ -348,23 +359,18 @@ Bug reports, ideas and pull requests are welcome. Start with
 [`CONTRIBUTING.md`](CONTRIBUTING.md) for the development setup, quality gates,
 commit conventions and what must never be committed.
 
-## Roadmap and known limitations
+## Known limitations
 
-Work is tracked in [GitHub issues](https://github.com/eRgo35/notae/issues) and
-[milestones](https://github.com/eRgo35/notae/milestones).
+What comes next is in [`ROADMAP.md`](ROADMAP.md).
 
-- **Not yet accepted on a physical tablet.** The target device is the Samsung
-  Galaxy Tab S10 FE+. So far everything is verified with host tests and an
-  emulator; on-device input (Samsung Keyboard, Gboard), visuals and motion are
-  unconfirmed.
-- **No TalkBack support yet.** Slint's Android backend does not publish an
-  accessibility tree, so TalkBack cannot operate item actions and menus
-  ([#17](https://github.com/eRgo35/notae/issues/17)).
+- **0.3.0 is not yet run on the physical tablet.** Favorites, Sets and the
+  Polish UI are verified with host tests and the tablet emulator only; the
+  Galaxy Tab S10 FE+ check is pending.
 - **No on-device OCR.** Scanned PDFs get searchable text from the desktop
-  indexer. On-device OCR, started manually from Settings and run in the
-  foreground, is accepted in [ADR 0001](docs/adr/0001-on-device-ocr.md) and not yet built ([#28](https://github.com/eRgo35/notae/issues/28)).
-- **Physical-keyboard Polish input** is tracked in
-  [#32](https://github.com/eRgo35/notae/issues/32).
+  indexer ([#28](https://github.com/eRgo35/notae/issues/28),
+  [ADR 0001](docs/adr/0001-on-device-ocr.md)).
+- **TalkBack has no long-press action**, so the long-press menu is not
+  reachable that way; its actions are on the card itself and its Info button.
 - **Platforms:** the Android release is arm64 only (minSdk 23); the indexer is
   Linux only. There is no iOS, Windows or macOS build.
 - **No in-app PDF viewing or annotation, and no cloud sync**, by design.
