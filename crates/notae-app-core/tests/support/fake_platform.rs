@@ -91,7 +91,9 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 pub fn readable(path: &str, bytes: &[u8]) -> DocumentEntry {
     entry(
         path,
-        DocumentContent::Sha256(sha256_hex(bytes)),
+        DocumentContent::Sha256 {
+            hex: sha256_hex(bytes),
+        },
         bytes.len(),
     )
 }

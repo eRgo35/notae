@@ -54,7 +54,9 @@ fn row(document_id: &str, display_name: &str, mime_type: &str) -> DocumentRow {
 }
 
 fn sha256(bytes: &[u8]) -> DocumentContent {
-    DocumentContent::Sha256(Sha256Digest::from_bytes(Sha256::digest(bytes).into()).to_string())
+    DocumentContent::Sha256 {
+        hex: Sha256Digest::from_bytes(Sha256::digest(bytes).into()).to_string(),
+    }
 }
 
 fn size(bytes: &[u8]) -> u64 {

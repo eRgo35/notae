@@ -90,7 +90,9 @@ fn enumerate_children(
                 .map_err(|error| CatalogError::Failed(format!("invalid SAF path: {error}")))?;
             let (content, size) = match reader.read_pdf(&child.document_id) {
                 Ok(bytes) => (
-                    DocumentContent::Sha256(sha256_hex(&bytes)),
+                    DocumentContent::Sha256 {
+                        hex: sha256_hex(&bytes),
+                    },
                     byte_len(&bytes),
                 ),
                 Err(_) => (DocumentContent::Unreadable, 0),

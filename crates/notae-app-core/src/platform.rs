@@ -6,7 +6,7 @@
 //! the [`LibraryCatalog`] the rescan worker reads.
 //!
 //! The trait's shape is meant to cross a foreign-function boundary unchanged: owned `String`s,
-//! no lifetimes, sizes as `u64` and named fields on every enum variant.
+//! no lifetimes, sizes as `u64`, and named fields on every enum variant that carries data.
 
 #![forbid(unsafe_code)]
 
@@ -71,8 +71,11 @@ pub struct DocumentEntry {
 /// What the platform could read of one document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocumentContent {
-    /// Read end to end; the lowercase hex SHA-256 of its bytes.
-    Sha256(String),
+    /// Read end to end.
+    Sha256 {
+        /// The lowercase hex SHA-256 of its bytes.
+        hex: String,
+    },
     /// The document could not be opened or read.
     Unreadable,
     /// The bytes are not a readable PDF.
@@ -156,7 +159,7 @@ impl PdfCatalog for PlatformCatalog {
                 continue;
             };
             let condition = match entry.content {
-                DocumentContent::Sha256(hex) => Sha256Digest::parse(&hex)
+                DocumentContent::Sha256 { hex } => Sha256Digest::parse(&hex)
                     .map_or(FileCondition::Unreadable, |digest| {
                         FileCondition::Readable(PdfFingerprint::new(digest, entry.size, None))
                     }),
