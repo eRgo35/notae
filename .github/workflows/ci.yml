@@ -32,6 +32,11 @@ jobs:
       - name: Free preinstalled runner disk space
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
       - uses: actions/checkout@v7
+      # Slint's font stack links Fontconfig through pkg-config; this goes away with Slint.
+      - name: Install Fontconfig headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes pkg-config libfontconfig1-dev
       - name: Install pinned Rust toolchain
         run: rustup show active-toolchain
       # Registry and git sources only: caching target/ fills the runner disk.
