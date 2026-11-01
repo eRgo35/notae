@@ -913,14 +913,14 @@ impl SafLibrary {
 
 fn unavailable(message: impl ToString) -> PlatformError {
     PlatformError::Unavailable {
-        message: message.to_string(),
+        detail: message.to_string(),
     }
 }
 
 fn catalog_detail(error: CatalogError) -> PlatformError {
     match error {
         CatalogError::Unreadable(message) | CatalogError::Failed(message) => {
-            PlatformError::Unavailable { message }
+            PlatformError::Unavailable { detail: message }
         }
         CatalogError::PermissionLost => PlatformError::PermissionLost,
     }
@@ -955,7 +955,7 @@ impl PlatformLibrary for SafLibrary {
         )
         .map_err(|error| match error {
             notae_app_core::pdf_pages::PdfError::Platform(message) => {
-                PlatformError::Unavailable { message }
+                PlatformError::Unavailable { detail: message }
             }
             error @ notae_app_core::pdf_pages::PdfError::EmptyDocument => unavailable(error),
         })?;

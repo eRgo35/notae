@@ -133,7 +133,7 @@ fn permission_lost_maps_to_storage_permission_lost() {
     );
     assert_eq!(
         StorageError::from(PlatformError::Unavailable {
-            message: "provider crashed".to_owned(),
+            detail: "provider crashed".to_owned(),
         }),
         StorageError::Other("provider crashed".to_owned())
     );
@@ -147,7 +147,7 @@ fn permission_lost_maps_to_storage_permission_lost() {
     assert_eq!(Failure::from(&error), Failure::LibraryPermissionLost);
 
     platform.set_entries(Err(PlatformError::Unavailable {
-        message: "provider crashed".to_owned(),
+        detail: "provider crashed".to_owned(),
     }));
     assert_eq!(
         catalog.enumerate(),
@@ -167,7 +167,7 @@ fn catalog_forwards_text_and_thumbnail_requests() {
         Ok(Some("Autumn Leaves".to_owned()))
     );
     platform.set_text(Err(PlatformError::Unavailable {
-        message: "renderer closed".to_owned(),
+        detail: "renderer closed".to_owned(),
     }));
     assert_eq!(
         catalog.extract_text_layer(&score),

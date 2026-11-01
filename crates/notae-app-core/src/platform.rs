@@ -94,14 +94,15 @@ pub enum DocumentContent {
     InvalidPdf,
 }
 
-/// Why a platform call failed. `message` is the platform's own detail, not display text.
+/// Why a platform call failed. `detail` is the platform's own message, not display text.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, uniffi::Error)]
 pub enum PlatformError {
-    /// The platform failed; `message` says how.
-    #[error("{message}")]
+    /// The platform failed; `detail` says how. Not `message`, which Kotlin's generated
+    /// exception class could not declare beside `Throwable.message`.
+    #[error("{detail}")]
     Unavailable {
         /// The platform's message.
-        message: String,
+        detail: String,
     },
     /// The library root's permission was revoked.
     #[error("permission for the library root was lost")]
@@ -113,7 +114,7 @@ pub enum PlatformError {
 impl From<uniffi::UnexpectedUniFFICallbackError> for PlatformError {
     fn from(error: uniffi::UnexpectedUniFFICallbackError) -> Self {
         Self::Unavailable {
-            message: error.reason,
+            detail: error.reason,
         }
     }
 }
@@ -122,7 +123,7 @@ impl From<PlatformError> for StorageError {
     fn from(error: PlatformError) -> Self {
         match error {
             PlatformError::PermissionLost => Self::PermissionLost,
-            PlatformError::Unavailable { message } => Self::Other(message),
+            PlatformError::Unavailable { detail } => Self::Other(detail),
         }
     }
 }
@@ -131,7 +132,7 @@ impl From<PlatformError> for CatalogError {
     fn from(error: PlatformError) -> Self {
         match error {
             PlatformError::PermissionLost => Self::PermissionLost,
-            PlatformError::Unavailable { message } => Self::Failed(message),
+            PlatformError::Unavailable { detail } => Self::Failed(detail),
         }
     }
 }
@@ -139,7 +140,7 @@ impl From<PlatformError> for CatalogError {
 impl From<PlatformError> for PdfError {
     fn from(error: PlatformError) -> Self {
         match error {
-            PlatformError::Unavailable { message } => Self::Platform(message),
+            PlatformError::Unavailable { detail } => Self::Platform(detail),
             PlatformError::PermissionLost => Self::Platform(error.to_string()),
         }
     }

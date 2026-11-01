@@ -402,7 +402,7 @@ fn platform_error_becomes_file_failure() {
     ]));
     // A Kotlin exception inside the text call reaches the core as `Unavailable`.
     platform.set_text(Err(PlatformError::Unavailable {
-        message: "java.io.IOException: stream closed".to_owned(),
+        detail: "java.io.IOException: stream closed".to_owned(),
     }));
     let harness = start(dir.path(), platform);
 
