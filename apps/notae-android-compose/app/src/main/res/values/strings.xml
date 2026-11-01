@@ -2,4 +2,11 @@
 <resources>
     <string name="dismiss">Close</string>
     <string name="open_pdf_with">Open PDF with</string>
+    <string name="screen_loading">Loading library…</string>
+    <string name="screen_setup">Choose score folder</string>
+    <string name="screen_library">Library</string>
+    <string name="screen_set">Set</string>
+    <string name="screen_details">Details</string>
+    <string name="screen_search">Search</string>
+    <string name="screen_settings">Settings</string>
 </resources>

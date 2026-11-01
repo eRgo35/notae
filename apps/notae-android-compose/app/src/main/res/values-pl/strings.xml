@@ -2,4 +2,11 @@
 <resources>
     <string name="dismiss">Zamknij</string>
     <string name="open_pdf_with">Otwórz PDF za pomocą</string>
+    <string name="screen_loading">Wczytywanie biblioteki…</string>
+    <string name="screen_setup">Wybierz folder z nutami</string>
+    <string name="screen_library">Biblioteka</string>
+    <string name="screen_set">Zestaw</string>
+    <string name="screen_details">Szczegóły</string>
+    <string name="screen_search">Szukaj</string>
+    <string name="screen_settings">Ustawienia</string>
 </resources>

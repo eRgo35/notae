@@ -15,12 +15,18 @@ import com.c2yz.notae.core.PdfOpenError
  * Samsung Notes when it handles the PDF, otherwise Android's chooser, with read-only access to the document.
  */
 class PdfOpener(private val activity: Activity) {
-    /** Opens [relativePath] below the library tree [treeUri]; the error to report, or null once a viewer was launched. */
-    fun open(treeUri: String, relativePath: String): PdfOpenError? = try {
-        val document = documentUri(activity.contentResolver, treeUri.toUri(), relativePath)
+    /**
+     * The document at [relativePath] below the library tree [treeUri]. It walks the tree's folders,
+     * so call it off the main thread; it throws what the provider throws.
+     */
+    fun find(treeUri: String, relativePath: String): Uri =
+        documentUri(activity.contentResolver, treeUri.toUri(), relativePath)
+
+    /** Opens [document] in a viewer, on the main thread; the error to report, or null once a viewer was launched. */
+    fun open(document: Uri): PdfOpenError? = try {
         if (isContentUri(document)) launch(document) else PdfOpenError.InvalidContentUri
     } catch (error: Exception) {
-        PdfOpenError.Platform(error.message ?: error.toString())
+        pdfOpenFailure(error)
     }
 
     private fun launch(document: Uri): PdfOpenError? {
@@ -54,6 +60,9 @@ class PdfOpener(private val activity: Activity) {
         const val SAMSUNG_NOTES_PACKAGE = "com.samsung.android.app.notes"
     }
 }
+
+/** A failure to find or open a PDF, with the platform's message. */
+fun pdfOpenFailure(error: Throwable): PdfOpenError = PdfOpenError.Platform(error.message ?: error.toString())
 
 /** `ACTION_VIEW` of [document] as `application/pdf`, granting the viewer read access only. */
 fun pdfViewIntent(document: Uri): Intent =

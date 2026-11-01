@@ -4,6 +4,7 @@ kotlin = "2.4.21"
 composeBom = "2026.06.01"
 activity = "1.13.0"
 appcompat = "1.8.0"
+navigation3 = "1.1.7"
 jna = "5.19.1"
 robolectric = "4.17"
 junit = "4.13.2"
@@ -12,6 +13,7 @@ roborazzi = "1.77.0"
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-ui = { module = "androidx.compose.ui:ui" }

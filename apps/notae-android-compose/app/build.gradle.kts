@@ -163,6 +163,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
+    implementation(libs.navigation3.ui)
     // The Android build of JNA, with its native dispatch library for each ABI.
     implementation(libs.jna) { artifact { type = "aar" } }
 

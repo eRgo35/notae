@@ -1,30 +1,35 @@
 package com.c2yz.notae
 
 import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.activity.viewModels
+import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import com.c2yz.notae.core.EffectHandler
+import com.c2yz.notae.core.NotaeViewModel
+import com.c2yz.notae.nav.NotaeNavDisplay
+import com.c2yz.notae.ui.theme.NotaeTheme
 
-/** The app's only activity; for now it shows a placeholder. */
+/** The app's only activity: draws the core's snapshots and carries out its effects. */
 class MainActivity : AppCompatActivity() {
+    private val model: NotaeViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        EffectHandler(this, model)
         setContent {
-            MaterialTheme {
-                Surface(Modifier.fillMaxSize()) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("Notae", style = MaterialTheme.typography.displayMedium)
-                    }
-                }
+            val snapshot by model.snapshot.collectAsState()
+            NotaeTheme {
+                NotaeNavDisplay(snapshot, onBack = ::back)
             }
         }
+    }
+
+    /** Nothing left for the core to close: leave, as Android would (R19). */
+    private fun back() {
+        if (!model.back()) finish()
     }
 }
