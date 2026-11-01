@@ -19,7 +19,7 @@ fun SemanticsNodeInteractionsProvider.assertAllClickablesLabelled() {
 }
 
 /**
- * Every node with a click action is at least 48 dp square. The node's own size counts, not the part a scrolling
+ * Every node with a click action is at least 48 dp square, measured by its unclipped size: the node's own size counts, not the part a scrolling
  * viewport leaves visible; nodes with nothing on screen are skipped, as a lazy grid or list composes the next items
  * ahead of time without placing them.
  */

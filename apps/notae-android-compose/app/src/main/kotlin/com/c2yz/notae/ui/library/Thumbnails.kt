@@ -4,7 +4,9 @@ import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.Dispatchers
@@ -21,12 +23,18 @@ private object ThumbnailCache : LruCache<String, ImageBitmap>(MAX_KIB) {
 /** A quarter of a typical tablet heap's 64 MiB budget for images, in KiB. */
 private const val MAX_KIB = 16 * 1024
 
-/** The thumbnail at [path], decoded off the main thread; `null` until then, or when there is none. */
+/**
+ * The thumbnail at [path], from the cache or decoded off the main thread; `null` until then, or when there is none.
+ * The state is per path, so a new path never shows the previous one's picture.
+ */
 @Composable
-internal fun rememberThumbnail(path: String?): State<ImageBitmap?> =
-    produceState(path?.let { ThumbnailCache.get(it) }, path) {
-        if (path == null || value != null) return@produceState
-        value = withContext(Dispatchers.IO) {
+internal fun rememberThumbnail(path: String?): State<ImageBitmap?> {
+    val state = remember(path) { mutableStateOf(path?.let { ThumbnailCache.get(it) }) }
+    LaunchedEffect(path) {
+        if (path == null || state.value != null) return@LaunchedEffect
+        state.value = withContext(Dispatchers.IO) {
             BitmapFactory.decodeFile(path)?.asImageBitmap()?.also { ThumbnailCache.put(path, it) }
         }
     }
+    return state
+}

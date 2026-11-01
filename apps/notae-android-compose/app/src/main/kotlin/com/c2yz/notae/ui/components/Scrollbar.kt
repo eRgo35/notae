@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +73,7 @@ fun Scrollbar(
     val label = stringResource(R.string.scroll_position)
     val range = total - visible
     val fraction = (first.toFloat() / range).coerceIn(0f, 1f)
+    val currentFraction by rememberUpdatedState(fraction)
     BoxWithConstraints(modifier.width(48.dp).fillMaxHeight()) {
         val thumb = (maxHeight * (visible.toFloat() / total)).coerceAtLeast(48.dp).coerceAtMost(maxHeight)
         val travel = maxHeight - thumb
@@ -86,22 +88,28 @@ fun Scrollbar(
                     contentDescription = label
                     progressBarRangeInfo = ProgressBarRangeInfo(fraction, 0f..1f)
                 }
-                .pointerInput(shown, travelPx, range) {
-                    if (!shown || travelPx <= 0f) return@pointerInput
-                    detectVerticalDragGestures(
-                        onDragStart = {
-                            dragging = true
-                            dragY = travelPx * fraction
-                        },
-                        onDragEnd = { dragging = false },
-                        onDragCancel = { dragging = false },
-                    ) { change, delta ->
-                        change.consume()
-                        dragY = (dragY + delta).coerceIn(0f, travelPx)
-                        val target = (dragY / travelPx * range).roundToInt()
-                        scope.launch { onScrollTo(target) }
-                    }
-                },
+                // Hidden, the thumb takes no touches, so the ⋮ buttons beneath it stay tappable (Slint `enabled: root.shown`).
+                .then(
+                    if (shown && travelPx > 0f) {
+                        Modifier.pointerInput(travelPx, range) {
+                            detectVerticalDragGestures(
+                                onDragStart = {
+                                    dragging = true
+                                    dragY = travelPx * currentFraction
+                                },
+                                onDragEnd = { dragging = false },
+                                onDragCancel = { dragging = false },
+                            ) { change, delta ->
+                                change.consume()
+                                dragY = (dragY + delta).coerceIn(0f, travelPx)
+                                val target = (dragY / travelPx * range).roundToInt()
+                                scope.launch { onScrollTo(target) }
+                            }
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             val width by animateDpAsState(if (dragging) 8.dp else 4.dp, tween(Tokens.motionShortMillis), label = "thumb width")
             val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(Tokens.motionShortMillis), label = "thumb fade")

@@ -113,6 +113,16 @@ class LibraryScreenTest {
     }
 
     @Test
+    fun hidden_scrollbar_lets_the_top_row_menu_open() {
+        // The idle scrollbar's track sits over the ⋮ of the first list row; hidden, it must not take the tap.
+        show(Fixture.library().withView(LibraryView.LIST))
+
+        compose.onNodeWithContentDescription("More actions for Agnus Dei").performClick()
+
+        compose.onNodeWithText("Open score").assertIsDisplayed()
+    }
+
+    @Test
     fun favorite_badge_shows() {
         val rows = Fixture.library().rows.filter { it.title in setOf("Agnus Dei", "Alleluja", "Ave Maria") }
         val small = Fixture.library().copy(rows = rows)
