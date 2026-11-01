@@ -104,6 +104,8 @@ jobs:
         working-directory: apps/notae-android
         run: ./gradlew lint testDebugUnitTest verifyRoborazziDebug assembleRelease assembleDebug
       - name: Check 16 KB page alignment
+        # `shell: bash` adds pipefail, so a failed llvm-readelf fails the check.
+        shell: bash
         run: |
           apk=apps/notae-android/app/build/outputs/apk/release/app-release-unsigned.apk
           readelf=$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf

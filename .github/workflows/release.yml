@@ -67,12 +67,13 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Free preinstalled runner disk space
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+      # The build steps never see the write token: it is not left in .git/config.
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -125,6 +126,8 @@ jobs:
           path: dist/*
           if-no-files-found: error
       - name: Publish the GitHub Release with the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           version=${TAG#v}
           gh release create "$TAG" --verify-tag --title "Notae $TAG" \
