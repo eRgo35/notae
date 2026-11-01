@@ -21,6 +21,7 @@
     </queries>
 
     <application
+        android:icon="@mipmap/ic_launcher"
         android:label="Notae"
         android:enableOnBackInvokedCallback="true"
         android:localeConfig="@xml/locales_config"
