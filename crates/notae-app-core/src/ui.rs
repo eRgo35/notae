@@ -704,7 +704,8 @@ impl UiModel {
     }
 
     /// Loads the UI preferences from, and later saves them to, `path`, and reopens the saved
-    /// section. A saved set that no longer exists opens the list of sets.
+    /// section and details. A saved set that no longer exists opens the list of sets; the saved
+    /// details wait for the library's rows, which close them if their score is gone.
     pub fn set_ui_prefs_path(&mut self, path: PathBuf) {
         self.ui_prefs = UiPrefs::load(&path);
         self.ui_prefs_path = Some(path);
@@ -712,6 +713,7 @@ impl UiModel {
             LibrarySection::Set(id) if self.sets.get(&id).is_none() => LibrarySection::Sets,
             section => section,
         };
+        self.selected.clone_from(&self.ui_prefs.selection);
         self.forget_missing_composer();
     }
 
@@ -830,10 +832,11 @@ impl UiModel {
         self.section = section;
         self.selected = None;
         let key = self.section.key();
-        if self.ui_prefs.section == key {
+        if self.ui_prefs.section == key && self.ui_prefs.selection.is_none() {
             return Ok(());
         }
         self.ui_prefs.section = key;
+        self.ui_prefs.selection = None;
         self.save_ui_prefs()
     }
 
@@ -859,9 +862,22 @@ impl UiModel {
     }
 
     /// Opens the details pane on the row with selection id `id` ([`row_id`]: a set row's item
-    /// id, else the note key), or closes it with `None`.
+    /// id, else the note key), or closes it with `None`. The choice is remembered, so the details
+    /// reopen after Android ends the process.
     pub fn select_note(&mut self, id: Option<String>) {
         self.selected = id;
+        self.remember_selection();
+    }
+
+    /// Saves the details' score with the UI preferences, when it changed.
+    fn remember_selection(&mut self) {
+        if self.ui_prefs.selection == self.selected {
+            return;
+        }
+        self.ui_prefs.selection.clone_from(&self.selected);
+        if let Err(error) = self.save_ui_prefs() {
+            eprintln!("notae: cannot save UI preferences: {error}");
+        }
     }
 
     /// The row shown in the details pane, if it is still in the library. Inside a set this is
@@ -885,6 +901,7 @@ impl UiModel {
     fn forget_missing_selection(&mut self) {
         if self.selected.is_some() && self.selected_row().is_none() {
             self.selected = None;
+            self.remember_selection();
         }
     }
 
@@ -981,7 +998,10 @@ impl UiModel {
                 self.startup_presentation = StartupPresentation::Ready;
             }
         }
-        self.forget_missing_selection();
+        // Until the first rows arrive, a restored selection cannot be checked against them.
+        if self.startup_presentation == StartupPresentation::Ready {
+            self.forget_missing_selection();
+        }
         self.forget_missing_composer();
         Ok(())
     }

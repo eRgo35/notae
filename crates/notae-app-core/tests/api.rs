@@ -630,3 +630,35 @@ fn export_failure_keeps_the_platform_reason() {
         Some(ExportStatus::Exported)
     );
 }
+
+#[test]
+fn a_new_core_restores_the_open_set_and_selection() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria", "Barka"]);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let section_key = in_set.section_key.clone();
+    let piece = in_set.rows[0].selection_id.clone();
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: piece.clone(),
+    });
+    assert!(harness.core.snapshot().selection.is_some());
+    // Android ends the process while the PDF app is in front.
+    drop(harness);
+
+    let restarted = start(dir.path(), platform);
+    let restored = restarted
+        .listener
+        .wait_for("the restored rows", |snapshot| {
+            is_library(snapshot) && !snapshot.rows.is_empty()
+        });
+
+    assert_eq!(restored.section_key, section_key);
+    assert_eq!(
+        restored
+            .selection
+            .map(|selection| selection.row.selection_id),
+        Some(piece)
+    );
+}

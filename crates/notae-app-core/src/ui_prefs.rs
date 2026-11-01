@@ -1,5 +1,5 @@
-//! Private UI preferences: library layout, per-orientation sidebar visibility, language and the
-//! library section on display.
+//! Private UI preferences: library layout, per-orientation sidebar visibility, language, and the
+//! library section and details score on display.
 //!
 //! Stored as `key=value` lines next to the recent list, using the same
 //! temporary-file-and-rename write as [`crate::recent`].
@@ -55,6 +55,9 @@ pub struct UiPrefs {
     /// [`crate::ui::browse::LibrarySection::key`] of the section on display, so Notae comes back
     /// to the same set after Android closes it while the PDF app is in front.
     pub section: String,
+    /// [`crate::ui::browse::row_id`] of the score in the details pane, restored with
+    /// [`Self::section`] for the same reason; `None` when the details are closed.
+    pub selection: Option<String>,
 }
 
 impl Default for UiPrefs {
@@ -65,6 +68,7 @@ impl Default for UiPrefs {
             sidebar_collapsed_landscape: false,
             language: LanguageChoice::System,
             section: "all".to_owned(),
+            selection: None,
         }
     }
 }
@@ -103,6 +107,7 @@ impl UiPrefs {
                 }
                 "language" => prefs.language = LanguageChoice::from_tag(value),
                 "section" if !value.is_empty() => value.clone_into(&mut prefs.section),
+                "selection" => prefs.selection = Some(value.to_owned()).filter(|id| !id.is_empty()),
                 _ => {}
             }
         }
@@ -113,12 +118,13 @@ impl UiPrefs {
     #[must_use]
     pub fn to_text(&self) -> String {
         format!(
-            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nlanguage={}\nsection={}\n",
+            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nlanguage={}\nsection={}\nselection={}\n",
             self.library_view.key(),
             self.sidebar_collapsed_portrait,
             self.sidebar_collapsed_landscape,
             self.language.tag(),
             self.section,
+            self.selection.as_deref().unwrap_or_default(),
         )
     }
 

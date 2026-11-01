@@ -270,3 +270,30 @@ fn tempfile_dir(name: &str) -> std::path::PathBuf {
     std::fs::create_dir_all(&dir).expect("temporary directory is created");
     dir
 }
+
+#[test]
+fn selection_round_trips_and_clears_with_the_section() {
+    assert_eq!(UiPrefs::default().selection, None);
+    let prefs = UiPrefs::from_text("selection=5ec59ebd6fcc5c77\n");
+    assert_eq!(prefs.selection.as_deref(), Some("5ec59ebd6fcc5c77"));
+    assert_eq!(UiPrefs::from_text(&prefs.to_text()), prefs);
+    assert_eq!(UiPrefs::from_text("selection=\n").selection, None);
+
+    // Through the model: the selection is kept until the rows prove it gone.
+    let dir = tempfile_dir("selection");
+    let path = dir.join("ui-prefs.txt");
+    let mut model = UiModel::new();
+    model.set_ui_prefs_path(path.clone());
+    model.select_note(Some("5ec59ebd6fcc5c77".to_owned()));
+    assert_eq!(
+        UiPrefs::load(&path).selection.as_deref(),
+        Some("5ec59ebd6fcc5c77")
+    );
+    model.select_section(LibrarySection::Sets).expect("saved");
+    assert_eq!(
+        UiPrefs::load(&path).selection,
+        None,
+        "a new section closes the details"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
