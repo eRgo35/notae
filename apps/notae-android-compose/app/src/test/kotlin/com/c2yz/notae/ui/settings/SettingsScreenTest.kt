@@ -22,12 +22,12 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.unit.Density
 import com.c2yz.notae.core.Action
-import com.c2yz.notae.core.CoreListener
 import com.c2yz.notae.core.DocumentEntry
 import com.c2yz.notae.core.Effect
 import com.c2yz.notae.core.ExportStatus
 import com.c2yz.notae.core.NotaeCore
 import com.c2yz.notae.core.PlatformLibrary
+import com.c2yz.notae.core.RecordingListener
 import com.c2yz.notae.core.ScanSummary
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.SettingsInfo
@@ -104,10 +104,9 @@ class SettingsScreenTest {
 
     @Test
     fun export_emits_write_export() {
-        val effects = mutableListOf<Effect>()
-        val snapshots = mutableListOf<Snapshot>()
+        val listener = RecordingListener()
         val dir = Files.createTempDirectory("notae-settings").toFile()
-        val core = NotaeCore(dir.path, NoPlatform, Recorder(snapshots, effects))
+        val core = NotaeCore(dir.path, NoPlatform, listener)
         try {
             show(settings()) { action ->
                 actions += action
@@ -115,16 +114,22 @@ class SettingsScreenTest {
             }
 
             compose.onNodeWithText("Export sets").performScrollTo().performClick()
+            compose.waitForIdle()
+            compose.waitUntil {
+                listener.rethrow()
+                listener.effects.isNotEmpty()
+            }
 
             assertEquals(listOf<Action>(Action.ExportSets), actions)
-            val export = effects.single() as Effect.WriteExport
+            val export = listener.effects.single() as Effect.WriteExport
             assertTrue(export.suggestedName, Regex("""notae-sets-\d{4}-\d{2}-\d{2}\.json""").matches(export.suggestedName))
             assertTrue(export.json, export.json.contains("\"favorites\""))
 
             // The platform saved it: the core's next snapshot shows the outcome under the button.
             core.fileWritten(null)
-            shown = settings().copy(settings = snapshots.last().settings.copy(libraryName = "NotaeRef"))
+            shown = settings().copy(settings = listener.snapshots.last().settings.copy(libraryName = "NotaeRef"))
             compose.onNodeWithText("Favorites and sets exported").performScrollTo().assertIsDisplayed()
+            listener.rethrow()
         } finally {
             core.close()
             dir.deleteRecursively()
@@ -216,16 +221,6 @@ class SettingsScreenTest {
 
     @Test fun shot_export_done_landscape_dark() =
         shot("settings-export-done", settings(export = ExportStatus.Exported), landscape = true, dark = true, scrollTo = EXPORTED)
-
-    private class Recorder(val snapshots: MutableList<Snapshot>, val effects: MutableList<Effect>) : CoreListener {
-        override fun onSnapshot(snapshot: Snapshot) {
-            snapshots += snapshot
-        }
-
-        override fun onEffect(effect: Effect) {
-            effects += effect
-        }
-    }
 
     private object NoPlatform : PlatformLibrary {
         override fun checkRoot(handle: String) = error("no library folder")
