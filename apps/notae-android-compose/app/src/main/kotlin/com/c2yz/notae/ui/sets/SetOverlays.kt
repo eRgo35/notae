@@ -13,8 +13,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -105,29 +108,35 @@ private fun SetDialogCard(dialog: SetDialog, onAction: (Action) -> Unit) {
     val nameField = remember { FocusRequester() }
     LaunchedEffect(Unit) { nameField.requestFocus() }
     val cancel = { onAction(Action.CancelSetDialog) }
-    NotaeDialog(stringResource(R.string.set_dialog), Modifier.closeOnEscape(cancel)) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                stringResource(if (dialog.setId == null) R.string.library_new_set else R.string.set_edit),
-                color = c.foreground,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
-            if (dialog.setId == null) Text(stringResource(R.string.set_dialog_intro), color = c.muted, fontSize = 14.sp)
-        }
-        Field(stringResource(R.string.set_name)) {
-            TextField(name, { name = it }, stringResource(R.string.set_name_hint), Modifier.focusRequester(nameField))
-        }
-        Field(stringResource(R.string.set_date)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                DateField(date, { picking = true }, Modifier.weight(1f))
-                IconButton(stringResource(R.string.set_clear_date), painterResource(R.drawable.ic_close), { date = null }, enabled = date != null)
+    // With the soft keyboard up in landscape the fields scroll above it, and Cancel and Save stay in view (R47).
+    NotaeDialog(stringResource(R.string.set_dialog), Modifier.closeOnEscape(cancel).imePadding()) {
+        Column(
+            Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    stringResource(if (dialog.setId == null) R.string.library_new_set else R.string.set_edit),
+                    color = c.foreground,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (dialog.setId == null) Text(stringResource(R.string.set_dialog_intro), color = c.muted, fontSize = 14.sp)
             }
+            Field(stringResource(R.string.set_name)) {
+                TextField(name, { name = it }, stringResource(R.string.set_name_hint), Modifier.focusRequester(nameField))
+            }
+            Field(stringResource(R.string.set_date)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    DateField(date, { picking = true }, Modifier.weight(1f))
+                    IconButton(stringResource(R.string.set_clear_date), painterResource(R.drawable.ic_close), { date = null }, enabled = date != null)
+                }
+            }
+            Field(stringResource(R.string.set_notes_label)) {
+                TextField(notes, { notes = it }, stringResource(R.string.set_notes_hint), multiLine = true)
+            }
+            dialog.error?.let { Text(fieldError(it), color = c.error, fontSize = 14.sp) }
         }
-        Field(stringResource(R.string.set_notes_label)) {
-            TextField(notes, { notes = it }, stringResource(R.string.set_notes_hint), multiLine = true)
-        }
-        dialog.error?.let { Text(fieldError(it), color = c.error, fontSize = 14.sp) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
             PillButton(stringResource(R.string.set_cancel), cancel)
             PillButton(stringResource(R.string.set_save), { onAction(Action.SaveSetDialog(name, date, notes.ifBlank { null })) }, primary = true)
