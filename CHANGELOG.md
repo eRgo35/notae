@@ -9,8 +9,11 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-01
+
 Notae 0.5.0 is a new Android app: the same library, search, favorites and sets,
-rebuilt in Jetpack Compose over the Rust core.
+rebuilt in Jetpack Compose over the Rust core. See
+[`docs/release-notes/v0.5.0.md`](docs/release-notes/v0.5.0.md).
 
 ### Changed
 
@@ -339,7 +342,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/eRgo35/notae/releases/tag/v0.5.0
 [0.4.0]: https://github.com/eRgo35/notae/releases/tag/v0.4.0
 [0.3.0]: https://github.com/eRgo35/notae/releases/tag/v0.3.0
 [0.2.2]: https://github.com/eRgo35/notae/releases/tag/v0.2.2
