@@ -1061,6 +1061,39 @@ fn a_new_core_restores_the_open_set_and_selection() {
 }
 
 #[test]
+fn dropping_the_core_cancels_a_running_scan() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria", "Barka"]);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    harness
+        .core
+        .library_root_picked("Scores".to_owned(), ROOT.to_owned());
+    harness.listener.wait_for("the library", is_library);
+    let release = platform.hold_enumerate();
+    harness.core.dispatch(Action::Rescan);
+    harness.listener.wait_for("the running scan", |snapshot| {
+        snapshot.banner.message.is_some() && !is_finished(snapshot)
+    });
+
+    // The drop waits for the worker, which is inside the platform call until this releases it.
+    let releaser = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(200));
+        let _ = release.send(());
+    });
+    drop(harness);
+    releaser.join().expect("releaser thread");
+
+    let restarted = start(dir.path(), platform);
+    let reopened = restarted
+        .listener
+        .wait_for("the reopened library", is_library);
+    assert!(
+        reopened.rows.is_empty(),
+        "the scan did not finish: {reopened:#?}"
+    );
+}
+
+#[test]
 fn failed_folder_picker_shows_a_setup_error_and_import_is_offered() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), Arc::new(FakePlatform::default()));

@@ -10,6 +10,7 @@ import com.c2yz.notae.MainActivity
 import com.c2yz.notae.platform.FakeDocument
 import com.c2yz.notae.platform.FakeDocumentsProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -21,7 +22,10 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The open set and the details survive the activity's recreation and the process's death. */
+/**
+ * The open set and the details survive the activity's recreation and the process's death, and Back on the bare
+ * library keeps the activity.
+ */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w1280dp-h800dp")
@@ -80,6 +84,25 @@ class RecreationTest {
         val restored = restarted.await("the restored rows") { it.screen == Screen.Library && it.rows.isNotEmpty() }
         assertEquals(open.sectionKey, restored.sectionKey)
         assertEquals(piece, restored.selection?.row?.selectionId)
+        scenario.close()
+    }
+
+    @Test
+    fun back_on_the_bare_library_keeps_the_activity() {
+        val scenario = ActivityScenario.launch(MainActivity::class.java)
+        val model = scenario.viewModel()
+        model.libraryRootPicked("Scores", tree)
+        model.await("the library") { it.screen == Screen.Library }
+
+        // The data directory outlives a test, so close whatever an earlier one left open.
+        while (model.back()) Unit
+        var finishing = true
+        scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        shadowOf(Looper.getMainLooper()).idle()
+        scenario.onActivity { finishing = it.isFinishing }
+
+        // Finishing would clear the view model and drop the core while a scan may still run.
+        assertFalse("Back sends the app to the background instead of finishing", finishing)
         scenario.close()
     }
 

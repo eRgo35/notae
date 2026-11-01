@@ -51,7 +51,7 @@ import com.c2yz.notae.ui.theme.NotaeTheme
 
 /**
  * The app's screens, as the snapshot's back stack ([backStackFor]). The core owns navigation: every
- * back, gesture or key, goes to [onBack], which asks the core and finishes the activity when it has
+ * back, gesture or key, goes to [onBack], which asks the core and sends the app to the background when it has
  * nothing left to close. Navigation 3 animates the change when the next snapshot arrives.
  */
 @Composable

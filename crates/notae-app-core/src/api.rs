@@ -287,6 +287,10 @@ impl NotaeCore {
 impl Drop for NotaeCore {
     fn drop(&mut self) {
         self.shared.stop.store(true, Ordering::Release);
+        // A running scan would hold the worker, and so this drop, until it finished.
+        if let Some(operations) = &self.shared.lock().operations {
+            let _ = operations.cancel();
+        }
         if let Some(core_thread) = self.core_thread.take() {
             core_thread.thread().unpark();
             // A listener that drops the last reference from a callback runs on the core thread,

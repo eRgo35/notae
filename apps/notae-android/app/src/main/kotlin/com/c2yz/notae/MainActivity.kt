@@ -28,8 +28,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Nothing left for the core to close: leave, as Android would (R19). */
+    /**
+     * Nothing left for the core to close: the app goes to the background (R19). Finishing would clear the view
+     * model, and a relaunch would build a second core over the same index while the first one shuts down.
+     */
     private fun back() {
-        if (!model.back()) finish()
+        if (!model.back()) moveTaskToBack(true)
     }
 }
