@@ -160,6 +160,7 @@ tasks.withType<Test>().configureEach {
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
     // The Android build of JNA, with its native dispatch library for each ABI.
