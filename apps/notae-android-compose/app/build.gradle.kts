@@ -3,6 +3,7 @@ import javax.inject.Inject
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.roborazzi)
 }
 
 // The Cargo workspace this app's Rust core lives in.
@@ -53,6 +54,9 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Robolectric needs the merged resources for the Compose component tests.
+    testOptions.unitTests.isIncludeAndroidResources = true
 
     // VersionCodeTest tests the build's own versionCodeFor.
     sourceSets.getByName("test").kotlin.directories += "../buildSrc/src/main/kotlin"
@@ -149,6 +153,8 @@ androidComponents {
 tasks.withType<Test>().configureEach {
     dependsOn(cargoHostBuild)
     systemProperty("jna.library.path", hostLibDir.path)
+    // Robolectric's SDK 36 sandbox reaches into JDK internals, which JDK 25 does not export.
+    jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
 }
 
 dependencies {
@@ -161,6 +167,12 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.junit.rule)
+    debugImplementation(libs.compose.ui.test.manifest)
     // The desktop JNA jar, whose dispatch library runs the host core in unit tests.
     testImplementation(libs.jna)
 }
