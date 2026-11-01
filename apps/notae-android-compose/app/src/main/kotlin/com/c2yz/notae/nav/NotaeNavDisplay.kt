@@ -42,6 +42,7 @@ import com.c2yz.notae.ui.details.MetadataEditor
 import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.search.SearchScreen
 import com.c2yz.notae.ui.settings.AboutInfo
+import com.c2yz.notae.ui.settings.ImportConfirmationDialog
 import com.c2yz.notae.ui.sets.SetOverlays
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.settings.SettingsScreen
@@ -81,6 +82,7 @@ fun NotaeNavDisplay(
         // Snapshot fields, not navigation entries: drawn over whichever screen opened it, and gone when it closes.
         snapshot.metadataEditor?.let { MetadataEditor(it, onAction) }
         SetOverlays(snapshot, onAction)
+        snapshot.importConfirmation?.let { ImportConfirmationDialog(it, onAction) }
     }
     // Registered after NavDisplay's own handler, so it wins while enabled: a dialog or sheet closes
     // before any screen, without the predictive animation of the screen below, and on a single
@@ -117,8 +119,7 @@ private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when 
         val (snapshot, onAction) = shown.value
         val setup = (snapshot.screen as? Screen.Setup)?.setup
         if (setup != null) {
-            // The import flow arrives with Task 20; until then the button does nothing.
-            WelcomeScreen(setup, snapshot.importAvailable, onAction, onImport = {})
+            WelcomeScreen(setup, snapshot.importAvailable, onAction, importStatus = snapshot.settings.importStatus)
         }
     }
     // The set view is the library screen inside the set (Slint draws it in the same chrome).

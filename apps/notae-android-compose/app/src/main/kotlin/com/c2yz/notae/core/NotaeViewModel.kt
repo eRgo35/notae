@@ -59,6 +59,8 @@ class NotaeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun importFileRead(text: String) = core.importFileRead(text)
 
+    fun importFileFailed(detail: String) = core.importFileFailed(detail)
+
     fun pdfOpened(error: PdfOpenError?) = core.pdfOpened(error)
 
     override fun onCleared() {

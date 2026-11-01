@@ -32,14 +32,13 @@ class WelcomeScreenTest {
     val compose = createComposeRule()
 
     private val actions = mutableListOf<Action>()
-    private var imports = 0
 
     private fun show(setup: SetupScreen, dark: Boolean = false, importAvailable: Boolean = false): Density {
         var density = Density(1f)
         compose.setContent {
             density = LocalDensity.current
             NotaeTheme(dark = dark) {
-                WelcomeScreen(setup, importAvailable, { actions += it }, { imports++ })
+                WelcomeScreen(setup, importAvailable, { actions += it })
             }
         }
         compose.assertAllClickablesLabelled()
@@ -84,8 +83,8 @@ class WelcomeScreenTest {
 
         compose.onNodeWithText("Import from a previous Notae").performClick()
 
-        assertEquals(1, imports)
-        assertEquals(emptyList<Action>(), actions)
+        // The same import as Settings' "Import sets".
+        assertEquals(listOf<Action>(Action.ImportRequested), actions)
     }
 
     @Test

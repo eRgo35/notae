@@ -46,6 +46,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -57,16 +58,22 @@ import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.ExportStatus
+import com.c2yz.notae.core.ImportConfirmation
+import com.c2yz.notae.core.ImportError
+import com.c2yz.notae.core.ImportStatus
 import com.c2yz.notae.core.SettingsInfo
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.platform.appLanguage
 import com.c2yz.notae.platform.setAppLanguage
 import com.c2yz.notae.ui.components.IconButton
+import com.c2yz.notae.ui.components.ModalSurface
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.library.ListScrollbar
 import com.c2yz.notae.ui.library.isCtrlK
+import com.c2yz.notae.ui.sets.closeOnEscape
+import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 /** The build's version name and git identity, for the About card. */
@@ -76,13 +83,16 @@ data class AboutInfo(val version: String, val build: String)
  * Slint `SettingsScreen`: back and "Settings", the operation banner, then a scrolling column (at most 720 dp,
  * centred) of cards: Library folder with Change, Library maintenance, About Notae ([about]), Language and Sets and
  * favorites with Export sets and its outcome. The language is Android's per-app language (AppCompat), not the core's.
- * The screen has the keys as soon as it shows: Escape closes it, Ctrl K asks for search, as Slint's root shortcuts do.
+ * The screen has the keys as soon as it shows, and again when the import confirmation closes: Escape closes it, Ctrl K
+ * asks for search, as Slint's root shortcuts do.
  */
 @Composable
 fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutInfo, modifier: Modifier = Modifier) {
     val c = NotaeTheme.colors
     val keys = remember { FocusRequester() }
-    LaunchedEffect(Unit) { keys.requestFocus() }
+    // The import confirmation over Settings keeps the focus while open, and hands it back when it closes.
+    val overlay = overlayOpen(snapshot)
+    LaunchedEffect(overlay) { if (!overlay) keys.requestFocus() }
     BoxWithConstraints(
         modifier
             .fillMaxSize()
@@ -120,7 +130,7 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
                     item { MaintenanceCard(snapshot.settings, card) }
                     item { AboutCard(about, card) }
                     item { LanguageCard(card) }
-                    item { SetsCard(snapshot.settings.export, onAction, card) }
+                    item { SetsCard(snapshot.settings, onAction, card) }
                 }
                 ListScrollbar(state, Modifier.align(Alignment.TopEnd))
             }
@@ -206,16 +216,67 @@ private fun LanguageCard(modifier: Modifier) {
 }
 
 @Composable
-private fun SetsCard(export: ExportStatus?, onAction: (Action) -> Unit, modifier: Modifier) {
+private fun SetsCard(settings: SettingsInfo, onAction: (Action) -> Unit, modifier: Modifier) {
     SettingsCard(modifier) {
         CardTitle(stringResource(R.string.settings_sets))
-        PillButton(stringResource(R.string.settings_export), { onAction(Action.ExportSets) }, tonal = true)
-        val status = when (export) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton(stringResource(R.string.settings_export), { onAction(Action.ExportSets) }, tonal = true)
+            PillButton(stringResource(R.string.settings_import), { onAction(Action.ImportRequested) }, tonal = true)
+        }
+        val status = when (val export = settings.export) {
             null -> null
             ExportStatus.Exported -> stringResource(R.string.settings_exported)
             is ExportStatus.Failed -> stringResource(R.string.settings_export_failed, export.detail)
         }
         status?.let { Text(it, color = NotaeTheme.colors.muted, fontSize = 14.sp) }
+        settings.importStatus?.let { Text(importStatusText(it), color = NotaeTheme.colors.muted, fontSize = 14.sp) }
+    }
+}
+
+/** "Favorites and sets imported", or "Could not import sets: …" with why; shown in Settings and on the setup screen. */
+@Composable
+fun importStatusText(status: ImportStatus): String = when (status) {
+    ImportStatus.Imported -> stringResource(R.string.settings_imported)
+    is ImportStatus.Failed -> stringResource(
+        R.string.settings_import_failed,
+        when (val error = status.error) {
+            ImportError.NotNotae -> stringResource(R.string.import_error_not_notae)
+            ImportError.UnsupportedVersion -> stringResource(R.string.import_error_version)
+            ImportError.Invalid -> stringResource(R.string.import_error_invalid)
+            is ImportError.Unreadable -> error.detail
+        },
+    )
+}
+
+/**
+ * The import confirmation, drawn by the shell over Settings or the setup screen: "Import N sets?", the current names of
+ * the sets the file replaces (when it replaces any), then Cancel and Import. The dialog takes the focus when it opens,
+ * so Escape cancels at once, as Back does through the core (buttons cannot hold focus in touch mode); Tab reaches Cancel.
+ */
+@Composable
+fun ImportConfirmationDialog(confirmation: ImportConfirmation, onAction: (Action) -> Unit) {
+    val c = NotaeTheme.colors
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(Unit) { keys.requestFocus() }
+    val cancel = { onAction(Action.ImportCancelled) }
+    ModalSurface(
+        stringResource(R.string.import_dialog),
+        onDismiss = null,
+        bottomSheet = false,
+        cardWidth = 480.dp,
+        modifier = Modifier.closeOnEscape(cancel).focusRequester(keys).focusable(),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            val sets = confirmation.sets.toInt()
+            Text(pluralStringResource(R.plurals.import_title, sets, sets), color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            if (confirmation.replaced.isNotEmpty()) {
+                Text(stringResource(R.string.import_replaced, confirmation.replaced.joinToString(", ")), color = c.muted, fontSize = 14.sp)
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+            PillButton(stringResource(R.string.set_cancel), cancel)
+            PillButton(stringResource(R.string.import_confirm), { onAction(Action.ImportConfirmed) }, primary = true)
+        }
     }
 }
 

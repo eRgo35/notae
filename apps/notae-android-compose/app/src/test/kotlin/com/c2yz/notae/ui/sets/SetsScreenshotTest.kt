@@ -243,4 +243,16 @@ class SetsScreenshotTest {
     @Test fun note_editor_portrait_light() = shot("note-editor", notedList, landscape = false, dark = false, before = editNote)
 
     @Test fun note_editor_portrait_dark() = shot("note-editor", notedList, landscape = false, dark = true, before = editNote)
+
+    // No Slint reference: 0.3.0 had no "Just opened". Kyrie eleison (item 2) was opened last.
+    private val justOpened = Fixture.justOpened()
+    private val justOpenedList = justOpened.withView(LibraryView.LIST)
+
+    @Test fun just_opened_grid_light() = shot("set-just-opened-grid", justOpened, landscape = true, dark = false)
+
+    @Test fun just_opened_grid_dark() = shot("set-just-opened-grid", justOpened, landscape = true, dark = true)
+
+    @Test fun just_opened_list_light() = shot("set-just-opened-list", justOpenedList, landscape = true, dark = false)
+
+    @Test fun just_opened_list_dark() = shot("set-just-opened-list", justOpenedList, landscape = true, dark = true)
 }

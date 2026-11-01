@@ -166,10 +166,12 @@ internal fun ListScrollbar(state: LazyListState, modifier: Modifier) {
 /**
  * Slint `ScoreCard`: the page with the title and "number · composer" (or "Missing from library") under it, a
  * position badge inside a set, a star on a favorite and the ⋮ in the bottom corner. A missing piece cannot be opened.
+ * The set's item opened last is highlighted like a selected one and carries the "Just opened" chip.
  */
 @Composable
 internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false) {
     val c = NotaeTheme.colors
+    val highlighted = selected || row.justOpened
     val shape = RoundedCornerShape(20.dp)
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
@@ -179,7 +181,7 @@ internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit
             Modifier
                 .fillMaxSize()
                 .clip(shape)
-                .background(itemBackground(selected, pressed))
+                .background(itemBackground(highlighted, pressed))
                 .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
                 .scoreClick(row, source, onOpen, selected)
                 .padding(6.dp),
@@ -190,25 +192,32 @@ internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit
                 Text(
                     row.title,
                     Modifier.clearAndSetSemantics { },
-                    color = if (selected) c.onAccentSoft else c.foreground,
+                    color = if (highlighted) c.onAccentSoft else c.foreground,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                ScoreSubtitle(row, 14, selected = selected)
+                ScoreSubtitle(row, 14, selected = highlighted)
             }
         }
-        row.position?.let { PositionBadge(it, Modifier.padding(14.dp)) }
+        Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            row.position?.let { PositionBadge(it) }
+            if (row.justOpened) JustOpenedChip()
+        }
         if (row.favorite) FavoriteBadge(Modifier.align(Alignment.TopEnd).padding(14.dp))
         MoreActions(row.title, onMore, Modifier.align(Alignment.BottomEnd).padding(2.dp))
     }
 }
 
-/** Slint `ScoreRow`: one 80 dp line with the position, a small page, the text, a star on a favorite and the ⋮. */
+/**
+ * Slint `ScoreRow`: one 80 dp line with the position, a small page, the text, a star on a favorite and the ⋮. The
+ * set's item opened last is highlighted like a selected one, with the "Just opened" chip before the star.
+ */
 @Composable
 internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false) {
     val c = NotaeTheme.colors
+    val highlighted = selected || row.justOpened
     val shape = RoundedCornerShape(18.dp)
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
@@ -218,7 +227,7 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
             .fillMaxWidth()
             .height(80.dp)
             .clip(shape)
-            .background(itemBackground(selected, pressed))
+            .background(itemBackground(highlighted, pressed))
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
             .scoreClick(row, source, onOpen, selected)
             .padding(start = 14.dp, end = 8.dp),
@@ -231,38 +240,40 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
             Text(
                 row.title,
                 Modifier.clearAndSetSemantics { },
-                color = if (selected) c.onAccentSoft else c.foreground,
+                color = if (highlighted) c.onAccentSoft else c.foreground,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            ScoreSubtitle(row, 14, selected = selected)
+            ScoreSubtitle(row, 14, selected = highlighted)
             if (row.tags.isNotEmpty()) {
-                Text(row.tags.joinToString(", "), color = if (selected) c.onAccentSoft else c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(row.tags.joinToString(", "), color = if (highlighted) c.onAccentSoft else c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        if (row.justOpened) JustOpenedChip()
         if (row.favorite) FavoriteBadge()
         MoreActions(row.title, onMore)
     }
 }
 
-/** Slint's item background: accent-soft while the score shows in the details beside the list, else the press. */
+/** Slint's item background: accent-soft while the score shows in the details beside the list or was just opened, else the press. */
 @Composable
-private fun itemBackground(selected: Boolean, pressed: Boolean): Color = when {
-    selected -> NotaeTheme.colors.accentSoft
+private fun itemBackground(highlighted: Boolean, pressed: Boolean): Color = when {
+    highlighted -> NotaeTheme.colors.accentSoft
     pressed -> NotaeTheme.colors.field
     else -> Color.Transparent
 }
 
 /**
- * The card or row's own target: named "N. title" as in Slint, read with its composer line, and opening the PDF.
- * A piece missing from the library has nothing to open, so it is not clickable. The score shown beside the list is
- * marked selected.
+ * The card or row's own target: named "N. title" as in Slint (with ", Just opened" on the set's item opened last), read
+ * with its composer line, and opening the PDF. A piece missing from the library has nothing to open, so it is not
+ * clickable. The score shown beside the list is marked selected.
  */
 @Composable
 private fun Modifier.scoreClick(row: ScoreRowData, source: MutableInteractionSource, onOpen: () -> Unit, selected: Boolean): Modifier {
-    val label = (row.position?.let { "$it. " } ?: "") + row.title
+    val name = (row.position?.let { "$it. " } ?: "") + row.title
+    val label = if (row.justOpened) stringResource(R.string.score_label_just_opened, name) else name
     val opens = stringResource(R.string.score_opens)
     return semantics {
         contentDescription = label
@@ -330,6 +341,22 @@ internal fun PositionBadge(position: UInt, modifier: Modifier = Modifier) {
         Alignment.Center,
     ) {
         Text(position.toString(), Modifier.clearAndSetSemantics { }, color = c.onAccentSoft, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** "Just opened" on an accent pill as tall as the position badge; TalkBack reads it in the item's name instead. */
+@Composable
+private fun JustOpenedChip(modifier: Modifier = Modifier) {
+    val c = NotaeTheme.colors
+    Box(modifier.height(28.dp).clip(RoundedCornerShape(14.dp)).background(c.accent).padding(horizontal = 10.dp), Alignment.Center) {
+        Text(
+            stringResource(R.string.just_opened),
+            Modifier.clearAndSetSemantics { },
+            color = c.onAccent,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
     }
 }
 

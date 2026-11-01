@@ -349,6 +349,18 @@ class SetsScreenTest {
         SetChoice("friday", Fixture.FRIDAY_NAME, "2026-04-03", 0u, false),
     )
 
+    @Test
+    fun just_opened_chip_is_announced() {
+        val palm = Fixture.justOpened()
+        show(palm)
+        // TalkBack reads the chip with the item's name; the item before it says nothing more.
+        compose.onNodeWithContentDescription("2. Kyrie eleison, Just opened").assertIsDisplayed()
+        compose.onNodeWithContentDescription("1. Ave Maria").assertIsDisplayed()
+
+        shown = palm.copy(layout = palm.layout.copy(libraryView = LibraryView.LIST))
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("2. Kyrie eleison, Just opened").assertIsDisplayed()
+    }
 }
 
 /** Polls the core, whose scan runs on its own threads. */

@@ -240,7 +240,7 @@ class SettingsScreenTest {
         fun settings(scan: ScanSummary? = null, export: ExportStatus? = null): Snapshot = Fixture.library().copy(
             screen = Screen.Settings,
             banner = Fixture.library().banner.copy(message = null),
-            settings = SettingsInfo(libraryName = "NotaeRef", indexedCount = 20u, noTextCount = 0u, latestScan = scan, export = export),
+            settings = SettingsInfo(libraryName = "NotaeRef", indexedCount = 20u, noTextCount = 0u, latestScan = scan, export = export, importStatus = null),
         )
     }
 }

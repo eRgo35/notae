@@ -70,6 +70,7 @@ object Fixture {
         composerOrigin = Origin.FILENAME_DERIVED,
         snippet = null,
         itemId = null,
+        justOpened = false,
         position = null,
         missing = false,
         favorite = favorite,
@@ -118,6 +119,12 @@ object Fixture {
             position = position.toUInt(),
             missing = source == null,
         )
+    }
+
+    /** Inside Niedziela Palmowa after Kyrie eleison (item 2) was opened. */
+    fun justOpened(): Snapshot = palmSunday().let { palm ->
+        val rows = palm.rows.map { it.copy(justOpened = it.itemId == "item-2") }
+        palm.copy(rows = rows, setEntries = rows.map { SetEntry.Piece(it) })
     }
 
     /** The Sets section, in the grid. */
@@ -192,7 +199,7 @@ object Fixture {
         search = SearchBox("", SearchScope.EVERYTHING),
         banner = Banner(message = null, busy = false, failed = false, fraction = null, cancelEnabled = false, acknowledgeEnabled = false),
         rescanEnabled = true,
-        settings = SettingsInfo(libraryName = null, indexedCount = 0u, noTextCount = 0u, latestScan = null, export = null),
+        settings = SettingsInfo(libraryName = null, indexedCount = 0u, noTextCount = 0u, latestScan = null, export = null, importStatus = null),
         layout = LayoutPrefs(LibraryView.GRID, sidebarCollapsedPortrait = true, sidebarCollapsedLandscape = false),
         reordering = false,
         setDialog = null,
@@ -202,5 +209,6 @@ object Fixture {
         addPicker = null,
         pdfOpenError = null,
         importAvailable = true,
+        importConfirmation = null,
     )
 }

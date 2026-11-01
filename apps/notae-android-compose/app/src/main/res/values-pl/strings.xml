@@ -260,4 +260,22 @@
     <string name="note_save">Zapisz notatkę</string>
     <string name="note_label">Notatka: %1$s</string>
     <string name="note_actions_dialog">Okno działań dla notatki</string>
+    <!-- "Just opened" and import (Task 20): "Ostatnio otwarte" from the favorites plan (Task 10); the rest written for Task 20. -->
+    <string name="just_opened">Ostatnio otwarte</string>
+    <string name="score_label_just_opened">%1$s, ostatnio otwarte</string>
+    <string name="settings_import">Importuj zestawy</string>
+    <string name="settings_imported">Zaimportowano ulubione i zestawy</string>
+    <string name="settings_import_failed">Nie udało się zaimportować zestawów: %1$s</string>
+    <string name="import_error_not_notae">to nie jest plik zestawów Notae</string>
+    <string name="import_error_version">ten plik zestawów pochodzi z nowszej wersji Notae</string>
+    <string name="import_error_invalid">ten plik zestawów jest uszkodzony</string>
+    <string name="import_dialog">Okno importu zestawów</string>
+    <plurals name="import_title">
+        <item quantity="one">Zaimportować %d zestaw?</item>
+        <item quantity="few">Zaimportować %d zestawy?</item>
+        <item quantity="many">Zaimportować %d zestawów?</item>
+        <item quantity="other">Zaimportować %d zestawów?</item>
+    </plurals>
+    <string name="import_replaced">Te zestawy zostaną zastąpione: %1$s</string>
+    <string name="import_confirm">Importuj</string>
 </resources>

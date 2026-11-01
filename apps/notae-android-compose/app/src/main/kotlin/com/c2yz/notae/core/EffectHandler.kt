@@ -11,6 +11,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.c2yz.notae.platform.FolderPicker
+import com.c2yz.notae.platform.ImportFilePicker
 import com.c2yz.notae.platform.PdfOpener
 import com.c2yz.notae.platform.VoiceSearch
 import com.c2yz.notae.platform.pdfOpenFailure
@@ -44,9 +45,14 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
     private val exportFile = activity.registerForActivityResult(
         ActivityResultContracts.CreateDocument(JSON),
     ) { uri -> uri?.let(::writeExport) }
-    private val importFile = activity.registerForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri -> uri?.let(::readImport) }
+    private val importPicker = ImportFilePicker(
+        activity,
+        onRead = model::importFileRead,
+        onFailed = { detail ->
+            Log.w(TAG, "import file picker failed: $detail")
+            model.importFileFailed(detail)
+        },
+    )
 
     init {
         activity.lifecycleScope.launch {
@@ -68,7 +74,7 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
                 model.pendingExport = effect.json
                 exportFile.launch(effect.suggestedName)
             }
-            Effect.PickImportFile -> importFile.launch(arrayOf(JSON, "text/plain", "application/octet-stream"))
+            Effect.PickImportFile -> importPicker.launch()
         }
     }
 
@@ -102,20 +108,6 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
                 error.message ?: error.toString()
             }
             model.fileWritten(error)
-        }
-    }
-
-    private fun readImport(uri: Uri) {
-        activity.lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val stream = activity.contentResolver.openInputStream(uri) ?: throw FileNotFoundException("cannot read $uri")
-                model.importFileRead(stream.use { it.readBytes().decodeToString() })
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                // The core has no report for an unreadable import yet (it arrives with the import flow).
-                Log.w(TAG, "cannot read the import file", error)
-            }
         }
     }
 

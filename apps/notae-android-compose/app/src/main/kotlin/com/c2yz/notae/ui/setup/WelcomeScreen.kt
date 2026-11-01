@@ -36,24 +36,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
+import com.c2yz.notae.core.ImportStatus
 import com.c2yz.notae.core.SetupError
 import com.c2yz.notae.core.SetupScreen
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.PillButton
+import com.c2yz.notae.ui.settings.importStatusText
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 /**
  * Slint `WelcomeScreen`: first run (unconfigured), the recovery screen (permission lost) and a storage
- * error above the button. The intro scrolls above the fixed button on short windows. [onImport] is
- * called by "Import from a previous Notae", which shows only when [importAvailable].
+ * error above the button. The intro scrolls above the fixed button on short windows. "Import from a previous
+ * Notae" shows only when [importAvailable] and runs the same import as Settings; [importStatus] is its outcome.
  */
 @Composable
 fun WelcomeScreen(
     setup: SetupScreen,
     importAvailable: Boolean,
     onAction: (Action) -> Unit,
-    onImport: () -> Unit,
     modifier: Modifier = Modifier,
+    importStatus: ImportStatus? = null,
 ) {
     val c = NotaeTheme.colors
     val recovery = setup as? SetupScreen.PermissionLost
@@ -117,8 +119,14 @@ fun WelcomeScreen(
                     primary = true,
                 )
                 if (importAvailable) {
-                    PillButton(stringResource(R.string.setup_import), onImport, Modifier.widthIn(max = 360.dp).fillMaxWidth(), tonal = true)
+                    PillButton(
+                        stringResource(R.string.setup_import),
+                        { onAction(Action.ImportRequested) },
+                        Modifier.widthIn(max = 360.dp).fillMaxWidth(),
+                        tonal = true,
+                    )
                 }
+                importStatus?.let { Text(importStatusText(it), color = c.muted, fontSize = 14.sp, textAlign = TextAlign.Center) }
                 Text(stringResource(R.string.setup_pick_hint), color = c.muted, fontSize = 14.sp, textAlign = TextAlign.Center)
             }
         }

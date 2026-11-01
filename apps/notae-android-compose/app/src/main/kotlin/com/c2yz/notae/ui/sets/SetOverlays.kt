@@ -75,12 +75,12 @@ fun SetOverlays(snapshot: Snapshot, onAction: (Action) -> Unit) {
 }
 
 /**
- * A dialog or sheet the snapshot holds (the sets' overlays or the metadata editor): the shell draws it over the screen
+ * A dialog or sheet the snapshot holds (the sets' overlays, the metadata editor or the import confirmation): the shell draws it over the screen
  * and the core closes it before any screen, and the screen beneath leaves the keys to it.
  */
 fun overlayOpen(snapshot: Snapshot): Boolean =
     snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.metadataEditor != null ||
-        snapshot.addToSet != null || snapshot.addPicker != null
+        snapshot.addToSet != null || snapshot.addPicker != null || snapshot.importConfirmation != null
 
 /** Escape, as Slint's dialogs read it. */
 internal fun KeyEvent.isEscape(): Boolean = type == KeyEventType.KeyDown && key == Key.Escape

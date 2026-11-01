@@ -62,6 +62,7 @@ class BackStackTest {
             composerOrigin = Origin.FILENAME_DERIVED,
             snippet = null,
             itemId = null,
+            justOpened = false,
             position = null,
             missing = false,
             favorite = false,

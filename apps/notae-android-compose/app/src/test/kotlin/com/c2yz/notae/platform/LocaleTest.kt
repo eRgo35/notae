@@ -58,5 +58,9 @@ class LocaleTest {
             listOf("1 utwór", "2 utwory", "5 utworów", "22 utwory", "25 utworów").map { "Dodano $it na końcu zestawu" },
             forms(R.plurals.picker_added),
         )
+        assertEquals(
+            listOf("1 zestaw", "2 zestawy", "5 zestawów", "22 zestawy", "25 zestawów").map { "Zaimportować $it?" },
+            forms(R.plurals.import_title),
+        )
     }
 }

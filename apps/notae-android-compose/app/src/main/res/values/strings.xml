@@ -257,4 +257,20 @@
     <string name="note_save">Save note</string>
     <string name="note_label">Note: %1$s</string>
     <string name="note_actions_dialog">Note actions dialog</string>
+    <!-- "Just opened" and import (Task 20): English from the favorites plan (Tasks 10 and 11) and backup.rs `BackupError`. -->
+    <string name="just_opened">Just opened</string>
+    <string name="score_label_just_opened">%1$s, Just opened</string>
+    <string name="settings_import">Import sets</string>
+    <string name="settings_imported">Favorites and sets imported</string>
+    <string name="settings_import_failed">Could not import sets: %1$s</string>
+    <string name="import_error_not_notae">this is not a Notae sets file</string>
+    <string name="import_error_version">this sets file is from a newer version of Notae</string>
+    <string name="import_error_invalid">this sets file is damaged</string>
+    <string name="import_dialog">Import sets dialog</string>
+    <plurals name="import_title">
+        <item quantity="one">Import %d set?</item>
+        <item quantity="other">Import %d sets?</item>
+    </plurals>
+    <string name="import_replaced">These sets will be replaced: %1$s</string>
+    <string name="import_confirm">Import</string>
 </resources>
