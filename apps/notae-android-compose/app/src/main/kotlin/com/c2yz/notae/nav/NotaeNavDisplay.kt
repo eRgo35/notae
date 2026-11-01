@@ -28,6 +28,7 @@ import com.c2yz.notae.ui.details.MetadataEditor
 import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.search.SearchScreen
 import com.c2yz.notae.ui.settings.AboutInfo
+import com.c2yz.notae.ui.sets.SetOverlays
 import com.c2yz.notae.ui.settings.SettingsScreen
 import com.c2yz.notae.ui.setup.WelcomeScreen
 import com.c2yz.notae.ui.theme.NotaeTheme
@@ -53,8 +54,9 @@ fun NotaeNavDisplay(
             onBack = onBack,
             entryProvider = { key -> entryFor(key, snapshot, onAction, voiceAvailable) },
         )
-        // A snapshot field, not a navigation entry: drawn over whichever screen opened it, and gone when it closes.
+        // Snapshot fields, not navigation entries: drawn over whichever screen opened it, and gone when it closes.
         snapshot.metadataEditor?.let { MetadataEditor(it, onAction) }
+        SetOverlays(snapshot, onAction)
     }
     // Registered after NavDisplay's own handler, so it wins while enabled: a dialog or sheet closes
     // before any screen, without the predictive animation of the screen below, and on a single
@@ -87,7 +89,8 @@ private fun entryFor(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit
     Route.Loading -> placeholder(key, R.string.screen_loading)
     Route.Setup -> setupEntry(key, snapshot, onAction)
     is Route.Library -> NavEntry(key) { LibraryScreen(snapshot, onAction) }
-    is Route.Set -> placeholder(key, R.string.screen_set)
+    // The set view is the library screen inside the set (Slint draws it in the same chrome).
+    is Route.Set -> NavEntry(key) { LibraryScreen(snapshot, onAction) }
     // Full width, as Slint's details replace the whole library chrome (docs/compose-parity/README.md). One content
     // key for every score: previous and next swap the content in place, keeping the scroll and without a transition.
     is Route.Details -> NavEntry(key, contentKey = DETAILS_CONTENT_KEY) { DetailsScreen(snapshot, onAction) }

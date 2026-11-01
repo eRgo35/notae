@@ -3,7 +3,6 @@
     <string name="dismiss">Close</string>
     <string name="open_pdf_with">Open PDF with</string>
     <string name="screen_loading">Loading library…</string>
-    <string name="screen_set">Set</string>
     <string name="screen_search">Search</string>
     <string name="screen_settings">Settings</string>
     <string name="setup_welcome_title">Welcome to Notae</string>
@@ -189,4 +188,59 @@
     <string name="settings_export">Export sets</string>
     <string name="settings_exported">Favorites and sets exported</string>
     <string name="settings_export_failed">Could not export sets: %1$s</string>
+    <!-- Sets (Task 17): English copied from apps/notae-android/ui/sets.slint, ui/library.slint and src/texts.rs. -->
+    <string name="set_no_date">No date</string>
+    <string name="set_edited_today">Edited today</string>
+    <string name="set_edited_yesterday">Edited yesterday</string>
+    <!-- texts.rs `edited`: English reads "days" for every count (one day ago is "yesterday"). -->
+    <plurals name="set_edited_days">
+        <item quantity="one">Edited %d days ago</item>
+        <item quantity="other">Edited %d days ago</item>
+    </plurals>
+    <string name="set_edited_on">Edited %1$s</string>
+    <plurals name="set_pieces">
+        <item quantity="one">%d piece</item>
+        <item quantity="other">%d pieces</item>
+    </plurals>
+    <plurals name="set_notes">
+        <item quantity="one">%d note</item>
+        <item quantity="other">%d notes</item>
+    </plurals>
+    <string name="set_opens">Opens the set</string>
+    <string name="set_actions_dialog">Set actions dialog</string>
+    <string name="set_edit">Edit set</string>
+    <string name="set_delete">Delete set</string>
+    <string name="set_back">Back to sets</string>
+    <string name="set_add">Add</string>
+    <string name="set_empty">This set is empty</string>
+    <string name="set_empty_detail">Pieces you add to this set appear here.</string>
+    <string name="set_dialog">Set details dialog</string>
+    <string name="set_dialog_intro">Only the name is required. You add pieces after saving.</string>
+    <string name="set_name">Name</string>
+    <string name="set_name_hint">Set name</string>
+    <string name="set_date">Date (optional)</string>
+    <string name="set_date_hint">YYYY-MM-DD</string>
+    <string name="set_clear_date">Clear date</string>
+    <string name="set_notes_label">Notes (optional)</string>
+    <string name="set_notes_hint">Occasion, time, cantor…</string>
+    <string name="set_cancel">Cancel</string>
+    <string name="set_save">Save set</string>
+    <string name="set_error_name">Name is required</string>
+    <string name="set_error_date">Use a real date as YYYY-MM-DD</string>
+    <string name="set_delete_dialog">Delete set dialog</string>
+    <string name="set_delete_title">Delete “%1$s”?</string>
+    <string name="set_delete_body">The set is removed. Its pieces stay in your library.</string>
+    <string name="set_delete_confirm">Delete</string>
+    <string name="add_to_set_dialog">Add to set dialog</string>
+    <string name="picker_dialog">Add pieces dialog</string>
+    <string name="picker_title">Pieces</string>
+    <string name="picker_in_set">already in this set</string>
+    <string name="picker_add">Add %1$s to set</string>
+    <string name="picker_remove">Remove %1$s from set</string>
+    <string name="picker_done">Done</string>
+    <!-- texts.rs `add_picker_footer`: English reads the same for every count. -->
+    <plurals name="picker_added">
+        <item quantity="one">%d added at the end of the set</item>
+        <item quantity="other">%d added at the end of the set</item>
+    </plurals>
 </resources>

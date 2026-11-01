@@ -4,6 +4,7 @@ import com.c2yz.notae.core.Banner
 import com.c2yz.notae.core.ComposerEntry
 import com.c2yz.notae.core.CoreListener
 import com.c2yz.notae.core.DocumentEntry
+import com.c2yz.notae.core.Edited
 import com.c2yz.notae.core.Effect
 import com.c2yz.notae.core.NotaeCore
 import com.c2yz.notae.core.Origin
@@ -14,6 +15,7 @@ import com.c2yz.notae.core.ScanSummary
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.SectionEntry
 import com.c2yz.notae.core.SectionTitle
+import com.c2yz.notae.core.SetCard
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
 import com.c2yz.notae.core.Subtitle
@@ -92,6 +94,47 @@ object Fixture {
         ),
         rows = rows,
         rescanEnabled = true,
+    )
+
+    const val FRIDAY_NAME = "Wielki Piatek - liturgia Meki Panskiej z adoracja krzyza i procesja do Grobu Panskiego"
+
+    /** The three sets, most recently edited first. */
+    val setCards = listOf(
+        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today),
+        SetCard("empty", "Pusty zestaw", null, 0u, Edited.Today),
+        SetCard("friday", FRIDAY_NAME, "2026-04-03", 0u, Edited.Today),
+    )
+
+    /** Niedziela Palmowa's nine items: two repeats and a piece missing from the library. */
+    val palmRows: List<Row> = listOf(
+        "Ave Maria", "Kyrie eleison", "Magnificat", "Ave Maria", "Alleluja", "Sanctus", LONG_TITLE, "Pan Jezus już się zbliża", "Alleluja",
+    ).mapIndexed { index, title ->
+        val position = index + 1
+        val source = rows.firstOrNull { it.title == title }
+        (source ?: row(99, title)).copy(
+            selectionId = "item-$position",
+            itemId = "item-$position",
+            position = position.toUInt(),
+            missing = source == null,
+        )
+    }
+
+    /** The Sets section, in the grid. */
+    fun sets(): Snapshot = library().copy(
+        sectionKey = "sets",
+        title = SectionTitle.Sets,
+        subtitle = Subtitle.Sets(setCards.size.toUInt()),
+        rows = emptyList(),
+        setCards = setCards,
+    )
+
+    /** Inside Niedziela Palmowa. */
+    fun palmSunday(): Snapshot = library().copy(
+        sectionKey = "set:palm",
+        title = SectionTitle.Set("Niedziela Palmowa"),
+        subtitle = Subtitle.Set("2026-03-29", 9u, 0u),
+        setNotes = "Msza 10:00, kantor: Anna",
+        rows = palmRows,
     )
 
     /** A fresh core's snapshot, for the fields the library screen does not read. */

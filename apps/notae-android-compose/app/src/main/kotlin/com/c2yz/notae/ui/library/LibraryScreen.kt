@@ -59,6 +59,7 @@ import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.PdfOpenError
 import com.c2yz.notae.core.SectionTitle
+import com.c2yz.notae.core.SetCard
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.Subtitle
 import com.c2yz.notae.ui.components.Chip
@@ -68,35 +69,56 @@ import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.SidebarItem
 import com.c2yz.notae.ui.components.toCount
+import com.c2yz.notae.ui.sets.SetActionsSheet
+import com.c2yz.notae.ui.sets.SetsPane
+import com.c2yz.notae.ui.sets.setSubtitle
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 private const val SET_PREFIX = "set:"
 
 /**
  * Slint `LibraryScreen`: the side panel (or the chips when it is hidden or the window is under 840 dp), the large
- * title with its header actions, the operation banner, the PDF launch error, and the scores as a grid or a list, or
- * the section's empty state. The ⋮ sheet is the screen's own state, as in Slint; Back closes it before anything else.
+ * title with its header actions, the operation banner, the PDF launch error, and the scores as a grid or a list, the
+ * sets as folder cards or rows, or the section's empty state. Inside a set the header gains Back to sets, the set's
+ * subtitle and notes, and Add. The ⋮ sheets are the screen's own state, as in Slint; Back and Escape close them first.
  */
 @Composable
 fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
     val c = NotaeTheme.colors
     var menuFor by remember { mutableStateOf<String?>(null) }
     val menuRow = menuFor?.let { id -> snapshot.rows.firstOrNull { it.selectionId == id } }
+    var setMenuFor by remember { mutableStateOf<String?>(null) }
+    val menuSet = setMenuFor?.let { id -> snapshot.setCards.firstOrNull { it.id == id } }
+    val sheetOpen = menuRow != null || menuSet != null
+    val closeSheets = {
+        menuFor = null
+        setMenuFor = null
+    }
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = menuRow != null,
-        onBackCompleted = { menuFor = null },
+        isBackEnabled = sheetOpen,
+        onBackCompleted = closeSheets,
     )
-    // Ctrl K opens search as soon as the library shows, as Slint focuses its shortcuts (app.slint), and again once the
-    // sheet closes; while the sheet is open, Slint ignores it.
+    val inSet = snapshot.sectionKey.startsWith(SET_PREFIX)
+    // The keys work as soon as the library shows, as Slint focuses its shortcuts (app.slint), and again once a sheet,
+    // dialog or picker closes. While one is open, Slint ignores them (Escape closes a ⋮ sheet).
+    val overlay = overlayOpen(snapshot)
     val keys = remember { FocusRequester() }
-    LaunchedEffect(menuRow == null) { if (menuRow == null) keys.requestFocus() }
+    LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey) { if (!sheetOpen && !overlay) keys.requestFocus() }
     BoxWithConstraints(
         modifier
             .fillMaxSize()
             .background(c.background)
             .onPreviewKeyEvent { event ->
-                (event.isCtrlK() && menuRow == null).also { if (it) onAction(Action.OpenSearch) }
+                val escape = event.type == KeyEventType.KeyDown && event.key == Key.Escape
+                when {
+                    sheetOpen -> escape.also { if (it) closeSheets() }
+                    overlay -> false
+                    event.isCtrlK() -> true.also { onAction(Action.OpenSearch) }
+                    // Inside a set, Escape returns to the list of sets.
+                    escape && inSet -> true.also { onAction(Action.SelectSection("sets")) }
+                    else -> false
+                }
             }
             .focusRequester(keys)
             .focusable(),
@@ -109,11 +131,11 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight())
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Header(snapshot, onAction, expanded, sidebar, portrait)
+                Header(snapshot, onAction, expanded, sidebar, portrait, inSet)
                 if (!sidebar) Chips(snapshot, onAction)
                 OperationBanner(snapshot.banner, onAction)
                 snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
-                Content(snapshot, onAction, onMore = { menuFor = it.selectionId })
+                Content(snapshot, onAction, onMore = { menuFor = it.selectionId }, onSetMore = { setMenuFor = it.id })
             }
         }
         if (menuRow != null) {
@@ -126,11 +148,26 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 },
             )
         }
+        if (menuSet != null) {
+            SetActionsSheet(
+                menuSet,
+                onDismiss = { setMenuFor = null },
+                onAction = {
+                    setMenuFor = null
+                    onAction(it)
+                },
+            )
+        }
     }
 }
 
+/** A dialog, sheet or picker the snapshot holds, drawn by the shell over this screen. */
+private fun overlayOpen(snapshot: Snapshot): Boolean =
+    snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.metadataEditor != null ||
+        snapshot.addToSet != null || snapshot.addPicker != null
+
 @Composable
-private fun Header(snapshot: Snapshot, onAction: (Action) -> Unit, expanded: Boolean, sidebar: Boolean, portrait: Boolean) {
+private fun Header(snapshot: Snapshot, onAction: (Action) -> Unit, expanded: Boolean, sidebar: Boolean, portrait: Boolean, inSet: Boolean) {
     val c = NotaeTheme.colors
     val list = snapshot.layout.libraryView == LibraryView.LIST
     Row(
@@ -145,6 +182,9 @@ private fun Header(snapshot: Snapshot, onAction: (Action) -> Unit, expanded: Boo
                 { onAction(Action.SetSidebarCollapsed(portrait = portrait, collapsed = sidebar)) },
             )
         }
+        if (inSet) {
+            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) })
+        }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 sectionTitle(snapshot.title),
@@ -156,6 +196,10 @@ private fun Header(snapshot: Snapshot, onAction: (Action) -> Unit, expanded: Boo
                 overflow = TextOverflow.Ellipsis,
             )
             Text(subtitleText(snapshot.subtitle), color = c.muted, fontSize = 15.sp)
+            val notes = snapshot.setNotes
+            if (inSet && !notes.isNullOrEmpty()) {
+                Text(notes, color = c.foreground, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) })
@@ -166,6 +210,9 @@ private fun Header(snapshot: Snapshot, onAction: (Action) -> Unit, expanded: Boo
             )
             if (snapshot.sectionKey == "sets") {
                 PillButton(stringResource(R.string.library_new_set), { onAction(Action.NewSet) }, icon = painterResource(R.drawable.ic_add), primary = true)
+            }
+            if (inSet) {
+                PillButton(stringResource(R.string.set_add), { onAction(Action.OpenAddPicker) }, icon = painterResource(R.drawable.ic_add), primary = true)
             }
             if (!sidebar) {
                 IconButton(stringResource(R.string.screen_settings), painterResource(R.drawable.ic_settings), { onAction(Action.OpenSettings) })
@@ -242,13 +289,23 @@ private fun Chips(snapshot: Snapshot, onAction: (Action) -> Unit) {
 }
 
 @Composable
-private fun ColumnScope.Content(snapshot: Snapshot, onAction: (Action) -> Unit, onMore: (com.c2yz.notae.core.Row) -> Unit) {
+private fun ColumnScope.Content(
+    snapshot: Snapshot,
+    onAction: (Action) -> Unit,
+    onMore: (com.c2yz.notae.core.Row) -> Unit,
+    onSetMore: (SetCard) -> Unit,
+) {
     val area = Modifier.weight(1f).fillMaxWidth()
     val open = { row: com.c2yz.notae.core.Row -> onAction(Action.OpenPdf(row.relativePath, row.noteKey, row.itemId)) }
     when {
         snapshot.sectionKey == "sets" && snapshot.setCards.isEmpty() -> EmptyState(snapshot, onAction, area)
-        // The set cards arrive with the sets screens (Task 17).
-        snapshot.sectionKey == "sets" -> Box(area, contentAlignment = Alignment.Center) { Text(stringResource(R.string.section_sets)) }
+        snapshot.sectionKey == "sets" -> SetsPane(
+            snapshot.setCards,
+            snapshot.layout.libraryView == LibraryView.LIST,
+            { onAction(Action.OpenSet(it.id)) },
+            onSetMore,
+            area,
+        )
         snapshot.rows.isEmpty() -> EmptyState(snapshot, onAction, area)
         snapshot.layout.libraryView == LibraryView.LIST -> ScoreList(snapshot.rows, open, onMore, area)
         else -> ScoreGrid(snapshot.rows, open, onMore, area)
@@ -259,11 +316,13 @@ private fun ColumnScope.Content(snapshot: Snapshot, onAction: (Action) -> Unit, 
 @Composable
 private fun EmptyState(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier) {
     val c = NotaeTheme.colors
-    val (title, detail) = when (snapshot.sectionKey) {
-        "all" -> R.string.library_empty_all to R.string.library_empty_all_detail
-        "recent" -> R.string.library_empty_recent to R.string.library_empty_recent_detail
-        "favorites" -> R.string.library_empty_favorites to R.string.library_empty_favorites_detail
-        "sets" -> R.string.library_empty_sets to R.string.library_empty_sets_detail
+    val key = snapshot.sectionKey
+    val (title, detail) = when {
+        key == "all" -> R.string.library_empty_all to R.string.library_empty_all_detail
+        key == "recent" -> R.string.library_empty_recent to R.string.library_empty_recent_detail
+        key == "favorites" -> R.string.library_empty_favorites to R.string.library_empty_favorites_detail
+        key == "sets" -> R.string.library_empty_sets to R.string.library_empty_sets_detail
+        key.startsWith(SET_PREFIX) -> R.string.set_empty to R.string.set_empty_detail
         else -> R.string.library_empty_composer to R.string.library_empty_composer_detail
     }
     NotaeCard(modifier) {
@@ -313,12 +372,12 @@ internal fun sectionTitle(title: SectionTitle): String = when (title) {
     is SectionTitle.Set -> title.name
 }
 
-/** "N scores" or "N sets · recently edited first". A set's own subtitle is drawn by the set view (Task 17). */
+/** "N scores", "N sets · recently edited first", or the open set's date and counts. */
 @Composable
 private fun subtitleText(subtitle: Subtitle): String = when (subtitle) {
     is Subtitle.Scores -> pluralStringResource(R.plurals.library_scores, subtitle.count.toCount(), subtitle.count.toLong())
     is Subtitle.Sets -> pluralStringResource(R.plurals.library_sets_subtitle, subtitle.count.toCount(), subtitle.count.toLong())
-    is Subtitle.Set -> ""
+    is Subtitle.Set -> setSubtitle(subtitle)
 }
 
 /** Why the PDF could not be opened, in the English it has always carried (texts.rs `viewer_error`). */

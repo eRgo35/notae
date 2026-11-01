@@ -3,7 +3,6 @@
     <string name="dismiss">Zamknij</string>
     <string name="open_pdf_with">Otwórz PDF za pomocą</string>
     <string name="screen_loading">Wczytywanie biblioteki…</string>
-    <string name="screen_set">Zestaw</string>
     <string name="screen_search">Szukaj</string>
     <string name="screen_settings">Ustawienia</string>
     <string name="setup_welcome_title">Witaj w Notae</string>
@@ -187,4 +186,65 @@
     <string name="settings_export">Eksportuj zestawy</string>
     <string name="settings_exported">Wyeksportowano ulubione i zestawy</string>
     <string name="settings_export_failed">Nie udało się wyeksportować zestawów: %1$s</string>
+    <!-- Sets (Task 17): from translations/pl/LC_MESSAGES/notae-android.po and src/texts.rs. -->
+    <string name="set_no_date">Bez daty</string>
+    <string name="set_edited_today">Edytowano dziś</string>
+    <string name="set_edited_yesterday">Edytowano wczoraj</string>
+    <plurals name="set_edited_days">
+        <item quantity="one">Edytowano %d dzień temu</item>
+        <item quantity="few">Edytowano %d dni temu</item>
+        <item quantity="many">Edytowano %d dni temu</item>
+        <item quantity="other">Edytowano %d dni temu</item>
+    </plurals>
+    <string name="set_edited_on">Edytowano %1$s</string>
+    <plurals name="set_pieces">
+        <item quantity="one">%d utwór</item>
+        <item quantity="few">%d utwory</item>
+        <item quantity="many">%d utworów</item>
+        <item quantity="other">%d utworów</item>
+    </plurals>
+    <plurals name="set_notes">
+        <item quantity="one">%d notatka</item>
+        <item quantity="few">%d notatki</item>
+        <item quantity="many">%d notatek</item>
+        <item quantity="other">%d notatek</item>
+    </plurals>
+    <string name="set_opens">Otwiera zestaw</string>
+    <string name="set_actions_dialog">Okno działań dla zestawu</string>
+    <string name="set_edit">Edytuj zestaw</string>
+    <string name="set_delete">Usuń zestaw</string>
+    <string name="set_back">Wróć do zestawów</string>
+    <string name="set_add">Dodaj</string>
+    <string name="set_empty">Ten zestaw jest pusty</string>
+    <string name="set_empty_detail">Tu pojawią się utwory dodane do tego zestawu.</string>
+    <string name="set_dialog">Okno danych zestawu</string>
+    <string name="set_dialog_intro">Wymagana jest tylko nazwa. Utwory dodasz po zapisaniu.</string>
+    <string name="set_name">Nazwa</string>
+    <string name="set_name_hint">Nazwa zestawu</string>
+    <string name="set_date">Data (opcjonalnie)</string>
+    <string name="set_date_hint">RRRR-MM-DD</string>
+    <string name="set_clear_date">Wyczyść datę</string>
+    <string name="set_notes_label">Notatki (opcjonalnie)</string>
+    <string name="set_notes_hint">Uroczystość, godzina, kantor…</string>
+    <string name="set_cancel">Anuluj</string>
+    <string name="set_save">Zapisz zestaw</string>
+    <string name="set_error_name">Nazwa jest wymagana</string>
+    <string name="set_error_date">Podaj prawdziwą datę jako RRRR-MM-DD</string>
+    <string name="set_delete_dialog">Okno usuwania zestawu</string>
+    <string name="set_delete_title">Usunąć „%1$s”?</string>
+    <string name="set_delete_body">Zestaw zostanie usunięty. Jego utwory zostaną w bibliotece.</string>
+    <string name="set_delete_confirm">Usuń</string>
+    <string name="add_to_set_dialog">Okno dodawania do zestawu</string>
+    <string name="picker_dialog">Okno dodawania utworów</string>
+    <string name="picker_title">Utwory</string>
+    <string name="picker_in_set">już w tym zestawie</string>
+    <string name="picker_add">Dodaj %1$s do zestawu</string>
+    <string name="picker_remove">Usuń %1$s z zestawu</string>
+    <string name="picker_done">Gotowe</string>
+    <plurals name="picker_added">
+        <item quantity="one">Dodano %d utwór na końcu zestawu</item>
+        <item quantity="few">Dodano %d utwory na końcu zestawu</item>
+        <item quantity="many">Dodano %d utworów na końcu zestawu</item>
+        <item quantity="other">Dodano %d utworów na końcu zestawu</item>
+    </plurals>
 </resources>

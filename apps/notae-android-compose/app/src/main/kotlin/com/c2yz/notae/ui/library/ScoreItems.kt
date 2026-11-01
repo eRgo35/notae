@@ -112,7 +112,7 @@ internal fun ScoreList(rows: List<ScoreRowData>, onOpen: (ScoreRowData) -> Unit,
 
 /** Recomposes only when the first visible item, the visible count or the total changes, not on every scrolled pixel. */
 @Composable
-private fun GridScrollbar(state: LazyGridState, modifier: Modifier) {
+internal fun GridScrollbar(state: LazyGridState, modifier: Modifier) {
     val window by remember(state) {
         derivedStateOf { Triple(state.firstVisibleItemIndex, state.layoutInfo.visibleItemsInfo.size, state.layoutInfo.totalItemsCount) }
     }

@@ -192,11 +192,11 @@ Each line is one action and what should happen. Section and screen names are the
 
 ### Set dialog (New set / Edit set)
 
-- [ ] The dialog titled "New set" shows "Only the name is required. You add pieces after saving."; "Edit set" omits that line. Fields: Name ("Set name"), Date (optional, "YYYY-MM-DD") with a **Clear date** button, Notes (optional, "Occasion, time, cantor…"), **Cancel** and **Save set**. The name field is focused on open.
+- [ ] The dialog titled "New set" shows "Only the name is required. You add pieces after saving."; "Edit set" omits that line. Fields: Name ("Set name"), Date (optional, "YYYY-MM-DD") with a **Clear date** button, Notes (optional, "Occasion, time, cantor…"), **Cancel** and **Save set**. The name field is focused on open. In Compose the date shows in the locale's format and a tap opens the Material date picker (design spec §4.3); the core still receives YYYY-MM-DD. Notes grow to four lines.
 - [ ] Save a new set with a name → the dialog closes and the new set opens (inside a set, empty), unless the dialog came from "Add to set… → New set".
 - [ ] Save an edit → the dialog closes and the set's name, date, notes and "Edited" time update.
 - [ ] Save with an empty name → the dialog stays open with "Name is required".
-- [ ] Save with a date that is not a real YYYY-MM-DD date → the dialog stays open with "Use a real date as YYYY-MM-DD". A blank date is allowed.
+- [ ] Save with a date that is not a real YYYY-MM-DD date → the dialog stays open with "Use a real date as YYYY-MM-DD". A blank date is allowed. (Compose: the picker only offers real dates, so this needs a set whose stored date is invalid; the message still shows when the core reports it.)
 - [ ] Tap **Clear date** → the date field empties.
 - [ ] Cancel, Back or Escape → the dialog closes, nothing saved, and a piece waiting from "Add to set… → New set" is forgotten.
 

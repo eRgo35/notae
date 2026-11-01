@@ -48,5 +48,15 @@ class LocaleTest {
             listOf("1 pliku", "2 plików", "5 plików", "22 plików", "25 plików").map { "Indeksowanie $it PDF…" },
             forms(R.plurals.banner_indexing),
         )
+        assertEquals(listOf("1 utwór", "2 utwory", "5 utworów", "22 utwory", "25 utworów"), forms(R.plurals.set_pieces))
+        assertEquals(listOf("1 notatka", "2 notatki", "5 notatek", "22 notatki", "25 notatek"), forms(R.plurals.set_notes))
+        assertEquals(
+            listOf("1 dzień", "2 dni", "5 dni", "22 dni", "25 dni").map { "Edytowano $it temu" },
+            forms(R.plurals.set_edited_days),
+        )
+        assertEquals(
+            listOf("1 utwór", "2 utwory", "5 utworów", "22 utwory", "25 utworów").map { "Dodano $it na końcu zestawu" },
+            forms(R.plurals.picker_added),
+        )
     }
 }
