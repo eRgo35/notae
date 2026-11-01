@@ -78,6 +78,24 @@ class SafLibraryTest {
         assertThrows(PlatformException.PermissionLost::class.java) { library.extractTextLayer(tree, "root.pdf") }
     }
 
+    @Test
+    fun missing_root_maps_to_permission_lost() {
+        for (missing in listOf(IllegalArgumentException("Failed to determine if root is child"), FileNotFoundException("root"))) {
+            provider.rootFailure = missing
+
+            assertThrows(PlatformException.PermissionLost::class.java) { library.checkRoot(tree) }
+        }
+    }
+
+    @Test
+    fun a_throwable_that_is_not_an_exception_becomes_unavailable() {
+        val error = assertThrows(PlatformException.Unavailable::class.java) {
+            platformCall<Unit> { throw OutOfMemoryError("bitmap too large") }
+        }
+
+        assertEquals("bitmap too large", error.detail)
+    }
+
     private fun file(bytes: ByteArray): File = files.newFile().apply { writeBytes(bytes) }
 
     private fun sha256(bytes: ByteArray) = DocumentContent.Sha256(sha256Hex(bytes.inputStream()))
@@ -95,6 +113,9 @@ class FakeDocumentsProvider : DocumentsProvider() {
     private val children = mutableMapOf<String, MutableList<Pair<String, FakeDocument>>>()
     var revoked = false
 
+    /** Thrown when the root itself is queried, as a provider does for a deleted or moved tree. */
+    var rootFailure: Exception? = null
+
     fun add(parent: String, document: FakeDocument) {
         children.getOrPut(parent) { mutableListOf() } += document.name to document
     }
@@ -105,6 +126,7 @@ class FakeDocumentsProvider : DocumentsProvider() {
 
     override fun queryDocument(documentId: String, projection: Array<out String>?): Cursor {
         checkGrant()
+        rootFailure?.takeIf { documentId == "root" }?.let { throw it }
         val cursor = cursor()
         if (documentId == "root") {
             cursor.addRow(arrayOf<Any?>("root", "Scores", Document.MIME_TYPE_DIR, 0))

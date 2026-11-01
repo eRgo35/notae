@@ -40,9 +40,13 @@ class SafLibrary(context: Context) : PlatformLibrary {
         // Retaking a grant that was revoked throws SecurityException.
         resolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         val root = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
+        // A deleted or moved tree: providers throw FileNotFoundException, or IllegalArgumentException
+        // (DocumentsProvider wraps the former; ExternalStorageProvider throws the latter itself).
         val found = try {
             resolver.query(root, arrayOf(Document.COLUMN_DOCUMENT_ID), null, null)?.use { it.moveToFirst() }
         } catch (_: FileNotFoundException) {
+            false
+        } catch (_: IllegalArgumentException) {
             false
         }
         if (found != true) throw PlatformException.PermissionLost()
@@ -67,12 +71,15 @@ class SafLibrary(context: Context) : PlatformLibrary {
         }
     }
 
-    /** Page 1 as a [THUMBNAIL_WIDTH_PX]-wide PNG on white, as the Slint app's `renderNotaeThumbnail`. */
+    /**
+     * Page 1 as a [THUMBNAIL_WIDTH_PX]-wide PNG on white, as the Slint app's `renderNotaeThumbnail`.
+     * Any rendering failure, an [OutOfMemoryError] for an extreme page shape included, gives false.
+     */
     override fun renderThumbnail(handle: String, path: String, outPng: String): Boolean = platformCall {
         val document = documentUri(resolver, handle.toUri(), path)
         try {
             withRenderer(document) { renderer -> renderer.pageCount > 0 && renderFirstPage(renderer, outPng) }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             false
         }
     }
@@ -176,7 +183,9 @@ internal fun documentUri(resolver: ContentResolver, tree: Uri, path: String): Ur
 
 /**
  * Runs a [PlatformLibrary] call so only a [PlatformException] leaves it: a revoked grant becomes
- * [PlatformException.PermissionLost], any other exception [PlatformException.Unavailable].
+ * [PlatformException.PermissionLost], any other throwable [PlatformException.Unavailable]. Errors
+ * too, since UniFFI's callback wrapper catches only `Exception` and anything else would reach the
+ * core as a success with a default value.
  */
 internal inline fun <T> platformCall(block: () -> T): T = try {
     block()
@@ -184,7 +193,7 @@ internal inline fun <T> platformCall(block: () -> T): T = try {
     throw error
 } catch (_: SecurityException) {
     throw PlatformException.PermissionLost()
-} catch (error: Exception) {
+} catch (error: Throwable) {
     throw PlatformException.Unavailable(error.message ?: error.toString())
 }
 

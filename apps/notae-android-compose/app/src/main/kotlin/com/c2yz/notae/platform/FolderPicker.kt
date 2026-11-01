@@ -21,12 +21,14 @@ class FolderPicker(
 ) {
     private val launcher = activity.registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { tree ->
         if (tree == null) return@registerForActivityResult
-        try {
+        val displayName = try {
             activity.contentResolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            onPicked(displayName(tree), tree.toString())
+            displayName(tree)
         } catch (error: Exception) {
             onFailed(error.message ?: error.toString())
+            return@registerForActivityResult
         }
+        onPicked(displayName, tree.toString())
     }
 
     /** Opens the picker, starting at [initialUri] (`EXTRA_INITIAL_URI`) when one is known. */
