@@ -141,6 +141,11 @@ class SearchScreenTest {
         compose.onRoot().performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.K) } }
 
         assertEquals(listOf<Action>(Action.OpenSearch), actions)
+
+        // While the ⋮ sheet is open, Slint ignores it.
+        compose.onNodeWithContentDescription("More actions for Ave Maria").performClick()
+        compose.onRoot().performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.K) } }
+        assertEquals(listOf<Action>(Action.OpenSearch), actions)
     }
 
     @Test

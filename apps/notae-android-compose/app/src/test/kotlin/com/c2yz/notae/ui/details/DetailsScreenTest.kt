@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.input.key.Key
@@ -201,6 +202,16 @@ class DetailsScreenTest {
         compose.onRoot().performKeyInput { pressKey(Key.Escape) }
 
         assertEquals(listOf<Action>(Action.ClearSelection), actions)
+    }
+
+    @Test
+    fun ctrl_k_on_details_opens_search() {
+        show(inSet(1))
+
+        // Nothing clicked first, as in Slint's root shortcut scope (app.slint).
+        compose.onRoot().performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.K) } }
+
+        assertEquals(listOf<Action>(Action.OpenSearch), actions)
     }
 
     @Test

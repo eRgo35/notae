@@ -56,6 +56,7 @@ import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.library.PagePreview
+import com.c2yz.notae.ui.library.isCtrlK
 import com.c2yz.notae.ui.library.pdfErrorText
 import com.c2yz.notae.ui.theme.NotaeTheme
 
@@ -82,7 +83,10 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             .fillMaxSize()
             .background(c.background)
             .padding(16.dp)
-            .onPreviewKeyEvent { event -> event.type == KeyEventType.KeyDown && keyAction(event.key, selection)?.also(onAction) != null }
+            .onPreviewKeyEvent { event ->
+                val action = if (event.isCtrlK()) Action.OpenSearch else keyAction(event.key, selection)
+                event.type == KeyEventType.KeyDown && action?.also(onAction) != null
+            }
             .focusRequester(keys)
             .focusable(),
         verticalArrangement = Arrangement.spacedBy(12.dp),

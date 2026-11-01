@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.key
@@ -95,8 +96,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             .fillMaxSize()
             .background(c.background)
             .onPreviewKeyEvent { event ->
-                val ctrlK = event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.K
-                (ctrlK && menuRow == null).also { if (it) onAction(Action.OpenSearch) }
+                (event.isCtrlK() && menuRow == null).also { if (it) onAction(Action.OpenSearch) }
             }
             .focusRequester(keys)
             .focusable(),
@@ -288,6 +288,9 @@ private fun EmptyState(snapshot: Snapshot, onAction: (Action) -> Unit, modifier:
         }
     }
 }
+
+/** Ctrl K, which opens search from the library and the details (Slint's root shortcut scope, app.slint). */
+internal fun KeyEvent.isCtrlK(): Boolean = type == KeyEventType.KeyDown && isCtrlPressed && key == Key.K
 
 /** A side-panel row is selected for its own section; the Sets row also inside a set. */
 private fun isSelected(key: String, current: String): Boolean = key == current || (key == "sets" && current.startsWith(SET_PREFIX))
