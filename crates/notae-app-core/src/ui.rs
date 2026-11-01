@@ -74,6 +74,15 @@ pub struct SetChoice {
     pub checked: bool,
 }
 
+/// Where [`UiModel::move_set_item`] moves an item.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetMove {
+    /// By this many places; negative is up.
+    By(i32),
+    /// To this zero-based place.
+    To(usize),
+}
+
 /// One score in the add picker.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct PickerRow {
@@ -129,6 +138,8 @@ pub struct UiModel {
     new_set_piece: Option<String>,
     /// The add picker, while it is open over a set.
     add_picker: Option<AddPicker>,
+    /// Reorder mode is on in the open set.
+    reordering: bool,
     ui_prefs: UiPrefs,
     ui_prefs_path: Option<PathBuf>,
     /// The previewed row's selection id ([`row_id`]).
@@ -168,6 +179,7 @@ impl UiModel {
             add_to_set: None,
             new_set_piece: None,
             add_picker: None,
+            reordering: false,
             ui_prefs: UiPrefs::default(),
             ui_prefs_path: None,
             selected: None,
@@ -506,6 +518,44 @@ impl UiModel {
         }
     }
 
+    /// Starts reorder mode in the open set and closes the details beside it. Outside a set,
+    /// or on the search screen, nothing happens.
+    pub fn reorder_started(&mut self) {
+        if matches!(self.section, LibrarySection::Set(_))
+            && matches!(self.state().screen(), crate::state::Screen::Library)
+        {
+            self.reordering = true;
+            self.select_note(None);
+        }
+    }
+
+    /// Ends reorder mode; the layout was never changed, so the owner's choice shows again.
+    pub fn reorder_finished(&mut self) {
+        self.reordering = false;
+    }
+
+    /// Reorder mode is on in the open set.
+    #[must_use]
+    pub fn reordering(&self) -> bool {
+        self.reordering
+    }
+
+    /// Moves an item of the open set by `delta` places (up and down) or to `index` (a drag),
+    /// clamped to the set, and saves the set.
+    pub fn move_set_item(&mut self, item_id: &str, to: SetMove) {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return;
+        };
+        let now = unix_now();
+        let moved = match to {
+            SetMove::By(delta) => self.sets.move_item(set_id, item_id, delta, now),
+            SetMove::To(index) => self.sets.move_item_to(set_id, item_id, index, now),
+        };
+        if moved {
+            self.save_sets();
+        }
+    }
+
     /// Opens the add picker over the open set.
     pub fn add_picker_opened(&mut self) {
         let LibrarySection::Set(set_id) = &self.section else {
@@ -814,6 +864,7 @@ impl UiModel {
     /// Returns the I/O error when the preferences cannot be saved; the section is still shown.
     pub fn select_section(&mut self, section: LibrarySection) -> std::io::Result<()> {
         self.section = section;
+        self.reordering = false;
         self.selected = None;
         let key = self.section.key();
         if self.ui_prefs.section == key && self.ui_prefs.selection.is_none() {

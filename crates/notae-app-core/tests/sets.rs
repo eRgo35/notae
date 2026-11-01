@@ -163,6 +163,44 @@ fn move_item_stops_at_edges() {
 }
 
 #[test]
+fn move_item_to_clamps() {
+    let mut store = SetStore::default();
+    let set = store.create(fields("Mass"), 1);
+    let a = store.add_piece(&set, piece('a'), 1).unwrap();
+    let b = store.add_piece(&set, piece('b'), 1).unwrap();
+    let c = store.add_note(&set, "Psalm".to_owned(), 1).unwrap();
+    assert!(
+        store.move_item_to(&set, &a, 99, 2),
+        "past the end is the last place"
+    );
+    assert_eq!(item_ids(&store, &set), [b.clone(), c.clone(), a.clone()]);
+    assert!(store.move_item_to(&set, &a, 0, 3));
+    assert_eq!(item_ids(&store, &set), [a.clone(), b.clone(), c.clone()]);
+    assert!(
+        store.move_item_to(&set, &a, 1, 4),
+        "the index is the place after the move"
+    );
+    assert_eq!(item_ids(&store, &set), [b.clone(), a.clone(), c.clone()]);
+    assert!(!store.move_item_to(&set, &a, 1, 5), "already there");
+    assert!(!store.move_item_to(&set, &c, usize::MAX, 5), "already last");
+    assert!(!store.move_item_to(&set, "nope", 0, 5));
+    assert!(!store.move_item_to("nope", &a, 0, 5));
+    assert_eq!(item_ids(&store, &set), [b, a, c]);
+}
+
+#[test]
+fn move_item_to_bumps_modified() {
+    let mut store = SetStore::default();
+    let set = store.create(fields("Mass"), 1);
+    let a = store.add_piece(&set, piece('a'), 1).unwrap();
+    store.add_piece(&set, piece('b'), 1).unwrap();
+    assert!(store.move_item_to(&set, &a, 1, 7));
+    assert_eq!(store.get(&set).unwrap().modified, 7);
+    assert!(!store.move_item_to(&set, &a, 1, 9), "no move, no change");
+    assert_eq!(store.get(&set).unwrap().modified, 7);
+}
+
+#[test]
 fn mark_opened_keeps_modified() {
     let mut store = SetStore::default();
     let set = store.create(fields("Mass"), 1);

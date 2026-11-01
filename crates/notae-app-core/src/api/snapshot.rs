@@ -58,6 +58,9 @@ pub struct Snapshot {
     pub settings: SettingsInfo,
     /// The saved layout choices.
     pub layout: LayoutPrefs,
+    /// Reorder mode is on in the open set: Kotlin shows its items as a list with move
+    /// controls, whatever [`LayoutPrefs::library_view`] says.
+    pub reordering: bool,
     /// The set dialog, while it is open.
     pub set_dialog: Option<SetDialog>,
     /// The delete confirmation, while it is open.
@@ -798,6 +801,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
             sidebar_collapsed_portrait: prefs.sidebar_collapsed_portrait,
             sidebar_collapsed_landscape: prefs.sidebar_collapsed_landscape,
         },
+        reordering: model.reordering(),
         set_dialog: extras.set_dialog.cloned(),
         delete_set: model
             .pending_delete_set_name()

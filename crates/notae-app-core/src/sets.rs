@@ -376,6 +376,25 @@ impl SetStore {
         true
     }
 
+    /// Moves an item to `index` among the set's items, clamped to the list. False if it did
+    /// not move.
+    pub fn move_item_to(&mut self, set_id: &str, item_id: &str, index: usize, now: u64) -> bool {
+        let Some(set) = self.get_mut(set_id) else {
+            return false;
+        };
+        let Some(from) = set.items.iter().position(|item| item.id == item_id) else {
+            return false;
+        };
+        let to = index.min(set.items.len() - 1);
+        if to == from {
+            return false;
+        }
+        let item = set.items.remove(from);
+        set.items.insert(to, item);
+        set.modified = now;
+        true
+    }
+
     /// Remembers the item last opened. Does not change `modified`.
     pub fn mark_opened(&mut self, set_id: &str, item_id: &str) -> bool {
         let Some(set) = self.get_mut(set_id) else {

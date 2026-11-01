@@ -60,7 +60,7 @@ use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::LibrarySection;
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::UiError;
-use crate::ui::{StartupPresentation, StorageStateKindView, UiModel};
+use crate::ui::{SetMove, StartupPresentation, StorageStateKindView, UiModel};
 
 /// How long the core thread waits for a worker event before it checks for other work.
 const POLL: Duration = Duration::from_millis(50);
@@ -165,7 +165,7 @@ impl NotaeCore {
     }
 
     /// Closes the innermost thing open: a sheet, a dialog, the details, search or settings,
-    /// then an open set (back to the list of sets). Returns `false` when nothing is left, so
+    /// then reorder mode, then an open set (back to the list of sets). Returns `false` when nothing is left, so
     /// Kotlin lets the system finish the activity.
     pub fn back(&self) -> bool {
         let snapshot = {
@@ -670,6 +670,15 @@ impl CoreState {
             }
             Action::ToggleAddPickerPiece { note_key } => model.add_picker_toggled(&note_key),
             Action::CloseAddPicker => model.add_picker_closed(),
+            Action::ReorderStarted => model.reorder_started(),
+            Action::ReorderFinished => model.reorder_finished(),
+            Action::MoveSetItem { item_id, delta } => {
+                model.move_set_item(&item_id, SetMove::By(delta));
+            }
+            Action::MoveSetItemTo { item_id, index } => {
+                let index = usize::try_from(index).unwrap_or(usize::MAX);
+                model.move_set_item(&item_id, SetMove::To(index));
+            }
         }
         Vec::new()
     }
@@ -713,6 +722,8 @@ impl CoreState {
             self.close_search(None);
         } else if matches!(model.state().screen(), crate::state::Screen::Settings) {
             report(model.dispatch(UiEvent::CloseSettings));
+        } else if model.reordering() {
+            model.reorder_finished();
         } else if matches!(model.section(), LibrarySection::Set(_)) {
             log_prefs(model.select_section(LibrarySection::Sets));
         } else {

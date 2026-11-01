@@ -238,7 +238,9 @@ fn back_closes_innermost_first() {
     let Some(SetEntry::Piece { row: piece }) = in_set.set_entries.first() else {
         panic!("the set holds the piece: {:#?}", in_set.set_entries);
     };
-    // Details, search, a dialog and a sheet, all open at once.
+    // Reorder mode, then details, search, a dialog and a sheet, all open at once.
+    harness.core.dispatch(Action::ReorderStarted);
+    assert!(harness.core.snapshot().reordering);
     harness.core.dispatch(Action::SelectScore {
         selection_id: piece.selection_id.clone(),
     });
@@ -279,6 +281,16 @@ fn back_closes_innermost_first() {
     assert_eq!(harness.core.snapshot().screen, Screen::Settings);
     assert!(harness.core.back(), "closes settings");
     assert_eq!(harness.core.snapshot().screen, Screen::Library);
+    assert!(harness.core.snapshot().reordering);
+
+    assert!(harness.core.back(), "finishes reorder mode");
+    let after = harness.core.snapshot();
+    assert!(!after.reordering);
+    assert_eq!(
+        after.section_key,
+        format!("set:{set_id}"),
+        "still in the set"
+    );
 
     assert!(harness.core.back(), "leaves the set for the list of sets");
     assert_eq!(harness.core.snapshot().section_key, "sets");
@@ -290,7 +302,100 @@ fn back_closes_innermost_first() {
     assert_eq!(harness.core.snapshot().section_key, "sets", "unchanged");
     // Every back that closed something told Kotlin.
     let received = harness.listener.snapshot_count();
-    assert!(received >= 7, "{received} snapshots");
+    assert!(received >= 8, "{received} snapshots");
+}
+
+fn entry_ids(snapshot: &Snapshot) -> Vec<String> {
+    snapshot
+        .set_entries
+        .iter()
+        .map(|entry| match entry {
+            SetEntry::Piece { row } => row.item_id.clone().unwrap_or_default(),
+            SetEntry::Note { item_id, .. } => item_id.clone(),
+        })
+        .collect()
+}
+
+#[test]
+fn reorder_moves_items_keeps_the_layout_and_persists() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(
+        dir.path(),
+        library_platform(&["Ave Maria", "Barka", "Credo"]),
+    );
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::OpenAddPicker);
+    for row in &library.rows[1..] {
+        harness.core.dispatch(Action::ToggleAddPickerPiece {
+            note_key: row.note_key.clone(),
+        });
+    }
+    harness.core.dispatch(Action::CloseAddPicker);
+    let in_set = harness.core.snapshot();
+    let LibrarySetKey(set_id) = open_set_key(&in_set);
+    let ids = entry_ids(&in_set);
+    assert_eq!(ids.len(), 3);
+    let view = in_set.layout.library_view;
+    assert!(!in_set.reordering);
+
+    // Starting reorder mode closes the details beside the set.
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: ids[0].clone(),
+    });
+    harness.core.dispatch(Action::ReorderStarted);
+    let started = harness.core.snapshot();
+    assert!(started.reordering);
+    assert!(started.selection.is_none());
+
+    harness.core.dispatch(Action::MoveSetItem {
+        item_id: ids[0].clone(),
+        delta: 1,
+    });
+    assert_eq!(
+        entry_ids(&harness.core.snapshot()),
+        [ids[1].clone(), ids[0].clone(), ids[2].clone()]
+    );
+    harness.core.dispatch(Action::MoveSetItemTo {
+        item_id: ids[2].clone(),
+        index: 0,
+    });
+    let moved = harness.core.snapshot();
+    let order = vec![ids[2].clone(), ids[1].clone(), ids[0].clone()];
+    assert_eq!(entry_ids(&moved), order);
+    assert_eq!(moved.layout.library_view, view, "the layout choice is kept");
+
+    harness.core.dispatch(Action::ReorderFinished);
+    let done = harness.core.snapshot();
+    assert!(!done.reordering);
+    assert_eq!(done.layout.library_view, view);
+
+    // Leaving the set ends reorder mode.
+    harness.core.dispatch(Action::ReorderStarted);
+    harness.core.dispatch(Action::SelectSection {
+        key: "sets".to_owned(),
+    });
+    assert!(!harness.core.snapshot().reordering);
+    harness.core.dispatch(Action::OpenSet {
+        set_id: set_id.clone(),
+    });
+    assert!(!harness.core.snapshot().reordering);
+    // Reorder mode needs an open set.
+    harness.core.dispatch(Action::SelectSection {
+        key: "sets".to_owned(),
+    });
+    harness.core.dispatch(Action::ReorderStarted);
+    assert!(!harness.core.snapshot().reordering);
+    drop(harness);
+
+    // The order is saved: a new core reads it back.
+    let harness = start(
+        dir.path(),
+        library_platform(&["Ave Maria", "Barka", "Credo"]),
+    );
+    open_and_scan(&harness);
+    harness.core.dispatch(Action::OpenSet { set_id });
+    assert_eq!(entry_ids(&harness.core.snapshot()), order);
 }
 
 struct LibrarySetKey(String);

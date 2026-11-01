@@ -180,4 +180,22 @@ pub enum Action {
     },
     /// The picker's Done.
     CloseAddPicker,
+    /// The set header's Reorder: shows the open set as a list with move controls.
+    ReorderStarted,
+    /// Reorder mode's Done: back to the layout the owner chose.
+    ReorderFinished,
+    /// A row's up (`-1`) or down (`1`) button in reorder mode.
+    MoveSetItem {
+        /// The set item's id.
+        item_id: String,
+        /// Places to move; clamped to the set.
+        delta: i32,
+    },
+    /// A drag dropped a row in reorder mode.
+    MoveSetItemTo {
+        /// The set item's id.
+        item_id: String,
+        /// Its zero-based place among all the set's items after the move; clamped to the set.
+        index: u32,
+    },
 }
