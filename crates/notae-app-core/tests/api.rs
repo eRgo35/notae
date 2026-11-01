@@ -11,9 +11,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use fake_platform::{FakePlatform, entry, readable};
+use notae_app_core::SetStore;
 use notae_app_core::api::{
-    Action, CoreListener, Effect, ExportStatus, NotaeCore, Screen, SetEntry, SetupError,
-    SetupScreen, Snapshot, StatusMessage, Subtitle,
+    Action, CoreListener, Effect, ExportStatus, ImportConfirmation, ImportError, ImportStatus,
+    NotaeCore, Screen, SetEntry, SetupError, SetupScreen, Snapshot, StatusMessage, Subtitle,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
 use notae_app_core::text::Failure;
@@ -985,4 +986,224 @@ fn import_is_offered_only_without_favorites_and_sets() {
     });
 
     assert!(!harness.core.snapshot().import_available);
+}
+
+#[test]
+fn opening_item_marks_just_opened_without_bumping_modified() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    // A repeat, so only the copy opened is marked.
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::ToggleAddPickerPiece {
+        note_key: library.rows[0].note_key.clone(),
+    });
+    harness.core.dispatch(Action::CloseAddPicker);
+    assert_eq!(harness.core.snapshot().rows.len(), 2);
+    let sets_file = dir.path().join("sets.json");
+    let before = SetStore::load(&sets_file).sets()[0].clone();
+    assert!(
+        harness
+            .core
+            .snapshot()
+            .rows
+            .iter()
+            .all(|row| !row.just_opened)
+    );
+
+    let second = harness.core.snapshot().rows[1].clone();
+    harness.core.dispatch(Action::OpenPdf {
+        relative_path: second.relative_path.clone(),
+        note_key: second.note_key.clone(),
+        item_id: second.item_id.clone(),
+    });
+
+    let opened = harness.core.snapshot();
+    assert_eq!(
+        opened
+            .rows
+            .iter()
+            .map(|row| row.just_opened)
+            .collect::<Vec<_>>(),
+        vec![false, true]
+    );
+    let Some(SetEntry::Piece { row }) = opened.set_entries.get(1) else {
+        panic!("the second entry is the piece: {:?}", opened.set_entries);
+    };
+    assert!(row.just_opened);
+    let after = SetStore::load(&sets_file).sets()[0].clone();
+    assert_eq!(
+        after.last_opened_item, second.item_id,
+        "saved for the next launch"
+    );
+    assert_eq!(after.modified, before.modified, "opening is not an edit");
+
+    // Outside the set no row is marked.
+    harness.core.dispatch(Action::SelectSection {
+        key: "all".to_owned(),
+    });
+    assert!(
+        harness
+            .core
+            .snapshot()
+            .rows
+            .iter()
+            .all(|row| !row.just_opened)
+    );
+}
+
+/// Creates the set "Mass", exports it, renames it "Evening Mass" and stars a piece; returns the
+/// export file's text.
+fn export_then_change(harness: &Harness, library: &Snapshot) -> String {
+    set_with_first_piece(harness, library);
+    harness.core.dispatch(Action::ExportSets);
+    let Some(Effect::WriteExport { json, .. }) = harness.listener.effects().pop() else {
+        panic!("export asks Kotlin to write the file");
+    };
+    let set_id = harness.core.snapshot().set_cards[0].id.clone();
+    harness.core.dispatch(Action::EditSet { set_id });
+    harness.core.dispatch(Action::SaveSetDialog {
+        name: "Evening Mass".to_owned(),
+        date: None,
+        notes: None,
+    });
+    harness.core.dispatch(Action::ToggleFavorite {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    json
+}
+
+#[test]
+fn import_cancel_changes_nothing() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    let json = export_then_change(&harness, &library);
+    let sets_before = std::fs::read(dir.path().join("sets.json")).expect("sets saved");
+    let favorites_before =
+        std::fs::read(dir.path().join("favorites.json")).expect("favorites saved");
+
+    harness.core.dispatch(Action::ImportRequested);
+    assert_eq!(
+        harness.listener.effects().last(),
+        Some(&Effect::PickImportFile)
+    );
+    harness.core.import_file_read(json);
+    assert_eq!(
+        harness.core.snapshot().import_confirmation,
+        Some(ImportConfirmation {
+            sets: 1,
+            replaced: vec!["Evening Mass".to_owned()],
+        })
+    );
+    harness.core.dispatch(Action::ImportCancelled);
+
+    let cancelled = harness.core.snapshot();
+    assert_eq!(cancelled.import_confirmation, None);
+    assert_eq!(cancelled.settings.import_status, None);
+    assert_eq!(cancelled.set_cards[0].name, "Evening Mass");
+    assert_eq!(
+        std::fs::read(dir.path().join("sets.json")).ok(),
+        Some(sets_before)
+    );
+    assert_eq!(
+        std::fs::read(dir.path().join("favorites.json")).ok(),
+        Some(favorites_before)
+    );
+    // Confirming after a cancel has nothing to apply.
+    harness.core.dispatch(Action::ImportConfirmed);
+    assert_eq!(harness.core.snapshot().set_cards[0].name, "Evening Mass");
+}
+
+#[test]
+fn import_confirmed_replaces_named_sets_and_merges_favorites() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    let json = export_then_change(&harness, &library);
+    harness.core.dispatch(Action::ImportRequested);
+    harness.core.import_file_read(json);
+
+    harness.core.dispatch(Action::ImportConfirmed);
+
+    let imported = harness.core.snapshot();
+    assert_eq!(imported.import_confirmation, None);
+    assert_eq!(
+        imported.settings.import_status,
+        Some(ImportStatus::Imported)
+    );
+    assert_eq!(imported.set_cards.len(), 1);
+    assert_eq!(
+        imported.set_cards[0].name, "Mass",
+        "the file's set replaced it"
+    );
+    assert_eq!(
+        imported.sections[2].count, 1,
+        "the star made after the export stays"
+    );
+    let saved = SetStore::load(&dir.path().join("sets.json"));
+    assert_eq!(saved.sets()[0].name, "Mass");
+}
+
+#[test]
+fn import_of_a_wrong_file_says_why_and_back_closes_the_confirmation() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    // On the setup screen, before any folder: the first-launch offer.
+    let harness = start(dir.path(), Arc::new(FakePlatform::default()));
+    harness.core.dispatch(Action::ImportRequested);
+
+    harness
+        .core
+        .import_file_read(r#"{"app":"other"}"#.to_owned());
+    assert_eq!(
+        harness.core.snapshot().settings.import_status,
+        Some(ImportStatus::Failed {
+            error: ImportError::NotNotae
+        })
+    );
+    harness
+        .core
+        .import_file_read(r#"{"app":"notae","schema_version":2}"#.to_owned());
+    assert_eq!(
+        harness.core.snapshot().settings.import_status,
+        Some(ImportStatus::Failed {
+            error: ImportError::UnsupportedVersion
+        })
+    );
+    harness.core.import_file_read("not json".to_owned());
+    assert_eq!(
+        harness.core.snapshot().settings.import_status,
+        Some(ImportStatus::Failed {
+            error: ImportError::Invalid
+        })
+    );
+    harness.core.import_file_failed("no file picker".to_owned());
+    assert_eq!(
+        harness.core.snapshot().settings.import_status,
+        Some(ImportStatus::Failed {
+            error: ImportError::Unreadable {
+                detail: "no file picker".to_owned()
+            }
+        })
+    );
+
+    harness.core.import_file_read(
+        r#"{"schema_version":1,"app":"notae","favorites":[],"sets":[]}"#.to_owned(),
+    );
+    let asking = harness.core.snapshot();
+    assert_eq!(
+        asking.import_confirmation,
+        Some(ImportConfirmation {
+            sets: 0,
+            replaced: Vec::new()
+        })
+    );
+    assert_eq!(asking.settings.import_status, None);
+    assert!(
+        harness.core.back(),
+        "Back closes the confirmation over the setup screen"
+    );
+    assert_eq!(harness.core.snapshot().import_confirmation, None);
+    assert!(!harness.core.back());
 }

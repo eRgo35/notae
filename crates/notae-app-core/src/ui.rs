@@ -373,6 +373,39 @@ impl UiModel {
         )
     }
 
+    /// Adds the backup's sets beside the current ones, replacing those with the same id, merges
+    /// its favorites, and saves both files. Pieces are re-linked against the open library.
+    pub fn import_backup(&mut self, backup: crate::backup::Backup) {
+        crate::backup::apply_import(&mut self.favorites, &mut self.sets, backup);
+        if let Some(path) = &self.favorites_path
+            && let Err(error) = self.favorites.save(path)
+        {
+            eprintln!("notae: cannot save favorites: {error}");
+        }
+        self.save_sets();
+        self.relink_saved_pieces();
+    }
+
+    /// Remembers `item_id` as the open set's item last opened ("Just opened") and saves the
+    /// set; its edited time does not change. Outside a set nothing happens.
+    pub fn mark_set_item_opened(&mut self, item_id: &str) {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return;
+        };
+        if self.sets.mark_opened(set_id, item_id) {
+            self.save_sets();
+        }
+    }
+
+    /// The open set's item last opened; `None` outside a set.
+    #[must_use]
+    pub fn just_opened_item(&self) -> Option<&str> {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return None;
+        };
+        self.sets.get(set_id)?.last_opened_item.as_deref()
+    }
+
     /// Validates `fields`, adds the set and opens it. A set made from the "Add to set…"
     /// checklist's "New set" gets that piece instead, and the owner stays where they were.
     ///

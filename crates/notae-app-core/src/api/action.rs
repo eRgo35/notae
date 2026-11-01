@@ -112,6 +112,14 @@ pub enum Action {
     /// "Export sets": hands Kotlin the file to save
     /// ([`Effect::WriteExport`](super::Effect::WriteExport)).
     ExportSets,
+    /// "Import sets" in Settings, or "Import from a previous Notae" on the setup screen: asks
+    /// Kotlin for a file ([`Effect::PickImportFile`](super::Effect::PickImportFile)).
+    ImportRequested,
+    /// The import confirmation's "Import": adds the file's sets, replaces those with the same
+    /// id and merges its favorites.
+    ImportConfirmed,
+    /// The import confirmation's "Cancel": nothing changes.
+    ImportCancelled,
     /// "New set": opens the empty set dialog.
     NewSet,
     /// A set card or row: opens the set.

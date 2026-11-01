@@ -43,11 +43,13 @@ pub use action::Action;
 pub use effect::Effect;
 pub use snapshot::{
     AddPicker, AddToSetSheet, Banner, ComposerEntry, DeleteSetConfirmation, Edited, ExportStatus,
-    LayoutPrefs, MetadataDraft, Origin, PdfOpenError, PositionOf, Row, ScanSummary, Screen,
-    SearchBox, SearchScope, SectionEntry, SectionTitle, Selection, SetCard, SetChoice, SetDialog,
-    SetEntry, SettingsInfo, SetupError, SetupScreen, Snapshot, Snippet, StatusMessage, Subtitle,
+    ImportConfirmation, ImportError, ImportStatus, LayoutPrefs, MetadataDraft, Origin,
+    PdfOpenError, PositionOf, Row, ScanSummary, Screen, SearchBox, SearchScope, SectionEntry,
+    SectionTitle, Selection, SetCard, SetChoice, SetDialog, SetEntry, SettingsInfo, SetupError,
+    SetupScreen, Snapshot, Snippet, StatusMessage, Subtitle,
 };
 
+use crate::backup::{Backup, BackupError};
 use crate::operations::events::OperationEvent;
 use crate::operations::rescan::OperationController;
 use crate::platform::{PlatformCatalog, PlatformLibrary};
@@ -123,6 +125,8 @@ impl NotaeCore {
                 set_dialog: None,
                 export: None,
                 opening_pdf: None,
+                pending_import: None,
+                import_status: None,
             }),
             platform,
             listener,
@@ -220,11 +224,41 @@ impl NotaeCore {
         self.shared.listener.on_snapshot(snapshot);
     }
 
-    /// The file chosen after [`Effect::PickImportFile`] was read. The import flow that asks
-    /// for it, and uses the text, arrives with the import actions; until then nothing asks
-    /// for a file and the text is ignored.
+    /// The file chosen after [`Effect::PickImportFile`] was read. An export file waits for
+    /// the confirmation ([`Snapshot::import_confirmation`]); any other file is reported in
+    /// [`SettingsInfo::import_status`].
     pub fn import_file_read(&self, text: String) {
-        drop(text);
+        let snapshot = {
+            let mut state = self.shared.lock();
+            match crate::backup::parse_export(&text) {
+                Ok(backup) => {
+                    state.import_status = None;
+                    state.pending_import = Some(backup);
+                }
+                Err(error) => {
+                    state.pending_import = None;
+                    state.import_status = Some(ImportStatus::Failed {
+                        error: error.into(),
+                    });
+                }
+            }
+            state.next_snapshot()
+        };
+        self.shared.listener.on_snapshot(snapshot);
+    }
+
+    /// The open-file picker from [`Effect::PickImportFile`] could not run, or its file could not
+    /// be read, with the platform's message. A cancelled picker reports nothing.
+    pub fn import_file_failed(&self, detail: String) {
+        let snapshot = {
+            let mut state = self.shared.lock();
+            state.pending_import = None;
+            state.import_status = Some(ImportStatus::Failed {
+                error: ImportError::Unreadable { detail },
+            });
+            state.next_snapshot()
+        };
+        self.shared.listener.on_snapshot(snapshot);
     }
 
     /// The PDF from [`Effect::OpenPdf`] opened (`None`), or why it did not. An opened score
@@ -420,6 +454,10 @@ struct CoreState {
     export: Option<ExportStatus>,
     /// The content key of the PDF Kotlin was asked to open.
     opening_pdf: Option<String>,
+    /// A read export file waiting for the import confirmation.
+    pending_import: Option<Backup>,
+    /// The outcome of the last import.
+    import_status: Option<ImportStatus>,
 }
 
 impl CoreState {
@@ -430,6 +468,8 @@ impl CoreState {
                 revision: self.revision,
                 set_dialog: self.set_dialog.as_ref(),
                 export: self.export.as_ref(),
+                pending_import: self.pending_import.as_ref(),
+                import_status: self.import_status.as_ref(),
             },
         )
     }
@@ -583,6 +623,9 @@ impl CoreState {
                     eprintln!("notae: no library is open to open a PDF from");
                     return Vec::new();
                 };
+                if let Some(item_id) = &item_id {
+                    model.mark_set_item_opened(item_id);
+                }
                 self.opening_pdf = Some(note_key.clone());
                 return vec![Effect::OpenPdf {
                     uri,
@@ -594,6 +637,7 @@ impl CoreState {
             Action::OpenSettings => {
                 report(model.dispatch(UiEvent::OpenSettings));
                 self.export = None;
+                self.import_status = None;
             }
             Action::CloseSettings => report(model.dispatch(UiEvent::CloseSettings)),
             Action::ExportSets => {
@@ -604,6 +648,17 @@ impl CoreState {
                     json,
                 }];
             }
+            Action::ImportRequested => {
+                self.import_status = None;
+                return vec![Effect::PickImportFile];
+            }
+            Action::ImportConfirmed => {
+                if let Some(backup) = self.pending_import.take() {
+                    model.import_backup(backup);
+                    self.import_status = Some(ImportStatus::Imported);
+                }
+            }
+            Action::ImportCancelled => self.pending_import = None,
             Action::NewSet => {
                 // A plain New set never carries a piece left from the checklist.
                 model.set_dialog_cancelled();
@@ -702,6 +757,10 @@ impl CoreState {
 
     /// Closes the innermost thing open; `false` when nothing is.
     fn back(&mut self) -> bool {
+        // The import confirmation can be open over the setup screen, before any library.
+        if self.pending_import.take().is_some() {
+            return true;
+        }
         let model = &mut self.model;
         let library_open = model.startup_presentation() == StartupPresentation::Ready
             && matches!(model.storage_kind(), StorageStateKindView::Ready { .. });
@@ -781,4 +840,14 @@ fn save_root(path: &Path, root: &LibraryRoot) -> io::Result<()> {
     let temporary = path.with_extension("tmp");
     fs::write(&temporary, text)?;
     fs::rename(temporary, path)
+}
+
+impl From<BackupError> for ImportError {
+    fn from(error: BackupError) -> Self {
+        match error {
+            BackupError::NotNotae => Self::NotNotae,
+            BackupError::UnsupportedVersion => Self::UnsupportedVersion,
+            BackupError::Invalid => Self::Invalid,
+        }
+    }
 }

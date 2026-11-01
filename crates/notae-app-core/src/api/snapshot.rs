@@ -6,6 +6,7 @@
 //! as they are. Nothing here is display text: Kotlin formats every title, count, date and status
 //! from these values.
 
+use crate::backup::{Backup, plan_import};
 use crate::sets::SetFieldError;
 use crate::state::OperationState;
 use crate::storage::StorageError;
@@ -76,6 +77,8 @@ pub struct Snapshot {
     /// Neither favorites nor sets exist yet, so the setup screen may offer "Import from a
     /// previous Notae".
     pub import_available: bool,
+    /// The import confirmation, while a read export file waits for Import or Cancel.
+    pub import_confirmation: Option<ImportConfirmation>,
 }
 
 /// The screen on display. The details screen is [`Snapshot::selection`] over the library.
@@ -258,6 +261,8 @@ pub struct Row {
     pub snippet: Option<Snippet>,
     /// The set item this row shows; `None` outside a set.
     pub item_id: Option<String>,
+    /// The open set's item last opened, shown highlighted with "Just opened"; only one per set.
+    pub just_opened: bool,
     /// The item's one-based number in its set, counting notes; `None` outside a set.
     pub position: Option<u32>,
     /// A set's piece whose PDF is no longer in the library.
@@ -530,6 +535,8 @@ pub struct SettingsInfo {
     pub latest_scan: Option<ScanSummary>,
     /// The outcome of the last "Export sets", until Settings is opened again.
     pub export: Option<ExportStatus>,
+    /// The outcome of the last import, until Settings is opened or another import starts.
+    pub import_status: Option<ImportStatus>,
 }
 
 /// The outcome of an export.
@@ -542,6 +549,44 @@ pub enum ExportStatus {
         /// The platform's own message.
         detail: String,
     },
+}
+
+/// The outcome of an import.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ImportStatus {
+    /// "Favorites and sets imported".
+    Imported,
+    /// "Could not import sets: …" followed by why.
+    Failed {
+        /// Why.
+        error: ImportError,
+    },
+}
+
+/// Why an import file was not imported ([`BackupError`](crate::backup::BackupError), or the
+/// platform could not read it).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum ImportError {
+    /// The file is not a Notae export.
+    NotNotae,
+    /// The file was written by a newer version of Notae.
+    UnsupportedVersion,
+    /// The file is a Notae export but cannot be read.
+    Invalid,
+    /// The file picker could not run or the file could not be read.
+    Unreadable {
+        /// The platform's own message.
+        detail: String,
+    },
+}
+
+/// The confirmation before an import: "Import N sets?" and the current sets it replaces.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct ImportConfirmation {
+    /// The sets in the file.
+    pub sets: u32,
+    /// The current names of the sets the file replaces (same id), in file order.
+    pub replaced: Vec<String>,
 }
 
 /// The saved layout choices.
@@ -678,6 +723,8 @@ pub(super) struct Extras<'a> {
     pub(super) revision: u64,
     pub(super) set_dialog: Option<&'a SetDialog>,
     pub(super) export: Option<&'a ExportStatus>,
+    pub(super) pending_import: Option<&'a Backup>,
+    pub(super) import_status: Option<&'a ImportStatus>,
 }
 
 /// Builds the snapshot of `model`.
@@ -795,6 +842,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
             no_text_count: count(status.no_text_count),
             latest_scan: status.latest_rescan.map(Into::into),
             export: extras.export.cloned(),
+            import_status: extras.import_status.cloned(),
         },
         layout: LayoutPrefs {
             library_view: prefs.library_view,
@@ -838,6 +886,10 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         }),
         pdf_open_error: model.pdf_launch_error().map(Into::into),
         import_available: model.favorites().is_empty() && model.sets().sets().is_empty(),
+        import_confirmation: extras.pending_import.map(|backup| ImportConfirmation {
+            sets: count(backup.sets.len()),
+            replaced: plan_import(model.sets(), backup).replaced,
+        }),
     }
 }
 
@@ -892,6 +944,7 @@ fn build_row(model: &UiModel, row: SearchRow) -> Row {
         relative_path: row.relative_path,
         title_origin: row.title_origin.into(),
         composer_origin: row.composer_origin.into(),
+        just_opened: row.item_id.is_some() && row.item_id.as_deref() == model.just_opened_item(),
         item_id: row.item_id,
         position: row.position.map(count),
         missing: row.missing,
