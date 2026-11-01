@@ -38,6 +38,7 @@ import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
+import com.c2yz.notae.core.testCore
 import com.c2yz.notae.platform.formatIsoDate
 import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
@@ -92,7 +93,7 @@ class NotesTest {
     /** A core over Ave Maria and Barka, with the set "Mass" open and holding Ave Maria. */
     private fun withSet(titles: List<String> = listOf("Ave Maria", "Barka"), test: (NotaeCore, Snapshot) -> Unit) {
         val dir = Files.createTempDirectory("notae-notes").toFile()
-        val core = NotaeCore(dir.path, Scores(titles), NoListener)
+        val core = testCore(dir.path, Scores(titles), NoListener)
         try {
             core.libraryRootPicked("Scores", "tree")
             core.await { it.screen == Screen.Library }

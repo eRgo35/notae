@@ -41,6 +41,7 @@ import com.c2yz.notae.core.SetDialog
 import com.c2yz.notae.core.SetFieldError
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
+import com.c2yz.notae.core.testCore
 import com.c2yz.notae.platform.formatIsoDate
 import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
@@ -99,7 +100,7 @@ class SetsScreenTest {
     @Test
     fun new_set_requires_name() {
         val dir = Files.createTempDirectory("notae-sets").toFile()
-        val core = NotaeCore(dir.path, Scores(emptyList()), NoListener)
+        val core = testCore(dir.path, Scores(emptyList()), NoListener)
         try {
             core.dispatch(Action.NewSet)
             show(Fixture.sets().copy(setDialog = core.snapshot().setDialog)) { action ->
@@ -199,7 +200,7 @@ class SetsScreenTest {
     @Test
     fun picker_untoggle_removes_only_session_item() {
         val dir = Files.createTempDirectory("notae-picker").toFile()
-        val core = NotaeCore(dir.path, Scores(listOf("Ave Maria", "Barka")), NoListener)
+        val core = testCore(dir.path, Scores(listOf("Ave Maria", "Barka")), NoListener)
         try {
             core.libraryRootPicked("Scores", "tree")
             core.await { it.screen == Screen.Library }

@@ -2,25 +2,25 @@ package com.c2yz.notae.ui.library
 
 import com.c2yz.notae.core.Banner
 import com.c2yz.notae.core.ComposerEntry
-import com.c2yz.notae.core.CoreListener
-import com.c2yz.notae.core.DocumentEntry
 import com.c2yz.notae.core.Edited
-import com.c2yz.notae.core.Effect
-import com.c2yz.notae.core.NotaeCore
+import com.c2yz.notae.core.LayoutPrefs
+import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.Origin
-import com.c2yz.notae.core.PlatformLibrary
 import com.c2yz.notae.core.Row
 import com.c2yz.notae.core.RowStatus
 import com.c2yz.notae.core.ScanSummary
 import com.c2yz.notae.core.Screen
+import com.c2yz.notae.core.SearchBox
+import com.c2yz.notae.core.SearchScope
 import com.c2yz.notae.core.SectionEntry
 import com.c2yz.notae.core.SectionTitle
 import com.c2yz.notae.core.SetCard
 import com.c2yz.notae.core.SetEntry
+import com.c2yz.notae.core.SettingsInfo
+import com.c2yz.notae.core.SetupScreen
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
 import com.c2yz.notae.core.Subtitle
-import java.nio.file.Files
 
 /**
  * The parity fixture library (docs/compose-parity/README.md, "Fixture library"): 20 scores sorted by
@@ -164,31 +164,41 @@ object Fixture {
         setEntries = notedEntries,
     )
 
-    /** A fresh core's snapshot, for the fields the library screen does not read. */
-    private val base: Snapshot by lazy {
-        val dir = Files.createTempDirectory("notae-fixture").toFile()
-        val core = NotaeCore(dir.path, NoPlatform, NoListener)
-        try {
-            core.snapshot()
-        } finally {
-            core.close()
-            dir.deleteRecursively()
-        }
-    }
-}
-
-private object NoPlatform : PlatformLibrary {
-    override fun checkRoot(handle: String) = error("no library folder")
-
-    override fun enumerate(handle: String): List<DocumentEntry> = error("no library folder")
-
-    override fun extractTextLayer(handle: String, path: String): String? = error("no library folder")
-
-    override fun renderThumbnail(handle: String, path: String, outPng: String): Boolean = error("no library folder")
-}
-
-private object NoListener : CoreListener {
-    override fun onSnapshot(snapshot: Snapshot) = Unit
-
-    override fun onEffect(effect: Effect) = Unit
+    /**
+     * A fresh core's snapshot, for the fields the library screen does not read. It is written out rather than asked of a
+     * core, so tests that only render never load the native core in their Robolectric sandbox (see
+     * core/OneSandbox.kt). `CoreSmokeTest.fresh_core_snapshot_matches_fixture_base` keeps it equal to the core's.
+     */
+    val base: Snapshot = Snapshot(
+        revision = 0u,
+        screen = Screen.Setup(SetupScreen.Unconfigured),
+        sectionKey = "all",
+        title = SectionTitle.All,
+        subtitle = Subtitle.Scores(0u),
+        setNotes = null,
+        sections = listOf(
+            SectionEntry("all", SectionTitle.All, 0u),
+            SectionEntry("recent", SectionTitle.Recent, 0u),
+            SectionEntry("favorites", SectionTitle.Favorites, 0u),
+            SectionEntry("sets", SectionTitle.Sets, 0u),
+        ),
+        composers = emptyList(),
+        rows = emptyList(),
+        setEntries = emptyList(),
+        setCards = emptyList(),
+        selection = null,
+        search = SearchBox("", SearchScope.EVERYTHING),
+        banner = Banner(message = null, busy = false, failed = false, fraction = null, cancelEnabled = false, acknowledgeEnabled = false),
+        rescanEnabled = true,
+        settings = SettingsInfo(libraryName = null, indexedCount = 0u, noTextCount = 0u, latestScan = null, export = null),
+        layout = LayoutPrefs(LibraryView.GRID, sidebarCollapsedPortrait = true, sidebarCollapsedLandscape = false),
+        reordering = false,
+        setDialog = null,
+        deleteSet = null,
+        metadataEditor = null,
+        addToSet = null,
+        addPicker = null,
+        pdfOpenError = null,
+        importAvailable = true,
+    )
 }

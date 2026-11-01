@@ -31,11 +31,11 @@ import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.c2yz.notae.core.Action
-import com.c2yz.notae.core.NotaeCore
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
+import com.c2yz.notae.core.testCore
 import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
 import com.c2yz.notae.ui.library.Fixture
@@ -100,7 +100,7 @@ class ReorderTest {
     @Test
     fun move_down_then_up_restores_order() {
         val dir = Files.createTempDirectory("notae-reorder").toFile()
-        val core = NotaeCore(dir.path, Scores(listOf("Ave Maria", "Barka", "Credo")), NoListener)
+        val core = testCore(dir.path, Scores(listOf("Ave Maria", "Barka", "Credo")), NoListener)
         try {
             core.libraryRootPicked("Scores", "tree")
             core.await { it.screen == Screen.Library }

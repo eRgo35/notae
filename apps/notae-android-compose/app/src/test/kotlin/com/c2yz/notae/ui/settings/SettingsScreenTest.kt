@@ -25,13 +25,13 @@ import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.DocumentEntry
 import com.c2yz.notae.core.Effect
 import com.c2yz.notae.core.ExportStatus
-import com.c2yz.notae.core.NotaeCore
 import com.c2yz.notae.core.PlatformLibrary
 import com.c2yz.notae.core.RecordingListener
 import com.c2yz.notae.core.ScanSummary
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.SettingsInfo
 import com.c2yz.notae.core.Snapshot
+import com.c2yz.notae.core.testCore
 import com.c2yz.notae.platform.setAppLanguage
 import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
@@ -106,7 +106,7 @@ class SettingsScreenTest {
     fun export_emits_write_export() {
         val listener = RecordingListener()
         val dir = Files.createTempDirectory("notae-settings").toFile()
-        val core = NotaeCore(dir.path, NoPlatform, listener)
+        val core = testCore(dir.path, NoPlatform, listener)
         try {
             show(settings()) { action ->
                 actions += action

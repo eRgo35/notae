@@ -19,9 +19,11 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /** The open set and the details survive the activity's recreation and the process's death. */
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(qualifiers = "w1280dp-h800dp")
 class RecreationTest {
     @get:Rule
@@ -31,6 +33,8 @@ class RecreationTest {
 
     @Before
     fun registerLibrary() {
+        // MainActivity creates the core (OneSandbox.kt).
+        assertOneSandbox()
         val info = ProviderInfo().apply {
             authority = AUTHORITY
             exported = true

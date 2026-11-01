@@ -1,30 +1,22 @@
 package com.c2yz.notae.nav
 
-import com.c2yz.notae.core.CoreListener
-import com.c2yz.notae.core.DocumentEntry
-import com.c2yz.notae.core.Effect
-import com.c2yz.notae.core.NotaeCore
 import com.c2yz.notae.core.Origin
-import com.c2yz.notae.core.PlatformLibrary
 import com.c2yz.notae.core.Row
 import com.c2yz.notae.core.RowStatus
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.Selection
 import com.c2yz.notae.core.SetupScreen
-import com.c2yz.notae.core.Snapshot
+import com.c2yz.notae.ui.library.Fixture
 import org.junit.Assert.assertEquals
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 
 /** One assertion per row of the back stack table in the design spec (§4.4). */
 class BackStackTest {
-    @get:Rule
-    val dataDir = TemporaryFolder()
 
     @Test
     fun back_stack_for_each_screen() {
-        val base = freshSnapshot()
+        // A fresh core's snapshot, without loading the core outside a Robolectric sandbox (CoreSmokeTest explains).
+        val base = Fixture.base
 
         assertEquals(listOf(Route.Loading), backStackFor(base.copy(screen = Screen.Loading)))
         assertEquals(listOf(Route.Setup), backStackFor(base.copy(screen = Screen.Setup(SetupScreen.Unconfigured))))
@@ -55,15 +47,6 @@ class BackStackTest {
         )
     }
 
-    private fun freshSnapshot(): Snapshot {
-        val core = NotaeCore(dataDir.root.path, NoPlatform, NoListener)
-        try {
-            return core.snapshot()
-        } finally {
-            core.close()
-        }
-    }
-
     private fun selection(id: String) = Selection(
         row = Row(
             selectionId = id,
@@ -88,20 +71,4 @@ class BackStackTest {
         next = null,
         position = null,
     )
-}
-
-private object NoPlatform : PlatformLibrary {
-    override fun checkRoot(handle: String) = error("no library folder")
-
-    override fun enumerate(handle: String): List<DocumentEntry> = error("no library folder")
-
-    override fun extractTextLayer(handle: String, path: String): String? = error("no library folder")
-
-    override fun renderThumbnail(handle: String, path: String, outPng: String): Boolean = error("no library folder")
-}
-
-private object NoListener : CoreListener {
-    override fun onSnapshot(snapshot: Snapshot) = Unit
-
-    override fun onEffect(effect: Effect) = Unit
 }
