@@ -1,6 +1,7 @@
 package com.c2yz.notae.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -39,7 +40,8 @@ fun NotaeTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () ->
     )
     CompositionLocalProvider(LocalTokenColors provides t) {
         MaterialTheme(colorScheme = scheme) {
-            androidx.compose.material3.ProvideTextStyle(TextStyle(fontFamily = FontFamily.Default, color = t.foreground)) {
+            // Replaced, not merged: Material's bodyLarge would add 0.5 sp tracking and a 24 sp line height Slint lacks.
+            CompositionLocalProvider(LocalTextStyle provides TextStyle(fontFamily = FontFamily.Default, color = t.foreground)) {
                 content()
             }
         }

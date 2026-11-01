@@ -18,11 +18,15 @@ fun SemanticsNodeInteractionsProvider.assertAllClickablesLabelled() {
     check(unlabelled.isEmpty()) { "Clickable nodes without a label: ${unlabelled.map { it.id to it.boundsInRoot }}" }
 }
 
-/** Every node with a click action is at least 48 dp square. */
+/**
+ * Every node with a click action is at least 48 dp square. The node's own size counts, not the part a scrolling
+ * viewport leaves visible; nodes with nothing on screen are skipped, as a lazy grid or list composes the next items
+ * ahead of time without placing them.
+ */
 fun SemanticsNodeInteractionsProvider.assertClickTargetsAtLeast48dp(density: Density) {
     val min = with(density) { 48.dp.toPx() }
-    val small = onAllNodes(hasClickAction()).fetchSemanticsNodes().filter {
-        it.boundsInRoot.width < min - 0.5f || it.boundsInRoot.height < min - 0.5f
+    val small = onAllNodes(hasClickAction()).fetchSemanticsNodes().filter { !it.boundsInRoot.isEmpty }.filter {
+        it.size.width < min - 0.5f || it.size.height < min - 0.5f
     }
     check(small.isEmpty()) { "Click targets under 48 dp: ${small.map { it.id to it.boundsInRoot }}" }
 }

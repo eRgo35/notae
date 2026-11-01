@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="dismiss">Close</string>
     <string name="open_pdf_with">Open PDF with</string>
     <string name="screen_loading">Loading library…</string>
-    <string name="screen_library">Library</string>
     <string name="screen_set">Set</string>
     <string name="screen_details">Details</string>
     <string name="screen_search">Search</string>
@@ -25,4 +24,89 @@
     <string name="setup_error_permission_lost">permission for the library root was lost; reauthorize to continue</string>
     <string name="setup_error_permission_denied">the platform refused to grant the SAF permission</string>
     <string name="setup_error_other">storage error: %1$s</string>
+    <!-- Library (Task 13): English copied from apps/notae-android/ui/library.slint and src/texts.rs. -->
+    <string name="brand_name" translatable="false">Notae</string>
+    <string name="section_all">All scores</string>
+    <string name="section_recent">Recent</string>
+    <string name="section_favorites">Favorites</string>
+    <string name="section_sets">Sets</string>
+    <string name="library_composers">Composers</string>
+    <plurals name="library_scores">
+        <item quantity="one">%d score</item>
+        <item quantity="other">%d scores</item>
+    </plurals>
+    <plurals name="library_sets_subtitle">
+        <item quantity="one">%d set · recently edited first</item>
+        <item quantity="other">%d sets · recently edited first</item>
+    </plurals>
+    <string name="library_hide_sidebar">Hide sidebar</string>
+    <string name="library_show_sidebar">Show sidebar</string>
+    <string name="library_grid_view">Switch to grid view</string>
+    <string name="library_list_view">Switch to list view</string>
+    <string name="library_new_set">New set</string>
+    <string name="library_scan">Scan library</string>
+    <string name="library_empty_all">A little space for your scores</string>
+    <string name="library_empty_all_detail">Scan your library folder to add the PDFs it contains.</string>
+    <string name="library_empty_recent">No recent scores</string>
+    <string name="library_empty_recent_detail">Scores you open appear here.</string>
+    <string name="library_empty_favorites">No favorites yet</string>
+    <string name="library_empty_favorites_detail">Star a score to keep it here.</string>
+    <string name="library_empty_sets">No sets yet</string>
+    <string name="library_empty_sets_detail">Make a set for each Mass or service, then add its pieces.</string>
+    <string name="library_empty_composer">No scores here</string>
+    <string name="library_empty_composer_detail">No scores by this composer are in the library.</string>
+    <string name="score_more_actions">More actions for %1$s</string>
+    <string name="score_opens">Opens the score</string>
+    <string name="score_missing">Missing from library</string>
+    <string name="score_actions_dialog">Score actions dialog</string>
+    <string name="score_open">Open score</string>
+    <string name="score_add_favorite">Add to favorites</string>
+    <string name="score_remove_favorite">Remove from favorites</string>
+    <string name="score_add_to_set">Add to set…</string>
+    <string name="score_details">Score details</string>
+    <string name="score_edit_details">Edit details</string>
+    <string name="score_remove_from_set">Remove from set</string>
+    <string name="scroll_position">Scroll position</string>
+    <string name="banner_cancel">Cancel</string>
+    <string name="banner_dismiss">Dismiss</string>
+    <string name="banner_scanning">Scanning library…</string>
+    <plurals name="banner_indexing">
+        <item quantity="one">Indexing %d PDF…</item>
+        <item quantity="other">Indexing %d PDFs…</item>
+    </plurals>
+    <string name="banner_reading">Reading PDF text and thumbnails: %1$d of %2$d</string>
+    <string name="banner_finished">Finished: %1$s</string>
+    <string name="summary_no_changes">No changes</string>
+    <!-- Unpluralised on purpose: the Slint summary reads "1 failures" too. -->
+    <string name="summary_added" tools:ignore="PluralsCandidate">%d added</string>
+    <string name="summary_updated" tools:ignore="PluralsCandidate">%d updated</string>
+    <string name="summary_moved" tools:ignore="PluralsCandidate">%d moved</string>
+    <string name="summary_deleted" tools:ignore="PluralsCandidate">%d deleted</string>
+    <string name="summary_conflicts" tools:ignore="PluralsCandidate">%d ID conflicts</string>
+    <string name="summary_failures" tools:ignore="PluralsCandidate">%d failures</string>
+    <!-- Failure and viewer messages were never translated (texts.rs): both languages show this English. -->
+    <string name="failure_index_query">library search failed: %1$s</string>
+    <string name="failure_invalid_note_id">invalid note id: %1$s</string>
+    <string name="failure_empty_title">title must not be empty</string>
+    <string name="failure_invalid_sha256">invalid sha256 digest</string>
+    <string name="failure_invalid_path">invalid root-relative path: %1$s</string>
+    <string name="failure_missing_provenance">missing metadata provenance: expected `provenance` or legacy `origin`</string>
+    <string name="failure_note_not_found">indexed note not found: %1$s</string>
+    <string name="failure_already_running">a rescan is already in progress</string>
+    <string name="failure_nothing_running">no operation is in progress</string>
+    <string name="failure_not_cancellable">the rescan has already committed and can no longer be canceled</string>
+    <string name="failure_worker_stopped">the index worker has stopped</string>
+    <string name="failure_worker_start">failed to start the index worker: %1$s</string>
+    <string name="failure_library_unreadable">library root is not readable: %1$s</string>
+    <string name="failure_enumeration">library enumeration failed: %1$s</string>
+    <string name="failure_permission_lost">permission for the library root was lost; reauthorize to continue</string>
+    <string name="failure_cancellation_closed">rescan cancellation state closed unexpectedly</string>
+    <string name="index_failure_database">sqlite error: %1$s</string>
+    <string name="index_failure_duplicate_id">note id %1$d is already used by another indexed record</string>
+    <string name="index_failure_schema_newer">index schema version %1$d is newer than the supported version %2$d</string>
+    <string name="index_failure_schema_incomplete">index schema version %1$d is incomplete: %2$s</string>
+    <string name="index_failure_unknown_note">no indexed record has content hash %1$s</string>
+    <string name="viewer_error_invalid_uri">external PDF access requires a SAF content URI</string>
+    <string name="viewer_error_no_viewer">no installed application can open PDFs</string>
+    <string name="viewer_error_platform">could not launch PDF viewer: %1$s</string>
 </resources>

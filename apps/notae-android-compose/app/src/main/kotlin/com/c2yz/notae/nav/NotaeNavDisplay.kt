@@ -30,6 +30,7 @@ import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.Snapshot
+import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.setup.WelcomeScreen
 import com.c2yz.notae.ui.theme.NotaeTheme
 
@@ -74,7 +75,7 @@ private fun overlayOpen(snapshot: Snapshot): Boolean =
 private fun entryFor(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit): NavEntry<NavKey> = when (key) {
     Route.Loading -> placeholder(key, R.string.screen_loading)
     Route.Setup -> setupEntry(key, snapshot, onAction)
-    is Route.Library -> placeholder(key, R.string.screen_library, metadata { put(ListPane, true) })
+    is Route.Library -> NavEntry(key, metadata = metadata { put(ListPane, true) }) { LibraryScreen(snapshot, onAction) }
     is Route.Set -> placeholder(key, R.string.screen_set, metadata { put(ListPane, true) })
     is Route.Details -> placeholder(key, R.string.screen_details, metadata { put(DetailPane, true) })
     Route.Search -> placeholder(key, R.string.screen_search)

@@ -9,6 +9,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,21 +29,25 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 /**
  * Slint `SetModal` in its bottom-sheet form: a card on the bottom edge, at most 640 wide, 28 radius on the top corners,
- * 28 padding, over the same scrim. A tap on the scrim calls [onDismiss].
+ * 28 padding, over the same scrim. A tap on the scrim calls [onDismiss]. The library's actions sheet passes its own
+ * tighter [padding] and no [spacing].
  */
 @Composable
 fun ActionSheet(
     dialogLabel: String,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    padding: PaddingValues = PaddingValues(28.dp),
+    spacing: Dp = 20.dp,
     content: @Composable ColumnScope.() -> Unit,
-) = ModalSurface(dialogLabel, onDismiss, bottomSheet = true, cardWidth = 640.dp, modifier = modifier, content = content)
+) = ModalSurface(dialogLabel, onDismiss, bottomSheet = true, cardWidth = 640.dp, modifier = modifier, padding = padding, spacing = spacing, content = content)
 
 /** Slint `SheetAction`: a 56 dp row (above the 48 dp target) with a 24 dp icon, 20 spacing and a 16 sp label. */
 @Composable

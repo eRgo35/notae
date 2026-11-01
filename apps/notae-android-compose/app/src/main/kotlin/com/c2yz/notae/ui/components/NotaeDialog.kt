@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -47,6 +48,8 @@ internal fun ModalSurface(
     bottomSheet: Boolean,
     cardWidth: Dp,
     modifier: Modifier = Modifier,
+    padding: PaddingValues = PaddingValues(28.dp),
+    spacing: Dp = 20.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val dismissLabel = stringResource(R.string.dismiss)
@@ -75,8 +78,8 @@ internal fun ModalSurface(
                 .background(NotaeTheme.colors.card)
                 .pointerInput(Unit) { detectTapGestures { } }
                 .semantics { paneTitle = dialogLabel }
-                .padding(28.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+                .padding(padding),
+            verticalArrangement = Arrangement.spacedBy(spacing),
             content = content,
         )
     }
