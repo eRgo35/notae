@@ -296,7 +296,7 @@ private fun subtitleText(subtitle: Subtitle): String = when (subtitle) {
 
 /** Why the PDF could not be opened, in the English it has always carried (texts.rs `viewer_error`). */
 @Composable
-private fun pdfErrorText(error: PdfOpenError): String = when (error) {
+internal fun pdfErrorText(error: PdfOpenError): String = when (error) {
     PdfOpenError.InvalidContentUri -> stringResource(R.string.viewer_error_invalid_uri)
     PdfOpenError.NoCompatibleViewer -> stringResource(R.string.viewer_error_no_viewer)
     is PdfOpenError.Platform -> stringResource(R.string.viewer_error_platform, error.detail)

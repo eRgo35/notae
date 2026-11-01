@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,7 +42,10 @@ fun NotaeDialog(
     content: @Composable ColumnScope.() -> Unit,
 ) = ModalSurface(dialogLabel, onDismiss, bottomSheet = false, cardWidth = 560.dp, modifier = modifier, content = content)
 
-/** The scrim and card shared by [NotaeDialog] and [ActionSheet]. */
+/**
+ * The scrim and card shared by [NotaeDialog] and [ActionSheet]. With [cardHeight] the card is that tall, or the window
+ * less 16 dp above and below when that is shorter (Slint's metadata sheet).
+ */
 @Composable
 internal fun ModalSurface(
     dialogLabel: String,
@@ -50,6 +55,7 @@ internal fun ModalSurface(
     modifier: Modifier = Modifier,
     padding: PaddingValues = PaddingValues(28.dp),
     spacing: Dp = 20.dp,
+    cardHeight: Dp? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val dismissLabel = stringResource(R.string.dismiss)
@@ -73,6 +79,7 @@ internal fun ModalSurface(
             Modifier
                 .align(if (bottomSheet) Alignment.BottomCenter else Alignment.Center)
                 .then(if (bottomSheet) Modifier else Modifier.padding(horizontal = 16.dp))
+                .then(if (cardHeight != null) Modifier.padding(vertical = 16.dp).heightIn(max = cardHeight).fillMaxHeight() else Modifier)
                 .widthIn(max = cardWidth)
                 .clip(shape)
                 .background(NotaeTheme.colors.card)
