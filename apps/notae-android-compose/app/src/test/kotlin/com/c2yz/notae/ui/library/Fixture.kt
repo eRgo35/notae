@@ -16,6 +16,7 @@ import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.SectionEntry
 import com.c2yz.notae.core.SectionTitle
 import com.c2yz.notae.core.SetCard
+import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
 import com.c2yz.notae.core.Subtitle
@@ -135,6 +136,32 @@ object Fixture {
         subtitle = Subtitle.Set("2026-03-29", 9u, 0u),
         setNotes = "Msza 10:00, kantor: Anna",
         rows = palmRows,
+        setEntries = palmRows.map { SetEntry.Piece(it) },
+    )
+
+    const val PSALM = "Psalm responsoryjny: Wszystkie krańce ziemi ujrzały zbawienie Boga naszego"
+    const val HOMILY = "Homilia"
+
+    /** Niedziela Palmowa with two text notes: the psalm after Kyrie and the homily after the second Ave Maria. */
+    val notedEntries: List<SetEntry> = buildList<Any> {
+        palmRows.forEachIndexed { index, row ->
+            if (index == 2) add("note-1" to PSALM)
+            if (index == 4) add("note-2" to HOMILY)
+            add(row)
+        }
+    }.mapIndexed { index, item ->
+        val position = (index + 1).toUInt()
+        when (item) {
+            is Row -> SetEntry.Piece(item.copy(position = position))
+            else -> (item as Pair<*, *>).let { SetEntry.Note(position, it.first as String, it.second as String) }
+        }
+    }
+
+    /** Inside Niedziela Palmowa with its two notes. */
+    fun palmWithNotes(): Snapshot = palmSunday().copy(
+        subtitle = Subtitle.Set("2026-03-29", 9u, 2u),
+        rows = notedEntries.filterIsInstance<SetEntry.Piece>().map { it.row },
+        setEntries = notedEntries,
     )
 
     /** A fresh core's snapshot, for the fields the library screen does not read. */

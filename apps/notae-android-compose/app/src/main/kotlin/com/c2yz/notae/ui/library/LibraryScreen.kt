@@ -60,6 +60,7 @@ import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.PdfOpenError
 import com.c2yz.notae.core.SectionTitle
 import com.c2yz.notae.core.SetCard
+import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.Subtitle
 import com.c2yz.notae.ui.components.Chip
@@ -91,17 +92,29 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     val menuRow = menuFor?.let { id -> snapshot.rows.firstOrNull { it.selectionId == id } }
     var setMenuFor by remember { mutableStateOf<String?>(null) }
     val menuSet = setMenuFor?.let { id -> snapshot.setCards.firstOrNull { it.id == id } }
-    val sheetOpen = menuRow != null || menuSet != null
+    val inSet = snapshot.sectionKey.startsWith(SET_PREFIX)
+    // Inside a set, its pieces and text notes in set order; elsewhere the section's scores.
+    val entries = remember(inSet, snapshot.rows, snapshot.setEntries) {
+        if (inSet) snapshot.setEntries else snapshot.rows.map { SetEntry.Piece(it) }
+    }
+    // A note's ⋮ sheet and its editor, by item id; they close when the note leaves the set.
+    var noteMenuFor by remember { mutableStateOf<String?>(null) }
+    var noteEditFor by remember { mutableStateOf<String?>(null) }
+    val note = { id: String? -> id?.let { entries.firstOrNull { it is SetEntry.Note && it.itemId == id } as SetEntry.Note? } }
+    val menuNote = note(noteMenuFor)
+    val editNote = note(noteEditFor)
+    val sheetOpen = menuRow != null || menuSet != null || menuNote != null || editNote != null
     val closeSheets = {
         menuFor = null
         setMenuFor = null
+        noteMenuFor = null
+        noteEditFor = null
     }
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
         isBackEnabled = sheetOpen,
         onBackCompleted = closeSheets,
     )
-    val inSet = snapshot.sectionKey.startsWith(SET_PREFIX)
     val reordering = inSet && snapshot.reordering
     // The keys work as soon as the library shows, as Slint focuses its shortcuts (app.slint), and again once a sheet,
     // dialog or picker closes. While one is open, Slint ignores them (Escape closes a ⋮ sheet).
@@ -112,7 +125,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     val keys = remember { FocusRequester() }
     // Also when reorder mode starts or ends (the Reorder or Done button that held focus is gone), and when the last piece
     // is removed in reorder mode (the list holding the focus is gone).
-    val reorderEmpty = reordering && snapshot.rows.isEmpty()
+    val reorderEmpty = reordering && entries.isEmpty()
     LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey, reordering, reorderEmpty) { if (!sheetOpen && !overlay) keys.requestFocus() }
     // Only when the details close (beside the library, which stays put); never when they open, since the outgoing
     // library stays composed during the portrait transition and would compete with the details for focus.
@@ -150,7 +163,15 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 if (!sidebar) Chips(snapshot, onAction)
                 OperationBanner(snapshot.banner, onAction)
                 snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
-                Content(snapshot, onAction, reordering, onMore = { menuFor = it.selectionId }, onSetMore = { setMenuFor = it.id })
+                Content(
+                    snapshot,
+                    entries,
+                    onAction,
+                    reordering,
+                    onMore = { menuFor = it.selectionId },
+                    onNoteMore = { noteMenuFor = it.itemId },
+                    onSetMore = { setMenuFor = it.id },
+                )
             }
         }
         if (menuRow != null) {
@@ -160,6 +181,30 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 onAction = {
                     menuFor = null
                     onAction(it)
+                },
+            )
+        }
+        if (menuNote != null) {
+            NoteActionsSheet(
+                menuNote,
+                onDismiss = { noteMenuFor = null },
+                onEdit = {
+                    noteMenuFor = null
+                    noteEditFor = menuNote.itemId
+                },
+                onRemove = {
+                    noteMenuFor = null
+                    onAction(Action.RemoveSetItem(menuNote.itemId))
+                },
+            )
+        }
+        if (editNote != null) {
+            NoteEditor(
+                editNote,
+                onCancel = { noteEditFor = null },
+                onSave = {
+                    noteEditFor = null
+                    onAction(Action.EditNote(editNote.itemId, it))
                 },
             )
         }
@@ -320,9 +365,11 @@ private fun Chips(snapshot: Snapshot, onAction: (Action) -> Unit) {
 @Composable
 private fun ColumnScope.Content(
     snapshot: Snapshot,
+    entries: List<SetEntry>,
     onAction: (Action) -> Unit,
     reordering: Boolean,
     onMore: (com.c2yz.notae.core.Row) -> Unit,
+    onNoteMore: (SetEntry.Note) -> Unit,
     onSetMore: (SetCard) -> Unit,
 ) {
     val area = Modifier.weight(1f).fillMaxWidth()
@@ -338,10 +385,10 @@ private fun ColumnScope.Content(
             onSetMore,
             area,
         )
-        snapshot.rows.isEmpty() -> EmptyState(snapshot, onAction, area)
-        reordering -> ReorderList(snapshot.rows, onAction, area)
-        snapshot.layout.libraryView == LibraryView.LIST -> ScoreList(snapshot.rows, open, onMore, area, selected)
-        else -> ScoreGrid(snapshot.rows, open, onMore, area, selected)
+        entries.isEmpty() -> EmptyState(snapshot, onAction, area)
+        reordering -> ReorderList(entries, onAction, area)
+        snapshot.layout.libraryView == LibraryView.LIST -> ScoreList(entries, open, onMore, onNoteMore, area, selected)
+        else -> ScoreGrid(entries, open, onMore, onNoteMore, area, selected)
     }
 }
 

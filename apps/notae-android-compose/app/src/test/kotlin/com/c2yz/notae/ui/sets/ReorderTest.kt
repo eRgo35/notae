@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.NotaeCore
 import com.c2yz.notae.core.Screen
+import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
 import com.c2yz.notae.ui.assertAllClickablesLabelled
@@ -222,24 +223,79 @@ class ReorderTest {
         assertEquals(listOf(Action.ReorderFinished, Action.ReorderFinished), actions.filter { it == Action.ReorderFinished })
     }
 
-    /** Three pieces of Niedziela Palmowa, with moves and removals applied as the core would. */
-    private fun showLive() {
-        var rows = Fixture.palmRows.take(3)
-        fun snapshot() = reordering.copy(rows = rows.mapIndexed { index, row -> row.copy(position = (index + 1).toUInt()) })
+    /** Three pieces of Niedziela Palmowa (or [start]), with moves and removals applied as the core would. */
+    private fun showLive(start: List<SetEntry> = Fixture.palmRows.take(3).map { SetEntry.Piece(it) }) {
+        var entries = start
+        fun snapshot(): Snapshot {
+            val numbered = entries.mapIndexed { index, entry ->
+                val position = (index + 1).toUInt()
+                when (entry) {
+                    is SetEntry.Piece -> SetEntry.Piece(entry.row.copy(position = position))
+                    is SetEntry.Note -> entry.copy(position = position)
+                }
+            }
+            return reordering.copy(rows = numbered.filterIsInstance<SetEntry.Piece>().map { it.row }, setEntries = numbered)
+        }
+        fun SetEntry.id() = when (this) {
+            is SetEntry.Piece -> row.itemId
+            is SetEntry.Note -> itemId
+        }
         show(snapshot()) { action ->
             actions += action
             when (action) {
                 is Action.MoveSetItem -> {
-                    val from = rows.indexOfFirst { it.itemId == action.itemId }
-                    val moved = rows.toMutableList()
-                    moved.add((from + action.delta).coerceIn(0, rows.lastIndex), moved.removeAt(from))
-                    rows = moved
+                    val from = entries.indexOfFirst { it.id() == action.itemId }
+                    val moved = entries.toMutableList()
+                    moved.add((from + action.delta).coerceIn(0, entries.lastIndex), moved.removeAt(from))
+                    entries = moved
                 }
-                is Action.RemoveSetItem -> rows = rows.filter { it.itemId != action.itemId }
+                is Action.RemoveSetItem -> entries = entries.filter { it.id() != action.itemId }
                 else -> Unit
             }
             shown = snapshot()
         }
+    }
+
+    @Test
+    fun reorder_list_moves_and_removes_notes() {
+        show(Fixture.palmWithNotes().copy(reordering = true))
+
+        // The psalm is item 3, between Kyrie and Magnificat.
+        compose.onNodeWithContentDescription("Drag to reorder ${Fixture.PSALM}").assertExists()
+        compose.onNodeWithContentDescription("Move ${Fixture.PSALM} up").performClick()
+        compose.onNodeWithContentDescription("Move ${Fixture.PSALM} down").performClick()
+        compose.onNodeWithContentDescription("Remove ${Fixture.PSALM} from set").performClick()
+        // Ave Maria dragged two rows down lands in the psalm's place, index 2 among all items.
+        val row = with(density) { 80.dp.toPx() }
+        compose.onAllNodesWithContentDescription("Drag to reorder Ave Maria")[0].performTouchInput {
+            down(center)
+            moveBy(Offset(0f, row))
+            moveBy(Offset(0f, row * 1.5f))
+            up()
+        }
+
+        assertEquals(
+            listOf(
+                Action.MoveSetItem("note-1", -1),
+                Action.MoveSetItem("note-1", 1),
+                Action.RemoveSetItem("note-1"),
+                Action.MoveSetItemTo("item-1", 2u),
+            ),
+            actions,
+        )
+    }
+
+    @Test
+    fun keyboard_move_of_a_note_keeps_focus_in_the_row() {
+        val (ave, kyrie) = Fixture.palmRows.take(2)
+        showLive(listOf(SetEntry.Piece(ave), SetEntry.Note(2u, "note-2", Fixture.HOMILY), SetEntry.Piece(kyrie)))
+
+        tabTo("Move ${Fixture.HOMILY} down")
+        compose.onRoot().performKeyInput { pressKey(Key.Enter) }
+        assertEquals(Action.MoveSetItem("note-2", 1), actions.last())
+        assertFocused("Move ${Fixture.HOMILY} up")
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        assertEquals(Action.ReorderFinished, actions.last())
     }
 
     /** Presses Tab until the control named [label] has the focus, with the keyboard input mode a hardware keyboard sets. */

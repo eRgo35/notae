@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Row as ScoreRowData
+import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.Scrollbar
@@ -70,13 +71,15 @@ internal const val FAVORITE_BADGE_TAG = "favorite-badge"
 
 /**
  * Slint `ScoreGrid` in its card: 20 dp inset, columns of at least 176 dp with 16 dp gaps, 20 dp between rows, and
- * cards 1.3 times as tall as wide plus 64 dp for the text. Keyed by the selection id.
+ * cards 1.3 times as tall as wide plus 64 dp for the text. Inside a set its text notes are tinted cards in their place.
+ * Keyed by the selection id, or a note's item id.
  */
 @Composable
 internal fun ScoreGrid(
-    rows: List<ScoreRowData>,
+    entries: List<SetEntry>,
     onOpen: (ScoreRowData) -> Unit,
     onMore: (ScoreRowData) -> Unit,
+    onNoteMore: (SetEntry.Note) -> Unit,
     modifier: Modifier = Modifier,
     selectedId: String? = null,
 ) {
@@ -95,8 +98,14 @@ internal fun ScoreGrid(
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                items(rows, key = { it.selectionId }) { row ->
-                    ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.height(cellHeight), selected = row.selectionId == selectedId)
+                items(entries, key = { it.key() }) { entry ->
+                    when (entry) {
+                        is SetEntry.Piece -> {
+                            val row = entry.row
+                            ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.height(cellHeight), selected = row.selectionId == selectedId)
+                        }
+                        is SetEntry.Note -> NoteCard(entry, { onNoteMore(entry) }, Modifier.height(cellHeight))
+                    }
                 }
             }
             GridScrollbar(state, Modifier.align(Alignment.TopEnd).padding(top = 20.dp))
@@ -104,24 +113,37 @@ internal fun ScoreGrid(
     }
 }
 
-/** Slint's list layout: 80 dp rows in a card with an 8 dp inset. Keyed by the selection id. */
+/** Slint's list layout: 80 dp rows in a card with an 8 dp inset; a set's notes are tinted rows. Keyed as [ScoreGrid]. */
 @Composable
 internal fun ScoreList(
-    rows: List<ScoreRowData>,
+    entries: List<SetEntry>,
     onOpen: (ScoreRowData) -> Unit,
     onMore: (ScoreRowData) -> Unit,
+    onNoteMore: (SetEntry.Note) -> Unit,
     modifier: Modifier = Modifier,
     selectedId: String? = null,
 ) {
     NotaeCard(modifier.fillMaxSize()) {
         val state = rememberLazyListState()
         LazyColumn(Modifier.testTag(LIST_TAG).fillMaxSize().padding(8.dp), state = state) {
-            items(rows, key = { it.selectionId }) { row ->
-                ScoreRow(row, { onOpen(row) }, { onMore(row) }, selected = row.selectionId == selectedId)
+            items(entries, key = { it.key() }) { entry ->
+                when (entry) {
+                    is SetEntry.Piece -> {
+                        val row = entry.row
+                        ScoreRow(row, { onOpen(row) }, { onMore(row) }, selected = row.selectionId == selectedId)
+                    }
+                    is SetEntry.Note -> NoteRow(entry, { onNoteMore(entry) })
+                }
             }
         }
         ListScrollbar(state, Modifier.align(Alignment.TopEnd).padding(vertical = 8.dp))
     }
+}
+
+/** A lazy key unique among a set's items: a piece's selection id (its item id in a set) or the note's item id. */
+internal fun SetEntry.key(): String = when (this) {
+    is SetEntry.Piece -> row.selectionId
+    is SetEntry.Note -> itemId
 }
 
 /** Recomposes only when the first visible item, the visible count or the total changes, not on every scrolled pixel. */
@@ -313,6 +335,6 @@ internal fun PositionBadge(position: UInt, modifier: Modifier = Modifier) {
 
 /** Slint `MoreActions`: the ⋮, named after the score, the only way to its actions sheet. */
 @Composable
-private fun MoreActions(title: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun MoreActions(title: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     IconButton(stringResource(R.string.score_more_actions, title), painterResource(R.drawable.ic_more_vertical), onClick, modifier)
 }

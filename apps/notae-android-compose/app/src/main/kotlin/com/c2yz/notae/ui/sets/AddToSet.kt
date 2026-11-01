@@ -28,7 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,10 +52,12 @@ import com.c2yz.notae.core.AddToSetSheet
 import com.c2yz.notae.core.PickerRow
 import com.c2yz.notae.core.SetChoice
 import com.c2yz.notae.ui.components.ActionSheet
+import com.c2yz.notae.ui.components.Chip
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.ModalSurface
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.SearchField
+import com.c2yz.notae.ui.components.TextField
 import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.theme.NotaeTheme
 
@@ -157,16 +161,22 @@ private fun NewSetRow(onClick: () -> Unit) {
 }
 
 /**
- * Slint `AddPiecesDialog`: "Pieces", its own search field (focused), the library's rows or the hits with an add/added
- * button each, or "No scores here", then "N added at the end of the set" and Done. A tap outside closes it, as Done.
- * The field is the picker's, not a second app search: it filters what this dialog adds and never leaves it.
+ * Slint `AddPiecesDialog` with its two tabs. **Pieces**: its own search field (focused), the library's rows or the hits
+ * with an add/added button each, or "No scores here", then "N added at the end of the set" and Done. A tap outside
+ * closes it, as Done. The field is the picker's, not a second app search: it filters what this dialog adds and never
+ * leaves it. **Text note**: a multi-line field (focused), "Added at the end of the set.", Cancel and Add note, which
+ * stays disabled while the text is blank and closes the picker (the core does both). The tab and the note's text are
+ * this dialog's own state.
  */
 @Composable
 internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
     val c = NotaeTheme.colors
     val close = { onAction(Action.CloseAddPicker) }
+    var noteTab by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf("") }
     val field = remember { FocusRequester() }
-    LaunchedEffect(Unit) { field.requestFocus() }
+    val noteField = remember { FocusRequester() }
+    LaunchedEffect(noteTab) { if (noteTab) noteField.requestFocus() else field.requestFocus() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val listHeight = maxOf(144.dp, minOf(432.dp, maxHeight - 340.dp))
         ModalSurface(
@@ -176,27 +186,41 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
             cardWidth = 720.dp,
             modifier = Modifier.closeOnEscape(close),
         ) {
-            Text(stringResource(R.string.picker_title), color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-            SearchField(picker.query, { onAction(Action.AddPickerSearch(it)) }, stringResource(R.string.search_placeholder), field)
-            Box(Modifier.fillMaxWidth().height(listHeight)) {
-                if (picker.rows.isEmpty()) {
-                    Text(stringResource(R.string.library_empty_composer), Modifier.align(Alignment.Center), color = c.muted, fontSize = 15.sp)
-                } else {
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        items(picker.rows, key = { it.noteKey }) { row ->
-                            PickerEntry(row) { onAction(Action.ToggleAddPickerPiece(row.noteKey)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Chip(stringResource(R.string.picker_title), !noteTab, { noteTab = false })
+                Chip(stringResource(R.string.note_tab), noteTab, { noteTab = true })
+            }
+            if (noteTab) {
+                Column(Modifier.fillMaxWidth().height(listHeight + 72.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    TextField(note, { note = it }, stringResource(R.string.note_field), Modifier.focusRequester(noteField), multiLine = true)
+                    Text(stringResource(R.string.note_added_at_end), color = c.muted, fontSize = 14.sp)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                    PillButton(stringResource(R.string.set_cancel), close)
+                    PillButton(stringResource(R.string.note_add), { onAction(Action.AddNote(note)) }, primary = true, enabled = note.isNotBlank())
+                }
+            } else {
+                SearchField(picker.query, { onAction(Action.AddPickerSearch(it)) }, stringResource(R.string.search_placeholder), field)
+                Box(Modifier.fillMaxWidth().height(listHeight)) {
+                    if (picker.rows.isEmpty()) {
+                        Text(stringResource(R.string.library_empty_composer), Modifier.align(Alignment.Center), color = c.muted, fontSize = 15.sp)
+                    } else {
+                        LazyColumn(Modifier.fillMaxSize()) {
+                            items(picker.rows, key = { it.noteKey }) { row ->
+                                PickerEntry(row) { onAction(Action.ToggleAddPickerPiece(row.noteKey)) }
+                            }
                         }
                     }
                 }
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    pluralStringResource(R.plurals.picker_added, picker.added.toCount(), picker.added.toLong()),
-                    Modifier.weight(1f),
-                    color = c.muted,
-                    fontSize = 14.sp,
-                )
-                PillButton(stringResource(R.string.picker_done), close, primary = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        pluralStringResource(R.plurals.picker_added, picker.added.toCount(), picker.added.toLong()),
+                        Modifier.weight(1f),
+                        color = c.muted,
+                        fontSize = 14.sp,
+                    )
+                    PillButton(stringResource(R.string.picker_done), close, primary = true)
+                }
             }
         }
     }

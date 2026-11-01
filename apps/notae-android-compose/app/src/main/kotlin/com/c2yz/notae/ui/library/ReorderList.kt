@@ -37,6 +37,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -46,7 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
-import com.c2yz.notae.core.Row as ScoreRowData
+import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.theme.NotaeTheme
@@ -56,13 +57,13 @@ private val ROW_HEIGHT = 80.dp
 
 /**
  * A set in reorder mode (favorites spec §5.4): the list layout whatever the grid/list choice, one 80 dp row per piece
- * with a drag handle, up, down and remove. Up and down are the dependable path for TalkBack and keyboards; the handle
+ * or text note (tinted) with a drag handle, up, down and remove. Up and down are the dependable path for TalkBack and keyboards; the handle
  * drags a row by whole rows and sends one [Action.MoveSetItemTo] when it is dropped.
  */
 @Composable
-internal fun ReorderList(rows: List<ScoreRowData>, onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
+internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
     val act by rememberUpdatedState(onAction)
-    val current by rememberUpdatedState(rows)
+    val current by rememberUpdatedState(entries)
     // The row under the finger and how far it has moved; only the drop reaches the core.
     var dragging by remember { mutableStateOf<String?>(null) }
     var offset by remember { mutableFloatStateOf(0f) }
@@ -71,22 +72,23 @@ internal fun ReorderList(rows: List<ScoreRowData>, onAction: (Action) -> Unit, m
     NotaeCard(modifier.fillMaxSize()) {
         val state = rememberLazyListState()
         LazyColumn(Modifier.testTag(REORDER_TAG).fillMaxSize().padding(8.dp), state = state) {
-            itemsIndexed(rows, key = { _, row -> row.selectionId }) { index, row ->
-                val dragged = dragging == row.selectionId
+            itemsIndexed(entries, key = { _, entry -> entry.key() }) { index, entry ->
+                val key = entry.key()
+                val dragged = dragging == key
                 // Keyed on the item only, so a snapshot arriving mid-drag (a banner, say) does not cancel the gesture.
-                val handle: Modifier.() -> Modifier = { pointerInput(row.selectionId) {
+                val handle: Modifier.() -> Modifier = { pointerInput(key) {
                     detectVerticalDragGestures(
                         onDragStart = {
-                            dragging = row.selectionId
+                            dragging = key
                             offset = 0f
                         },
                         onDragEnd = {
-                            val from = current.indexOfFirst { it.selectionId == row.selectionId }
+                            // The entries are all the set's items, so the list index is the core's place.
+                            val from = current.indexOfFirst { it.key() == key }
                             val to = (from + (offset / ROW_HEIGHT.toPx()).roundToInt()).coerceIn(0, current.lastIndex)
-                            val itemId = row.itemId
-                            val place = current.getOrNull(to)?.position
-                            if (from >= 0 && to != from && itemId != null && place != null) {
-                                act(Action.MoveSetItemTo(itemId, place - 1u))
+                            val itemId = entry.itemId()
+                            if (from >= 0 && to != from && itemId != null) {
+                                act(Action.MoveSetItemTo(itemId, to.toUInt()))
                             }
                             dragging = null
                             offset = 0f
@@ -101,15 +103,15 @@ internal fun ReorderList(rows: List<ScoreRowData>, onAction: (Action) -> Unit, m
                     }
                 } }
                 ReorderRow(
-                    row,
+                    entry,
                     first = index == 0,
-                    last = index == rows.lastIndex,
+                    last = index == entries.lastIndex,
                     onAction = onAction,
                     onRemove = { it, focused ->
-                        if (focused) focusRemoveOn = (rows.getOrNull(index + 1) ?: rows.getOrNull(index - 1))?.selectionId
+                        if (focused) focusRemoveOn = (entries.getOrNull(index + 1) ?: entries.getOrNull(index - 1))?.key()
                         act(Action.RemoveSetItem(it))
                     },
-                    focusRemove = focusRemoveOn == row.selectionId,
+                    focusRemove = focusRemoveOn == key,
                     onRemoveFocused = { focusRemoveOn = null },
                     handle = handle,
                     dragged = dragged,
@@ -123,10 +125,19 @@ internal fun ReorderList(rows: List<ScoreRowData>, onAction: (Action) -> Unit, m
 
 private enum class Arrow { UP, DOWN }
 
-/** One piece in reorder mode: handle, position, page, title and subtitle, then up, down and remove. */
+/** A piece's set item id (always there inside a set) or a note's. */
+private fun SetEntry.itemId(): String? = when (this) {
+    is SetEntry.Piece -> row.itemId
+    is SetEntry.Note -> itemId
+}
+
+/**
+ * One item in reorder mode: handle, position, then a piece's page, title and subtitle or a note's glyph and text on the
+ * note tint, then up, down and remove. A note is named by its text in the controls' labels, as a piece by its title.
+ */
 @Composable
 private fun ReorderRow(
-    row: ScoreRowData,
+    entry: SetEntry,
     first: Boolean,
     last: Boolean,
     onAction: (Action) -> Unit,
@@ -138,8 +149,11 @@ private fun ReorderRow(
     modifier: Modifier = Modifier,
 ) {
     val c = NotaeTheme.colors
-    val itemId = row.itemId ?: return
-    val title = row.title
+    val itemId = entry.itemId() ?: return
+    val (title, position) = when (entry) {
+        is SetEntry.Piece -> entry.row.title to entry.row.position
+        is SetEntry.Note -> entry.text to entry.position
+    }
     val up = remember { FocusRequester() }
     val down = remember { FocusRequester() }
     val remove = remember { FocusRequester() }
@@ -171,7 +185,13 @@ private fun ReorderRow(
             .fillMaxWidth()
             .height(ROW_HEIGHT)
             .clip(RoundedCornerShape(18.dp))
-            .background(if (dragged) c.accentSoft else Color.Transparent)
+            .background(
+                when {
+                    dragged -> c.accentSoft
+                    entry is SetEntry.Note -> c.note
+                    else -> Color.Transparent
+                },
+            )
             .padding(end = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -180,20 +200,30 @@ private fun ReorderRow(
         Box(Modifier.handle().size(48.dp).semantics { contentDescription = drag }, Alignment.Center) {
             Icon(painterResource(R.drawable.ic_grip_vertical), null, Modifier.size(24.dp), tint = c.muted)
         }
-        row.position?.let { PositionBadge(it) }
-        PagePreview(row.thumbnail, Modifier.size(44.dp, 58.dp), radius = 6.dp)
-        Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            val label = (row.position?.let { "$it. " } ?: "") + title
-            Text(
-                title,
-                Modifier.semantics { contentDescription = label },
-                color = c.foreground,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            ScoreSubtitle(row, 14)
+        position?.let { PositionBadge(it) }
+        when (entry) {
+            is SetEntry.Piece -> {
+                val row = entry.row
+                PagePreview(row.thumbnail, Modifier.size(44.dp, 58.dp), radius = 6.dp)
+                Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    val label = (position?.let { "$it. " } ?: "") + title
+                    Text(
+                        title,
+                        Modifier.semantics { contentDescription = label },
+                        color = c.foreground,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    ScoreSubtitle(row, 14)
+                }
+            }
+            is SetEntry.Note -> {
+                NoteTile(44.dp, 58.dp)
+                val label = noteLabel(entry)
+                NoteText(entry.text, Modifier.weight(1f).clearAndSetSemantics { contentDescription = label })
+            }
         }
         IconButton(
             stringResource(R.string.set_move_up, title),

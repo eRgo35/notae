@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.Density
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.ScanSummary
+import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
 import com.c2yz.notae.ui.assertAllClickablesLabelled
@@ -205,7 +206,7 @@ class LibraryScreenTest {
     @Test
     fun a_missing_piece_offers_only_removal() {
         val piece = Fixture.library().rows.first().copy(itemId = "item-8", position = 8u, missing = true, selectionId = "item-8")
-        show(Fixture.library().copy(sectionKey = "set:0123", rows = listOf(piece)))
+        show(Fixture.library().copy(sectionKey = "set:0123", rows = listOf(piece), setEntries = listOf(SetEntry.Piece(piece))))
 
         compose.onNodeWithText("Missing from library").assertIsDisplayed()
         compose.onNodeWithContentDescription("More actions for Agnus Dei").performClick()

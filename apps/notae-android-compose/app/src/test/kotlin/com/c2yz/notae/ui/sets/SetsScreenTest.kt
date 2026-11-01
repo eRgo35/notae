@@ -287,7 +287,7 @@ class SetsScreenTest {
 
     @Test
     fun empty_set_says_so() {
-        show(Fixture.palmSunday().copy(sectionKey = "set:empty", rows = emptyList(), setNotes = null))
+        show(Fixture.palmSunday().copy(sectionKey = "set:empty", rows = emptyList(), setEntries = emptyList(), setNotes = null))
 
         compose.onNodeWithText("This set is empty").assertIsDisplayed()
         compose.onNodeWithText("Pieces you add to this set appear here.").assertIsDisplayed()

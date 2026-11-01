@@ -252,4 +252,12 @@
         <item quantity="many">Dodano %d utworów na końcu zestawu</item>
         <item quantity="other">Dodano %d utworów na końcu zestawu</item>
     </plurals>
+    <string name="note_tab">Notatka</string>
+    <string name="note_field">Notatka</string>
+    <string name="note_added_at_end">Dodana na końcu zestawu.</string>
+    <string name="note_add">Dodaj notatkę</string>
+    <string name="note_edit">Edytuj notatkę</string>
+    <string name="note_save">Zapisz notatkę</string>
+    <string name="note_label">Notatka: %1$s</string>
+    <string name="note_actions_dialog">Okno działań dla notatki</string>
 </resources>

@@ -20,9 +20,15 @@ data class TokenColors(
     val error: Color,
     val paper: Color,
     val paperEdge: Color,
+    /** A set's text note, from the favorites mockup; Slint never drew notes, so these have no `Theme` twin. */
+    val note: Color,
+    val onNote: Color,
 )
 
-/** The Slint `Theme` and `Motion` tokens (apps/notae-android/ui/components.slint); `tokens_match_slint_theme` checks them. */
+/**
+ * The Slint `Theme` and `Motion` tokens (apps/notae-android/ui/components.slint); `tokens_match_slint_theme` checks them.
+ * [TokenColors.note] and [TokenColors.onNote] are Compose's own (text notes were never built in Slint).
+ */
 object Tokens {
     val light = TokenColors(
         background = Color(0xFFF3F3F5),
@@ -39,6 +45,8 @@ object Tokens {
         error = Color(0xFFC62828),
         paper = Color(0xFFFFFFFF),
         paperEdge = Color(0xFFE3E3E8),
+        note = Color(0xFFFFF4E0),
+        onNote = Color(0xFF6B3A00),
     )
 
     val dark = TokenColors(
@@ -56,6 +64,8 @@ object Tokens {
         error = Color(0xFFFF8A80),
         paper = Color(0xFFE4E4E8),
         paperEdge = Color(0xFF2A2A2E),
+        note = Color(0xFF3A2A12),
+        onNote = Color(0xFFFFD9A0),
     )
 
     /** Slint `Theme.motion-short` / `motion-medium` with animations enabled. */

@@ -248,4 +248,13 @@
         <item quantity="one">%d added at the end of the set</item>
         <item quantity="other">%d added at the end of the set</item>
     </plurals>
+    <!-- Text notes (Task 19): English and Polish from the favorites plan (Task 9 Step 3) where it has them. -->
+    <string name="note_tab">Text note</string>
+    <string name="note_field">Note</string>
+    <string name="note_added_at_end">Added at the end of the set.</string>
+    <string name="note_add">Add note</string>
+    <string name="note_edit">Edit note</string>
+    <string name="note_save">Save note</string>
+    <string name="note_label">Note: %1$s</string>
+    <string name="note_actions_dialog">Note actions dialog</string>
 </resources>

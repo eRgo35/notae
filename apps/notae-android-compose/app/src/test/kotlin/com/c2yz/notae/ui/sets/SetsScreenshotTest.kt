@@ -7,9 +7,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTextInput
 import com.c2yz.notae.core.AddPicker
 import com.c2yz.notae.core.AddToSetSheet
 import com.c2yz.notae.core.DeleteSetConfirmation
@@ -74,6 +76,7 @@ class SetsScreenshotTest {
         subtitle = com.c2yz.notae.core.Subtitle.Set(null, 0u, 0u),
         setNotes = null,
         rows = emptyList(),
+        setEntries = emptyList(),
     )
     private val newSet = sets.copy(setDialog = SetDialog(null, "", null, null, null))
     private val editSet = sets.copy(setDialog = SetDialog("palm", "Niedziela Palmowa", "2026-03-29", "Msza 10:00, kantor: Anna", null))
@@ -184,4 +187,60 @@ class SetsScreenshotTest {
     @Test fun reorder_portrait_light() = shot("set-reorder", reorder, landscape = false, dark = false)
 
     @Test fun reorder_portrait_dark() = shot("set-reorder", reorder, landscape = false, dark = true)
+
+    // No Slint reference: 0.3.0 had no text notes. The psalm is item 3 and the homily item 6.
+    private val noted = Fixture.palmWithNotes()
+    private val notedList = noted.withView(LibraryView.LIST)
+    private val notedReorder = noted.copy(reordering = true)
+    private val noteTab = noted.copy(addPicker = AddPicker("", Fixture.rows.map(::pickerRow), 0u))
+    private val typeNote = {
+        compose.onNodeWithText("Text note").performClick()
+        compose.onNodeWithContentDescription("Note").performTextInput("Psalm responsoryjny")
+        Unit
+    }
+    private val editNote = {
+        compose.onNodeWithContentDescription("More actions for ${Fixture.PSALM}").performClick()
+        compose.onNodeWithText("Edit note").performClick()
+        Unit
+    }
+
+    @Test fun notes_grid_landscape_light() = shot("set-notes-grid", noted, landscape = true, dark = false)
+
+    @Test fun notes_grid_landscape_dark() = shot("set-notes-grid", noted, landscape = true, dark = true)
+
+    @Test fun notes_grid_portrait_light() = shot("set-notes-grid", noted, landscape = false, dark = false)
+
+    @Test fun notes_grid_portrait_dark() = shot("set-notes-grid", noted, landscape = false, dark = true)
+
+    @Test fun notes_list_landscape_light() = shot("set-notes-list", notedList, landscape = true, dark = false)
+
+    @Test fun notes_list_landscape_dark() = shot("set-notes-list", notedList, landscape = true, dark = true)
+
+    @Test fun notes_list_portrait_light() = shot("set-notes-list", notedList, landscape = false, dark = false)
+
+    @Test fun notes_list_portrait_dark() = shot("set-notes-list", notedList, landscape = false, dark = true)
+
+    @Test fun notes_reorder_landscape_light() = shot("set-notes-reorder", notedReorder, landscape = true, dark = false)
+
+    @Test fun notes_reorder_landscape_dark() = shot("set-notes-reorder", notedReorder, landscape = true, dark = true)
+
+    @Test fun notes_reorder_portrait_light() = shot("set-notes-reorder", notedReorder, landscape = false, dark = false)
+
+    @Test fun notes_reorder_portrait_dark() = shot("set-notes-reorder", notedReorder, landscape = false, dark = true)
+
+    @Test fun add_picker_note_landscape_light() = shot("add-picker-note", noteTab, landscape = true, dark = false, before = typeNote)
+
+    @Test fun add_picker_note_landscape_dark() = shot("add-picker-note", noteTab, landscape = true, dark = true, before = typeNote)
+
+    @Test fun add_picker_note_portrait_light() = shot("add-picker-note", noteTab, landscape = false, dark = false, before = typeNote)
+
+    @Test fun add_picker_note_portrait_dark() = shot("add-picker-note", noteTab, landscape = false, dark = true, before = typeNote)
+
+    @Test fun note_editor_landscape_light() = shot("note-editor", notedList, landscape = true, dark = false, before = editNote)
+
+    @Test fun note_editor_landscape_dark() = shot("note-editor", notedList, landscape = true, dark = true, before = editNote)
+
+    @Test fun note_editor_portrait_light() = shot("note-editor", notedList, landscape = false, dark = false, before = editNote)
+
+    @Test fun note_editor_portrait_dark() = shot("note-editor", notedList, landscape = false, dark = true, before = editNote)
 }
