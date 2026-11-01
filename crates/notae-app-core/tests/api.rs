@@ -17,7 +17,7 @@ use notae_app_core::api::{
     NotaeCore, Screen, SetEntry, SetupError, SetupScreen, Snapshot, StatusMessage, Subtitle,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
-use notae_app_core::text::Failure;
+use notae_app_core::text::{Failure, RowStatus};
 
 const ROOT: &str = "content://tree/scores";
 
@@ -354,6 +354,91 @@ fn back_closes_search_and_settings_before_the_details() {
 
     assert!(harness.core.back(), "closes the details");
     assert!(harness.core.snapshot().selection.is_none());
+}
+
+fn selected_id(snapshot: &Snapshot) -> Option<String> {
+    snapshot
+        .selection
+        .as_ref()
+        .map(|selection| selection.row.selection_id.clone())
+}
+
+/// Types `query` in Search and waits until its hits are the rows.
+fn search_for(harness: &Harness, query: &str, hits: &[&str]) {
+    harness.core.dispatch(Action::SearchChanged {
+        query: query.to_owned(),
+    });
+    harness
+        .listener
+        .wait_for("the search hits", |snapshot| titles(snapshot) == hits);
+}
+
+/// Leaves Search without a result and waits for the whole library's rows.
+fn close_search_and_wait(harness: &Harness, rows: usize) -> Snapshot {
+    harness.core.dispatch(Action::CloseSearch);
+    harness.listener.wait_for("the library rows", |snapshot| {
+        is_library(snapshot)
+            && snapshot.rows.len() == rows
+            && (snapshot.rows.iter()).all(|row| row.status != RowStatus::MissingFromLibrary)
+    })
+}
+
+#[test]
+fn a_search_that_excludes_the_selection_keeps_the_details() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria", "Barka"]);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    let library = open_and_scan(&harness);
+    let barka = library.rows[1].selection_id.clone();
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: barka.clone(),
+    });
+
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Ave", &["Ave Maria"]);
+    let closed = close_search_and_wait(&harness, 2);
+    assert_eq!(selected_id(&closed), Some(barka.clone()), "in the library");
+    drop(harness);
+    let restarted = start(dir.path(), Arc::clone(&platform));
+    let restored = restarted
+        .listener
+        .wait_for("the restored rows", |snapshot| snapshot.rows.len() == 2);
+    assert_eq!(selected_id(&restored), Some(barka), "and in ui-prefs");
+
+    // Inside a set, the selection is the item id of the set's copy of Ave Maria.
+    let in_set = set_with_first_piece(&restarted, &restored);
+    let item = in_set.rows[0].selection_id.clone();
+    restarted.core.dispatch(Action::SelectScore {
+        selection_id: item.clone(),
+    });
+    restarted.core.dispatch(Action::OpenSearch);
+    search_for(&restarted, "Barka", &["Barka"]);
+    let closed = close_search_and_wait(&restarted, 1);
+    assert_eq!(selected_id(&closed), Some(item), "in a set");
+}
+
+#[test]
+fn a_score_deleted_during_search_is_unselected_when_search_closes() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria", "Barka"]);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    let library = open_and_scan(&harness);
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: library.rows[1].selection_id.clone(),
+    });
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Ave", &["Ave Maria"]);
+    platform.set_entries(Ok(vec![readable("Ave Maria.pdf", b"Ave Maria")]));
+    harness.core.dispatch(Action::AcknowledgeOperation);
+    assert!(
+        !is_finished(&harness.core.snapshot()),
+        "the first result is gone"
+    );
+    harness.core.dispatch(Action::Rescan);
+    harness.listener.wait_for("the second scan", is_finished);
+
+    let closed = close_search_and_wait(&harness, 1);
+    assert_eq!(selected_id(&closed), None);
 }
 
 fn entry_ids(snapshot: &Snapshot) -> Vec<String> {

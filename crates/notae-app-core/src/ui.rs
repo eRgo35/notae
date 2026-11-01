@@ -999,8 +999,15 @@ impl UiModel {
     }
 
     /// Closes the preview when its score left the library (or its set), so it cannot reopen if
-    /// the same id later returns.
+    /// the same id later returns. Rows filtered by a search hold only its hits, so they are not
+    /// checked until Search closes and the whole library's rows return.
     fn forget_missing_selection(&mut self) {
+        let state = self.controller.state();
+        if matches!(state.screen(), crate::state::Screen::Search)
+            || !state.search().query.is_empty()
+        {
+            return;
+        }
         if self.selected.is_some() && self.selected_row().is_none() {
             self.selected = None;
             self.remember_selection();
