@@ -1,5 +1,6 @@
 package com.c2yz.notae.nav
 
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -236,6 +237,34 @@ class ListDetailSceneTest {
         compose.waitForIdle()
         compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
         assertEquals(listOf<Action>(next, next), actions)
+    }
+
+    @Test
+    fun escape_closes_the_sheet_beside_the_details_not_the_details() {
+        show(selecting(ave))
+        enterTouchMode()
+
+        compose.onNodeWithContentDescription("More actions for Ave Maria").performClick()
+        compose.onNodeWithText("Edit details").assertIsDisplayed()
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        compose.waitForIdle()
+
+        compose.onNodeWithText("Edit details").assertDoesNotExist()
+        assertEquals(emptyList<Action>(), actions)
+    }
+
+    /**
+     * A tablet is in touch mode, where the sheet's actions cannot take the focus. Robolectric never enters it from a
+     * click, so this sets it on the window's ViewRootImpl as a touch on a device does.
+     */
+    private fun enterTouchMode() {
+        compose.runOnIdle {
+            val root = View::class.java.getMethod("getViewRootImpl").invoke(compose.activity.window.decorView)
+            val ensure = root.javaClass.getDeclaredMethod("ensureTouchModeLocally", Boolean::class.javaPrimitiveType)
+            ensure.isAccessible = true
+            ensure.invoke(root, true)
+            assertTrue(compose.activity.window.decorView.isInTouchMode)
+        }
     }
 
     private fun detailsScroll(): Float =

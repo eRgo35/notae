@@ -126,7 +126,9 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     // Also when reorder mode starts or ends (the Reorder or Done button that held focus is gone), and when the last piece
     // is removed in reorder mode (the list holding the focus is gone).
     val reorderEmpty = reordering && entries.isEmpty()
-    LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey, reordering, reorderEmpty) { if (!sheetOpen && !overlay) keys.requestFocus() }
+    // Also when a ⋮ sheet opens: in touch mode its actions cannot take focus, which would otherwise stay on the details
+    // beside the library, so Escape would close the details instead of the sheet.
+    LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey, reordering, reorderEmpty) { if (!overlay) keys.requestFocus() }
     // Only when the details close (beside the library, which stays put); never when they open, since the outgoing
     // library stays composed during the portrait transition and would compete with the details for focus.
     LaunchedEffect(selection == null) { if (selection == null && !sheetOpen && !overlay) keys.requestFocus() }
