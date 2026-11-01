@@ -26,7 +26,7 @@ data class TokenColors(
 )
 
 /**
- * The Slint `Theme` and `Motion` tokens (apps/notae-android/ui/components.slint); `tokens_match_slint_theme` checks them.
+ * 0.3.0's `Theme` and `Motion` tokens; `TokensTest` keeps them.
  * [TokenColors.note] and [TokenColors.onNote] are Compose's own (text notes were never built in Slint).
  */
 object Tokens {
