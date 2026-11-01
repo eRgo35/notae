@@ -2,6 +2,7 @@ package com.c2yz.notae.ui.library
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,12 +24,21 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -76,7 +86,21 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         isBackEnabled = menuRow != null,
         onBackCompleted = { menuFor = null },
     )
-    BoxWithConstraints(modifier.fillMaxSize().background(c.background)) {
+    // Ctrl K opens search as soon as the library shows, as Slint focuses its shortcuts (app.slint), and again once the
+    // sheet closes; while the sheet is open, Slint ignores it.
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(menuRow == null) { if (menuRow == null) keys.requestFocus() }
+    BoxWithConstraints(
+        modifier
+            .fillMaxSize()
+            .background(c.background)
+            .onPreviewKeyEvent { event ->
+                val ctrlK = event.type == KeyEventType.KeyDown && event.isCtrlPressed && event.key == Key.K
+                (ctrlK && menuRow == null).also { if (it) onAction(Action.OpenSearch) }
+            }
+            .focusRequester(keys)
+            .focusable(),
+    ) {
         val expanded = maxWidth >= 840.dp
         val portrait = maxHeight > maxWidth
         val layout = snapshot.layout

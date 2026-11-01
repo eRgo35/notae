@@ -120,7 +120,7 @@ private fun GridScrollbar(state: LazyGridState, modifier: Modifier) {
 }
 
 @Composable
-private fun ListScrollbar(state: LazyListState, modifier: Modifier) {
+internal fun ListScrollbar(state: LazyListState, modifier: Modifier) {
     val window by remember(state) {
         derivedStateOf { Triple(state.firstVisibleItemIndex, state.layoutInfo.visibleItemsInfo.size, state.layoutInfo.totalItemsCount) }
     }

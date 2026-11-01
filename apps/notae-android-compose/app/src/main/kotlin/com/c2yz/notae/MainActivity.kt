@@ -19,11 +19,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        EffectHandler(this, model)
+        val effects = EffectHandler(this, model)
         setContent {
             val snapshot by model.snapshot.collectAsState()
             NotaeTheme {
-                NotaeNavDisplay(snapshot, onAction = model::dispatch, onBack = ::back)
+                NotaeNavDisplay(snapshot, onAction = model::dispatch, onBack = ::back, voiceAvailable = effects.voiceAvailable)
             }
         }
     }

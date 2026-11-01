@@ -25,6 +25,7 @@ import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.ui.details.DetailsScreen
 import com.c2yz.notae.ui.details.MetadataEditor
 import com.c2yz.notae.ui.library.LibraryScreen
+import com.c2yz.notae.ui.search.SearchScreen
 import com.c2yz.notae.ui.setup.WelcomeScreen
 import com.c2yz.notae.ui.theme.NotaeTheme
 
@@ -34,14 +35,20 @@ import com.c2yz.notae.ui.theme.NotaeTheme
  * nothing left to close. Navigation 3 animates the change when the next snapshot arrives.
  */
 @Composable
-fun NotaeNavDisplay(snapshot: Snapshot, onAction: (Action) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun NotaeNavDisplay(
+    snapshot: Snapshot,
+    onAction: (Action) -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+    voiceAvailable: Boolean = false,
+) {
     val backStack = backStackFor(snapshot)
     Box(modifier.shellFrame()) {
         NavDisplay(
             backStack = backStack,
             modifier = Modifier.fillMaxSize(),
             onBack = onBack,
-            entryProvider = { key -> entryFor(key, snapshot, onAction) },
+            entryProvider = { key -> entryFor(key, snapshot, onAction, voiceAvailable) },
         )
         // A snapshot field, not a navigation entry: drawn over whichever screen opened it, and gone when it closes.
         snapshot.metadataEditor?.let { MetadataEditor(it, onAction) }
@@ -71,7 +78,7 @@ private fun overlayOpen(snapshot: Snapshot): Boolean =
     snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.metadataEditor != null ||
         snapshot.addToSet != null || snapshot.addPicker != null
 
-private fun entryFor(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit): NavEntry<NavKey> = when (key) {
+private fun entryFor(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable: Boolean): NavEntry<NavKey> = when (key) {
     Route.Loading -> placeholder(key, R.string.screen_loading)
     Route.Setup -> setupEntry(key, snapshot, onAction)
     is Route.Library -> NavEntry(key) { LibraryScreen(snapshot, onAction) }
@@ -79,7 +86,7 @@ private fun entryFor(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit
     // Full width, as Slint's details replace the whole library chrome (docs/compose-parity/README.md). One content
     // key for every score: previous and next swap the content in place, keeping the scroll and without a transition.
     is Route.Details -> NavEntry(key, contentKey = DETAILS_CONTENT_KEY) { DetailsScreen(snapshot, onAction) }
-    Route.Search -> placeholder(key, R.string.screen_search)
+    Route.Search -> NavEntry(key) { SearchScreen(snapshot, onAction, voiceAvailable) }
     Route.Settings -> placeholder(key, R.string.screen_settings)
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)

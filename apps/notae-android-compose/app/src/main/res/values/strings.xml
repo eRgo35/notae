@@ -141,4 +141,17 @@
     <string name="metadata_tags_hint">Tags, separated by commas</string>
     <string name="metadata_cancel">Cancel</string>
     <string name="metadata_save">Save details</string>
+
+    <string name="search_placeholder">Search titles, composers, tags or lyrics</string>
+    <string name="search_voice">Search by voice</string>
+    <string name="search_clear">Clear search</string>
+    <string name="search_scope_all">All</string>
+    <string name="search_scope_titles">Titles</string>
+    <string name="search_scope_composers">Composers</string>
+    <string name="search_scope_lyrics">Lyrics</string>
+    <string name="search_scope_tags">Tags</string>
+    <string name="search_empty_title">Search your library</string>
+    <string name="search_empty_detail">Find scores by title, composer, tag or lyrics.</string>
+    <string name="search_no_results_title">No scores found</string>
+    <string name="search_no_results_detail">Try another word, or switch the scope above.</string>
 </resources>

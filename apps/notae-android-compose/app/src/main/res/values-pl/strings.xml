@@ -144,4 +144,17 @@
     <string name="metadata_tags_hint">Tagi, oddzielone przecinkami</string>
     <string name="metadata_cancel">Anuluj</string>
     <string name="metadata_save">Zapisz szczegóły</string>
+
+    <string name="search_placeholder">Szukaj w tytułach, kompozytorach, tagach i tekstach</string>
+    <string name="search_voice">Szukaj głosowo</string>
+    <string name="search_clear">Wyczyść wyszukiwanie</string>
+    <string name="search_scope_all">Wszystko</string>
+    <string name="search_scope_titles">Tytuły</string>
+    <string name="search_scope_composers">Kompozytorzy</string>
+    <string name="search_scope_lyrics">Tekst</string>
+    <string name="search_scope_tags">Tagi</string>
+    <string name="search_empty_title">Przeszukaj bibliotekę</string>
+    <string name="search_empty_detail">Szukaj utworów po tytule, kompozytorze, tagu lub tekście.</string>
+    <string name="search_no_results_title">Nie znaleziono utworów</string>
+    <string name="search_no_results_detail">Spróbuj innego słowa lub zmień zakres powyżej.</string>
 </resources>

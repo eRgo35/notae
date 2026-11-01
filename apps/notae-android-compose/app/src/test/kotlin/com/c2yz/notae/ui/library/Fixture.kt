@@ -22,8 +22,8 @@ import java.nio.file.Files
 /**
  * The parity fixture library (docs/compose-parity/README.md, "Fixture library"): 20 scores sorted by
  * title, Ave Maria by Schubert, Bach and Palestrina on two of rows 13 to 20, three favorites, two
- * recent scores and three sets. Rows 13 to 20 other than Magnificat, Sanctus and Te Deum laudamus
- * are never visible in the Slint captures, so their titles are free.
+ * recent scores and three sets. Panis angelicus, Salve Regina, Ubi caritas and Zdrowaś Maryjo show
+ * only in search-results-portrait; Pange lingua is free, as no Slint capture shows the 20th title.
  */
 object Fixture {
     private const val LONG_TITLE =
@@ -32,10 +32,10 @@ object Fixture {
     private val titles = listOf(
         "Agnus Dei", "Alleluja", "Ave Maria", "Ave verum corpus", LONG_TITLE, "Barka", "Bogurodzica",
         "Ciebie Boga wysławiamy", "Gloria in excelsis", "Jezu ufam Tobie", "Kyrie eleison", "Lacrimosa dies illa",
-        "Magnificat", "Pange lingua", "Panis angelicus", "Regina caeli", "Salve Regina", "Sanctus", "Sicut cervus",
-        "Te Deum laudamus",
+        "Magnificat", "Pange lingua", "Panis angelicus", "Salve Regina", "Sanctus", "Te Deum laudamus", "Ubi caritas",
+        "Zdrowaś Maryjo",
     )
-    private val composers = mapOf("Ave Maria" to "Schubert", "Pange lingua" to "Bach", "Sicut cervus" to "Palestrina")
+    private val composers = mapOf("Ave Maria" to "Schubert", "Pange lingua" to "Bach", "Ubi caritas" to "Palestrina")
     private val favorites = listOf("Te Deum laudamus", "Magnificat", "Ave Maria")
 
     val rows: List<Row> = titles.mapIndexed { index, title ->

@@ -4,6 +4,9 @@ import android.net.Uri
 import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -33,6 +36,10 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
         },
     )
     private val voiceSearch = VoiceSearch(activity) { phrase -> model.dispatch(Action.SearchChanged(phrase)) }
+
+    /** Whether Search shows the microphone: a recognizer is installed, until one fails to start (as Slint hides it). */
+    var voiceAvailable by mutableStateOf(voiceSearch.isAvailable())
+        private set
     private val pdfOpener = PdfOpener(activity)
     private val exportFile = activity.registerForActivityResult(
         ActivityResultContracts.CreateDocument(JSON),
@@ -53,7 +60,10 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
         when (effect) {
             is Effect.PickLibraryRoot -> folderPicker.launch(effect.initialUri)
             is Effect.OpenPdf -> openPdf(effect.uri, effect.relativePath)
-            Effect.StartVoiceSearch -> if (!voiceSearch.start()) Log.w(TAG, "no speech recognizer could start")
+            Effect.StartVoiceSearch -> if (!voiceSearch.start()) {
+                Log.w(TAG, "no speech recognizer could start")
+                voiceAvailable = false
+            }
             is Effect.WriteExport -> {
                 model.pendingExport = effect.json
                 exportFile.launch(effect.suggestedName)
