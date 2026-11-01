@@ -19,6 +19,9 @@ rebuilt in Jetpack Compose over the Rust core.
   favorites and sets, use **Export sets** in the old app's Settings, then
   **Import from a previous Notae** on 0.5.0's first screen (or **Import sets**
   in Settings later). Pick the score folder again; the PDFs are rescanned.
+  Only favorites and sets move across: edited details (number, title,
+  composer, tags) and the Recent list are not carried over, so keep the old
+  app installed until you have checked the new one.
 - The UI is Jetpack Compose (Android 8.0, API 26, or newer; tablets only), and
   the Rust core is a library the app calls through UniFFI. The app is built
   with Gradle and cargo-ndk, with 16 KB-aligned native code.

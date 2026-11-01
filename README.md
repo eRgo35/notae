@@ -168,6 +168,9 @@ and title for free; other names work and simply have no number.
 folder in the Android picker, allow access, then start a scan from the Library.
 Notae indexes the PDFs. Coming from 0.3.0 or 0.4.0? Tap **Import from a
 previous Notae** first and pick the file the old app's **Export sets** wrote.
+The import carries your favorites and sets only: details you edited (number,
+title, composer, tags) and the Recent list stay in the old app. Keep the old
+app installed until you have checked that 0.5.0 has what you need.
 
 ## Using Notae
 
