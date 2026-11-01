@@ -152,7 +152,7 @@ private fun ReorderRow(
     val itemId = entry.itemId() ?: return
     val (title, position) = when (entry) {
         is SetEntry.Piece -> entry.row.title to entry.row.position
-        is SetEntry.Note -> entry.text to entry.position
+        is SetEntry.Note -> noteName(entry.text) to entry.position
     }
     val up = remember { FocusRequester() }
     val down = remember { FocusRequester() }

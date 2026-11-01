@@ -44,6 +44,14 @@ import com.c2yz.notae.ui.components.SheetAction
 import com.c2yz.notae.ui.components.TextField
 import com.c2yz.notae.ui.theme.NotaeTheme
 
+/** A note's name in its controls' labels ("More actions for …", "Move … up"): its first line, at most 60 characters. */
+internal fun noteName(text: String): String {
+    val line = text.lineSequence().first()
+    return if (line.length > NAME_MAX || line.length < text.length) line.take(NAME_MAX).trimEnd() + "…" else line
+}
+
+private const val NAME_MAX = 60
+
 /** What TalkBack reads for a note: "3. Note: text", numbered as a score is. */
 @Composable
 internal fun noteLabel(note: SetEntry.Note): String = "${note.position}. " + stringResource(R.string.note_label, note.text)
@@ -57,13 +65,15 @@ internal fun NoteCard(note: SetEntry.Note, onMore: () -> Unit, modifier: Modifie
     val c = NotaeTheme.colors
     val label = noteLabel(note)
     Box(modifier.fillMaxWidth()) {
+        // Inset as a score card's page is, so the tint lines up with the pages beside it.
         Column(
             Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(20.dp))
+                .padding(6.dp)
+                .clip(RoundedCornerShape(14.dp))
                 .background(c.note)
                 .clearAndSetSemantics { contentDescription = label }
-                .padding(start = 14.dp, top = 14.dp, end = 14.dp, bottom = 52.dp),
+                .padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 46.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -72,7 +82,7 @@ internal fun NoteCard(note: SetEntry.Note, onMore: () -> Unit, modifier: Modifie
             }
             Text(note.text, color = c.onNote, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, overflow = TextOverflow.Ellipsis)
         }
-        MoreActions(note.text, onMore, Modifier.align(Alignment.BottomEnd).padding(2.dp))
+        MoreActions(noteName(note.text), onMore, Modifier.align(Alignment.BottomEnd).padding(2.dp))
     }
 }
 
@@ -100,7 +110,7 @@ internal fun NoteRow(note: SetEntry.Note, onMore: () -> Unit, modifier: Modifier
             NoteTile(44.dp, 58.dp)
             NoteText(note.text, Modifier.weight(1f))
         }
-        MoreActions(note.text, onMore)
+        MoreActions(noteName(note.text), onMore)
     }
 }
 

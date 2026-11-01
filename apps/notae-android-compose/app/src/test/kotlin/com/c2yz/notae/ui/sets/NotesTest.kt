@@ -45,6 +45,7 @@ import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
 import com.c2yz.notae.ui.details.DetailsScreen
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.LibraryScreen
+import com.c2yz.notae.ui.library.noteName
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.c2yz.notae.ui.theme.Tokens
 import org.junit.Assert.assertEquals
@@ -224,12 +225,20 @@ class NotesTest {
     }
 
     @Test
+    fun note_controls_are_named_by_the_first_line_capped_at_60() {
+        assertEquals("Homilia", noteName("Homilia"))
+        assertEquals("Psalm 23…", noteName("Psalm 23\nverses 1-6"))
+        assertEquals(Fixture.PSALM_NAME, noteName(Fixture.PSALM))
+        assertEquals("a".repeat(60), noteName("a".repeat(60)))
+    }
+
+    @Test
     fun note_menu_edits_and_removes() {
         // The list, where every note's ⋮ is on screen.
         val noted = Fixture.palmWithNotes().let { it.copy(layout = it.layout.copy(libraryView = LibraryView.LIST)) }
         show(noted)
 
-        compose.onNodeWithContentDescription("More actions for ${Fixture.PSALM}").performClick()
+        compose.onNodeWithContentDescription("More actions for ${Fixture.PSALM_NAME}").performClick()
         compose.assertAllClickablesLabelled()
         compose.onNodeWithText("Edit note").performClick()
         // The editor holds the note's text and keeps what is typed when a snapshot arrives mid-edit.

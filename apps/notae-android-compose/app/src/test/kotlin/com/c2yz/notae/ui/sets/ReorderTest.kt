@@ -261,10 +261,10 @@ class ReorderTest {
         show(Fixture.palmWithNotes().copy(reordering = true))
 
         // The psalm is item 3, between Kyrie and Magnificat.
-        compose.onNodeWithContentDescription("Drag to reorder ${Fixture.PSALM}").assertExists()
-        compose.onNodeWithContentDescription("Move ${Fixture.PSALM} up").performClick()
-        compose.onNodeWithContentDescription("Move ${Fixture.PSALM} down").performClick()
-        compose.onNodeWithContentDescription("Remove ${Fixture.PSALM} from set").performClick()
+        compose.onNodeWithContentDescription("Drag to reorder ${Fixture.PSALM_NAME}").assertExists()
+        compose.onNodeWithContentDescription("Move ${Fixture.PSALM_NAME} up").performClick()
+        compose.onNodeWithContentDescription("Move ${Fixture.PSALM_NAME} down").performClick()
+        compose.onNodeWithContentDescription("Remove ${Fixture.PSALM_NAME} from set").performClick()
         // Ave Maria dragged two rows down lands in the psalm's place, index 2 among all items.
         val row = with(density) { 80.dp.toPx() }
         compose.onAllNodesWithContentDescription("Drag to reorder Ave Maria")[0].performTouchInput {

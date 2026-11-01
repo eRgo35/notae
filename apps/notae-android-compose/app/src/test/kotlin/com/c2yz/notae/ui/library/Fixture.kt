@@ -140,6 +140,8 @@ object Fixture {
     )
 
     const val PSALM = "Psalm responsoryjny: Wszystkie krańce ziemi ujrzały zbawienie Boga naszego"
+    /** The psalm as its controls name it: the first 60 characters and an ellipsis. */
+    const val PSALM_NAME = "Psalm responsoryjny: Wszystkie krańce ziemi ujrzały zbawieni…"
     const val HOMILY = "Homilia"
 
     /** Niedziela Palmowa with two text notes: the psalm after Kyrie and the homily after the second Ave Maria. */

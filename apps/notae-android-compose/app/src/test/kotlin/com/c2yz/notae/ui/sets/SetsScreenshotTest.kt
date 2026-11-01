@@ -199,7 +199,7 @@ class SetsScreenshotTest {
         Unit
     }
     private val editNote = {
-        compose.onNodeWithContentDescription("More actions for ${Fixture.PSALM}").performClick()
+        compose.onNodeWithContentDescription("More actions for ${Fixture.PSALM_NAME}").performClick()
         compose.onNodeWithText("Edit note").performClick()
         Unit
     }
