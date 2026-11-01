@@ -193,6 +193,26 @@ impl NotaeCore {
         }
     }
 
+    /// The folder picker could not run, or its folder could not be kept. While no library is
+    /// open the setup screen shows `detail` as a storage error; an open library stays open.
+    pub fn library_root_pick_failed(&self, detail: String) {
+        let snapshot = {
+            let mut state = self.shared.lock();
+            if matches!(
+                state.model.storage_kind(),
+                StorageStateKindView::Ready { .. }
+            ) {
+                eprintln!("notae: folder picker failed: {detail}");
+                return;
+            }
+            state
+                .model
+                .set_storage(StorageState::Error(StorageError::Other(detail)));
+            state.next_snapshot()
+        };
+        self.shared.listener.on_snapshot(snapshot);
+    }
+
     /// The export from [`Effect::WriteExport`] was saved (`None`), or failed with the
     /// platform's message. A cancelled save-file picker reports nothing.
     pub fn file_written(&self, error: Option<String>) {

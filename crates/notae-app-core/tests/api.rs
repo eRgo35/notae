@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 
 use fake_platform::{FakePlatform, entry, readable};
 use notae_app_core::api::{
-    Action, CoreListener, Effect, ExportStatus, NotaeCore, Screen, SetEntry, SetupScreen, Snapshot,
-    StatusMessage,
+    Action, CoreListener, Effect, ExportStatus, NotaeCore, Screen, SetEntry, SetupError,
+    SetupScreen, Snapshot, StatusMessage,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
 use notae_app_core::text::Failure;
@@ -661,4 +661,55 @@ fn a_new_core_restores_the_open_set_and_selection() {
             .map(|selection| selection.row.selection_id),
         Some(piece)
     );
+}
+
+#[test]
+fn failed_folder_picker_shows_a_setup_error_and_import_is_offered() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), Arc::new(FakePlatform::default()));
+    assert!(harness.core.snapshot().import_available);
+
+    harness
+        .core
+        .library_root_pick_failed("no folder picker app".to_owned());
+
+    let failed = harness.core.snapshot();
+    assert_eq!(
+        failed.screen,
+        Screen::Setup {
+            setup: SetupScreen::Error {
+                error: SetupError::Other {
+                    detail: "no folder picker app".to_owned()
+                }
+            }
+        }
+    );
+    assert!(failed.revision > 0);
+}
+
+#[test]
+fn failed_folder_picker_leaves_an_open_library_alone() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    open_and_scan(&harness);
+
+    harness
+        .core
+        .library_root_pick_failed("Change failed".to_owned());
+
+    assert_eq!(harness.core.snapshot().screen, Screen::Library);
+}
+
+#[test]
+fn import_is_offered_only_without_favorites_and_sets() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    assert!(library.import_available);
+
+    harness.core.dispatch(Action::ToggleFavorite {
+        note_key: library.rows[0].note_key.clone(),
+    });
+
+    assert!(!harness.core.snapshot().import_available);
 }

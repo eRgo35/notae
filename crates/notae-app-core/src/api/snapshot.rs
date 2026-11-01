@@ -70,6 +70,9 @@ pub struct Snapshot {
     pub add_picker: Option<AddPicker>,
     /// Why the last PDF could not be opened; cleared by the next successful open.
     pub pdf_open_error: Option<PdfOpenError>,
+    /// Neither favorites nor sets exist yet, so the setup screen may offer "Import from a
+    /// previous Notae".
+    pub import_available: bool,
 }
 
 /// The screen on display. The details screen is [`Snapshot::selection`] over the library.
@@ -830,6 +833,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
             added: count(model.add_picker_added_count()),
         }),
         pdf_open_error: model.pdf_launch_error().map(Into::into),
+        import_available: model.favorites().is_empty() && model.sets().sets().is_empty(),
     }
 }
 
