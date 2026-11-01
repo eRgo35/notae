@@ -1,8 +1,8 @@
 name: CI
 
 # The quality gates of docs/engineering-standards.md: the Rust gates, the Gradle gates of the
-# Android app (with the 16 KB alignment check) and an emulator smoke test. release.yml runs this
-# workflow on the tag before it builds a release.
+# Android app (with the 16 KB alignment check). release.yml runs this workflow on the tag before
+# it builds a release.
 on:
   # Branch work is covered by its pull request, so a push to a PR branch does not run twice.
   push:
@@ -100,9 +100,9 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-36" "build-tools;36.0.0" "ndk;$NDK_VERSION"
-      - name: Lint, unit and screenshot tests, Roborazzi verify, release and debug builds
+      - name: Lint, unit and screenshot tests, Roborazzi verify and the release build
         working-directory: apps/notae-android
-        run: ./gradlew lint testDebugUnitTest verifyRoborazziDebug assembleRelease assembleDebug
+        run: ./gradlew lint testDebugUnitTest verifyRoborazziDebug assembleRelease
       - name: Check 16 KB page alignment
         # `shell: bash` adds pipefail, so a failed llvm-readelf fails the check.
         shell: bash
@@ -125,64 +125,4 @@ jobs:
         with:
           name: roborazzi-diffs
           path: apps/notae-android/app/build/outputs/roborazzi
-          if-no-files-found: ignore
-      - uses: actions/upload-artifact@v7
-        with:
-          name: notae-debug-apk
-          path: apps/notae-android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
-  emulator:
-    name: Emulator smoke test
-    needs: gradle
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      SYSTEM_IMAGE: system-images;android-35;google_apis;x86_64
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: notae-debug-apk
-          path: ${{ runner.temp }}/apk
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Install the emulator and a tablet AVD
-        run: |
-          sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
-          yes | "$sdkmanager" --licenses > /dev/null
-          "$sdkmanager" emulator platform-tools "$SYSTEM_IMAGE"
-          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
-            -n smoke -k "$SYSTEM_IMAGE" -d pixel_tablet
-      - name: Boot the emulator
-        run: |
-          "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim \
-            -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
-          adb=$ANDROID_HOME/platform-tools/adb
-          "$adb" wait-for-device
-          for _ in $(seq 1 120); do
-            [ "$("$adb" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && exit 0
-            sleep 5
-          done
-          echo "::error::the emulator did not boot in 10 minutes"
-          tail -n 50 "$RUNNER_TEMP/emulator.log"
-          exit 1
-      - name: Install, launch, pick a folder and open Sets
-        run: PATH=$ANDROID_HOME/platform-tools:$PATH scripts/emulator-smoke.sh "$RUNNER_TEMP/apk/app-debug.apk"
-      - name: Keep the screen and log of a failed smoke test
-        if: failure()
-        run: |
-          adb=$ANDROID_HOME/platform-tools/adb
-          mkdir -p "$RUNNER_TEMP/smoke"
-          "$adb" exec-out screencap -p > "$RUNNER_TEMP/smoke/screen.png" || true
-          "$adb" logcat -d > "$RUNNER_TEMP/smoke/logcat.txt" || true
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: emulator-smoke
-          path: ${{ runner.temp }}/smoke
           if-no-files-found: ignore

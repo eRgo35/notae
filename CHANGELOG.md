@@ -29,8 +29,8 @@ rebuilt in Jetpack Compose over the Rust core. See
   the Rust core is a library the app calls through UniFFI. The app is built
   with Gradle and cargo-ndk, with 16 KB-aligned native code.
 - GitHub CI runs every Rust gate, the Gradle gates (lint, unit and screenshot
-  tests, Roborazzi verify, the release build and a 16 KB alignment check) and
-  an emulator smoke test. `scripts/check.sh full` runs the Gradle gates too.
+  tests, Roborazzi verify, the release build and a 16 KB alignment check).
+  `scripts/check.sh full` runs the Gradle gates too.
 - Releases are built, signed and verified by `.github/workflows/release.yml`
   from a pushed `vX.Y.Z` tag, which attaches the APK to the GitHub Release.
 

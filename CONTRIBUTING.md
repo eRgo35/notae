@@ -81,8 +81,8 @@ scripts/check.sh full   # fast plus rustdoc, cargo deny, coverage
 
 Run `fast` while working and `full` before merging. `full` checks first that
 `cargo-deny`, `cargo-llvm-cov`, `cargo-ndk` and the Android SDK are installed.
-GitHub CI runs all of these gates, a 16 KB page-alignment check of the release
-APK and an emulator smoke test, and skips changes that touch only Markdown or
+GitHub CI runs all of these gates and a 16 KB page-alignment check of the
+release APK, and skips changes that touch only Markdown or
 `docs/`.
 
 The opt-in pre-push hook runs `scripts/check.sh fast`. Enable it per clone with
@@ -160,7 +160,7 @@ by the official release APK (and vice versa); see
 - Keep commits small and focused; do not mix refactors with behaviour changes.
   No hook is mandatory, so run the gates yourself (or enable the opt-in hook).
 - Open a pull request against `main` and fill in the template. The CI jobs
-  (**Rust gates**, **Gradle gates**, **Emulator smoke test**) must pass; run
+  (**Rust gates**, **Gradle gates**) must pass; run
   `scripts/check.sh full` locally too and say so in the pull request. A newer push cancels the older run on
   the same branch.
 - Update documentation and [`CHANGELOG.md`](CHANGELOG.md) (under

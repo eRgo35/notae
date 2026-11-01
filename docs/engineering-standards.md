@@ -39,13 +39,13 @@ The Android app in `apps/notae-android` is a Gradle build (Kotlin, Jetpack Compo
 - `verifyRoborazziDebug`: compares the Roborazzi screenshots with the baselines in `apps/notae-android/app/src/test/screenshots`. After a deliberate visual change, record new baselines with `./gradlew recordRoborazziDebug` and review the images in the diff.
 - `assembleRelease`: the arm64 release build. Without the signing variables it writes an unsigned APK (see [`android-release.md`](android-release.md)).
 
-CI also checks that the release APK is 16 KB-aligned (`zipalign -c -P 16` and every `LOAD` segment of its native libraries) and runs an emulator smoke test, `scripts/emulator-smoke.sh`: install, launch, choose a fixture folder in the system picker, open Sets. Installing and reviewing the app on the Galaxy Tab S10 FE+ stays manual; follow [`android-debugging.md`](android-debugging.md).
+CI also checks that the release APK is 16 KB-aligned (`zipalign -c -P 16` and every `LOAD` segment of its native libraries). Installing and reviewing the app on the Galaxy Tab S10 FE+ stays manual; follow [`android-debugging.md`](android-debugging.md).
 
 ## GitHub workflows
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `ci.yml` | push to `main`, pull requests, manual, and called by `release.yml`; push and PR runs skip changes to only Markdown or `docs/` | Three jobs with `contents: read`. **Rust gates**: the first seven gates above. **Gradle gates**: the Gradle command above plus `assembleDebug`, then the 16 KB check; it uploads the debug APK, and the Roborazzi diffs when a gate fails. **Emulator smoke test**: boots an API 35 tablet AVD (KVM enabled through a udev rule) and runs `scripts/emulator-smoke.sh` on that APK. Superseded branch/PR runs are cancelled; `main` runs are not. The Rust job frees preinstalled runner directories and sets `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=0`; the Cargo registry and git sources are cached (keyed on `Cargo.lock`), `target/` is not. |
+| `ci.yml` | push to `main`, pull requests, manual, and called by `release.yml`; push and PR runs skip changes to only Markdown or `docs/` | Two jobs with `contents: read`. **Rust gates**: the first seven gates above. **Gradle gates**: the Gradle command above, then the 16 KB check; it uploads the Roborazzi diffs when a gate fails. Superseded branch/PR runs are cancelled; `main` runs are not. The Rust job frees preinstalled runner directories and sets `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=0`; the Cargo registry and git sources are cached (keyed on `Cargo.lock`), `target/` is not. |
 | `release.yml` | push of a `v*` tag | Checks the tag (`vX.Y.Z`, equal to the workspace version, on `main`, with release notes) and the signing secrets, runs `ci.yml` on the tag, builds the signed APK and AAB, verifies them against the pinned certificate and publishes the GitHub Release with the APK. See [`android-release.md`](android-release.md). |
 | `audit.yml` | weekly, manual | `cargo deny check advisories` so new RustSec entries surface without code changes; never blocks a release. |
 | `dependabot.yml` | weekly | Grouped Cargo and GitHub Actions update PRs, merged by hand. |
@@ -59,7 +59,7 @@ The workflows use only first-party `actions/*`, pinned by major version. Workflo
 | BASE-001 | pass | important | `AGENTS.md` is canonical and points to these commands. |
 | BASE-002 | pass | blocking | `rust-toolchain.toml` pins Rust 1.98.1, rustfmt, and clippy. |
 | BASE-003 | pass | blocking | Root `Cargo.lock` is present. |
-| BASE-004 | pass | blocking | `scripts/check.sh` runs the documented gates, including the Gradle gates, without hidden flags; CI runs all of them plus the 16 KB check and the emulator smoke test. |
+| BASE-004 | pass | blocking | `scripts/check.sh` runs the documented gates, including the Gradle gates, without hidden flags; CI runs all of them plus the 16 KB check. |
 | BASE-005 | pass | advisory | `cargo fmt --check` runs in `scripts/check.sh` and in CI. |
 | BASE-006 | pass | important | Clippy warnings are denied across all targets. |
 | BASE-007 | pass | important | Workspace and production-only Clippy passes provide static analysis. |
@@ -67,7 +67,7 @@ The workflows use only first-party `actions/*`, pinned by major version. Workflo
 | BASE-009 | pass | important | `cargo llvm-cov` enforces a measured 84% line-coverage floor. |
 | BASE-010 | pass | important | `cargo deny check` audits advisories, licenses, duplicate versions, and sources. |
 | BASE-011 | pass | advisory | `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps` passes. |
-| BASE-012 | pass | blocking | `scripts/check.sh full` and CI build the arm64 release APK; CI also runs an emulator smoke test. Device UI review remains manual. |
+| BASE-012 | pass | blocking | `scripts/check.sh full` and CI build the arm64 release APK. Emulator and device UI review remain manual. |
 | BASE-013 | pass | important | Rescan cancellation and worker cleanup are covered by tests; worker startup errors are returned rather than panicking. |
 | BASE-014 | pass | advisory | Remaining deviations below include their reason, owner, and review condition. |
 | RUST-001 | pass | blocking | Exact toolchain and formatter/linter components are pinned. |

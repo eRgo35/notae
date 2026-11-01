@@ -84,8 +84,6 @@ adb -s emulator-5554 install -r apps/notae-android/app/build/outputs/apk/debug/a
 adb -s emulator-5554 shell am start -n com.c2yz.notae/.MainActivity
 ```
 
-`ANDROID_SERIAL=emulator-5554 scripts/emulator-smoke.sh apps/notae-android/app/build/outputs/apk/debug/app-debug.apk` runs CI's smoke test on the scratch AVD: it reinstalls the app with no data, chooses the folder `/sdcard/0 Notae smoke` (one generated PDF) in the system picker and opens Sets. Remove that folder afterwards if you want the AVD's storage as it was.
-
 ## UI verification
 
 - Every screen has Roborazzi screenshots, light and dark, compared with the baselines in `apps/notae-android/app/src/test/screenshots` by `./gradlew verifyRoborazziDebug`; a failed verify writes the differences under `app/build/outputs/roborazzi`. The Robolectric tests also check that every clickable element has an accessible name.
