@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -193,26 +194,29 @@ private fun fieldError(error: SetFieldError): String = when (error) {
     SetFieldError.INVALID_DATE -> stringResource(R.string.set_error_date)
 }
 
-/** Slint `DeleteSetDialog`: "Delete “name”?", what deleting keeps, then Cancel (focused) and Delete. */
+/**
+ * Slint `DeleteSetDialog`: "Delete “name”?", what deleting keeps, then Cancel and Delete. The dialog takes the focus
+ * itself, as buttons cannot hold it in touch mode, so Escape cancels at once; Tab reaches Cancel.
+ */
 @Composable
 private fun DeleteSetDialog(confirmation: DeleteSetConfirmation, onAction: (Action) -> Unit) {
     val c = NotaeTheme.colors
-    val cancelButton = remember { FocusRequester() }
-    LaunchedEffect(Unit) { cancelButton.requestFocus() }
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(Unit) { keys.requestFocus() }
     val cancel = { onAction(Action.CancelDeleteSet) }
     ModalSurface(
         stringResource(R.string.set_delete_dialog),
         onDismiss = null,
         bottomSheet = false,
         cardWidth = 480.dp,
-        modifier = Modifier.closeOnEscape(cancel),
+        modifier = Modifier.closeOnEscape(cancel).focusRequester(keys).focusable(),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(stringResource(R.string.set_delete_title, confirmation.name), color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
             Text(stringResource(R.string.set_delete_body), color = c.muted, fontSize = 14.sp)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-            PillButton(stringResource(R.string.set_cancel), cancel, Modifier.focusRequester(cancelButton))
+            PillButton(stringResource(R.string.set_cancel), cancel)
             PillButton(
                 stringResource(R.string.set_delete_confirm),
                 { onAction(Action.ConfirmDeleteSet) },

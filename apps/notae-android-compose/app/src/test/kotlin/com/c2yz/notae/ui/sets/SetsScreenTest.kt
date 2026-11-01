@@ -350,6 +350,26 @@ class SetsScreenTest {
     )
 
     @Test
+    fun escape_closes_the_delete_confirmation_without_a_click() {
+        show(Fixture.sets().copy(deleteSet = DeleteSetConfirmation("Pusty zestaw")))
+
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+
+        assertEquals(listOf<Action>(Action.CancelDeleteSet), actions)
+    }
+
+    @Test
+    fun escape_closes_the_set_menu_without_a_click_in_it() {
+        show(Fixture.sets())
+        compose.onNodeWithContentDescription("More actions for Pusty zestaw").performClick()
+        compose.onNodeWithText("Delete set").assertIsDisplayed()
+
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+
+        compose.onNodeWithText("Delete set").assertDoesNotExist()
+    }
+
+    @Test
     fun just_opened_chip_is_announced() {
         val palm = Fixture.justOpened()
         show(palm)
