@@ -14,6 +14,14 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.SemanticsProperties
+import com.c2yz.notae.nav.NotaeNavDisplay
 import androidx.compose.ui.unit.Density
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Origin
@@ -29,6 +37,7 @@ import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -162,6 +171,61 @@ class DetailsScreenTest {
         compose.onNodeWithText("—").assertIsDisplayed()
         compose.onNodeWithContentDescription("Score 3 of 20").assertExists()
     }
+
+    @Test
+    fun arrow_keys_step_without_a_click() {
+        show(inSet(1))
+
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
+
+        assertEquals(listOf<Action>(Action.SelectScore("item-a2"), Action.SelectScore("item-a1")), actions)
+    }
+
+    @Test
+    fun left_on_the_first_does_nothing() {
+        show(inSet(0))
+
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
+
+        assertEquals(emptyList<Action>(), actions)
+        // The screen does hold the keys: Right still steps.
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        assertEquals(listOf<Action>(Action.SelectScore("item-b")), actions)
+    }
+
+    @Test
+    fun escape_goes_back_without_a_click() {
+        show(inSet(1))
+
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+
+        assertEquals(listOf<Action>(Action.ClearSelection), actions)
+    }
+
+    @Test
+    @Config(qualifiers = "w700dp-h500dp-xhdpi")
+    fun a_step_keeps_the_screen_and_its_scroll() {
+        // A short, narrow window stacks the details, so the body scrolls.
+        var snapshot by mutableStateOf(inSet(0))
+        compose.setContent { NotaeTheme { NotaeNavDisplay(snapshot, onAction = {}, onBack = {}) } }
+        compose.onNodeWithTag(DETAILS_BODY_TAG).performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        val scrolled = scrollOffset()
+        assertTrue("the body scrolled", scrolled > 0f)
+
+        snapshot = inSet(1)
+        compose.waitForIdle()
+
+        compose.onNodeWithText("2 of 3").assertIsDisplayed()
+        // Kyrie has no composer line, so its body is shorter and the kept offset is clamped to the new end; a new
+        // entry would start at 0.
+        val range = compose.onNodeWithTag(DETAILS_BODY_TAG).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
+        assertEquals(minOf(scrolled, range.maxValue()), range.value(), 0.5f)
+    }
+
+    private fun scrollOffset(): Float =
+        compose.onNodeWithTag(DETAILS_BODY_TAG).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
     private fun aveMariaDetails(): Snapshot {
         val library = Fixture.library()

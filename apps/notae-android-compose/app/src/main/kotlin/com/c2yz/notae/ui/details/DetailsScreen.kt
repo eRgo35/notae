@@ -1,6 +1,7 @@
 package com.c2yz.notae.ui.details
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,14 +23,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -53,23 +59,32 @@ import com.c2yz.notae.ui.library.PagePreview
 import com.c2yz.notae.ui.library.pdfErrorText
 import com.c2yz.notae.ui.theme.NotaeTheme
 
+internal const val DETAILS_BODY_TAG = "details-body"
+
 /**
  * Slint `ScoreDetails` in the library's preview layer: it replaces the whole library chrome. The operation banner and
  * the PDF launch error stay above the card. The header has back, "X of Y", the star, previous and next. The body
  * scrolls and puts the page beside the headline and the info card when the card is at least 720 dp wide; under that,
  * it stacks them centred. Neighbours and the position are the core's ([Selection]): each is a selection id, so every
- * copy of a repeated piece in a set is its own step. Left and Right move to them, Escape goes back.
+ * copy of a repeated piece in a set is its own step. The screen takes focus, so Left and Right move to them and Escape
+ * goes back without a tap first.
  */
 @Composable
 fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
     val selection = snapshot.selection ?: return
     val c = NotaeTheme.colors
+    // Slint focuses its shortcut scope when the details open and when a dialog closes, so the keys work at once.
+    val keys = remember { FocusRequester() }
+    val editorOpen = snapshot.metadataEditor != null
+    LaunchedEffect(editorOpen) { if (!editorOpen) keys.requestFocus() }
     Column(
         modifier
             .fillMaxSize()
             .background(c.background)
             .padding(16.dp)
-            .onPreviewKeyEvent { event -> event.type == KeyEventType.KeyDown && keyAction(event.key, selection)?.also(onAction) != null },
+            .onPreviewKeyEvent { event -> event.type == KeyEventType.KeyDown && keyAction(event.key, selection)?.also(onAction) != null }
+            .focusRequester(keys)
+            .focusable(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         OperationBanner(snapshot.banner, onAction)
@@ -139,7 +154,7 @@ private fun ColumnScope.Body(row: ScoreRowData, onAction: (Action) -> Unit) {
         } else {
             maxOf(140.dp, minOf(300.dp, cardWidth - 64.dp))
         }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
+        Column(Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
             if (wide) {
                 Row(
                     Modifier.fillMaxWidth().height(IntrinsicSize.Min),

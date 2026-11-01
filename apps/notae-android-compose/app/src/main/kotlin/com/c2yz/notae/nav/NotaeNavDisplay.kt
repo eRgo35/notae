@@ -64,6 +64,8 @@ fun NotaeNavDisplay(snapshot: Snapshot, onAction: (Action) -> Unit, onBack: () -
 internal fun Modifier.shellFrame(): Modifier =
     background(NotaeTheme.colors.background).windowInsetsPadding(WindowInsets.safeDrawing)
 
+private const val DETAILS_CONTENT_KEY = "details"
+
 /** A dialog or sheet, which the core closes before any screen. */
 private fun overlayOpen(snapshot: Snapshot): Boolean =
     snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.metadataEditor != null ||
@@ -74,8 +76,9 @@ private fun entryFor(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit
     Route.Setup -> setupEntry(key, snapshot, onAction)
     is Route.Library -> NavEntry(key) { LibraryScreen(snapshot, onAction) }
     is Route.Set -> placeholder(key, R.string.screen_set)
-    // Full width, as Slint's details replace the whole library chrome (docs/compose-parity/README.md).
-    is Route.Details -> NavEntry(key) { DetailsScreen(snapshot, onAction) }
+    // Full width, as Slint's details replace the whole library chrome (docs/compose-parity/README.md). One content
+    // key for every score: previous and next swap the content in place, keeping the scroll and without a transition.
+    is Route.Details -> NavEntry(key, contentKey = DETAILS_CONTENT_KEY) { DetailsScreen(snapshot, onAction) }
     Route.Search -> placeholder(key, R.string.screen_search)
     Route.Settings -> placeholder(key, R.string.screen_settings)
     // backStackFor puts only routes on the stack.
