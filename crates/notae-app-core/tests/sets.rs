@@ -305,6 +305,29 @@ fn invalid_piece_keys_are_dropped_on_load() {
 }
 
 #[test]
+fn repeated_item_ids_keep_the_first_on_load() {
+    // The app keys its lists by item id, so a repeat would crash every launch.
+    let key = "a".repeat(64);
+    let json = format!(
+        r#"{{"schema_version":1,"sets":[{{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"note","text":"first"}},{{"id":"i2","kind":"piece","key":"{key}","path":"a.pdf"}},{{"id":"i1","kind":"piece","key":"{key}","path":"a.pdf"}}]}}]}}"#
+    );
+    let store = SetStore::from_json(&json);
+    assert_eq!(item_ids(&store, "s"), ["i1", "i2"]);
+    assert!(matches!(
+        &store.get("s").unwrap().items[0].kind,
+        ItemKind::Note { text } if text == "first"
+    ));
+}
+
+#[test]
+fn repeated_set_ids_keep_the_first_on_load() {
+    let json = r#"{"schema_version":1,"sets":[{"id":"s","name":"first","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[]},{"id":"s","name":"second","date":null,"notes":null,"modified":2,"last_opened_item":null,"items":[]}]}"#;
+    let store = SetStore::from_json(json);
+    assert_eq!(store.sets().len(), 1);
+    assert_eq!(store.get("s").unwrap().name, "first");
+}
+
+#[test]
 fn load_and_save_use_the_file_without_writing_on_load() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("sets.json");

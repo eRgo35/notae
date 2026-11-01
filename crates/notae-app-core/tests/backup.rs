@@ -36,6 +36,21 @@ fn favorites(pieces: &[PieceRef]) -> Favorites {
 }
 
 #[test]
+fn parse_keeps_the_first_of_repeated_item_ids() {
+    let key = key('a');
+    let text = format!(
+        r#"{{"schema_version":1,"app":"notae","favorites":[],"sets":[{{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"note","text":"first"}},{{"id":"i1","kind":"piece","key":"{key}","path":"a.pdf"}},{{"id":"i2","kind":"note","text":"second"}}]}}]}}"#
+    );
+    let backup = parse_export(&text).expect("parses");
+    let ids: Vec<&str> = backup.sets[0]
+        .items
+        .iter()
+        .map(|item| item.id.as_str())
+        .collect();
+    assert_eq!(ids, ["i1", "i2"]);
+}
+
+#[test]
 fn export_then_parse_round_trips() {
     let favorites = favorites(&[piece('a', "Psalmy/005.pdf"), piece('b', "b.pdf")]);
     let mut sets = SetStore::default();

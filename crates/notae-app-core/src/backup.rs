@@ -88,7 +88,8 @@ pub fn suggested_file_name(now: u64) -> String {
     format!("notae-sets-{year:04}-{month:02}-{day:02}.json")
 }
 
-/// Parses an export file. Invalid keys, repeated favorites and repeated set ids are dropped.
+/// Parses an export file. Invalid keys, repeated favorites, repeated set ids and repeated item
+/// ids within a set are dropped.
 ///
 /// # Errors
 ///
@@ -109,7 +110,7 @@ pub fn parse_export(text: &str) -> Result<Backup, BackupError> {
     let mut sets = file.sets;
     sets.retain(|set| ids.insert(set.id.clone()));
     for set in &mut sets {
-        set.drop_invalid_pieces();
+        set.drop_invalid_items();
     }
     Ok(Backup {
         favorites: Favorites::from_items(file.favorites),

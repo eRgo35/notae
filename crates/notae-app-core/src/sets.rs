@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::io;
@@ -61,11 +62,16 @@ pub struct Set {
 }
 
 impl Set {
-    /// Drops piece items whose content key is not valid.
-    pub(crate) fn drop_invalid_pieces(&mut self) {
-        self.items.retain(|item| match &item.kind {
-            ItemKind::Piece(piece) => is_content_key(&piece.key),
-            ItemKind::Note { .. } => true,
+    /// Drops piece items whose content key is not valid, and items whose id an earlier item
+    /// already has: the app keys its lists by item id, so a repeat would crash it.
+    pub(crate) fn drop_invalid_items(&mut self) {
+        let mut ids = HashSet::new();
+        self.items.retain(|item| {
+            let valid = match &item.kind {
+                ItemKind::Piece(piece) => is_content_key(&piece.key),
+                ItemKind::Note { .. } => true,
+            };
+            valid && ids.insert(item.id.clone())
         });
     }
 }
@@ -190,7 +196,7 @@ impl SetStore {
     }
 
     /// Parses the JSON file; corrupt text or an unknown schema version is an empty store.
-    /// Piece items with invalid keys are dropped.
+    /// Piece items with invalid keys, and later sets or items repeating an id, are dropped.
     #[must_use]
     pub fn from_json(text: &str) -> Self {
         let Ok(file) = serde_json::from_str::<SetsFile>(text) else {
@@ -199,9 +205,11 @@ impl SetStore {
         if file.schema_version != SCHEMA_VERSION {
             return Self::default();
         }
+        let mut ids = HashSet::new();
         let mut sets = file.sets;
+        sets.retain(|set| ids.insert(set.id.clone()));
         for set in &mut sets {
-            set.drop_invalid_pieces();
+            set.drop_invalid_items();
         }
         Self { sets }
     }
