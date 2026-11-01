@@ -348,20 +348,21 @@ class SetsScreenTest {
         SetChoice("friday", Fixture.FRIDAY_NAME, "2026-04-03", 0u, false),
     )
 
-    /** Polls the core, whose scan runs on its own threads. */
-    private fun NotaeCore.await(done: (Snapshot) -> Boolean): Snapshot {
-        val deadline = System.nanoTime() + 30_000_000_000L
-        while (true) {
-            val latest = snapshot()
-            if (done(latest)) return latest
-            check(System.nanoTime() < deadline) { "timed out; last snapshot: $latest" }
-            Thread.sleep(20)
-        }
+}
+
+/** Polls the core, whose scan runs on its own threads. */
+internal fun NotaeCore.await(done: (Snapshot) -> Boolean): Snapshot {
+    val deadline = System.nanoTime() + 30_000_000_000L
+    while (true) {
+        val latest = snapshot()
+        if (done(latest)) return latest
+        check(System.nanoTime() < deadline) { "timed out; last snapshot: $latest" }
+        Thread.sleep(20)
     }
 }
 
 /** A library folder of one-line PDFs named after [titles]; it has no text layer and no thumbnails. */
-private class Scores(private val titles: List<String>) : PlatformLibrary {
+internal class Scores(private val titles: List<String>) : PlatformLibrary {
     override fun checkRoot(handle: String) = Unit
 
     override fun enumerate(handle: String): List<DocumentEntry> = titles.map { title ->
@@ -374,7 +375,7 @@ private class Scores(private val titles: List<String>) : PlatformLibrary {
     override fun renderThumbnail(handle: String, path: String, outPng: String): Boolean = false
 }
 
-private object NoListener : CoreListener {
+internal object NoListener : CoreListener {
     override fun onSnapshot(snapshot: Snapshot) = Unit
 
     override fun onEffect(effect: Effect) = Unit

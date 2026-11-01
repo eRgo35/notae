@@ -173,4 +173,15 @@ class SetsScreenshotTest {
     @Test fun add_picker_results_light() = shot("add-picker-results", pickerResults, landscape = true, dark = false)
 
     @Test fun add_picker_results_dark() = shot("add-picker-results", pickerResults, landscape = true, dark = true)
+
+    // No Slint reference: 0.3.0 had no reorder mode. The grid choice stays saved underneath.
+    private val reorder = palm.copy(reordering = true)
+
+    @Test fun reorder_landscape_light() = shot("set-reorder", reorder, landscape = true, dark = false)
+
+    @Test fun reorder_landscape_dark() = shot("set-reorder", reorder, landscape = true, dark = true)
+
+    @Test fun reorder_portrait_light() = shot("set-reorder", reorder, landscape = false, dark = false)
+
+    @Test fun reorder_portrait_dark() = shot("set-reorder", reorder, landscape = false, dark = true)
 }

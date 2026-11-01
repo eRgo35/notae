@@ -215,6 +215,11 @@
     <string name="set_delete">Usuń zestaw</string>
     <string name="set_back">Wróć do zestawów</string>
     <string name="set_add">Dodaj</string>
+    <string name="set_reorder">Zmień kolejność</string>
+    <string name="set_reorder_hint">Przeciągnij wiersz lub użyj strzałek, aby zmienić kolejność</string>
+    <string name="set_move_up">Przesuń %1$s w górę</string>
+    <string name="set_move_down">Przesuń %1$s w dół</string>
+    <string name="set_drag">Przeciągnij, aby zmienić kolejność: %1$s</string>
     <string name="set_empty">Ten zestaw jest pusty</string>
     <string name="set_empty_detail">Tu pojawią się utwory dodane do tego zestawu.</string>
     <string name="set_dialog">Okno danych zestawu</string>

@@ -212,6 +212,11 @@
     <string name="set_delete">Delete set</string>
     <string name="set_back">Back to sets</string>
     <string name="set_add">Add</string>
+    <string name="set_reorder">Reorder</string>
+    <string name="set_reorder_hint">Drag a row, or use the arrows, to change the order</string>
+    <string name="set_move_up">Move %1$s up</string>
+    <string name="set_move_down">Move %1$s down</string>
+    <string name="set_drag">Drag to reorder %1$s</string>
     <string name="set_empty">This set is empty</string>
     <string name="set_empty_detail">Pieces you add to this set appear here.</string>
     <string name="set_dialog">Set details dialog</string>

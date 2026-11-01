@@ -102,6 +102,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         onBackCompleted = closeSheets,
     )
     val inSet = snapshot.sectionKey.startsWith(SET_PREFIX)
+    val reordering = inSet && snapshot.reordering
     // The keys work as soon as the library shows, as Slint focuses its shortcuts (app.slint), and again once a sheet,
     // dialog or picker closes. While one is open, Slint ignores them (Escape closes a ⋮ sheet).
     val overlay = overlayOpen(snapshot)
@@ -109,7 +110,8 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     // does, and the library passes their keys on when it holds focus itself (after its own ⋮ sheet closes).
     val selection = snapshot.selection
     val keys = remember { FocusRequester() }
-    LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey) { if (!sheetOpen && !overlay) keys.requestFocus() }
+    // Also when reorder mode starts or ends: the Reorder or Done button that held focus is gone.
+    LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey, reordering) { if (!sheetOpen && !overlay) keys.requestFocus() }
     // Only when the details close (beside the library, which stays put); never when they open, since the outgoing
     // library stays composed during the portrait transition and would compete with the details for focus.
     LaunchedEffect(selection == null) { if (selection == null && !sheetOpen && !overlay) keys.requestFocus() }
@@ -124,6 +126,8 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                     overlay -> false
                     selection != null -> detailsKeyAction(event, selection)?.also(onAction) != null
                     event.isCtrlK() -> true.also { onAction(Action.OpenSearch) }
+                    // Escape leaves reorder mode first, as Back does.
+                    escape && reordering -> true.also { onAction(Action.ReorderFinished) }
                     // Inside a set, Escape returns to the list of sets.
                     escape && inSet -> true.also { onAction(Action.SelectSection("sets")) }
                     else -> false
@@ -140,11 +144,11 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight())
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Header(snapshot, onAction, expanded, sidebar, portrait, inSet)
+                Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
                 if (!sidebar) Chips(snapshot, onAction)
                 OperationBanner(snapshot.banner, onAction)
                 snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
-                Content(snapshot, onAction, onMore = { menuFor = it.selectionId }, onSetMore = { setMenuFor = it.id })
+                Content(snapshot, onAction, reordering, onMore = { menuFor = it.selectionId }, onSetMore = { setMenuFor = it.id })
             }
         }
         if (menuRow != null) {
@@ -171,7 +175,15 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
 }
 
 @Composable
-private fun Header(snapshot: Snapshot, onAction: (Action) -> Unit, expanded: Boolean, sidebar: Boolean, portrait: Boolean, inSet: Boolean) {
+private fun Header(
+    snapshot: Snapshot,
+    onAction: (Action) -> Unit,
+    expanded: Boolean,
+    sidebar: Boolean,
+    portrait: Boolean,
+    inSet: Boolean,
+    reordering: Boolean,
+) {
     val c = NotaeTheme.colors
     val list = snapshot.layout.libraryView == LibraryView.LIST
     Row(
@@ -199,7 +211,7 @@ private fun Header(snapshot: Snapshot, onAction: (Action) -> Unit, expanded: Boo
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(subtitleText(snapshot.subtitle), color = c.muted, fontSize = 15.sp)
+            Text(if (reordering) stringResource(R.string.set_reorder_hint) else subtitleText(snapshot.subtitle), color = c.muted, fontSize = 15.sp)
             val notes = snapshot.setNotes
             if (inSet && !notes.isNullOrEmpty()) {
                 Text(notes, color = c.foreground, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -207,15 +219,26 @@ private fun Header(snapshot: Snapshot, onAction: (Action) -> Unit, expanded: Boo
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) })
-            IconButton(
-                stringResource(if (list) R.string.library_grid_view else R.string.library_list_view),
-                painterResource(if (list) R.drawable.ic_layout_grid else R.drawable.ic_layout_list),
-                { onAction(Action.SetLibraryView(if (list) LibraryView.GRID else LibraryView.LIST)) },
-            )
+            // Reorder mode always shows the list; the saved choice comes back with Done.
+            if (!reordering) {
+                IconButton(
+                    stringResource(if (list) R.string.library_grid_view else R.string.library_list_view),
+                    painterResource(if (list) R.drawable.ic_layout_grid else R.drawable.ic_layout_list),
+                    { onAction(Action.SetLibraryView(if (list) LibraryView.GRID else LibraryView.LIST)) },
+                )
+            }
             if (snapshot.sectionKey == "sets") {
                 PillButton(stringResource(R.string.library_new_set), { onAction(Action.NewSet) }, icon = painterResource(R.drawable.ic_add), primary = true)
             }
-            if (inSet) {
+            if (reordering) {
+                PillButton(stringResource(R.string.picker_done), { onAction(Action.ReorderFinished) }, icon = painterResource(R.drawable.ic_check), primary = true)
+            } else if (inSet) {
+                // Under 840 dp (portrait, or the pane beside the details) the labelled icon leaves room for the set's name.
+                if (expanded) {
+                    PillButton(stringResource(R.string.set_reorder), { onAction(Action.ReorderStarted) }, icon = painterResource(R.drawable.ic_reorder))
+                } else {
+                    IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) })
+                }
                 PillButton(stringResource(R.string.set_add), { onAction(Action.OpenAddPicker) }, icon = painterResource(R.drawable.ic_add), primary = true)
             }
             if (!sidebar) {
@@ -296,6 +319,7 @@ private fun Chips(snapshot: Snapshot, onAction: (Action) -> Unit) {
 private fun ColumnScope.Content(
     snapshot: Snapshot,
     onAction: (Action) -> Unit,
+    reordering: Boolean,
     onMore: (com.c2yz.notae.core.Row) -> Unit,
     onSetMore: (SetCard) -> Unit,
 ) {
@@ -313,6 +337,7 @@ private fun ColumnScope.Content(
             area,
         )
         snapshot.rows.isEmpty() -> EmptyState(snapshot, onAction, area)
+        reordering -> ReorderList(snapshot.rows, onAction, area)
         snapshot.layout.libraryView == LibraryView.LIST -> ScoreList(snapshot.rows, open, onMore, area, selected)
         else -> ScoreGrid(snapshot.rows, open, onMore, area, selected)
     }

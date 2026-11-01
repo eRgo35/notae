@@ -87,7 +87,8 @@ fun NotaeNavDisplay(
     // screen (where NavDisplay handles nothing) the core still decides whether the activity ends.
     NavigationBackHandler(
         state = rememberNavigationEventState(NavigationEventInfo.None),
-        isBackEnabled = backStack.size == 1 || overlayOpen(snapshot),
+        // Reorder mode is not an entry: Back ends it without previewing the list of sets below the set.
+        isBackEnabled = backStack.size == 1 || overlayOpen(snapshot) || snapshot.reordering,
         onBackCompleted = onBack,
     )
 }

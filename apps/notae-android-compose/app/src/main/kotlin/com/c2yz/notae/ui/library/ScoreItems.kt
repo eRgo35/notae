@@ -65,6 +65,7 @@ import kotlin.math.floor
 
 internal const val GRID_TAG = "library-grid"
 internal const val LIST_TAG = "library-list"
+internal const val REORDER_TAG = "set-reorder-list"
 internal const val FAVORITE_BADGE_TAG = "favorite-badge"
 
 /**
