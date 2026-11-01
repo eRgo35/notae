@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +28,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -62,6 +66,8 @@ internal fun ReorderList(rows: List<ScoreRowData>, onAction: (Action) -> Unit, m
     // The row under the finger and how far it has moved; only the drop reaches the core.
     var dragging by remember { mutableStateOf<String?>(null) }
     var offset by remember { mutableFloatStateOf(0f) }
+    // After a keyboard removal, the neighbour whose remove button takes the focus the removed row held.
+    var focusRemoveOn by remember { mutableStateOf<String?>(null) }
     NotaeCard(modifier.fillMaxSize()) {
         val state = rememberLazyListState()
         LazyColumn(Modifier.testTag(REORDER_TAG).fillMaxSize().padding(8.dp), state = state) {
@@ -99,6 +105,12 @@ internal fun ReorderList(rows: List<ScoreRowData>, onAction: (Action) -> Unit, m
                     first = index == 0,
                     last = index == rows.lastIndex,
                     onAction = onAction,
+                    onRemove = { it, focused ->
+                        if (focused) focusRemoveOn = (rows.getOrNull(index + 1) ?: rows.getOrNull(index - 1))?.selectionId
+                        act(Action.RemoveSetItem(it))
+                    },
+                    focusRemove = focusRemoveOn == row.selectionId,
+                    onRemoveFocused = { focusRemoveOn = null },
                     handle = handle,
                     dragged = dragged,
                     modifier = Modifier.zIndex(if (dragged) 1f else 0f).graphicsLayer { translationY = if (dragged) offset else 0f },
@@ -109,6 +121,8 @@ internal fun ReorderList(rows: List<ScoreRowData>, onAction: (Action) -> Unit, m
     }
 }
 
+private enum class Arrow { UP, DOWN }
+
 /** One piece in reorder mode: handle, position, page, title and subtitle, then up, down and remove. */
 @Composable
 private fun ReorderRow(
@@ -116,6 +130,9 @@ private fun ReorderRow(
     first: Boolean,
     last: Boolean,
     onAction: (Action) -> Unit,
+    onRemove: (itemId: String, focused: Boolean) -> Unit,
+    focusRemove: Boolean,
+    onRemoveFocused: () -> Unit,
     handle: Modifier.() -> Modifier,
     dragged: Boolean,
     modifier: Modifier = Modifier,
@@ -123,6 +140,32 @@ private fun ReorderRow(
     val c = NotaeTheme.colors
     val itemId = row.itemId ?: return
     val title = row.title
+    val up = remember { FocusRequester() }
+    val down = remember { FocusRequester() }
+    val remove = remember { FocusRequester() }
+    var removeFocused by remember { mutableStateOf(false) }
+    // The arrow that has the keyboard focus. A move that disables it (the row reached an end) hands the focus to the
+    // row's other arrow, or to remove when both are disabled, instead of letting it fall back to the screen.
+    var arrow by remember { mutableStateOf<Arrow?>(null) }
+    val firstNow by rememberUpdatedState(first)
+    val lastNow by rememberUpdatedState(last)
+    LaunchedEffect(first, last) {
+        val lost = (arrow == Arrow.UP && first) || (arrow == Arrow.DOWN && last)
+        if (lost) {
+            arrow = null
+            when {
+                !first -> up.requestFocus()
+                !last -> down.requestFocus()
+                else -> remove.requestFocus()
+            }
+        }
+    }
+    LaunchedEffect(focusRemove) {
+        if (focusRemove) {
+            remove.requestFocus()
+            onRemoveFocused()
+        }
+    }
     Row(
         modifier
             .fillMaxWidth()
@@ -156,14 +199,25 @@ private fun ReorderRow(
             stringResource(R.string.set_move_up, title),
             painterResource(R.drawable.ic_arrow_up),
             { onAction(Action.MoveSetItem(itemId, -1)) },
+            Modifier.focusRequester(up).onFocusChanged {
+                if (it.isFocused) arrow = Arrow.UP else if (arrow == Arrow.UP && !firstNow) arrow = null
+            },
             enabled = !first,
         )
         IconButton(
             stringResource(R.string.set_move_down, title),
             painterResource(R.drawable.ic_arrow_down),
             { onAction(Action.MoveSetItem(itemId, 1)) },
+            Modifier.focusRequester(down).onFocusChanged {
+                if (it.isFocused) arrow = Arrow.DOWN else if (arrow == Arrow.DOWN && !lastNow) arrow = null
+            },
             enabled = !last,
         )
-        IconButton(stringResource(R.string.picker_remove, title), painterResource(R.drawable.ic_delete), { onAction(Action.RemoveSetItem(itemId)) })
+        IconButton(
+            stringResource(R.string.picker_remove, title),
+            painterResource(R.drawable.ic_delete),
+            { onRemove(itemId, removeFocused) },
+            Modifier.focusRequester(remove).onFocusChanged { removeFocused = it.isFocused },
+        )
     }
 }

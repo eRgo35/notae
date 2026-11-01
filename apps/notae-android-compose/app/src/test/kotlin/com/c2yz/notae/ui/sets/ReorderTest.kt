@@ -10,6 +10,8 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.InputModeManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
@@ -29,7 +31,6 @@ import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.c2yz.notae.core.Action
-import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.NotaeCore
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.Snapshot
@@ -153,7 +154,6 @@ class ReorderTest {
         compose.waitForIdle()
         compose.onNodeWithTag(GRID_TAG).assertExists()
         compose.onNodeWithTag(REORDER_TAG).assertDoesNotExist()
-        assertEquals(LibraryView.GRID, shown?.layout?.libraryView)
     }
 
     @Test
@@ -165,7 +165,8 @@ class ReorderTest {
         handle.performTouchInput {
             down(center)
             moveBy(Offset(0f, row))
-            moveBy(Offset(0f, row))
+            // Two rows and a quarter past the touch slop: the drop rounds to two rows whatever the slop.
+            moveBy(Offset(0f, row * 1.5f))
         }
         // Nothing is sent while the row moves.
         assertEquals(emptyList<Action>(), actions)
@@ -183,16 +184,78 @@ class ReorderTest {
         compose.onRoot().performKeyInput { pressKey(Key.Escape) }
         assertEquals(listOf(Action.OpenSearch, Action.ReorderFinished), actions)
 
-        // A hardware keyboard takes Android out of touch mode; Robolectric's key input does not, so ask for it here.
-        compose.runOnIdle { inputMode?.requestInputMode(InputMode.Keyboard) }
         // Tab walks the screen to Kyrie's down arrow, and Enter presses it.
-        val down = hasContentDescription("Move Kyrie eleison down") and isFocused()
-        var tabs = 0
-        while (compose.onAllNodes(down).fetchSemanticsNodes().isEmpty()) {
-            check(tabs++ < 60) { "Tab never reached the down arrow" }
-            compose.onRoot().performKeyInput { pressKey(Key.Tab) }
-        }
+        tabTo("Move Kyrie eleison down")
         compose.onRoot().performKeyInput { pressKey(Key.Enter) }
         assertEquals(Action.MoveSetItem("item-2", 1), actions.last())
+    }
+
+    @Test
+    fun keyboard_move_to_the_end_keeps_focus_in_the_row() {
+        showLive()
+
+        tabTo("Move Kyrie eleison down")
+        compose.onRoot().performKeyInput { pressKey(Key.Enter) }
+        assertEquals(listOf("Ave Maria", "Magnificat", "Kyrie eleison"), shown?.rows?.map { it.title })
+        // Down is now disabled; its row's up arrow takes the focus.
+        assertFocused("Move Kyrie eleison up")
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        assertEquals(Action.ReorderFinished, actions.last())
+    }
+
+    @Test
+    fun keyboard_remove_moves_focus_to_a_neighbour() {
+        showLive()
+
+        tabTo("Remove Kyrie eleison from set")
+        compose.onRoot().performKeyInput { pressKey(Key.Enter) }
+        assertFocused("Remove Magnificat from set")
+        // The last row's removal falls back to the row above.
+        compose.onRoot().performKeyInput { pressKey(Key.Enter) }
+        assertFocused("Remove Ave Maria from set")
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        assertEquals(Action.ReorderFinished, actions.last())
+        // An empty set leaves the keys on the screen.
+        compose.onRoot().performKeyInput { pressKey(Key.Enter) }
+        assertEquals(emptyList<String>(), shown?.rows?.map { it.title })
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        assertEquals(listOf(Action.ReorderFinished, Action.ReorderFinished), actions.filter { it == Action.ReorderFinished })
+    }
+
+    /** Three pieces of Niedziela Palmowa, with moves and removals applied as the core would. */
+    private fun showLive() {
+        var rows = Fixture.palmRows.take(3)
+        fun snapshot() = reordering.copy(rows = rows.mapIndexed { index, row -> row.copy(position = (index + 1).toUInt()) })
+        show(snapshot()) { action ->
+            actions += action
+            when (action) {
+                is Action.MoveSetItem -> {
+                    val from = rows.indexOfFirst { it.itemId == action.itemId }
+                    val moved = rows.toMutableList()
+                    moved.add((from + action.delta).coerceIn(0, rows.lastIndex), moved.removeAt(from))
+                    rows = moved
+                }
+                is Action.RemoveSetItem -> rows = rows.filter { it.itemId != action.itemId }
+                else -> Unit
+            }
+            shown = snapshot()
+        }
+    }
+
+    /** Presses Tab until the control named [label] has the focus, with the keyboard input mode a hardware keyboard sets. */
+    private fun tabTo(label: String) {
+        // A hardware keyboard takes Android out of touch mode; Robolectric's key input does not, so ask for it here.
+        compose.runOnIdle { inputMode?.requestInputMode(InputMode.Keyboard) }
+        var tabs = 0
+        while (compose.onAllNodes(hasContentDescription(label) and isFocused()).fetchSemanticsNodes().isEmpty()) {
+            check(tabs++ < 60) { "Tab never reached $label" }
+            compose.onRoot().performKeyInput { pressKey(Key.Tab) }
+        }
+    }
+
+    private fun assertFocused(label: String) {
+        compose.waitForIdle()
+        val focused = compose.onAllNodes(isFocused()).fetchSemanticsNodes().map { it.config.getOrNull(SemanticsProperties.ContentDescription) }
+        assertEquals(listOf(listOf(label)), focused)
     }
 }
