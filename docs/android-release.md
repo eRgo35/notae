@@ -95,6 +95,19 @@ Create the single-entry `.p12` as in [The local keystore](#the-local-keystore). 
 
 Verify an APK with `scripts/verify-release-apk.sh target/release/apk/notae-android.apk vX.Y.Z dist`, or manually with `aapt2 dump badging`, `apksigner verify --print-certs` and `sha256sum`. A locally built APK is a convenient test build; the published APK is the one `scripts/release.sh` builds from the tag in a clean worktree.
 
+### The Compose app (in progress)
+
+The Jetpack Compose app in `apps/notae-android-compose/` (`com.c2yz.notae`) is built with Gradle, which builds the Rust core with cargo-ndk (NDK r28c, 16 KB pages). Its `versionName` is the workspace version and its `versionCode` uses the same formula as above (`buildSrc/src/main/kotlin/VersionCode.kt`). `./gradlew assembleRelease` signs the release APK only when all four of these variables are set, and otherwise writes an unsigned `app-release-unsigned.apk`:
+
+| Variable | Meaning |
+| --- | --- |
+| `NOTAE_RELEASE_KEYSTORE` | Path to the keystore (`.p12` or `.jks`). |
+| `NOTAE_KEYSTORE_PASSWORD` | The keystore's password. |
+| `NOTAE_KEY_ALIAS` | The key's alias. |
+| `NOTAE_KEY_PASSWORD` | The key's password. |
+
+For the single-entry `.p12` from [The local keystore](#the-local-keystore), both passwords are the key password and the alias is `notae-release`.
+
 ## Debug-key and release-key installs are incompatible
 
 The Galaxy Tab S10 FE+ currently has a **debug-key** install of Notae. Android refuses to update an app with a different signing key, so installing the release-signed APK requires uninstalling the debug build first, and uninstalling **deletes the app's private data**: preferences, the SAF folder grant and the local index. The index can be rebuilt by scanning again and the PDFs are untouched, but export or back up anything you need first (note edits live only in the app index). Never `adb install -r` a release APK over the debug install; keep emulator experiments on a scratch AVD. After the move to the release key, upgrades between release builds work in place.
