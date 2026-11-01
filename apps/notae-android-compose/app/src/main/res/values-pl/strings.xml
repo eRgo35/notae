@@ -35,6 +35,12 @@
         <item quantity="many">%d utworów</item>
         <item quantity="other">%d utworów</item>
     </plurals>
+    <plurals name="set_items">
+        <item quantity="one">%d pozycja</item>
+        <item quantity="few">%d pozycje</item>
+        <item quantity="many">%d pozycji</item>
+        <item quantity="other">%d pozycji</item>
+    </plurals>
     <plurals name="library_sets_subtitle">
         <item quantity="one">%d zestaw · ostatnio edytowane najpierw</item>
         <item quantity="few">%d zestawy · ostatnio edytowane najpierw</item>
@@ -157,4 +163,28 @@
     <string name="search_empty_detail">Szukaj utworów po tytule, kompozytorze, tagu lub tekście.</string>
     <string name="search_no_results_title">Nie znaleziono utworów</string>
     <string name="search_no_results_detail">Spróbuj innego słowa lub zmień zakres powyżej.</string>
+
+    <!-- Ustawienia (Task 16): z notae-android.po, src/android_main.rs i src/android/backup.rs. -->
+    <string name="settings_library_folder">Folder biblioteki</string>
+    <string name="settings_change">Zmień</string>
+    <string name="settings_maintenance">Stan biblioteki</string>
+    <string name="settings_indexed">Zindeksowane utwory</string>
+    <string name="settings_no_text">Pliki PDF bez tekstu do odczytania</string>
+    <string name="settings_last_scan">Ostatnie skanowanie</string>
+    <string name="settings_no_scan">Brak skanowania w tej sesji</string>
+    <string name="settings_scan_summary">dodano: %1$d, zaktualizowano: %2$d, przeniesiono: %3$d, usunięto: %4$d</string>
+    <string name="settings_conflicts">Konflikty numerów</string>
+    <string name="settings_failures">Błędy</string>
+    <string name="settings_about">O aplikacji Notae</string>
+    <string name="settings_version">Wersja</string>
+    <string name="settings_build">Kompilacja</string>
+    <string name="settings_license">Licencja</string>
+    <string name="settings_repository">Repozytorium</string>
+    <string name="settings_local_note">Twoja biblioteka zostaje na tym urządzeniu. Notae nie wysyła danych przez sieć.</string>
+    <string name="settings_language">Język</string>
+    <string name="settings_language_system">Język systemu</string>
+    <string name="settings_sets">Zestawy i ulubione</string>
+    <string name="settings_export">Eksportuj zestawy</string>
+    <string name="settings_exported">Wyeksportowano ulubione i zestawy</string>
+    <string name="settings_export_failed">Nie udało się wyeksportować zestawów: %1$s</string>
 </resources>

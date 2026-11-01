@@ -4,7 +4,7 @@
 //!
 //! On Android 13 and later the choice lives in Android itself, so Notae Settings and the
 //! system's "App languages" screen always agree. Older versions have no such setting, so
-//! the choice is kept in Notae's preferences instead.
+//! the choice lasts until Notae closes (ruling R5).
 
 use std::cell::RefCell;
 

@@ -38,6 +38,11 @@
         <item quantity="one">%d set · recently edited first</item>
         <item quantity="other">%d sets · recently edited first</item>
     </plurals>
+    <!-- A set's count badge (texts.rs `item_count`): its pieces and notes. -->
+    <plurals name="set_items">
+        <item quantity="one">%d item</item>
+        <item quantity="other">%d items</item>
+    </plurals>
     <string name="library_hide_sidebar">Hide sidebar</string>
     <string name="library_show_sidebar">Show sidebar</string>
     <string name="library_grid_view">Switch to grid view</string>
@@ -154,4 +159,34 @@
     <string name="search_empty_detail">Find scores by title, composer, tag or lyrics.</string>
     <string name="search_no_results_title">No scores found</string>
     <string name="search_no_results_detail">Try another word, or switch the scope above.</string>
+
+    <!-- Settings (Task 16): English copied from apps/notae-android/ui/setup.slint, src/android_main.rs and src/android/backup.rs. -->
+    <string name="settings_library_folder">Library folder</string>
+    <string name="settings_change">Change</string>
+    <string name="settings_maintenance">Library maintenance</string>
+    <string name="settings_indexed">Indexed scores</string>
+    <string name="settings_no_text">PDFs without extractable text</string>
+    <string name="settings_last_scan">Last scan</string>
+    <string name="settings_no_scan">No scan this session</string>
+    <!-- Unpluralised on purpose, as the Slint text. -->
+    <string name="settings_scan_summary" tools:ignore="PluralsCandidate">%1$d added, %2$d updated, %3$d moved, %4$d deleted</string>
+    <string name="settings_conflicts">ID conflicts</string>
+    <string name="settings_failures">Failures</string>
+    <string name="settings_about">About Notae</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_build">Build</string>
+    <string name="settings_license">License</string>
+    <string name="settings_license_name" translatable="false">MIT License</string>
+    <string name="settings_repository">Repository</string>
+    <string name="settings_repository_url" translatable="false">https://github.com/eRgo35/notae</string>
+    <string name="settings_local_note">Your library stays on this device. Notae does not send data over the network.</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">System default</string>
+    <!-- Language names stay in their own language so anyone can find theirs. -->
+    <string name="settings_language_english" translatable="false">English</string>
+    <string name="settings_language_polish" translatable="false">Polski</string>
+    <string name="settings_sets">Sets and favorites</string>
+    <string name="settings_export">Export sets</string>
+    <string name="settings_exported">Favorites and sets exported</string>
+    <string name="settings_export_failed">Could not export sets: %1$s</string>
 </resources>

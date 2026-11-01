@@ -12,6 +12,13 @@ val cargoTargetDir: File =
     providers.environmentVariable("CARGO_TARGET_DIR").map(::File).getOrElse(workspaceDir.resolve("target"))
 val workspaceVersion = workspaceVersion(workspaceDir.resolve("Cargo.toml").readText())
 
+// Settings' "Build": the short commit hash, as the Slint app's build.rs, or "unknown" outside a Git checkout.
+val buildIdentity: String = providers.exec {
+    workingDir = workspaceDir
+    commandLine("git", "rev-parse", "--short", "HEAD")
+    isIgnoreExitValue = true
+}.standardOutput.asText.get().trim().ifEmpty { "unknown" }
+
 android {
     namespace = "com.c2yz.notae"
     compileSdk = 36
@@ -23,6 +30,7 @@ android {
         targetSdk = 36
         versionName = workspaceVersion
         versionCode = versionCodeFor(workspaceVersion)
+        buildConfigField("String", "BUILD_IDENTITY", "\"$buildIdentity\"")
     }
 
     // Release signing comes only from these variables (docs/android-release.md); without all four,
@@ -53,6 +61,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // Robolectric needs the merged resources for the Compose component tests.

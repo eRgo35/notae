@@ -1,5 +1,6 @@
-//! Private UI preferences: library layout, per-orientation sidebar visibility, language, and the
-//! library section and details score on display.
+//! Private UI preferences: library layout, per-orientation sidebar visibility, and the library
+//! section and details score on display. The language is not one of them: Android keeps the
+//! per-app language (AppCompat), and a `language` line from an older build is ignored.
 //!
 //! Stored as `key=value` lines next to the recent list, using the same
 //! temporary-file-and-rename write as [`crate::recent`].
@@ -50,8 +51,6 @@ pub struct UiPrefs {
     pub sidebar_collapsed_portrait: bool,
     /// Whether the sidebar is collapsed in landscape.
     pub sidebar_collapsed_landscape: bool,
-    /// Used only where Android has no per-app language setting (before Android 13).
-    pub language: LanguageChoice,
     /// [`crate::ui::browse::LibrarySection::key`] of the section on display, so Notae comes back
     /// to the same set after Android closes it while the PDF app is in front.
     pub section: String,
@@ -66,7 +65,6 @@ impl Default for UiPrefs {
             library_view: LibraryView::Grid,
             sidebar_collapsed_portrait: true,
             sidebar_collapsed_landscape: false,
-            language: LanguageChoice::System,
             section: "all".to_owned(),
             selection: None,
         }
@@ -105,7 +103,6 @@ impl UiPrefs {
                         prefs.sidebar_collapsed_landscape = collapsed;
                     }
                 }
-                "language" => prefs.language = LanguageChoice::from_tag(value),
                 "section" if !value.is_empty() => value.clone_into(&mut prefs.section),
                 "selection" => prefs.selection = Some(value.to_owned()).filter(|id| !id.is_empty()),
                 _ => {}
@@ -118,11 +115,10 @@ impl UiPrefs {
     #[must_use]
     pub fn to_text(&self) -> String {
         format!(
-            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nlanguage={}\nsection={}\nselection={}\n",
+            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nsection={}\nselection={}\n",
             self.library_view.key(),
             self.sidebar_collapsed_portrait,
             self.sidebar_collapsed_landscape,
-            self.language.tag(),
             self.section,
             self.selection.as_deref().unwrap_or_default(),
         )

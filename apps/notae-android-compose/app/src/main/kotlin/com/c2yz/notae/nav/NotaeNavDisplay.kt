@@ -18,6 +18,7 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
+import com.c2yz.notae.BuildConfig
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Screen
@@ -26,6 +27,8 @@ import com.c2yz.notae.ui.details.DetailsScreen
 import com.c2yz.notae.ui.details.MetadataEditor
 import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.search.SearchScreen
+import com.c2yz.notae.ui.settings.AboutInfo
+import com.c2yz.notae.ui.settings.SettingsScreen
 import com.c2yz.notae.ui.setup.WelcomeScreen
 import com.c2yz.notae.ui.theme.NotaeTheme
 
@@ -73,6 +76,8 @@ internal fun Modifier.shellFrame(): Modifier =
 
 private const val DETAILS_CONTENT_KEY = "details"
 
+private val ABOUT = AboutInfo(version = BuildConfig.VERSION_NAME, build = BuildConfig.BUILD_IDENTITY)
+
 /** A dialog or sheet, which the core closes before any screen. */
 private fun overlayOpen(snapshot: Snapshot): Boolean =
     snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.metadataEditor != null ||
@@ -87,7 +92,7 @@ private fun entryFor(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit
     // key for every score: previous and next swap the content in place, keeping the scroll and without a transition.
     is Route.Details -> NavEntry(key, contentKey = DETAILS_CONTENT_KEY) { DetailsScreen(snapshot, onAction) }
     Route.Search -> NavEntry(key) { SearchScreen(snapshot, onAction, voiceAvailable) }
-    Route.Settings -> placeholder(key, R.string.screen_settings)
+    Route.Settings -> NavEntry(key) { SettingsScreen(snapshot, onAction, ABOUT) }
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)
 }

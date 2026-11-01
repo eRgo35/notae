@@ -31,13 +31,10 @@ fn settings_indices_round_trip() {
 }
 
 #[test]
-fn prefs_keep_the_language_choice() {
-    assert_eq!(UiPrefs::default().language, LanguageChoice::System);
-    let prefs = UiPrefs::from_text("language=pl\n");
-    assert_eq!(prefs.language, LanguageChoice::Polish);
-    assert_eq!(UiPrefs::from_text(&prefs.to_text()), prefs);
-    assert_eq!(
-        UiPrefs::from_text("language=klingon\n").language,
-        LanguageChoice::System
-    );
+fn prefs_ignore_the_language_line() {
+    // AppCompat keeps the per-app language (spec §4.3, ruling R5): a line from an older
+    // build is ignored, and none is written.
+    let prefs = UiPrefs::from_text("library_view=list\nlanguage=pl\n");
+    assert_eq!(prefs, UiPrefs::from_text("library_view=list\n"));
+    assert!(!prefs.to_text().contains("language"), "{}", prefs.to_text());
 }

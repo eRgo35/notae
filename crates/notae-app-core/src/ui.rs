@@ -736,22 +736,6 @@ impl UiModel {
         self.save_ui_prefs()
     }
 
-    /// Remembers the Settings language choice where Android cannot store it.
-    ///
-    /// # Errors
-    ///
-    /// Returns the I/O error when the preferences cannot be saved; the choice stays in effect.
-    pub fn set_language(
-        &mut self,
-        language: crate::ui_prefs::LanguageChoice,
-    ) -> std::io::Result<()> {
-        if self.ui_prefs.language == language {
-            return Ok(());
-        }
-        self.ui_prefs.language = language;
-        self.save_ui_prefs()
-    }
-
     /// Collapses or expands the sidebar for one orientation and persists a change.
     ///
     /// # Errors
