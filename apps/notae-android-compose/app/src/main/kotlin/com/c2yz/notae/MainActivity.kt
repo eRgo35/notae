@@ -23,7 +23,7 @@ class MainActivity : AppCompatActivity() {
         setContent {
             val snapshot by model.snapshot.collectAsState()
             NotaeTheme {
-                NotaeNavDisplay(snapshot, onBack = ::back)
+                NotaeNavDisplay(snapshot, onAction = model::dispatch, onBack = ::back)
             }
         }
     }

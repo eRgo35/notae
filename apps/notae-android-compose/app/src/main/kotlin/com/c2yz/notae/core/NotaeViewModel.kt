@@ -53,6 +53,8 @@ class NotaeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun libraryRootPicked(displayName: String, handle: String) = core.libraryRootPicked(displayName, handle)
 
+    fun libraryRootPickFailed(detail: String) = core.libraryRootPickFailed(detail)
+
     fun fileWritten(error: String?) = core.fileWritten(error)
 
     fun importFileRead(text: String) = core.importFileRead(text)

@@ -24,7 +24,10 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.c2yz.notae.R
+import com.c2yz.notae.core.Action
+import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.Snapshot
+import com.c2yz.notae.ui.setup.WelcomeScreen
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 /**
@@ -33,14 +36,14 @@ import com.c2yz.notae.ui.theme.NotaeTheme
  * nothing left to close. Navigation 3 animates the change when the next snapshot arrives.
  */
 @Composable
-fun NotaeNavDisplay(snapshot: Snapshot, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun NotaeNavDisplay(snapshot: Snapshot, onAction: (Action) -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
     val backStack = backStackFor(snapshot)
     NavDisplay(
         backStack = backStack,
         modifier = modifier.background(NotaeTheme.colors.background),
         onBack = onBack,
         sceneStrategies = listOf(ListDetailSceneStrategy()),
-        entryProvider = ::entryFor,
+        entryProvider = { key -> entryFor(key, snapshot, onAction) },
     )
     // Registered after NavDisplay's own handler, so it wins while enabled: a dialog or sheet closes
     // before any screen, without the predictive animation of the screen below, and on a single
@@ -57,9 +60,9 @@ private fun overlayOpen(snapshot: Snapshot): Boolean =
     snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.metadataEditor != null ||
         snapshot.addToSet != null || snapshot.addPicker != null
 
-private fun entryFor(key: NavKey): NavEntry<NavKey> = when (key) {
+private fun entryFor(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit): NavEntry<NavKey> = when (key) {
     Route.Loading -> placeholder(key, R.string.screen_loading)
-    Route.Setup -> placeholder(key, R.string.screen_setup)
+    Route.Setup -> setupEntry(key, snapshot, onAction)
     is Route.Library -> placeholder(key, R.string.screen_library, metadata { put(ListPane, true) })
     is Route.Set -> placeholder(key, R.string.screen_set, metadata { put(ListPane, true) })
     is Route.Details -> placeholder(key, R.string.screen_details, metadata { put(DetailPane, true) })
@@ -68,6 +71,15 @@ private fun entryFor(key: NavKey): NavEntry<NavKey> = when (key) {
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)
 }
+
+private fun setupEntry(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit): NavEntry<NavKey> =
+    NavEntry(key) {
+        val setup = (snapshot.screen as? Screen.Setup)?.setup
+        if (setup != null) {
+            // The import flow arrives with Task 20; until then the button does nothing.
+            WelcomeScreen(setup, snapshot.importAvailable, onAction, onImport = {})
+        }
+    }
 
 /** Shows only the screen's name until the screen itself arrives. */
 private fun placeholder(key: NavKey, @StringRes name: Int, metadata: Map<String, Any> = emptyMap()) =

@@ -27,8 +27,7 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
     private val folderPicker = FolderPicker(
         activity,
         onPicked = model::libraryRootPicked,
-        // The core has no report for a picker that could not run; the setup screen stays as it is.
-        onFailed = { detail -> Log.w(TAG, "folder picker failed: $detail") },
+        onFailed = model::libraryRootPickFailed,
     )
     private val voiceSearch = VoiceSearch(activity) { phrase -> model.dispatch(Action.SearchChanged(phrase)) }
     private val pdfOpener = PdfOpener(activity)

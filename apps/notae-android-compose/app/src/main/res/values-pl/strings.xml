@@ -3,10 +3,26 @@
     <string name="dismiss">Zamknij</string>
     <string name="open_pdf_with">Otwórz PDF za pomocą</string>
     <string name="screen_loading">Wczytywanie biblioteki…</string>
-    <string name="screen_setup">Wybierz folder z nutami</string>
     <string name="screen_library">Biblioteka</string>
     <string name="screen_set">Zestaw</string>
     <string name="screen_details">Szczegóły</string>
     <string name="screen_search">Szukaj</string>
     <string name="screen_settings">Ustawienia</string>
+    <string name="setup_welcome_title">Witaj w Notae</string>
+    <string name="setup_reconnect_title">Połącz ponownie bibliotekę</string>
+    <string name="setup_intro">Twoje nuty w należytym porządku. Notae czyta pliki PDF tam, gdzie leżą, i otwiera je w aplikacji PDF, której już używasz.</string>
+    <string name="setup_reconnect_body">Notae nie ma już dostępu do folderu „%1$s”. Wybierz go ponownie, aby odzyskać dostęp do nut.</string>
+    <string name="setup_feature_files">Pliki zostają na swoim miejscu</string>
+    <string name="setup_feature_files_detail">Nic nie jest przenoszone, zmieniane ani wysyłane</string>
+    <string name="setup_feature_search">Szybko znajdziesz każdy utwór</string>
+    <string name="setup_feature_search_detail">Szukaj po tytule, kompozytorze, tagu lub tekście</string>
+    <string name="setup_choose_folder">Wybierz folder z nutami</string>
+    <string name="setup_reconnect_folder">Połącz ponownie folder</string>
+    <string name="setup_pick_hint">Wybierz folder w pamięci urządzenia lub na karcie SD.</string>
+    <string name="setup_import">Importuj z poprzedniego Notae</string>
+    <string name="setup_error_cancelled">no library root was selected</string>
+    <string name="setup_error_not_a_directory">the selected item is not a directory</string>
+    <string name="setup_error_permission_lost">permission for the library root was lost; reauthorize to continue</string>
+    <string name="setup_error_permission_denied">the platform refused to grant the SAF permission</string>
+    <string name="setup_error_other">storage error: %1$s</string>
 </resources>
