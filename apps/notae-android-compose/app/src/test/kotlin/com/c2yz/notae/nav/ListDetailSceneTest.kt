@@ -10,6 +10,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
@@ -39,6 +40,7 @@ import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.GRID_TAG
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -276,6 +278,20 @@ class ListDetailSceneTest {
 
         compose.onNodeWithText("Edit details").assertDoesNotExist()
         assertEquals(emptyList<Action>(), actions)
+    }
+
+    @Test
+    fun a_keyboard_opened_sheet_beside_the_details_focuses_its_first_action() {
+        // Robolectric is not in touch mode, as with a keyboard: the library takes focus when the sheet opens (for Escape
+        // in touch mode), and the sheet's first action must still win it.
+        show(selecting(ave))
+        compose.onNodeWithContentDescription("More actions for Ave Maria").performClick()
+        compose.waitForIdle()
+        assertFalse(compose.activity.window.decorView.isInTouchMode)
+        // The details have an Open score button too, in the right pane; the sheet sits over the library on the left.
+        val openScore = compose.onAllNodesWithText("Open score")
+        val sheetAction = (0..1).map { openScore[it] }.minBy { it.fetchSemanticsNode().boundsInRoot.left }
+        sheetAction.assertIsFocused()
     }
 
     /**
