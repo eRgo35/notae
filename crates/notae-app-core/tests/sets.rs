@@ -201,6 +201,31 @@ fn move_item_to_bumps_modified() {
 }
 
 #[test]
+fn edit_note_bumps_modified() {
+    let mut store = SetStore::default();
+    let set = store.create(fields("Mass"), 1);
+    let a = store.add_piece(&set, piece('a'), 1).unwrap();
+    let note = store.add_note(&set, "Psalm".to_owned(), 1).unwrap();
+    assert!(store.edit_note(&set, &note, "Psalm 23".to_owned(), 7));
+    let stored = store.get(&set).unwrap();
+    assert_eq!(stored.modified, 7);
+    assert_eq!(
+        stored.items[1].kind,
+        ItemKind::Note {
+            text: "Psalm 23".to_owned()
+        }
+    );
+    assert!(
+        !store.edit_note(&set, &note, "Psalm 23".to_owned(), 9),
+        "unchanged text"
+    );
+    assert!(!store.edit_note(&set, &a, "x".to_owned(), 9), "a piece");
+    assert!(!store.edit_note(&set, "nope", "x".to_owned(), 9));
+    assert!(!store.edit_note("nope", &note, "x".to_owned(), 9));
+    assert_eq!(store.get(&set).unwrap().modified, 7);
+}
+
+#[test]
 fn mark_opened_keeps_modified() {
     let mut store = SetStore::default();
     let set = store.create(fields("Mass"), 1);

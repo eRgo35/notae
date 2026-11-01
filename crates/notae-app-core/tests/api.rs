@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use fake_platform::{FakePlatform, entry, readable};
 use notae_app_core::api::{
     Action, CoreListener, Effect, ExportStatus, NotaeCore, Screen, SetEntry, SetupError,
-    SetupScreen, Snapshot, StatusMessage,
+    SetupScreen, Snapshot, StatusMessage, Subtitle,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
 use notae_app_core::text::Failure;
@@ -396,6 +396,162 @@ fn reorder_moves_items_keeps_the_layout_and_persists() {
     open_and_scan(&harness);
     harness.core.dispatch(Action::OpenSet { set_id });
     assert_eq!(entry_ids(&harness.core.snapshot()), order);
+}
+
+fn notes(snapshot: &Snapshot) -> Vec<(u32, &str)> {
+    snapshot
+        .set_entries
+        .iter()
+        .filter_map(|entry| match entry {
+            SetEntry::Note { position, text, .. } => Some((*position, text.as_str())),
+            SetEntry::Piece { .. } => None,
+        })
+        .collect()
+}
+
+#[test]
+fn add_note_appends_at_the_end_and_closes_the_picker() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::AddNote {
+        text: "  Psalm 23\n".to_owned(),
+    });
+    let added = harness.core.snapshot();
+    assert!(added.add_picker.is_none(), "Add note closes the picker");
+    assert_eq!(notes(&added), [(2, "Psalm 23")], "at the end, trimmed");
+    assert_eq!(
+        added.subtitle,
+        Subtitle::Set {
+            date: None,
+            pieces: 1,
+            notes: 1
+        }
+    );
+    assert_eq!(added.rows.len(), 1, "a note is not a score row");
+    let ids = entry_ids(&added);
+    let LibrarySetKey(set_id) = open_set_key(&added);
+
+    harness.core.dispatch(Action::EditNote {
+        item_id: ids[1].clone(),
+        text: "Psalm 23, verses 1-3 ".to_owned(),
+    });
+    assert_eq!(
+        notes(&harness.core.snapshot()),
+        [(2, "Psalm 23, verses 1-3")]
+    );
+    // A new piece goes after the note.
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::ToggleAddPickerPiece {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    harness.core.dispatch(Action::CloseAddPicker);
+    assert_eq!(entry_ids(&harness.core.snapshot())[..2], ids[..]);
+    harness.core.dispatch(Action::RemoveSetItem {
+        item_id: ids[1].clone(),
+    });
+    assert!(notes(&harness.core.snapshot()).is_empty(), "removed");
+    harness.core.dispatch(Action::AddNote {
+        text: "Homily".to_owned(),
+    });
+    drop(harness);
+
+    // Notes are saved with the set.
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    open_and_scan(&harness);
+    harness.core.dispatch(Action::OpenSet { set_id });
+    assert_eq!(notes(&harness.core.snapshot()), [(3, "Homily")]);
+}
+
+#[test]
+fn empty_note_cannot_be_added() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::AddNote {
+        text: "Psalm".to_owned(),
+    });
+    let before = harness.core.snapshot();
+    let note_id = entry_ids(&before)[1].clone();
+    harness.core.dispatch(Action::OpenAddPicker);
+    for blank in ["", " ", " \n\t "] {
+        harness.core.dispatch(Action::AddNote {
+            text: blank.to_owned(),
+        });
+        harness.core.dispatch(Action::EditNote {
+            item_id: note_id.clone(),
+            text: blank.to_owned(),
+        });
+    }
+    let after = harness.core.snapshot();
+    assert_eq!(entry_ids(&after), entry_ids(&before), "nothing added");
+    assert_eq!(notes(&after), [(2, "Psalm")], "the note keeps its text");
+    assert!(
+        after.add_picker.is_some(),
+        "a blank note leaves the picker open"
+    );
+}
+
+#[test]
+fn details_previous_next_skip_notes() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::AddNote {
+        text: "Psalm".to_owned(),
+    });
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::ToggleAddPickerPiece {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    harness.core.dispatch(Action::CloseAddPicker);
+    let ids = entry_ids(&harness.core.snapshot());
+    assert_eq!(ids.len(), 3);
+
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: ids[0].clone(),
+    });
+    let first = harness.core.snapshot().selection.expect("details open");
+    assert_eq!(first.previous, None);
+    assert_eq!(
+        first.next.as_deref(),
+        Some(ids[2].as_str()),
+        "over the note"
+    );
+    let place = first.position.expect("in the set");
+    assert_eq!(
+        (place.position, place.total),
+        (1, 2),
+        "notes are not counted"
+    );
+
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: ids[2].clone(),
+    });
+    let last = harness.core.snapshot().selection.expect("details open");
+    assert_eq!(
+        last.previous.as_deref(),
+        Some(ids[0].as_str()),
+        "over the note"
+    );
+    assert_eq!(last.next, None);
+    let place = last.position.expect("in the set");
+    assert_eq!((place.position, place.total), (2, 2));
+    assert_eq!(
+        last.row.position,
+        Some(3),
+        "the badge still counts the note"
+    );
+
+    // A note has no details.
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: ids[1].clone(),
+    });
+    assert!(harness.core.snapshot().selection.is_none());
 }
 
 struct LibrarySetKey(String);

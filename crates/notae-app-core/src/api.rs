@@ -679,6 +679,8 @@ impl CoreState {
                 let index = usize::try_from(index).unwrap_or(usize::MAX);
                 model.move_set_item(&item_id, SetMove::To(index));
             }
+            Action::AddNote { text } => model.add_note_requested(&text),
+            Action::EditNote { item_id, text } => model.edit_note_requested(&item_id, &text),
         }
         Vec::new()
     }

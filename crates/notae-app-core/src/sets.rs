@@ -325,6 +325,23 @@ impl SetStore {
         self.push_item(set_id, ItemKind::Note { text }, &seed, now)
     }
 
+    /// Replaces a note's text. False if the set or note does not exist, the item is a piece, or
+    /// the text is unchanged.
+    pub fn edit_note(&mut self, set_id: &str, item_id: &str, text: String, now: u64) -> bool {
+        let Some(set) = self.get_mut(set_id) else {
+            return false;
+        };
+        let Some(item) = set.items.iter_mut().find(|item| item.id == item_id) else {
+            return false;
+        };
+        match &mut item.kind {
+            ItemKind::Note { text: old } if *old != text => *old = text,
+            _ => return false,
+        }
+        set.modified = now;
+        true
+    }
+
     fn push_item(&mut self, set_id: &str, kind: ItemKind, seed: &str, now: u64) -> Option<String> {
         let set = self.get_mut(set_id)?;
         let id = new_id(seed);

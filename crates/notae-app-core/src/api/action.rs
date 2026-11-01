@@ -198,4 +198,18 @@ pub enum Action {
         /// Its zero-based place among all the set's items after the move; clamped to the set.
         index: u32,
     },
+    /// The add picker's "Add note": appends a text note to the open set and closes the picker.
+    /// Blank text is ignored; the text is stored trimmed.
+    AddNote {
+        /// The note field.
+        text: String,
+    },
+    /// The note editor's "Save note": replaces a note's text in the open set. Blank text is
+    /// ignored; the text is stored trimmed.
+    EditNote {
+        /// The note's set item id.
+        item_id: String,
+        /// The note field.
+        text: String,
+    },
 }

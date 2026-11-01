@@ -556,6 +556,40 @@ impl UiModel {
         }
     }
 
+    /// Appends a text note to the open set and closes the add picker. Blank text does nothing.
+    pub fn add_note_requested(&mut self, text: &str) {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return;
+        };
+        let text = text.trim();
+        if text.is_empty() {
+            return;
+        }
+        if self
+            .sets
+            .add_note(set_id, text.to_owned(), unix_now())
+            .is_some()
+        {
+            self.save_sets();
+            self.add_picker = None;
+        }
+    }
+
+    /// Replaces a note's text in the open set. Blank text does nothing.
+    pub fn edit_note_requested(&mut self, item_id: &str, text: &str) {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return;
+        };
+        let text = text.trim();
+        if !text.is_empty()
+            && self
+                .sets
+                .edit_note(set_id, item_id, text.to_owned(), unix_now())
+        {
+            self.save_sets();
+        }
+    }
+
     /// Opens the add picker over the open set.
     pub fn add_picker_opened(&mut self) {
         let LibrarySection::Set(set_id) = &self.section else {
