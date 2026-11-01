@@ -6,11 +6,14 @@
 //! as they are. Nothing here is display text: Kotlin formats every title, count, date and status
 //! from these values.
 
+use std::collections::HashSet;
+
 use crate::backup::{Backup, plan_import};
 use crate::sets::SetFieldError;
 use crate::state::OperationState;
 use crate::storage::StorageError;
 use crate::text::{self, Failure, RowStatus};
+use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::{self, LibrarySection};
 use crate::ui::search::{SearchRow, split_snippet};
 use crate::ui::{OperationBanner, PickerRow, StartupPresentation, StorageStateKindView, UiModel};
@@ -729,6 +732,7 @@ pub(super) struct Extras<'a> {
 
 /// Builds the snapshot of `model`.
 pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
+    let lookup = RowLookup::new(model);
     let state = model.state();
     let on_search = matches!(state.screen(), crate::state::Screen::Search);
     let visible = model.visible_rows();
@@ -758,7 +762,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
             .into_iter()
             .map(|entry| match entry {
                 browse::SetEntry::Piece(row) => SetEntry::Piece {
-                    row: build_row(model, row),
+                    row: lookup.row(row),
                 },
                 browse::SetEntry::Note {
                     position,
@@ -797,10 +801,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
                 count: count(composer.count),
             })
             .collect(),
-        rows: visible
-            .into_iter()
-            .map(|row| build_row(model, row))
-            .collect(),
+        rows: visible.into_iter().map(|row| lookup.row(row)).collect(),
         set_entries,
         set_cards: set_cards
             .into_iter()
@@ -815,7 +816,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         selection: model.selected_row().map(|row| {
             let neighbours = model.preview_neighbours();
             Selection {
-                row: build_row(model, row),
+                row: lookup.row(row),
                 previous: neighbours.as_ref().and_then(|nav| nav.previous.clone()),
                 next: neighbours.as_ref().and_then(|nav| nav.next.clone()),
                 position: neighbours.map(|nav| {
@@ -916,38 +917,65 @@ fn screen(model: &UiModel) -> Screen {
     Screen::Setup { setup }
 }
 
-fn build_row(model: &UiModel, row: SearchRow) -> Row {
-    let thumbnail = if row.missing {
-        // A missing piece has no PDF, so a thumbnail left from its old content is stale.
-        None
-    } else {
-        model
-            .thumbnail_cache()
-            .and_then(|cache| cache.existing(&row.note_key))
-            .map(|path| path.to_string_lossy().into_owned())
-    };
-    Row {
-        selection_id: browse::row_id(&row).to_owned(),
-        favorite: model.is_favorite(&row.note_key),
-        snippet: row.text_snippet.as_deref().map(|snippet| {
-            let (before, hit, after) = split_snippet(snippet);
-            Snippet { before, hit, after }
-        }),
-        thumbnail,
-        note_key: row.note_key,
-        number: row.id,
-        title: row.title,
-        composer: row.composer_or_artist,
-        tags: row.tags,
-        status: row.status,
-        text_pending: row.text_pending,
-        relative_path: row.relative_path,
-        title_origin: row.title_origin.into(),
-        composer_origin: row.composer_origin.into(),
-        just_opened: row.item_id.is_some() && row.item_id.as_deref() == model.just_opened_item(),
-        item_id: row.item_id,
-        position: row.position.map(count),
-        missing: row.missing,
+/// What every row looks up, gathered once per snapshot: a snapshot is built on the main thread,
+/// and a favorites scan and a file check per row cost too much on a large library.
+struct RowLookup<'a> {
+    model: &'a UiModel,
+    favorites: HashSet<&'a str>,
+    thumbnails: HashSet<String>,
+}
+
+impl<'a> RowLookup<'a> {
+    fn new(model: &'a UiModel) -> Self {
+        Self {
+            model,
+            favorites: model
+                .favorites()
+                .iter()
+                .map(|piece| piece.key.as_str())
+                .collect(),
+            thumbnails: model
+                .thumbnail_cache()
+                .map(ThumbnailCache::rendered_keys)
+                .unwrap_or_default(),
+        }
+    }
+
+    fn row(&self, row: SearchRow) -> Row {
+        let model = self.model;
+        let thumbnail = if row.missing || !self.thumbnails.contains(&row.note_key) {
+            // A missing piece has no PDF, so a thumbnail left from its old content is stale.
+            None
+        } else {
+            model
+                .thumbnail_cache()
+                .and_then(|cache| cache.path_for(&row.note_key))
+                .map(|path| path.to_string_lossy().into_owned())
+        };
+        Row {
+            selection_id: browse::row_id(&row).to_owned(),
+            favorite: self.favorites.contains(row.note_key.as_str()),
+            snippet: row.text_snippet.as_deref().map(|snippet| {
+                let (before, hit, after) = split_snippet(snippet);
+                Snippet { before, hit, after }
+            }),
+            thumbnail,
+            note_key: row.note_key,
+            number: row.id,
+            title: row.title,
+            composer: row.composer_or_artist,
+            tags: row.tags,
+            status: row.status,
+            text_pending: row.text_pending,
+            relative_path: row.relative_path,
+            title_origin: row.title_origin.into(),
+            composer_origin: row.composer_origin.into(),
+            just_opened: row.item_id.is_some()
+                && row.item_id.as_deref() == model.just_opened_item(),
+            item_id: row.item_id,
+            position: row.position.map(count),
+            missing: row.missing,
+        }
     }
 }
 

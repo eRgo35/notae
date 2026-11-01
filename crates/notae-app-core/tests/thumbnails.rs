@@ -90,6 +90,20 @@ fn prune_removes_thumbnails_of_deleted_scores() {
     assert!(cache.existing(&other).is_none());
 }
 
+#[test]
+fn rendered_keys_lists_finished_thumbnails_only() {
+    let (_dir, cache) = cache();
+    let path = cache.path_for(KEY).expect("content key");
+    let dir = path.parent().expect("cache directory");
+    std::fs::write(&path, b"png").unwrap();
+    std::fs::write(dir.join(format!("{}.png.part", "b".repeat(64))), b"half").unwrap();
+    std::fs::write(dir.join("notes.png"), b"png").unwrap();
+    std::fs::create_dir(dir.join(format!("{}.png", "c".repeat(64)))).unwrap();
+
+    let keys: HashSet<String> = [KEY.to_owned()].into();
+    assert_eq!(cache.rendered_keys(), keys);
+}
+
 struct ThumbnailCatalog {
     file: PdfFile,
 }

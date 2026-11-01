@@ -48,6 +48,25 @@ impl ThumbnailCache {
         self.path_for(note_key).filter(|path| path.is_file())
     }
 
+    /// The content keys whose thumbnail has been rendered, read from the directory in one pass,
+    /// so a snapshot of many rows does not check each file. Empty when the directory cannot be
+    /// read, as [`Self::existing`] finds nothing then.
+    #[must_use]
+    pub fn rendered_keys(&self) -> HashSet<String> {
+        let Ok(entries) = fs::read_dir(&self.dir) else {
+            return HashSet::new();
+        };
+        entries
+            .filter_map(Result::ok)
+            .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+            .filter_map(|entry| {
+                let name = entry.file_name().into_string().ok()?;
+                let key = name.strip_suffix(".png")?;
+                is_content_key(key).then(|| key.to_owned())
+            })
+            .collect()
+    }
+
     /// Returns the cached thumbnail, rendering it with `render` when missing.
     ///
     /// `render` writes a PNG to the path it is given and returns `Ok(true)`, or

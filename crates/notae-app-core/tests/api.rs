@@ -898,6 +898,25 @@ fn snapshot_of_2000_rows_is_built() {
     );
 }
 
+#[test]
+fn a_thumbnail_rendered_after_a_snapshot_shows_in_the_next() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    assert_eq!(library.rows[0].thumbnail, None);
+
+    let path = dir
+        .path()
+        .join("thumbnails")
+        .join(format!("{}.png", library.rows[0].note_key));
+    std::fs::write(&path, b"png").expect("thumbnail");
+    let next = harness.core.snapshot();
+    assert_eq!(
+        next.rows[0].thumbnail.as_deref(),
+        Some(path.to_string_lossy().as_ref())
+    );
+}
+
 /// Runs `calls` on another thread and fails, instead of hanging, if it does not return soon.
 fn returns_promptly<T: Send + 'static>(
     what: &str,
