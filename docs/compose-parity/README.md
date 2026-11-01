@@ -172,8 +172,8 @@ Each line is one action and what should happen. Section and screen names are the
 - [ ] Tap **Back to library**, Android Back or Escape → returns to the library.
 - [ ] Library folder card → the folder's name and a **Change** button; **Change** opens the folder picker like the Welcome screen and, once a folder is chosen, switches the library to it.
 - [ ] Library maintenance card → "Indexed scores", "PDFs without extractable text", "Last scan" ("No scan this session" before one), and, after a scan, "ID conflicts" and "Failures" (red when not 0).
-- [ ] About Notae card → Version, Build, License, Repository, Sidecar schema, and the note "Your library stays on this device. Notae does not send data over the network."
-- [ ] Language card → **System default**, **English**, **Polski**; the current one has a check mark. Choosing one switches the whole UI at once and keeps the choice (Android's per-app language when the system has it, Notae's own preference otherwise).
+- [ ] About Notae card → Version, Build, License, Repository (no Sidecar schema: the desktop sidecar import went in a748180), and the note "Your library stays on this device. Notae does not send data over the network."
+- [ ] Language card → **System default**, **English**, **Polski**; the current one has a check mark. Choosing one switches the whole UI at once and keeps the choice through AppCompat's per-app language on every API level (Android's own app-language setting from Android 13; Notae no longer keeps it in ui-prefs.txt, ruling R5).
 - [ ] Sets and favorites card → **Export sets** opens Android's save-file picker with a suggested name `notae-sets-<date>.json`. Saving shows "Favorites and sets exported" under the button; cancelling shows nothing; a failure shows "Could not export sets: <reason>".
 - [ ] The operation banner shows at the top of Settings while a scan runs.
 
