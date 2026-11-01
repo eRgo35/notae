@@ -5,7 +5,7 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 
-# `lib` for the Slint app and the tests, `cdylib` for the Kotlin app, which loads it through
+# `lib` for the Rust tests, `cdylib` for the Kotlin app, which loads it through
 # UniFFI's generated bindings.
 [lib]
 crate-type = ["lib", "cdylib"]
@@ -22,8 +22,8 @@ default = ["bindgen-cli"]
 bindgen-cli = ["uniffi/cli"]
 
 [dependencies]
-notae-domain = { path = "../notae-domain", version = "0.4.0" }
-notae-index = { path = "../notae-index", version = "0.4.0" }
+notae-domain = { path = "../notae-domain", version = "0.5.0" }
+notae-index = { path = "../notae-index", version = "0.5.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.11"

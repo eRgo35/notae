@@ -14,6 +14,6 @@ Use the single-context root `GLOSSARY.md` and `docs/adr/` layout. See `docs/agen
 
 ## Engineering standards
 
-Use the workspace-pinned Rust 1.98.1 toolchain. Run the quality gates with `scripts/check.sh` (`fast` while working, `full` before merging; the gates are listed in `docs/engineering-standards.md`). GitHub CI runs only fmt, Clippy and tests. Releases are cut locally with `scripts/release.sh` (`docs/android-release.md`). Production code must avoid unchecked `unwrap`/`expect`; the test suite may use them for fixtures and assertions. Keep `unsafe` forbidden except for the Android entry-point shim's documented FFI boundary.
+Use the workspace-pinned Rust 1.98.1 toolchain. Run the quality gates with `scripts/check.sh` (`fast` while working, `full` before merging; the gates are listed in `docs/engineering-standards.md`). GitHub CI runs the same gates plus a 16 KB alignment check and an emulator smoke test. Releases are built by `.github/workflows/release.yml` from a pushed `vX.Y.Z` tag (`docs/android-release.md`). Production code must avoid unchecked `unwrap`/`expect`; the test suite may use them for fixtures and assertions. Keep `unsafe` forbidden; no crate has an exception (the Kotlin app reaches the Rust core through UniFFI).
 
 Use Conventional Commits: `<type>(optional-scope): imperative summary` (for example, `fix(search): preserve result panel height`). No mandatory Git hook is installed.

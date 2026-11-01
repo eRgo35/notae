@@ -18,41 +18,38 @@ By contributing you agree that your work is released under the
   clearly non-sensitive.
 - **PDFs are never modified.** Notae must not copy, move, rename or rewrite a
   user's PDF. Changes that would break this need a design discussion first.
-- **No network, no telemetry.** The Android app declares no permissions. Do not
+- **No network, no telemetry.** The Android app requests no Android permissions. Do not
   add networking or analytics dependencies.
 - **Do not claim what you did not verify.** Say in the pull request what you
   ran and what you could not (for example, "not tried on a physical tablet").
 
 ## Development setup
 
-Notae is an Android app; the host tests and the Android cross-compile run on Linux, which is the supported development machine.
+Notae is an Android app; the host tests and the Android build run on Linux, which is the supported development machine.
 
 1. Install the Rust toolchain with [rustup](https://rustup.rs). The repository
    pins **Rust 1.98.1** with `rustfmt` and `clippy` in
    [`rust-toolchain.toml`](rust-toolchain.toml); rustup installs it on first
    use.
-2. Install `pkg-config` and the Fontconfig headers, which the Slint host build
-   links (Ubuntu: `sudo apt-get install pkg-config libfontconfig1-dev`; Fedora:
-   `sudo dnf install pkgconf-pkg-config fontconfig-devel`).
-3. Install the pinned cargo tools used by the gates:
+2. Install the pinned cargo tools used by the gates:
 
    ```sh
    cargo install --locked --version 0.20.2 cargo-deny
    cargo install --locked --version 0.9.1 cargo-llvm-cov
+   cargo install --locked --version 4.1.2 cargo-ndk
    ```
 
-4. For Android work, install JDK 17, the Android SDK (platform 34, build-tools
-   34.0.0), **NDK r26d** (`26.3.11579264`), the Rust target and `cargo-apk2`:
+3. For the Android app, install a JDK (21 or newer), the Android SDK
+   (platform 36, build-tools 36.0.0, NDK r28c `28.2.13676358`) with
+   `ANDROID_HOME` pointing at it, and the Rust targets:
 
    ```sh
-   rustup target add aarch64-linux-android
-   cargo install --locked --version 1.4.0 cargo-apk2
-   export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/26.3.11579264"
+   rustup target add aarch64-linux-android x86_64-linux-android
    ```
 
-   If your JDK is newer than 17, compile the Java adapter as Java 17; the
-   exact environment variables are in
-   [`docs/android-debugging.md`](docs/android-debugging.md).
+   The app in `apps/notae-android` is a Gradle build (`./gradlew` there); it
+   builds the Rust core with cargo-ndk and generates the Kotlin bindings with
+   UniFFI.
 
 ## Project layout
 
@@ -60,11 +57,13 @@ Notae is an Android app; the host tests and the Android cross-compile run on Lin
 | --- | --- |
 | `crates/notae-domain` | Filename convention, metadata, file identity |
 | `crates/notae-index` | SQLite store, FTS5 search, rescan reconciliation |
-| `crates/notae-app-core` | App state machine, stores, browse/search, rescan worker, backup |
-| `apps/notae-android` | Slint UI, Storage Access Framework adapter, Java shim |
+| `crates/notae-app-core` | App state machine, stores, browse/search, rescan worker, backup, and the UniFFI API |
+| `apps/notae-android` | The Gradle app: Jetpack Compose UI and the Storage Access Framework, PDF and speech platform code |
 
-Put domain, indexing and search logic in the host-tested crates; keep the
-Android crate to UI and platform glue. The product scope is in the
+Put domain, indexing, search and screen-state logic in the host-tested crates;
+keep the Kotlin app to drawing the core's snapshots and platform code. Rust
+never builds display text: the core sends typed values and the app holds the
+strings (`res/values*/strings.xml`). The product scope is in the
 [design spec](docs/superpowers/specs/2026-10-09-notae-design.md).
 
 ## Quality gates
@@ -76,13 +75,15 @@ directory, and stops at the first failure:
 ```sh
 scripts/check.sh        # fast: fmt, both Clippy passes, tests
 scripts/check.sh full   # fast plus rustdoc, cargo deny, coverage
-                        # and the Android target check
+                        # and the Gradle gates (lint, unit and
+                        # screenshot tests, Roborazzi verify, release build)
 ```
 
 Run `fast` while working and `full` before merging. `full` checks first that
-`cargo-deny`, `cargo-llvm-cov`, `cargo-apk2` and the NDK are installed. GitHub
-CI runs only fmt, Clippy and the tests, and skips changes that touch only
-Markdown or `docs/`; everything else is checked locally.
+`cargo-deny`, `cargo-llvm-cov`, `cargo-ndk` and the Android SDK are installed.
+GitHub CI runs all of these gates, a 16 KB page-alignment check of the release
+APK and an emulator smoke test, and skips changes that touch only Markdown or
+`docs/`.
 
 The opt-in pre-push hook runs `scripts/check.sh fast`. Enable it per clone with
 `git config core.hooksPath scripts/hooks`; skip it once with
@@ -93,9 +94,7 @@ Notes:
 - Production code (libraries and binaries) must not use `unwrap`/`expect`;
   tests may. A narrow, justified invariant check is allowed if documented at
   the call site.
-- `unsafe` is forbidden in the workspace. The only exception is the Android
-  entry-point and JNI shim under `apps/notae-android`, which uses a stricter
-  package-level `deny` and allows `unsafe` locally with a reason.
+- `unsafe` is forbidden in the workspace, with no exceptions.
 - Line coverage must stay at or above 84%.
 - New dependencies must pass `cargo deny check` (licenses, advisories, sources).
 - Workflows can be linted locally with `actionlint`.
@@ -107,16 +106,19 @@ Notes:
   operation state machines) over a test of private helpers.
 - **Use real fixtures.** Prefer a small generated or non-sensitive fixture over
   mocking the code under test.
-- **UI changes need behavioural UI tests.** The Android UI is exercised on the
-  host with Slint's testing backend: see
-  [`apps/notae-android/tests/support/mod.rs`](apps/notae-android/tests/support/mod.rs)
-  (`app()` / `app_sized(width, height)`) and tests such as `library_ui.rs`,
-  `headers_ui.rs` and `search_input.rs`. Drive the generated UI with pointer and
-  key events, assert the visible result and callbacks, and cover both compact
-  and wide window sizes. Run a single target with, for example:
+- **UI changes need behavioural UI tests.** The Compose UI is exercised on the
+  JVM with Robolectric and the Compose test rules under
+  `apps/notae-android/app/src/test/kotlin`, for example
+  `ui/library/LibraryScreenTest.kt`. Drive the UI with clicks and key events,
+  assert the visible result and the actions sent to the core, and cover
+  portrait and landscape. Screens also have Roborazzi screenshots, light and
+  dark; after a deliberate visual change, record them again with
+  `./gradlew recordRoborazziDebug` and review the images. Run one class with,
+  for example:
 
   ```sh
-  cargo test -p notae-android --test library_ui
+  cd apps/notae-android
+  ./gradlew testDebugUnitTest --tests 'com.c2yz.notae.ui.library.LibraryScreenTest'
   ```
 
 - **Write the failing test first** for bug fixes, and keep it as the
@@ -131,9 +133,9 @@ Use a **scratch** emulator, never a device that holds your real library.
 including AVD creation. In short:
 
 ```sh
-cargo apk2 build -p notae-android --target x86_64-linux-android
-adb -s emulator-5554 install -r target/debug/apk/notae-android.apk
-adb -s emulator-5554 shell am start -n org.notae.android/.NotaeActivity
+(cd apps/notae-android && ./gradlew assembleDebug)
+adb -s emulator-5554 install -r apps/notae-android/app/build/outputs/apk/debug/app-debug.apk
+adb -s emulator-5554 shell am start -n com.c2yz.notae/.MainActivity
 ```
 
 Always pass an explicit `-s <serial>`. Check `adb devices -l` first and do not
@@ -157,14 +159,15 @@ by the official release APK (and vice versa); see
   in the body (`Refs #12`, `Fixes #12`).
 - Keep commits small and focused; do not mix refactors with behaviour changes.
   No hook is mandatory, so run the gates yourself (or enable the opt-in hook).
-- Open a pull request against `main` and fill in the template. The CI job
-  (**fmt, clippy, tests**) must pass, and `scripts/check.sh full` must pass
-  locally; say so in the pull request. A newer push cancels the older run on
+- Open a pull request against `main` and fill in the template. The CI jobs
+  (**Rust gates**, **Gradle gates**, **Emulator smoke test**) must pass; run
+  `scripts/check.sh full` locally too and say so in the pull request. A newer push cancels the older run on
   the same branch.
 - Update documentation and [`CHANGELOG.md`](CHANGELOG.md) (under
   `[Unreleased]`) for user-visible changes.
-- Releases are cut by the maintainer from a version tag with
-  `scripts/release.sh`; see [`docs/android-release.md`](docs/android-release.md).
+- Releases are cut by the maintainer by pushing a version tag, which runs
+  `.github/workflows/release.yml`; see
+  [`docs/android-release.md`](docs/android-release.md).
   Contributors do not need to bump versions.
 
 ## Development workflow
@@ -180,16 +183,16 @@ steps:
 3. **Build test-first.** Write the failing test, then the code. Run
    `scripts/check.sh fast` while working, or let the opt-in hook run it on
    push.
-4. **Pull request.** Open a PR to `main`. The light CI runs; run
+4. **Pull request.** Open a PR to `main`. CI runs every gate; run
    `scripts/check.sh full` locally before merging and say so in the PR.
-5. **Device check.** Build with `scripts/build-apk.sh dev` and try it on the
-   emulator or the Galaxy Tab S10 FE+, following the checklist in
+5. **Device check.** Build with `./gradlew assembleDebug` in
+   `apps/notae-android` and try it on the emulator or the Galaxy Tab S10 FE+, following the checklist in
    [`docs/android-debugging.md`](docs/android-debugging.md).
 6. **Merge**, with an entry under `[Unreleased]` in
    [`CHANGELOG.md`](CHANGELOG.md).
 7. **Release.** Bump the version and the lockfile, write
-   `docs/release-notes/vX.Y.Z.md`, commit and push `main`, tag and push the
-   tag, then run `scripts/release.sh vX.Y.Z`
+   `docs/release-notes/vX.Y.Z.md`, commit and push `main`, then tag and push
+   the tag; the release workflow builds and publishes it
    ([`docs/android-release.md`](docs/android-release.md)).
 8. **Close issues** only after the change is verified on a device.
 

@@ -198,7 +198,7 @@ impl NotaeCore {
     }
 
     /// The folder picker could not run, or its folder could not be kept. The setup screen shows
-    /// `detail` as a storage error, whether or not a library was open, as the Slint app does.
+    /// `detail` as a storage error, whether or not a library was open, as 0.3.0 did.
     pub fn library_root_pick_failed(&self, detail: String) {
         let snapshot = {
             let mut state = self.shared.lock();
@@ -740,7 +740,7 @@ impl CoreState {
         Vec::new()
     }
 
-    /// Sends a search to the worker; a failure is logged, as the Slint app does.
+    /// Sends a search to the worker; a failure is logged, as 0.3.0 did.
     fn search(&self, command: impl FnOnce(&OperationController) -> Result<(), UiError>) {
         if let Err(error) = self.on_worker(command) {
             eprintln!("notae: search failed: {error}");

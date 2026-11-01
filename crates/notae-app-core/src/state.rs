@@ -21,7 +21,7 @@ use std::path::PathBuf;
 
 use notae_index::SearchScope;
 
-/// A user action received from the Slint layer.
+/// A user action received from the UI layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiEvent {
     /// The user edited the search box.

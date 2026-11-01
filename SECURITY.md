@@ -34,19 +34,19 @@ they ask not to be.
 
 ## Scope
 
-Notae is a local application: the Android app (`org.notae.android`) and the
+Notae is a local application: the Android app (`com.c2yz.notae`; `org.notae.android` up to 0.4.0) and the
 release pipeline that signs the APK. Notae has no server and no network service.
 
 In scope:
 
 - Memory-safety or logic bugs reachable from untrusted input: a malicious PDF,
-  a crafted `.notae/manifest.json` or `index.sqlite`, or a hostile file name.
+  a crafted export file or `index.sqlite`, or a hostile file name.
 - Anything that lets Notae read, modify, move or delete files outside the
   folder the user granted, or modify the user's PDFs at all (Notae is designed
   never to).
-- Data leaving the device. The app declares no permissions, including no
-  `INTERNET` permission; a way to make it transmit data would be a
-  vulnerability.
+- Data leaving the device. The app requests no Android permissions (only
+  AndroidX's app-private receiver permission), including no `INTERNET`
+  permission; a way to make it transmit data would be a vulnerability.
 - Weaknesses in how releases are built or signed, and ways to publish an APK
   that passes the documented verification without being signed by the release
   key.

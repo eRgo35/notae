@@ -7,12 +7,11 @@ members = [
     "crates/notae-domain",
     "crates/notae-index",
     "crates/notae-app-core",
-    "apps/notae-android",
 ]
 
 [workspace.package]
 edition = "2024"
-version = "0.4.0"
+version = "0.5.0"
 license = "MIT"
 
 [workspace.dependencies]
@@ -29,19 +28,3 @@ unsafe_code = "forbid"
 all = { level = "warn", priority = -1 }
 unwrap_used = "warn"
 expect_used = "warn"
-
-# Interim fix for #32 (Polish letters from a hardware keyboard): Slint 1.18.1's Android backend
-# maps hardware keys through an ASCII table. This is the published 1.18.1 crate plus the
-# upstream fix (slint-ui/slint#13112). Remove it, and `vendor/`, once a released Slint contains
-# that PR. See vendor/README.md.
-[patch.crates-io]
-i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
-
-# Quick local APK for trying a change on a device (`scripts/build-apk.sh dev`). It is NOT the
-# shipped build: the Release workflow and `build-apk.sh release` use the stock `release` profile,
-# which this table does not touch. Signed with the SDK debug key, never the release key.
-[profile.apk-dev]
-inherits = "release"
-opt-level = 1
-incremental = true
-codegen-units = 256

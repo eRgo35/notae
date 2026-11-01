@@ -893,7 +893,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
     }
 }
 
-/// The storage state decides the setup screens, as in the Slint app; the controller decides the
+/// The storage state decides the setup screens, as in 0.3.0; the controller decides the
 /// rest.
 fn screen(model: &UiModel) -> Screen {
     if model.startup_presentation() != StartupPresentation::Ready {

@@ -29,7 +29,7 @@ pub enum LibrarySection {
 }
 
 impl LibrarySection {
-    /// Stable key passed through the Slint layer.
+    /// Stable key passed through the UI layer.
     #[must_use]
     pub fn key(&self) -> String {
         match self {

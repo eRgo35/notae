@@ -1,6 +1,6 @@
 //! What the user did, as the Kotlin app reports it through [`NotaeCore::dispatch`].
 //!
-//! One variant per callback the Slint app wires today (`android_main.rs` and its `wire_sets`),
+//! One variant per callback 0.3.0 wired (its `android_main.rs` and its `wire_sets`),
 //! except the language choice, which Kotlin applies through AppCompat on its own. The deferred
 //! sets features add their variants with their tasks.
 //!

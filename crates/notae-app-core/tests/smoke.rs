@@ -111,7 +111,7 @@ fn shared_scan_eligibility_tracks_idle_operation_state() {
 
 // P3 #7: `StorageState::Error(_)` carries a payload the UI can
 // render. The display string is what `StorageStateKindView::Error(message)`
-// hands to the Slint `setup_error_label`.
+// hands to 0.3.0's `setup_error_label`.
 #[test]
 fn storage_state_error_carries_message_to_kind() {
     let state = StorageState::Error(StorageError::Other("Permission refused".to_owned()));

@@ -1,6 +1,6 @@
 //! The one boundary between the core and the platform's document storage.
 //!
-//! The platform (the Slint app's JNI code today, Kotlin from 0.5.0) owns every platform API. It
+//! The platform (Kotlin from 0.5.0) owns every platform API. It
 //! lists the library, reads a PDF's text layer and renders a thumbnail, and hands the results to
 //! the core as plain data through [`PlatformLibrary`]. [`PlatformCatalog`] turns that data into
 //! the [`LibraryCatalog`] the rescan worker reads.

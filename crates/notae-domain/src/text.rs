@@ -9,12 +9,11 @@
 /// Collapses internal whitespace runs to a single space and trims the
 /// ends.
 ///
-/// Mirrors the normalization the OCR layer applies to the text
-/// Tesseract returns, so a piece of recognized text round-trips
-/// through storage, the search index, and the OCR provider
-/// unchanged. Whitespace is whatever [`str::split_whitespace`] treats
-/// as a boundary: ASCII spaces, tabs, newlines, carriage returns, and
-/// form feeds. An all-whitespace input collapses to the empty string.
+/// The index stores text through it, so stored text compares cleanly
+/// and the search tokenizer sees clean token boundaries.
+/// Whitespace is whatever [`str::split_whitespace`] treats as a
+/// boundary: ASCII spaces, tabs, newlines, carriage returns, and form
+/// feeds. An all-whitespace input collapses to the empty string.
 ///
 /// [`str::split_whitespace`]: str::split_whitespace
 #[must_use]
