@@ -109,7 +109,10 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     // does, and the library passes their keys on when it holds focus itself (after its own ⋮ sheet closes).
     val selection = snapshot.selection
     val keys = remember { FocusRequester() }
-    LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey, selection == null) { if (!sheetOpen && !overlay) keys.requestFocus() }
+    LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey) { if (!sheetOpen && !overlay) keys.requestFocus() }
+    // Only when the details close (beside the library, which stays put); never when they open, since the outgoing
+    // library stays composed during the portrait transition and would compete with the details for focus.
+    LaunchedEffect(selection == null) { if (selection == null && !sheetOpen && !overlay) keys.requestFocus() }
     BoxWithConstraints(
         modifier
             .fillMaxSize()

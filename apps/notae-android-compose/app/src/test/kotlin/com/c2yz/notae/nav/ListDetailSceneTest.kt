@@ -131,6 +131,19 @@ class ListDetailSceneTest {
 
     @Test
     @Config(qualifiers = "w800dp-h1280dp-xhdpi")
+    fun portrait_details_take_the_keys_when_they_open() {
+        // The outgoing library stays composed during the transition; it must not take focus from the details.
+        show(Fixture.library())
+        snapshot = selecting(ave)
+        compose.waitForIdle()
+
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+
+        assertEquals(listOf<Action>(Action.SelectScore(rows[ave + 1].selectionId)), actions)
+    }
+
+    @Test
+    @Config(qualifiers = "w800dp-h1280dp-xhdpi")
     fun narrow_window_shows_details_alone() {
         show(selecting(ave))
 

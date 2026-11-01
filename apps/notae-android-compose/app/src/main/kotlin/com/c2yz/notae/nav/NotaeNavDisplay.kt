@@ -121,7 +121,8 @@ private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when 
         }
     }
     // The set view is the library screen inside the set (Slint draws it in the same chrome).
-    is Route.Library, is Route.Set -> NavEntry(key, metadata = metadata { put(ListPane, true) }) {
+    // ListPane comes from isListRoute, which also decides besideList, so the scene and the details agree.
+    is Route.Library, is Route.Set -> NavEntry(key, metadata = metadata { if (isListRoute(key)) put(ListPane, true) }) {
         LibraryScreen(shown.value.snapshot, shown.value.onAction)
     }
     // One content key for every score: previous and next (and another score chosen in the list beside it) swap the
