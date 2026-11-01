@@ -12,12 +12,15 @@ val cargoTargetDir: File =
     providers.environmentVariable("CARGO_TARGET_DIR").map(::File).getOrElse(workspaceDir.resolve("target"))
 val workspaceVersion = workspaceVersion(workspaceDir.resolve("Cargo.toml").readText())
 
-// Settings' "Build": the short commit hash, as the Slint app's build.rs, or "unknown" outside a Git checkout.
-val buildIdentity: String = providers.exec {
-    workingDir = workspaceDir
-    commandLine("git", "rev-parse", "--short", "HEAD")
-    isIgnoreExitValue = true
-}.standardOutput.asText.get().trim().ifEmpty { "unknown" }
+// Settings' "Build": the short commit hash, as the Slint app's build.rs, or "unknown" outside a Git
+// checkout or without Git installed (a missing `git` throws rather than failing with an exit code).
+val buildIdentity: String = runCatching {
+    providers.exec {
+        workingDir = workspaceDir
+        commandLine("git", "rev-parse", "--short", "HEAD")
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim()
+}.getOrDefault("").ifEmpty { "unknown" }
 
 android {
     namespace = "com.c2yz.notae"
