@@ -29,6 +29,7 @@ import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.search.SearchScreen
 import com.c2yz.notae.ui.settings.AboutInfo
 import com.c2yz.notae.ui.sets.SetOverlays
+import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.settings.SettingsScreen
 import com.c2yz.notae.ui.setup.WelcomeScreen
 import com.c2yz.notae.ui.theme.NotaeTheme
@@ -79,11 +80,6 @@ internal fun Modifier.shellFrame(): Modifier =
 private const val DETAILS_CONTENT_KEY = "details"
 
 private val ABOUT = AboutInfo(version = BuildConfig.VERSION_NAME, build = BuildConfig.BUILD_IDENTITY)
-
-/** A dialog or sheet, which the core closes before any screen. */
-private fun overlayOpen(snapshot: Snapshot): Boolean =
-    snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.metadataEditor != null ||
-        snapshot.addToSet != null || snapshot.addPicker != null
 
 private fun entryFor(key: NavKey, snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable: Boolean): NavEntry<NavKey> = when (key) {
     Route.Loading -> placeholder(key, R.string.screen_loading)

@@ -70,6 +70,7 @@ import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.SidebarItem
 import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.sets.SetActionsSheet
+import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.sets.SetsPane
 import com.c2yz.notae.ui.sets.setSubtitle
 import com.c2yz.notae.ui.theme.NotaeTheme
@@ -160,11 +161,6 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         }
     }
 }
-
-/** A dialog, sheet or picker the snapshot holds, drawn by the shell over this screen. */
-private fun overlayOpen(snapshot: Snapshot): Boolean =
-    snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.metadataEditor != null ||
-        snapshot.addToSet != null || snapshot.addPicker != null
 
 @Composable
 private fun Header(snapshot: Snapshot, onAction: (Action) -> Unit, expanded: Boolean, sidebar: Boolean, portrait: Boolean, inSet: Boolean) {
