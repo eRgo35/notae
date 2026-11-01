@@ -1,8 +1,5 @@
 package com.c2yz.notae.ui.setup
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -42,7 +39,7 @@ class WelcomeScreenTest {
         compose.setContent {
             density = LocalDensity.current
             NotaeTheme(dark = dark) {
-                WelcomeScreen(setup, importAvailable, { actions += it }, { imports++ }, Modifier.fillMaxSize().background(NotaeTheme.colors.background))
+                WelcomeScreen(setup, importAvailable, { actions += it }, { imports++ })
             }
         }
         compose.assertAllClickablesLabelled()

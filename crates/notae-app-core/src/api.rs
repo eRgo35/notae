@@ -193,18 +193,11 @@ impl NotaeCore {
         }
     }
 
-    /// The folder picker could not run, or its folder could not be kept. While no library is
-    /// open the setup screen shows `detail` as a storage error; an open library stays open.
+    /// The folder picker could not run, or its folder could not be kept. The setup screen shows
+    /// `detail` as a storage error, whether or not a library was open, as the Slint app does.
     pub fn library_root_pick_failed(&self, detail: String) {
         let snapshot = {
             let mut state = self.shared.lock();
-            if matches!(
-                state.model.storage_kind(),
-                StorageStateKindView::Ready { .. }
-            ) {
-                eprintln!("notae: folder picker failed: {detail}");
-                return;
-            }
             state
                 .model
                 .set_storage(StorageState::Error(StorageError::Other(detail)));

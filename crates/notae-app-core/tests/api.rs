@@ -667,7 +667,8 @@ fn a_new_core_restores_the_open_set_and_selection() {
 fn failed_folder_picker_shows_a_setup_error_and_import_is_offered() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), Arc::new(FakePlatform::default()));
-    assert!(harness.core.snapshot().import_available);
+    let before = harness.core.snapshot();
+    assert!(before.import_available);
 
     harness
         .core
@@ -684,20 +685,31 @@ fn failed_folder_picker_shows_a_setup_error_and_import_is_offered() {
             }
         }
     );
-    assert!(failed.revision > 0);
+    assert!(failed.revision > before.revision);
 }
 
 #[test]
-fn failed_folder_picker_leaves_an_open_library_alone() {
+fn failed_folder_picker_with_a_library_open_shows_the_setup_error() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), library_platform(&["Ave Maria"]));
-    open_and_scan(&harness);
+    let library = open_and_scan(&harness);
 
     harness
         .core
         .library_root_pick_failed("Change failed".to_owned());
 
-    assert_eq!(harness.core.snapshot().screen, Screen::Library);
+    let failed = harness.core.snapshot();
+    assert_eq!(
+        failed.screen,
+        Screen::Setup {
+            setup: SetupScreen::Error {
+                error: SetupError::Other {
+                    detail: "Change failed".to_owned()
+                }
+            }
+        }
+    );
+    assert!(failed.revision > library.revision);
 }
 
 #[test]

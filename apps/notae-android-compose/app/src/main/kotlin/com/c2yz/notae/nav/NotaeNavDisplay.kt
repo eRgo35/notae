@@ -3,6 +3,9 @@ package com.c2yz.notae.nav
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,7 +43,7 @@ fun NotaeNavDisplay(snapshot: Snapshot, onAction: (Action) -> Unit, onBack: () -
     val backStack = backStackFor(snapshot)
     NavDisplay(
         backStack = backStack,
-        modifier = modifier.background(NotaeTheme.colors.background),
+        modifier = modifier.shellFrame(),
         onBack = onBack,
         sceneStrategies = listOf(ListDetailSceneStrategy()),
         entryProvider = { key -> entryFor(key, snapshot, onAction) },
@@ -54,6 +57,14 @@ fun NotaeNavDisplay(snapshot: Snapshot, onAction: (Action) -> Unit, onBack: () -
         onBackCompleted = onBack,
     )
 }
+
+/**
+ * The frame every screen sits in: the background runs edge to edge behind the system bars (the
+ * activity draws edge to edge), and the content keeps clear of the bars, the cutout and the keyboard.
+ */
+@Composable
+internal fun Modifier.shellFrame(): Modifier =
+    background(NotaeTheme.colors.background).windowInsetsPadding(WindowInsets.safeDrawing)
 
 /** A dialog or sheet, which the core closes before any screen. */
 private fun overlayOpen(snapshot: Snapshot): Boolean =
