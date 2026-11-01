@@ -15,6 +15,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.Density
 import com.c2yz.notae.core.Action
@@ -81,6 +84,15 @@ class MetadataEditorTest {
         compose.onNodeWithContentDescription("Close").performClick()
 
         assertEquals(listOf<Action>(Action.CancelMetadata, Action.CancelMetadata), actions)
+    }
+
+    @Test
+    fun escape_cancels_the_edit_without_a_click() {
+        show()
+
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+
+        assertEquals(listOf<Action>(Action.CancelMetadata), actions)
     }
 
     @Test

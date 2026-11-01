@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.details
 
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,7 @@ import com.c2yz.notae.ui.theme.NotaeTheme
  * and close, the intro, Title, Composer or artist, Score number and Tags, the core's error in red, then Cancel and
  * Save details at the bottom; it scrolls when the window is shorter. The fields are this composable's own state, filled
  * again whenever the core sends a different draft (the record has loaded); Save sends them, Close and Cancel drop them.
+ * The dialog takes the focus itself, as buttons cannot hold it in touch mode, so Escape cancels at once.
  */
 @Composable
 fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
@@ -57,8 +59,8 @@ fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: M
     var number by remember(draft.noteKey, draft.number) { mutableStateOf(draft.number) }
     var tags by remember(draft.noteKey, tagsText) { mutableStateOf(tagsText) }
     val cancel = { onAction(Action.CancelMetadata) }
-    val close = remember { FocusRequester() }
-    LaunchedEffect(Unit) { close.requestFocus() }
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(Unit) { keys.requestFocus() }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val expanded = maxWidth >= 840.dp
         ModalSurface(
@@ -66,9 +68,12 @@ fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: M
             onDismiss = null,
             bottomSheet = false,
             cardWidth = 600.dp,
-            modifier = Modifier.onPreviewKeyEvent { event ->
-                (event.type == KeyEventType.KeyDown && event.key == Key.Escape).also { if (it) cancel() }
-            },
+            modifier = Modifier
+                .onPreviewKeyEvent { event ->
+                    (event.type == KeyEventType.KeyDown && event.key == Key.Escape).also { if (it) cancel() }
+                }
+                .focusRequester(keys)
+                .focusable(),
             padding = PaddingValues(0.dp),
             spacing = 0.dp,
             cardHeight = 620.dp,
@@ -91,7 +96,7 @@ fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: M
                                 fontSize = 24.sp,
                                 fontWeight = FontWeight.SemiBold,
                             )
-                            IconButton(stringResource(R.string.dismiss), painterResource(R.drawable.ic_close), cancel, Modifier.focusRequester(close))
+                            IconButton(stringResource(R.string.dismiss), painterResource(R.drawable.ic_close), cancel)
                         }
                         Text(stringResource(R.string.metadata_intro), color = c.muted, fontSize = 14.sp)
                         Field(stringResource(R.string.details_title), title, { title = it }, stringResource(R.string.metadata_title_hint))
