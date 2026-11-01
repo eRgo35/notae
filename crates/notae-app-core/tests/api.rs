@@ -523,7 +523,9 @@ fn dispatch_never_waits_for_a_platform_call() {
     harness.core.dispatch(Action::AcknowledgeOperation);
     // Dropping `release` (also on a failed assertion) lets the scan finish.
     let release = harness.platform.hold_enumerate();
-    harness.core.dispatch(Action::Rescan);
+    // The worker may already be enumerating when this dispatch builds its snapshot.
+    let core = Arc::clone(&harness.core);
+    returns_promptly("dispatch(Rescan)", move || core.dispatch(Action::Rescan));
     let deadline = Instant::now() + Duration::from_secs(10);
     while harness
         .platform
