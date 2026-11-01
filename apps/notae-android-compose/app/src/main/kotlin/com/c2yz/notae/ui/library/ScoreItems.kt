@@ -48,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,7 +72,13 @@ internal const val FAVORITE_BADGE_TAG = "favorite-badge"
  * cards 1.3 times as tall as wide plus 64 dp for the text. Keyed by the selection id.
  */
 @Composable
-internal fun ScoreGrid(rows: List<ScoreRowData>, onOpen: (ScoreRowData) -> Unit, onMore: (ScoreRowData) -> Unit, modifier: Modifier = Modifier) {
+internal fun ScoreGrid(
+    rows: List<ScoreRowData>,
+    onOpen: (ScoreRowData) -> Unit,
+    onMore: (ScoreRowData) -> Unit,
+    modifier: Modifier = Modifier,
+    selectedId: String? = null,
+) {
     NotaeCard(modifier.fillMaxSize()) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val inner = maxWidth - 40.dp
@@ -88,7 +95,7 @@ internal fun ScoreGrid(rows: List<ScoreRowData>, onOpen: (ScoreRowData) -> Unit,
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 items(rows, key = { it.selectionId }) { row ->
-                    ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.height(cellHeight))
+                    ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.height(cellHeight), selected = row.selectionId == selectedId)
                 }
             }
             GridScrollbar(state, Modifier.align(Alignment.TopEnd).padding(top = 20.dp))
@@ -98,12 +105,18 @@ internal fun ScoreGrid(rows: List<ScoreRowData>, onOpen: (ScoreRowData) -> Unit,
 
 /** Slint's list layout: 80 dp rows in a card with an 8 dp inset. Keyed by the selection id. */
 @Composable
-internal fun ScoreList(rows: List<ScoreRowData>, onOpen: (ScoreRowData) -> Unit, onMore: (ScoreRowData) -> Unit, modifier: Modifier = Modifier) {
+internal fun ScoreList(
+    rows: List<ScoreRowData>,
+    onOpen: (ScoreRowData) -> Unit,
+    onMore: (ScoreRowData) -> Unit,
+    modifier: Modifier = Modifier,
+    selectedId: String? = null,
+) {
     NotaeCard(modifier.fillMaxSize()) {
         val state = rememberLazyListState()
         LazyColumn(Modifier.testTag(LIST_TAG).fillMaxSize().padding(8.dp), state = state) {
             items(rows, key = { it.selectionId }) { row ->
-                ScoreRow(row, { onOpen(row) }, { onMore(row) })
+                ScoreRow(row, { onOpen(row) }, { onMore(row) }, selected = row.selectionId == selectedId)
             }
         }
         ListScrollbar(state, Modifier.align(Alignment.TopEnd).padding(vertical = 8.dp))
@@ -132,7 +145,7 @@ internal fun ListScrollbar(state: LazyListState, modifier: Modifier) {
  * position badge inside a set, a star on a favorite and the ⋮ in the bottom corner. A missing piece cannot be opened.
  */
 @Composable
-internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false) {
     val c = NotaeTheme.colors
     val shape = RoundedCornerShape(20.dp)
     val source = remember { MutableInteractionSource() }
@@ -143,9 +156,9 @@ internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit
             Modifier
                 .fillMaxSize()
                 .clip(shape)
-                .background(if (pressed) c.field else Color.Transparent)
+                .background(itemBackground(selected, pressed))
                 .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
-                .scoreClick(row, source, onOpen)
+                .scoreClick(row, source, onOpen, selected)
                 .padding(6.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -154,13 +167,13 @@ internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit
                 Text(
                     row.title,
                     Modifier.clearAndSetSemantics { },
-                    color = c.foreground,
+                    color = if (selected) c.onAccentSoft else c.foreground,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                ScoreSubtitle(row, 14)
+                ScoreSubtitle(row, 14, selected = selected)
             }
         }
         row.position?.let { PositionBadge(it, Modifier.padding(14.dp)) }
@@ -171,7 +184,7 @@ internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit
 
 /** Slint `ScoreRow`: one 80 dp line with the position, a small page, the text, a star on a favorite and the ⋮. */
 @Composable
-internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier) {
+internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false) {
     val c = NotaeTheme.colors
     val shape = RoundedCornerShape(18.dp)
     val source = remember { MutableInteractionSource() }
@@ -182,9 +195,9 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
             .fillMaxWidth()
             .height(80.dp)
             .clip(shape)
-            .background(if (pressed) c.field else Color.Transparent)
+            .background(itemBackground(selected, pressed))
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
-            .scoreClick(row, source, onOpen)
+            .scoreClick(row, source, onOpen, selected)
             .padding(start = 14.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -195,15 +208,15 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
             Text(
                 row.title,
                 Modifier.clearAndSetSemantics { },
-                color = c.foreground,
+                color = if (selected) c.onAccentSoft else c.foreground,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            ScoreSubtitle(row, 14)
+            ScoreSubtitle(row, 14, selected = selected)
             if (row.tags.isNotEmpty()) {
-                Text(row.tags.joinToString(", "), color = c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(row.tags.joinToString(", "), color = if (selected) c.onAccentSoft else c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         if (row.favorite) FavoriteBadge()
@@ -211,26 +224,45 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
     }
 }
 
+/** Slint's item background: accent-soft while the score shows in the details beside the list, else the press. */
+@Composable
+private fun itemBackground(selected: Boolean, pressed: Boolean): Color = when {
+    selected -> NotaeTheme.colors.accentSoft
+    pressed -> NotaeTheme.colors.field
+    else -> Color.Transparent
+}
+
 /**
  * The card or row's own target: named "N. title" as in Slint, read with its composer line, and opening the PDF.
- * A piece missing from the library has nothing to open, so it is not clickable.
+ * A piece missing from the library has nothing to open, so it is not clickable. The score shown beside the list is
+ * marked selected.
  */
 @Composable
-private fun Modifier.scoreClick(row: ScoreRowData, source: MutableInteractionSource, onOpen: () -> Unit): Modifier {
+private fun Modifier.scoreClick(row: ScoreRowData, source: MutableInteractionSource, onOpen: () -> Unit, selected: Boolean): Modifier {
     val label = (row.position?.let { "$it. " } ?: "") + row.title
     val opens = stringResource(R.string.score_opens)
-    return semantics { contentDescription = label }
+    return semantics {
+        contentDescription = label
+        if (selected) this.selected = true
+    }
         .clickable(source, null, enabled = !row.missing, onClickLabel = opens, role = Role.Button, onClick = onOpen)
 }
 
-/** "number · composer" (either alone when the other is missing), or "Missing from library" in the error colour. */
+/**
+ * "number · composer" (either alone when the other is missing), or "Missing from library" in the error colour; in the
+ * accent-soft text colour on a selected item, as Slint's.
+ */
 @Composable
-internal fun ScoreSubtitle(row: ScoreRowData, size: Int, missingInError: Boolean = true) {
+internal fun ScoreSubtitle(row: ScoreRowData, size: Int, missingInError: Boolean = true, selected: Boolean = false) {
     val c = NotaeTheme.colors
     val text = if (row.missing) stringResource(R.string.score_missing) else listOfNotNull(row.number, row.composer).joinToString(" · ")
     Text(
         text,
-        color = if (row.missing && missingInError) c.error else c.muted,
+        color = when {
+            row.missing && missingInError -> c.error
+            selected -> c.onAccentSoft
+            else -> c.muted
+        },
         fontSize = size.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,

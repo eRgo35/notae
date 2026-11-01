@@ -118,7 +118,7 @@ Each line is one action and what should happen. Section and screen names are the
 - [ ] **Open score** → closes the sheet and opens the PDF as a tap on the card does.
 - [ ] **Add to favorites** / **Remove from favorites** → toggles the star; the badge, the Favorites count and the section update; saved across restarts.
 - [ ] **Add to set…** → closes the sheet and opens the add-to-set sheet.
-- [ ] **Score details** → closes the sheet and opens the full-width details screen for this score (inside a set, for this copy of a repeated piece).
+- [ ] **Score details** → closes the sheet and opens the details for this score (inside a set, for this copy of a repeated piece): beside the library on a wide window, full screen on a narrow one.
 - [ ] **Edit details** → closes the sheet and opens the metadata editor.
 - [ ] **Remove from set** (inside a set only) → the piece leaves the set at once, without confirmation, and the positions renumber; the PDF is untouched.
 - [ ] A piece missing from the library (inside a set) → its sheet shows the title with "Missing from library" and only **Remove from set**.
@@ -126,7 +126,9 @@ Each line is one action and what should happen. Section and screen names are the
 
 ### Score details screen
 
-- [ ] The details screen replaces the whole library chrome (no side panel, chips or header): back arrow, "N of M" position, favorite star, previous, next.
+- [ ] Compose differs from 0.3.0 here (owner decision 2026-11-01, spec §4.4, ruling R37). On a window at least 840 dp wide (a 1280×800 tablet in landscape), the library or the open set and the details show side by side as one list-detail scene. The library keeps its header, chips and scores in a 720 dp pane; at that width the side panel is hidden and the chips show, so the header fits. The details take the rest of the width (528 dp card at 1280 dp, as the split pane Slint had before 0.2.0) in their stacked layout. The shown score is highlighted in the library (accent-soft background, as Slint's list). The operation banner and the PDF error show once, in the library pane. Below 840 dp (portrait) the details replace the whole library chrome as in 0.3.0. 0.3.0's Slint references show only the full-screen layout; there is no Slint reference for two panes.
+- [ ] The details header: back arrow, "N of M" position, favorite star, previous, next.
+- [ ] With both panes showing: choosing another score (⋮ → Score details, Previous/Next, Left/Right) updates the detail pane in place, without moving the library or resetting either pane's scroll. Opening and closing the details does not animate the library. Left/Right, Escape and Ctrl K work with nothing tapped, also after the metadata editor or a ⋮ sheet closes. Back or Escape closes the details and leaves the library where it was.
 - [ ] Wide layout (800 px or more) → page preview on the left; on the right the "No. <number>" line, title, composer, **Open score**, an **Edit details** icon, and an info card with Title, Composer, Tags, File (path and its status). Narrow layout stacks them centered. Missing values show "—". The page scrolls when it is taller than the window.
 - [ ] Tap **Back to library**, press Android Back or Escape → returns to the layout, section and scroll position it came from.
 - [ ] Tap the star (**Add to favorites** / **Remove from favorites**) → toggles the favorite; the star is filled while it is one.

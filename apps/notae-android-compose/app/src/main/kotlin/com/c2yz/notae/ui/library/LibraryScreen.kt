@@ -69,6 +69,7 @@ import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.SidebarItem
 import com.c2yz.notae.ui.components.toCount
+import com.c2yz.notae.ui.details.detailsKeyAction
 import com.c2yz.notae.ui.sets.SetActionsSheet
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.sets.SetsPane
@@ -104,8 +105,11 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     // The keys work as soon as the library shows, as Slint focuses its shortcuts (app.slint), and again once a sheet,
     // dialog or picker closes. While one is open, Slint ignores them (Escape closes a ⋮ sheet).
     val overlay = overlayOpen(snapshot)
+    // On a wide window the details sit beside the library (NotaeNavDisplay); then they take focus after the library
+    // does, and the library passes their keys on when it holds focus itself (after its own ⋮ sheet closes).
+    val selection = snapshot.selection
     val keys = remember { FocusRequester() }
-    LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey) { if (!sheetOpen && !overlay) keys.requestFocus() }
+    LaunchedEffect(sheetOpen, overlay, snapshot.sectionKey, selection == null) { if (!sheetOpen && !overlay) keys.requestFocus() }
     BoxWithConstraints(
         modifier
             .fillMaxSize()
@@ -115,6 +119,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 when {
                     sheetOpen -> escape.also { if (it) closeSheets() }
                     overlay -> false
+                    selection != null -> detailsKeyAction(event, selection)?.also(onAction) != null
                     event.isCtrlK() -> true.also { onAction(Action.OpenSearch) }
                     // Inside a set, Escape returns to the list of sets.
                     escape && inSet -> true.also { onAction(Action.SelectSection("sets")) }
@@ -293,6 +298,8 @@ private fun ColumnScope.Content(
 ) {
     val area = Modifier.weight(1f).fillMaxWidth()
     val open = { row: com.c2yz.notae.core.Row -> onAction(Action.OpenPdf(row.relativePath, row.noteKey, row.itemId)) }
+    // The score shown in the details pane beside the library.
+    val selected = snapshot.selection?.row?.selectionId
     when {
         snapshot.sectionKey == "sets" && snapshot.setCards.isEmpty() -> EmptyState(snapshot, onAction, area)
         snapshot.sectionKey == "sets" -> SetsPane(
@@ -303,8 +310,8 @@ private fun ColumnScope.Content(
             area,
         )
         snapshot.rows.isEmpty() -> EmptyState(snapshot, onAction, area)
-        snapshot.layout.libraryView == LibraryView.LIST -> ScoreList(snapshot.rows, open, onMore, area)
-        else -> ScoreGrid(snapshot.rows, open, onMore, area)
+        snapshot.layout.libraryView == LibraryView.LIST -> ScoreList(snapshot.rows, open, onMore, area, selected)
+        else -> ScoreGrid(snapshot.rows, open, onMore, area, selected)
     }
 }
 

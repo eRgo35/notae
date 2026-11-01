@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -58,41 +59,42 @@ import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.library.PagePreview
 import com.c2yz.notae.ui.library.isCtrlK
 import com.c2yz.notae.ui.library.pdfErrorText
+import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 internal const val DETAILS_BODY_TAG = "details-body"
 
 /**
- * Slint `ScoreDetails` in the library's preview layer: it replaces the whole library chrome. The operation banner and
- * the PDF launch error stay above the card. The header has back, "X of Y", the star, previous and next. The body
- * scrolls and puts the page beside the headline and the info card when the card is at least 720 dp wide; under that,
- * it stacks them centred. Neighbours and the position are the core's ([Selection]): each is a selection id, so every
- * copy of a repeated piece in a set is its own step. The screen takes focus, so Left and Right move to them and Escape
- * goes back without a tap first.
+ * Slint `ScoreDetails`: full screen on a narrow window, and the detail pane beside the library or a set on a wide one
+ * ([besideList]). Alone, the operation banner and the PDF launch error stay above the card; beside a list, the list's
+ * pane shows them. The header has back, "X of Y", the star, previous and next. The body scrolls and puts the page
+ * beside the headline and the info card when the card is at least 720 dp wide; under that, it stacks them centred.
+ * Neighbours and the position are the core's ([Selection]): each is a selection id, so every copy of a repeated piece
+ * in a set is its own step. The screen takes focus, so Left and Right move to them and Escape goes back without a tap
+ * first.
  */
 @Composable
-fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
+fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier = Modifier, besideList: Boolean = false) {
     val selection = snapshot.selection ?: return
     val c = NotaeTheme.colors
     // Slint focuses its shortcut scope when the details open and when a dialog closes, so the keys work at once.
     val keys = remember { FocusRequester() }
-    val editorOpen = snapshot.metadataEditor != null
-    LaunchedEffect(editorOpen) { if (!editorOpen) keys.requestFocus() }
+    val overlay = overlayOpen(snapshot)
+    LaunchedEffect(overlay) { if (!overlay) keys.requestFocus() }
     Column(
         modifier
             .fillMaxSize()
             .background(c.background)
             .padding(16.dp)
-            .onPreviewKeyEvent { event ->
-                val action = if (event.isCtrlK()) Action.OpenSearch else keyAction(event.key, selection)
-                event.type == KeyEventType.KeyDown && action?.also(onAction) != null
-            }
+            .onPreviewKeyEvent { event -> detailsKeyAction(event, selection)?.also(onAction) != null }
             .focusRequester(keys)
             .focusable(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OperationBanner(snapshot.banner, onAction)
-        snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+        if (!besideList) {
+            OperationBanner(snapshot.banner, onAction)
+            snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+        }
         NotaeCard(Modifier.weight(1f).fillMaxWidth()) {
             Column(Modifier.fillMaxSize().padding(8.dp)) {
                 Header(selection, onAction)
@@ -102,10 +104,16 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     }
 }
 
-private fun keyAction(key: Key, selection: Selection): Action? = when (key) {
-    Key.DirectionLeft -> selection.previous?.let { Action.SelectScore(it) }
-    Key.DirectionRight -> selection.next?.let { Action.SelectScore(it) }
-    Key.Escape -> Action.ClearSelection
+/**
+ * The details' keys: Left and Right to the core's neighbours, Escape back, Ctrl K to search. The library pane beside
+ * the details uses them too, so the keys step whichever pane holds focus.
+ */
+internal fun detailsKeyAction(event: KeyEvent, selection: Selection): Action? = when {
+    event.type != KeyEventType.KeyDown -> null
+    event.isCtrlK() -> Action.OpenSearch
+    event.key == Key.DirectionLeft -> selection.previous?.let { Action.SelectScore(it) }
+    event.key == Key.DirectionRight -> selection.next?.let { Action.SelectScore(it) }
+    event.key == Key.Escape -> Action.ClearSelection
     else -> null
 }
 

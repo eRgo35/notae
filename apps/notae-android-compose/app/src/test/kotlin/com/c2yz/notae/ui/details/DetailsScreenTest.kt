@@ -248,13 +248,18 @@ class DetailsScreenTest {
         return library.copy(selection = Selection(row, previous = "key-1", next = "key-3", position = PositionOf(3u, 20u)))
     }
 
-    // Screenshots (app/src/test/screenshots), named after their docs/compose-parity/slint/ references.
+    // Screenshots (app/src/test/screenshots), named after their docs/compose-parity/slint/ references. Landscape goes
+    // through the shell, so it shows the details beside the library or the set (R37); portrait shows them alone.
 
     private fun shot(state: String, snapshot: Snapshot, landscape: Boolean, dark: Boolean) {
         RuntimeEnvironment.setQualifiers(if (landscape) "+w1280dp-h800dp-xhdpi" else "+w800dp-h1280dp-xhdpi")
         shown = snapshot
         compose.setContent {
-            NotaeTheme(dark = dark) { shown?.let { DetailsScreen(it, { action -> actions += action }) } }
+            NotaeTheme(dark = dark) {
+                shown?.let {
+                    if (landscape) NotaeNavDisplay(it, onAction = {}, onBack = {}) else DetailsScreen(it, { action -> actions += action })
+                }
+            }
         }
         compose.waitForIdle()
         val orientation = if (landscape) "landscape" else "portrait"
@@ -269,10 +274,8 @@ class DetailsScreenTest {
     private val inSet: Snapshot
         get() {
             // A score without a composer has no composer origin, as the core reports it.
-            val kyrie = piece(Fixture.rows.first { it.title == "Kyrie eleison" }, "item-2", 2u).copy(composerOrigin = Origin.UNSET)
-            return Fixture.library().copy(
-                sectionKey = "set:palm-sunday",
-                title = SectionTitle.Set("Niedziela Palmowa"),
+            val kyrie = Fixture.palmRows[1].copy(composerOrigin = Origin.UNSET)
+            return Fixture.palmSunday().copy(
                 selection = Selection(kyrie, previous = "item-1", next = "item-3", position = PositionOf(2u, 9u)),
             )
         }
