@@ -1,10 +1,21 @@
 # Android release
 
-Notae ships one Android artifact: a signed arm64 APK attached to the GitHub Release of a `vX.Y.Z` tag together with a `.sha256` file. The maintainer builds, signs, verifies and publishes it on their own PC with `scripts/release.sh`. Releases are signed only with the maintainer's dedicated release key, which exists only on that PC and in the maintainer's backups. The build never falls back to the debug key.
+Notae ships one Android artifact: a signed arm64 APK attached to the GitHub Release of a `vX.Y.Z` tag together with a `.sha256` file. `.github/workflows/release.yml` builds, signs, verifies and publishes it when the tag is pushed. Releases are signed only with the maintainer's dedicated release key; the build never falls back to the debug key.
+
+Since 0.5.0 the app id is `com.c2yz.notae` (0.3.0 and 0.4.0 were `org.notae.android`), so 0.5.0 installs beside the old app instead of updating it.
 
 ## Where releases are built
 
-Nothing on GitHub builds or signs a release. GitHub runs only the light `ci.yml` (fmt, Clippy, tests) and the weekly `audit.yml`; see [`engineering-standards.md`](engineering-standards.md). Earlier releases were built by a GitHub Actions release workflow, removed in 0.4.0 because it needed the signing key in repository secrets and about 70 CI minutes per release.
+`release.yml` runs on GitHub when a `v*` tag is pushed. It reads the release key from four repository Actions secrets:
+
+| Secret | Meaning |
+| --- | --- |
+| `NOTAE_KEYSTORE_BASE64` | The keystore file (`.jks` or `.p12`), base64-encoded. |
+| `NOTAE_KEYSTORE_PASSWORD` | The keystore's password. |
+| `NOTAE_KEY_ALIAS` | The key's alias (`notae-release`). |
+| `NOTAE_KEY_PASSWORD` | The key's password. |
+
+Set or replace one with `gh secret set <NAME> --repo eRgo35/notae` (for the keystore: `base64 -w0 notae-release.jks | gh secret set NOTAE_KEYSTORE_BASE64 --repo eRgo35/notae`). Never commit the keystore, the passwords or the base64 text to the repository.
 
 ## One-time setup: the release key
 
@@ -19,42 +30,36 @@ keytool -genkeypair -v \
 
 Choose strong passwords when prompted. `keytool` also accepts a separate key password for JKS keystores; PKCS12 uses one password for both.
 
-**Back the keystore up now, before using it.** Android installs only accept an update signed with the same key, so losing `notae-release.jks` or its passwords means every user must uninstall and reinstall, losing their app data. Store at least two copies (for example an encrypted password manager attachment and an offline encrypted drive) together with the alias and both passwords. Never commit the keystore, the passwords or the base64 text to the repository.
-
-### The local keystore
-
-cargo-apk2 needs a single-entry PKCS#12 keystore whose store password equals its key password (see below). Create it once from the keystore above, outside the repository:
-
-```sh
-mkdir -p ~/.android-keys && chmod 700 ~/.android-keys
-read -rs NOTAE_KEYSTORE_PASSWORD; export NOTAE_KEYSTORE_PASSWORD
-read -rs NOTAE_KEY_PASSWORD; export NOTAE_KEY_PASSWORD
-NOTAE_KEY_ALIAS=notae-release scripts/prepare-release-keystore.sh notae-release.jks ~/.android-keys/notae-release.p12
-```
-
-`scripts/release.sh` reads `~/.android-keys/notae-release.p12` by default; set `NOTAE_RELEASE_KEYSTORE` to use another path.
-
-That workflow read the key from four repository secrets (`NOTAE_KEYSTORE_BASE64`, `NOTAE_KEYSTORE_PASSWORD`, `NOTAE_KEY_ALIAS`, `NOTAE_KEY_PASSWORD`). Nothing uses them any more; the maintainer may delete them with `gh secret delete <NAME> --repo eRgo35/notae`, one name at a time.
+**Back the keystore up now, before using it.** Android installs only accept an update signed with the same key, so losing `notae-release.jks` or its passwords means every user must uninstall and reinstall, losing their app data. Store at least two copies (for example an encrypted password manager attachment and an offline encrypted drive) together with the alias and both passwords.
 
 ### Expected signing certificate
 
-The release certificate's SHA-256 fingerprint is public and pinned in `scripts/release.sh` (`cert_sha256`):
+The release certificate's SHA-256 fingerprint is public and pinned in `release.yml` (`NOTAE_RELEASE_CERT_SHA256`):
 
 ```text
 BE:27:CD:78:17:66:C5:C2:8A:9D:B1:06:C0:7B:05:1C:EE:E4:E0:00:31:05:96:45:95:E2:A8:48:F3:71:F6:01
 ```
 
-`scripts/verify-release-apk.sh` compares it with the `Signer #1 certificate SHA-256 digest` from `apksigner verify --print-certs` and stops the release before any upload on a mismatch, so a wrong or substituted keystore cannot publish an APK. Rotating the key means updating that value in a reviewed commit. Check a keystore yourself with `keytool -list -v -keystore notae-release.jks -alias notae-release`.
+`scripts/verify-release-apk.sh` compares it with the `Signer #1 certificate SHA-256 digest` from `apksigner verify --print-certs`, and the workflow compares the AAB's certificate (`keytool -printcert -jarfile`) with it too, so a wrong or substituted keystore stops the release before any upload. Rotating the key means updating that value in a reviewed commit. Check a keystore yourself with `keytool -list -v -keystore notae-release.jks -alias notae-release`.
 
 ### How the keystore is used
 
-cargo-apk2 1.4.0 reads the release key from `CARGO_APK_RELEASE_KEYSTORE` (path) and `CARGO_APK_RELEASE_KEYSTORE_PASSWORD`, and passes only `--ks` and `--ks-pass` to `apksigner`. It has no key-alias or key-password option, which is why `scripts/prepare-release-keystore.sh` uses `keytool -importkeystore` to copy the one alias into a single-entry PKCS12 file whose store password is the key password. `scripts/release.sh` reads that password with a hidden prompt and passes it, with the keystore path, only to the `build-apk.sh release` command. `apps/notae-android/Cargo.toml` deliberately contains no release signing configuration: a release build without the environment variables fails instead of using the debug key.
+The Gradle build (`apps/notae-android/app/build.gradle.kts`) signs the release build only when all four of these variables are set, and otherwise writes an unsigned `app-release-unsigned.apk`, which is what `scripts/check.sh full` and CI build:
+
+| Variable | Meaning |
+| --- | --- |
+| `NOTAE_RELEASE_KEYSTORE` | Path to the keystore (`.p12` or `.jks`). |
+| `NOTAE_KEYSTORE_PASSWORD` | The keystore's password. |
+| `NOTAE_KEY_ALIAS` | The key's alias. |
+| `NOTAE_KEY_PASSWORD` | The key's password. |
+
+`release.yml` decodes `NOTAE_KEYSTORE_BASE64` into the runner's temporary directory, passes the path and the three other secrets to `./gradlew assembleRelease bundleRelease` only, and deletes the file after the build, whatever its outcome.
 
 ## Cutting a release
 
-1. On `main`, bump `[workspace.package] version` in the root `Cargo.toml` and the `version = "…"` of every internal path dependency in the crates' `Cargo.toml` files, then regenerate the lockfile (`cargo update --workspace`). cargo-apk2 derives the Android `versionName` from that version and `versionCode` as `(1 << 24) | major << 16 | minor << 8 | patch`, so the code rises with every semantic-version increase; do not set either in `apps/notae-android/Cargo.toml` (cargo-apk2 rejects it). Version 0.1.0 is `16777472`, 0.2.0 is `16777728`, 0.2.2 is `16777730`.
+1. On `main`, bump `[workspace.package] version` in the root `Cargo.toml` and the `version = "…"` of every internal path dependency in the crates' `Cargo.toml` files, then regenerate the lockfile (`cargo update --workspace`). The Gradle build reads `versionName` from that version and derives `versionCode` as `(1 << 24) | major << 16 | minor << 8 | patch` (`apps/notae-android/buildSrc/src/main/kotlin/VersionCode.kt`, the formula every release has used), so the code rises with every semantic-version increase. Version 0.2.2 is `16777730`, 0.5.0 is `16778496`.
 2. Add `docs/release-notes/vX.Y.Z.md`. It becomes the hand-written section of the GitHub Release; GitHub's generated notes are appended after it. State what was and was not verified on a physical device.
-3. Run `scripts/check.sh full`, then commit (`chore(release): vX.Y.Z`) and push `main`.
+3. Run `scripts/check.sh full`, then commit (`chore(release): vX.Y.Z`), push `main` and wait for CI to pass.
 4. Tag that commit and push the tag:
 
    ```sh
@@ -62,42 +67,32 @@ cargo-apk2 1.4.0 reads the release key from `CARGO_APK_RELEASE_KEYSTORE` (path) 
    git push origin vX.Y.Z
    ```
 
-5. In your own terminal (it prompts for the keystore password), run:
-
-   ```sh
-   scripts/release.sh vX.Y.Z
-   ```
-
-   It refuses, before building anything, when the tag is not `vMAJOR.MINOR.PATCH`, is not pushed or points at a different commit on `origin`, is not on `origin/main`, does not equal `v` plus the Cargo version at the tag, or has no release notes at the tag; when a GitHub Release for the tag already exists or `gh` cannot check (not installed, not logged in, offline); or when the keystore is missing. It then checks out the tag into a temporary worktree under the git-ignored `.worktrees/` and runs `scripts/check.sh full` there, so the published APK always comes from the tag. The worktree starts with an empty `target/`, so this is a cold build that needs tens of GB of disk; that is why it is not in `/tmp`, which is often RAM-backed. After the password prompt it runs `scripts/build-apk.sh release`, then `scripts/verify-release-apk.sh` checks `versionName`, `versionCode`, `apksigner verify` (v2 scheme), that the certificate is not the Android debug certificate and that it equals the pinned fingerprint, and writes `notae-X.Y.Z-arm64.apk` plus `.sha256`. Only then does `gh release create` publish both, with the hand-written notes followed by GitHub's generated notes, and print the release URL. The temporary worktree is removed on every exit, including Ctrl-C and a wrong password, and an upload interrupted part-way deletes its draft release (a published release is never deleted).
+5. `release.yml` then:
+   - refuses, before building anything, when a signing secret is missing, the tag is not `vMAJOR.MINOR.PATCH`, does not equal `v` plus the workspace version at the tag, has no release notes at the tag or is not on `main`;
+   - runs every CI gate on the tag (`ci.yml`, including the emulator smoke test);
+   - builds the signed release APK and AAB;
+   - runs `scripts/verify-release-apk.sh`, which checks `versionName`, `versionCode`, `apksigner verify` (v2 scheme), that the certificate is not the Android debug certificate and that it equals the pinned fingerprint, and writes `notae-X.Y.Z-arm64.apk` plus `.sha256`; then checks the AAB's certificate;
+   - keeps the APK, its checksum and `notae-X.Y.Z.aab` as workflow artifacts (the AAB is for a store upload; it is not attached to the release);
+   - publishes the GitHub Release with the hand-written notes followed by GitHub's generated notes, and the APK and its `.sha256` attached.
 6. Check the assets: `gh release view vX.Y.Z --json assets -q '.assets[].name'` lists `notae-X.Y.Z-arm64.apk` and `notae-X.Y.Z-arm64.apk.sha256`.
+
+To retry a failed run after fixing the cause on `main`, delete the tag locally and on `origin` (and the release, if one was created), tag the fixed commit and push the tag again.
 
 The gates include `cargo deny check` with advisories. If a new advisory lands after the last green `main` commit, the release stops at the gates; add a reasoned `deny.toml` ignore or upgrade on `main` and release a new patch version.
 
 ### Local builds
 
-One script builds the arm64 APK on this machine and prints its path, size and SHA-256:
-
 ```sh
-# Shippable: the command scripts/release.sh runs (stock `release` profile, release key).
-export CARGO_APK_RELEASE_KEYSTORE=/secure/path/notae-release.p12
-export CARGO_APK_RELEASE_KEYSTORE_PASSWORD=...
-scripts/build-apk.sh release   # -> target/release/apk/notae-android.apk
-
-# Quick dev build: `apk-dev` profile (opt-level 1, incremental), debug key. Never ship it.
-scripts/build-apk.sh dev       # -> target/apk-dev/apk/notae-android.apk
+cd apps/notae-android
+./gradlew assembleDebug     # app/build/outputs/apk/debug/app-debug.apk: arm64-v8a and x86_64, debug key
+./gradlew assembleRelease   # app/build/outputs/apk/release/app-release-unsigned.apk: arm64-v8a, unsigned
 ```
 
-`release` is `cargo apk2 build -p notae-android --target aarch64-linux-android --release` and fails without the keystore variables instead of falling back to the debug key. `dev` uses the `[profile.apk-dev]` table in the root `Cargo.toml`, which inherits `release` and lowers optimisation; it does not touch the `release` profile, so the shippable artifact is unchanged. The script defaults `ANDROID_HOME` to `~/Android/Sdk` and `ANDROID_NDK_ROOT` to its `ndk/android-ndk-r26d` directory, and compiles the Java sources as Java 17 (`JDK_JAVAC_OPTIONS`), because the bundled D8 rejects the class files of a newer default JDK (JDK 25 fails with "Unsupported class file major version 69"). Both builds reuse `target/` (or `CARGO_TARGET_DIR`), so repeat builds are incremental.
-
-Measured on the maintainer workstation (16 threads, NDK r26d, Rust 1.98.1, v0.2.2): cold `release` 114 s, `release` with nothing changed 6 s, `release` after touching `apps/notae-android/src/lib.rs` 41 s; cold `dev` 140 s, `dev` with nothing changed 15 s, `dev` after touching `lib.rs` 20 s. The point of `dev` is the edit-build-install loop (roughly half the time of `release` after a source change); a cold `dev` build is not faster. No `sccache` or `mold` is installed, and the arm64 link already uses the NDK's `lld`, so neither was added.
-
-Create the single-entry `.p12` as in [The local keystore](#the-local-keystore). Plain `cargo apk2 build` (without `--release`) also keeps using the SDK's `~/.android/debug.keystore`.
-
-Verify an APK with `scripts/verify-release-apk.sh target/release/apk/notae-android.apk vX.Y.Z dist`, or manually with `aapt2 dump badging`, `apksigner verify --print-certs` and `sha256sum`. A locally built APK is a convenient test build; the published APK is the one `scripts/release.sh` builds from the tag in a clean worktree.
+The Gradle build compiles the Rust core with cargo-ndk (NDK r28c, 16 KB pages) and generates the Kotlin bindings with UniFFI; `ANDROID_HOME` (or `sdk.dir` in `local.properties`) must point at the SDK. A debug build is signed with the SDK's debug key and is not update-compatible with a release. Verify any APK with `scripts/verify-release-apk.sh APK vX.Y.Z dist`, or manually with `aapt2 dump badging`, `apksigner verify --print-certs` and `sha256sum`. The published APK is the one `release.yml` builds from the tag.
 
 ## Debug-key and release-key installs are incompatible
 
-The Galaxy Tab S10 FE+ currently has a **debug-key** install of Notae. Android refuses to update an app with a different signing key, so installing the release-signed APK requires uninstalling the debug build first, and uninstalling **deletes the app's private data**: preferences, the SAF folder grant and the local index. The index can be rebuilt by scanning again and the PDFs are untouched, but export or back up anything you need first (note edits live only in the app index until a sidecar is exported). Never `adb install -r` a release APK over the debug install; keep emulator experiments on a scratch AVD. After the move to the release key, upgrades between release builds work in place.
+The Galaxy Tab S10 FE+ currently has a **debug-key** install of Notae. Android refuses to update an app with a different signing key, so installing the release-signed APK requires uninstalling the debug build first, and uninstalling **deletes the app's private data**: preferences, the SAF folder grant and the local index. The index can be rebuilt by scanning again and the PDFs are untouched, but export or back up anything you need first (note edits live only in the app index). Never `adb install -r` a release APK over the debug install; keep emulator experiments on a scratch AVD. After the move to the release key, upgrades between release builds work in place.
 
 ## Release tags and the history rewrite
 

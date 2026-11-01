@@ -221,6 +221,8 @@ notae/
 
 ### UI and Android boundary
 
+> **Superseded (2026-10-30)** by [ADR 0002](../../adr/0002-compose-ui-over-ffi.md): the UI moves to Jetpack Compose over a UniFFI Rust core, and the desktop indexer and sidecar import are removed. This section describes the Slint app up to 0.3.0.
+
 The UI is implemented in Slint and driven by Rust application state. A small Android bridge handles only platform concerns:
 
 - Storage Access Framework folder selection and persisted permission;
@@ -314,6 +316,8 @@ Android visual design follows the [approved One UI canvas](https://claude.ai/art
 Android layout rules: the window draws edge-to-edge and the UI pads itself by the system-bar insets (no framework action bar). Every configured screen owns its header, and the Scan icon is that header's right-most action on Library, Search and Settings; there is no global bar above the screens. Layout is compact below 840 px of window width (section chips, Settings in the Library header), shows the section side panel from 840 px, and shows list plus details side by side from 1280 px. The status banner reports only the running operation or its outcome; the latest scan result and pending-text count are in Settings. Touch targets are at least 48 px.
 
 ### Linux CLI
+
+> **Superseded (2026-10-30)** by [ADR 0002](../../adr/0002-compose-ui-over-ffi.md): the desktop indexer (`apps/notae-index`) and `notae-ocr` are removed; the OCR crate is kept on the `archive/notae-ocr` branch.
 
 The PC tool is Linux-only for the first release:
 

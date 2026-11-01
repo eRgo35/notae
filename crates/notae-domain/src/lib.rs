@@ -1,7 +1,7 @@
 //! Pure domain model for Notae.
 //!
-//! These types cross the portable sidecar boundary, so their serde
-//! representations are stable and they depend on no storage or platform crate.
+//! The serde representations of these types are stable, and they depend on no
+//! storage or platform crate.
 
 mod filename;
 mod identity;

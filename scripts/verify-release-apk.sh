@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Verifies a release APK against its tag and copies it, with a SHA-256 file, into DIST_DIR.
 #
-# Checks: versionName equals the tag without `v`; versionCode equals the value cargo-apk2 derives
-# from the semantic version ((1 << 24) | major << 16 | minor << 8 | patch); the APK verifies with
+# Checks: versionName equals the tag without `v`; versionCode equals the value the Gradle build
+# derives from the semantic version ((1 << 24) | major << 16 | minor << 8 | patch, see
+# apps/notae-android/buildSrc/src/main/kotlin/VersionCode.kt); the APK verifies with
 # apksigner and the v2 scheme; it is not signed with the Android debug key; and, when
 # NOTAE_RELEASE_CERT_SHA256 is set, the signing certificate's SHA-256 fingerprint equals it
-# (hex, with or without colons, any case). scripts/release.sh always sets it.
+# (hex, with or without colons, any case). .github/workflows/release.yml always sets it.
 #
 # Usage: verify-release-apk.sh APK TAG DIST_DIR [BUILD_TOOLS_DIR]
-# BUILD_TOOLS_DIR defaults to $ANDROID_HOME/build-tools/34.0.0 and must hold aapt2 and apksigner.
+# BUILD_TOOLS_DIR defaults to $ANDROID_HOME/build-tools/36.0.0 and must hold aapt2 and apksigner.
 set -euo pipefail
 
 if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
@@ -18,7 +19,7 @@ fi
 apk=$1
 tag=$2
 dist=$3
-build_tools=${4:-${ANDROID_HOME:?set ANDROID_HOME or pass BUILD_TOOLS_DIR}/build-tools/34.0.0}
+build_tools=${4:-${ANDROID_HOME:?set ANDROID_HOME or pass BUILD_TOOLS_DIR}/build-tools/36.0.0}
 
 case "$tag" in
   v[0-9]*.[0-9]*.[0-9]*) ;;

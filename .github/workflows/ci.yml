@@ -1,8 +1,8 @@
 name: CI
 
-# A light check: formatting, both Clippy passes and the tests. The full gates (rustdoc, cargo deny,
-# coverage, the CLI smoke and the Android arm64 compile) run locally with `scripts/check.sh full`
-# and in every release (`scripts/release.sh`).
+# The quality gates of docs/engineering-standards.md: the Rust gates, the Gradle gates of the
+# Android app (with the 16 KB alignment check) and an emulator smoke test. release.yml runs this
+# workflow on the tag before it builds a release.
 on:
   # Branch work is covered by its pull request, so a push to a PR branch does not run twice.
   push:
@@ -11,6 +11,7 @@ on:
   pull_request:
     paths-ignore: ['**.md', 'docs/**']
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -20,28 +21,25 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  # The NDK `ndkVersion` in apps/notae-android/app/build.gradle.kts asks for.
+  NDK_VERSION: 28.2.13676358
+
 jobs:
-  check:
-    name: fmt, clippy, tests
-    # Pinned: `ubuntu-latest` now resolves to 26.04, whose preinstalled libclang 21/22 makes the
-    # `leptonica-sys` 0.4.9 bindgen step fail (`unknown type name 'atomic_int'` in leptonica/environ.h).
-    # Last green on ubuntu-24.04 (run 39125510213). Revisit when leptonica-sys or the image changes.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      TESSDATA_PREFIX: /usr/share/tesseract-ocr/5/tessdata
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_DEV_DEBUG: "0"
+  rust:
+    name: Rust gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Free preinstalled runner disk space
         run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/lib/android
       - uses: actions/checkout@v7
-      - name: Install native host dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes libtesseract-dev libleptonica-dev libfontconfig1-dev pkg-config tesseract-ocr-eng
       - name: Install pinned Rust toolchain
-        run: rustup show active-toolchain
+        run: |
+          rustup show active-toolchain
+          rustup component add llvm-tools-preview
       # Registry and git sources only: caching target/ fills the runner disk.
       - uses: actions/cache@v6
         with:
@@ -50,6 +48,10 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Install cargo-deny and cargo-llvm-cov
+        run: |
+          cargo install --locked --version 0.20.2 cargo-deny
+          cargo install --locked --version 0.9.1 cargo-llvm-cov
       - name: Check formatting
         run: cargo fmt --check
       - name: Lint all targets
@@ -58,3 +60,129 @@ jobs:
         run: cargo clippy --workspace --lib --bins -- -D warnings -D clippy::unwrap_used -D clippy::expect_used
       - name: Run tests
         run: cargo test --workspace
+      - name: Build docs
+        run: RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+      - name: Check dependencies
+        run: cargo deny check
+      - name: Enforce the coverage floor
+        run: cargo llvm-cov --workspace --summary-only --fail-under-lines 84
+
+  gradle:
+    name: Gradle gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Free preinstalled runner disk space
+        run: sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+          cache-dependency-path: |
+            apps/notae-android/gradle/libs.versions.toml
+            apps/notae-android/gradle/wrapper/gradle-wrapper.properties
+      - name: Install pinned Rust toolchain, Android targets and cargo-ndk
+        run: |
+          rustup show active-toolchain
+          rustup target add aarch64-linux-android x86_64-linux-android
+          cargo install --locked --version 4.1.2 cargo-ndk
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Install the Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;36.0.0" "ndk;$NDK_VERSION"
+      - name: Lint, unit and screenshot tests, Roborazzi verify, release and debug builds
+        working-directory: apps/notae-android
+        run: ./gradlew lint testDebugUnitTest verifyRoborazziDebug assembleRelease assembleDebug
+      - name: Check 16 KB page alignment
+        # `shell: bash` adds pipefail, so a failed llvm-readelf fails the check.
+        shell: bash
+        run: |
+          apk=apps/notae-android/app/build/outputs/apk/release/app-release-unsigned.apk
+          readelf=$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
+          unzip -o -q "$apk" 'lib/arm64-v8a/*.so' -d "$RUNNER_TEMP/apk-libs"
+          for so in "$RUNNER_TEMP"/apk-libs/lib/arm64-v8a/*.so; do
+            if "$readelf" -l -W "$so" | awk '$1 == "LOAD" && $NF != "0x4000" && $NF != "0x10000" { bad = 1 } END { exit bad }'; then
+              echo "16 KB aligned: ${so##*/}"
+            else
+              echo "::error::${so##*/} has a LOAD segment aligned below 16 KB"
+              exit 1
+            fi
+          done
+      - name: Keep the Roborazzi diffs of a failed verify
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: roborazzi-diffs
+          path: apps/notae-android/app/build/outputs/roborazzi
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v7
+        with:
+          name: notae-debug-apk
+          path: apps/notae-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  emulator:
+    name: Emulator smoke test
+    needs: gradle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SYSTEM_IMAGE: system-images;android-35;google_apis;x86_64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: notae-debug-apk
+          path: ${{ runner.temp }}/apk
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install the emulator and a tablet AVD
+        run: |
+          sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
+          yes | "$sdkmanager" --licenses > /dev/null
+          "$sdkmanager" emulator platform-tools "$SYSTEM_IMAGE"
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd \
+            -n smoke -k "$SYSTEM_IMAGE" -d pixel_tablet
+      - name: Boot the emulator
+        run: |
+          "$ANDROID_HOME/emulator/emulator" -avd smoke -no-window -no-audio -no-boot-anim \
+            -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+          adb=$ANDROID_HOME/platform-tools/adb
+          "$adb" wait-for-device
+          for _ in $(seq 1 120); do
+            [ "$("$adb" shell getprop sys.boot_completed | tr -d '\r')" = 1 ] && exit 0
+            sleep 5
+          done
+          echo "::error::the emulator did not boot in 10 minutes"
+          tail -n 50 "$RUNNER_TEMP/emulator.log"
+          exit 1
+      - name: Install, launch, pick a folder and open Sets
+        run: PATH=$ANDROID_HOME/platform-tools:$PATH scripts/emulator-smoke.sh "$RUNNER_TEMP/apk/app-debug.apk"
+      - name: Keep the screen and log of a failed smoke test
+        if: failure()
+        run: |
+          adb=$ANDROID_HOME/platform-tools/adb
+          mkdir -p "$RUNNER_TEMP/smoke"
+          "$adb" exec-out screencap -p > "$RUNNER_TEMP/smoke/screen.png" || true
+          "$adb" logcat -d > "$RUNNER_TEMP/smoke/logcat.txt" || true
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: emulator-smoke
+          path: ${{ runner.temp }}/smoke
+          if-no-files-found: ignore

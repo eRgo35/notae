@@ -15,7 +15,7 @@ is. See [`CONTRIBUTING.md`](CONTRIBUTING.md#development-workflow).
 
 ## Now: 0.5.0
 
-[Milestone v0.5.0](https://github.com/eRgo35/notae/milestone/5). The Slint UI
+[Milestone v0.5.0](https://github.com/eRgo35/notae/milestone/5). The Rust UI
 is replaced by a Jetpack Compose app over a UniFFI Rust core, with the new
 application id `com.c2yz.notae`. Notae becomes Android only: the Linux indexer
 (`notae-index`), sidecar import and `notae-ocr` are removed.

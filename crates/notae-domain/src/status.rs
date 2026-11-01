@@ -25,6 +25,9 @@ pub enum IndexStatus {
     /// The file is not a readable PDF.
     InvalidPdf,
     /// An imported sidecar record does not match the local file.
+    ///
+    /// No longer produced since 0.5.0, which removed the desktop sidecar import.
+    /// Indexes written by earlier versions still store it, so it keeps parsing.
     ImportMismatch,
 }
 

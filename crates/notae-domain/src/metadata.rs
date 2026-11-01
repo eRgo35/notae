@@ -38,6 +38,9 @@ pub enum MetadataOrigin {
     /// Parsed from the filename convention `<ID> - <Title>.pdf`.
     FilenameDerived,
     /// Imported from a Notae sidecar written on PC.
+    ///
+    /// No longer produced since 0.5.0, which removed the desktop sidecar import.
+    /// Indexes written by earlier versions still store it, so it keeps parsing.
     PcImported,
     /// Edited by the user; authoritative over imported values.
     Manual,
@@ -151,7 +154,7 @@ impl FieldProvenance {
 ///
 /// Fields are private so every value reaching a `NoteMetadata` has passed
 /// [`NoteMetadata::new`] or a validating mutator, whether it came from the
-/// filename parser, SQLite, or a sidecar file.
+/// filename parser, SQLite, or serialized JSON.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct NoteMetadata {
     /// Optional globally unique non-negative number.
@@ -338,8 +341,8 @@ impl NoteMetadata {
 }
 
 impl<'de> Deserialize<'de> for NoteMetadata {
-    /// Routes every inbound record through [`NoteMetadata::new`], so a sidecar
-    /// cannot produce metadata that the constructor would have rejected.
+    /// Routes every inbound record through [`NoteMetadata::new`], so serialized
+    /// input cannot produce metadata that the constructor would have rejected.
     ///
     /// A record must carry provenance, either as the `provenance` object or as
     /// the legacy scalar `origin`. A record with neither is rejected rather
@@ -389,7 +392,7 @@ impl<'de> Deserialize<'de> for NoteMetadata {
 ///
 /// Serializes as `{"path", "fingerprint", "metadata", "status"}`, with
 /// `status` a snake_case [`IndexStatus`] name. A record without `status`
-/// deserializes to [`IndexStatus::Discovered`], so an older sidecar row still
+/// deserializes to [`IndexStatus::Discovered`], so an older serialized row still
 /// loads.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexedNote {

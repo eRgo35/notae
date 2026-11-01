@@ -2,3 +2,9 @@
 /.worktrees/
 /schola/
 /.superpowers/
+# Gradle build of the Compose app; build/ also holds the generated UniFFI bindings and the
+# cargo-ndk native libraries.
+/apps/notae-android/**/.gradle/
+/apps/notae-android/**/.kotlin/
+/apps/notae-android/**/build/
+/apps/notae-android/local.properties

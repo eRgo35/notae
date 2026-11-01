@@ -2,17 +2,17 @@
 
 <img src="docs/images/notae-banner.svg" alt="Notae: local-first sheet-music library for Android tablets" width="720">
 
-**Index your sheet-music PDFs on a Linux desktop, then browse and search them
-on an Android tablet. No cloud, no account, no network access.**
+**Browse and search your sheet-music PDFs on an Android tablet. No cloud, no
+account, no network access.**
 
-<sub>Version 0.4.0 · Android tablet (arm64) · one maintainer · next:
-<a href="ROADMAP.md">the 0.5.0 Compose app</a></sub>
+<sub>Version 0.5.0 · Android tablet (arm64) · one maintainer ·
+<a href="ROADMAP.md">roadmap</a></sub>
 
 [![CI](https://github.com/eRgo35/notae/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eRgo35/notae/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/eRgo35/notae)](https://github.com/eRgo35/notae/releases/latest)
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust 1.98.1](https://img.shields.io/badge/Rust-1.98.1-orange?logo=rust)](rust-toolchain.toml)
-[![Android 6.0+ (API 23), arm64](https://img.shields.io/badge/Android-6.0%2B%20%7C%20arm64-3DDC84?logo=android&logoColor=white)](#install)
+[![Android 8.0+ (API 26), arm64](https://img.shields.io/badge/Android-8.0%2B%20%7C%20arm64-3DDC84?logo=android&logoColor=white)](#install)
 
 [Download](https://github.com/eRgo35/notae/releases/latest) ·
 [Quick start](#quick-start) ·
@@ -40,20 +40,7 @@ annotate scores itself: it hands each PDF to the viewer you already use.
 
 ## Features
 
-**Desktop indexer (`notae-index`, Linux)**
-
-- Walks a folder of PDFs, parses `<number> - <title>.pdf` file names and
-  extracts the embedded text layer.
-- Runs Tesseract OCR on image-only (scanned) pages with the installed language
-  packs, keeping the best-scoring language per page.
-- Writes a portable, versioned **sidecar** (`.notae/index.sqlite` and
-  `manifest.json`) and re-indexes incrementally by SHA-256 content hash, so a
-  renamed file stays one record.
-
-**Android app (tablet-first)**
-
-- **Browse** as a card grid (two columns on a phone, like the Drive app) or a
-  dense list, with a collapsible sidebar, a
+- **Browse** as a card grid or a dense list, with a collapsible sidebar, a
   **Recent** section and a full-width **preview** with previous/next buttons.
   Light and dark themes follow the system setting. Scans are manual; Notae
   never scans in the background.
@@ -64,14 +51,14 @@ annotate scores itself: it hands each PDF to the viewer you already use.
   `ą ć ę ń ó ś ź ż` match their plain letters and `ł`/`Ł` match `l`/`L`, so
   `lodz` finds `Łódź` in titles, composers, tags and lyrics.
 - **Edit details** (number, title, composer, tags). Manual edits are kept when
-  you import a sidecar again.
-- **Import preview** for sidecars: see what is new, changed or missing before
-  anything is applied. Nothing is imported automatically.
+  a scan runs again.
 - **Open scores in your PDF viewer**: Samsung Notes when installed, otherwise
   the Android PDF chooser.
-- Reads a PDF's own text layer on-device on Android 15 (API 35) and later;
-  scanned PDFs get searchable text from the desktop sidecar. A failing PDF
-  never aborts a scan, and duplicate numbers are reported rather than
+- Parses `<number> - <title>.pdf` file names and re-indexes incrementally by
+  SHA-256 content hash, so a renamed file stays one record.
+- Reads a PDF's own text layer on-device on Android 15 (API 35) and later.
+  Scanned PDFs have no searchable text until on-device OCR exists. A failing
+  PDF never aborts a scan, and duplicate numbers are reported rather than
   overwritten.
 
 ## Screenshots
@@ -109,46 +96,35 @@ physical tablet.</sub>
 
 ## How it works
 
-The desktop and the tablet never need to share a filesystem or a network. They
-exchange a versioned sidecar that lives in the library folder.
+Notae reads the folder you pick through Android's Storage Access Framework and
+builds its own private index from it.
 
 ```mermaid
 flowchart LR
-    subgraph desktop["Linux desktop"]
-        pdfs[("PDF library")]
-        idx["notae-index<br/>catalog, text layer, Tesseract OCR"]
-        pdfs --> idx
-    end
-
-    idx -->|writes| sidecar[".notae/<br/>index.sqlite + manifest.json"]
-    pdfs -. "copy folder (USB, file sharing, ...)" .-> tablet_files
-    sidecar -. "copy with the PDFs" .-> tablet_files
-
     subgraph tablet["Android tablet"]
-        tablet_files[("Library folder<br/>PDFs + .notae/")]
-        app["Notae<br/>scan, import preview,<br/>browse, search, edit details"]
+        files[("Library folder<br/>PDFs")]
+        app["Notae<br/>scan, browse, search,<br/>edit details"]
         viewer["Your PDF viewer<br/>(Samsung Notes, ...)"]
-        tablet_files -->|"folder grant (SAF)"| app
+        files -->|"folder grant (SAF)"| app
         app -->|"open score"| viewer
     end
 ```
 
-Notae never syncs or uploads anything: you move the folder yourself, and the
-tablet builds its own private index from it. There is no on-device OCR yet;
+Notae never syncs or uploads anything. There is no on-device OCR yet;
 [ADR 0001](docs/adr/0001-on-device-ocr.md) accepts it as a manual, foreground step ([#28](https://github.com/eRgo35/notae/issues/28)), not yet built.
 
 ## Install
 
 > [!NOTE]
-> Notae is young. v0.4.0 changes only tooling and docs; its app is the same as
-> v0.3.0, which is verified with host tests and on an Android tablet
-> emulator but has **not yet been accepted on a physical tablet** (see the
-> [release notes](docs/release-notes/v0.3.0.md)). Please report anything odd.
+> Notae is young. 0.5.0 rebuilds the app in Jetpack Compose with a new app id,
+> `com.c2yz.notae`: it installs beside 0.3.0 or 0.4.0 instead of updating it.
+> Use **Export sets** in the old app first and import the file on 0.5.0's
+> first screen to keep your favorites and sets (see the
+> [changelog](CHANGELOG.md)). Please report anything odd.
 
-Notae ships one Android artifact: a signed **arm64** APK for Android 6.0 (API
-23) or newer, attached to each GitHub Release. The maintainer builds, signs
-and verifies it from the release tag with `scripts/release.sh`. The desktop indexer is built from source; see
-[Build from source](#build-from-source).
+Notae ships one Android artifact: a signed **arm64** APK for Android tablets
+with Android 8.0 (API 26) or newer, attached to each GitHub Release. The
+release workflow builds, signs and verifies it from the release tag.
 
 1. Download `notae-<version>-arm64.apk` and its `.sha256` from the
    [latest release](https://github.com/eRgo35/notae/releases/latest).
@@ -156,7 +132,7 @@ and verifies it from the release tag with `scripts/release.sh`. The desktop inde
    check is what proves the APK came from the Notae release key.
 
    ```sh
-   V=0.4.0
+   V=0.5.0
    sha256sum -c "notae-$V-arm64.apk.sha256"
    apksigner verify --print-certs "notae-$V-arm64.apk" \
      | grep -i 'SHA-256 digest: be27cd781766c5c28a9db106c07b051ceee4e0003105964595e2a848f371f601'
@@ -166,7 +142,7 @@ and verifies it from the release tag with `scripts/release.sh`. The desktop inde
    one line; if it prints nothing, do not install the APK. The same
    fingerprint, in the usual colon-separated form, is published in
    [`docs/android-release.md`](docs/android-release.md) and pinned in
-   `scripts/release.sh`:
+   `.github/workflows/release.yml`:
 
    ```text
    BE:27:CD:78:17:66:C5:C2:8A:9D:B1:06:C0:7B:05:1C:EE:E4:E0:00:31:05:96:45:95:E2:A8:48:F3:71:F6:01
@@ -184,28 +160,17 @@ and verifies it from the release tag with `scripts/release.sh`. The desktop inde
 
 ## Quick start
 
-**1. Index a folder on your Linux desktop.** Name PDFs `<number> - <title>.pdf`
-(for example `12 - Autumn Leaves.pdf`) to get a number and title for free;
-other names work and simply have no number. Install at least one Tesseract
-language pack first (`tesseract-ocr-eng` on Ubuntu, `tesseract-langpack-eng`
-on Fedora; add the `pol` pack for Polish), then:
+**1. Put your PDFs in a folder on the tablet.** Name them
+`<number> - <title>.pdf` (for example `12 - Autumn Leaves.pdf`) to get a number
+and title for free; other names work and simply have no number.
 
-```sh
-cargo build --release -p notae-index-cli       # prerequisites: see "Build from source"
-./target/release/notae-index /path/to/library  # writes /path/to/library/.notae/
-```
-
-Re-run it whenever the library changes; it is incremental. Options and the
-sidecar format are in [`apps/notae-index/README.md`](apps/notae-index/README.md).
-
-**2. Copy the folder to the tablet.** Copy the PDFs together with the `.notae/`
-directory (USB, a file-sharing app, `adb push`, ...), keeping the same relative
-paths.
-
-**3. Open Notae and choose the folder.** Tap **Choose score folder**, pick the
+**2. Open Notae and choose the folder.** Tap **Choose score folder**, pick the
 folder in the Android picker, allow access, then start a scan from the Library.
-Notae indexes the PDFs and, when it finds `.notae/manifest.json`, shows an
-import preview; confirm it to import the OCR text and metadata.
+Notae indexes the PDFs. Coming from 0.3.0 or 0.4.0? Tap **Import from a
+previous Notae** first and pick the file the old app's **Export sets** wrote.
+The import carries your favorites and sets only: details you edited (number,
+title, composer, tags) and the Recent list stay in the old app. Keep the old
+app installed until you have checked that 0.5.0 has what you need.
 
 ## Using Notae
 
@@ -228,38 +193,12 @@ import preview; confirm it to import the OCR text and metadata.
 <summary><b>Prerequisites</b></summary>
 
 - **Rust 1.98.1**, pinned by [`rust-toolchain.toml`](rust-toolchain.toml)
-  (rustup selects it automatically, with `rustfmt` and `clippy`).
-- **Linux native libraries** for the indexer's OCR and PDF stack: `pkg-config`,
-  Tesseract and Leptonica headers, Fontconfig headers and a Tesseract language
-  pack.
-
-  ```sh
-  # Ubuntu / Debian
-  sudo apt-get install pkg-config libtesseract-dev libleptonica-dev \
-      libfontconfig1-dev tesseract-ocr-eng
-  # Fedora
-  sudo dnf install pkgconf-pkg-config tesseract-devel leptonica-devel \
-      fontconfig-devel tesseract-langpack-eng
-  ```
-
-  Hosts without system `pkg-config` files for Tesseract can follow
-  [`crates/notae-ocr/README.md`](crates/notae-ocr/README.md) and set
-  `PKG_CONFIG_PATH`.
-- **For the Android app:** JDK 17 (a newer JDK works if you compile the Java
-  adapter as Java 17; see [`docs/android-debugging.md`](docs/android-debugging.md)),
-  Android SDK platform 34 with build-tools 34.0.0, **NDK r26d**
-  (`26.3.11579264`), the `aarch64-linux-android` Rust target and
-  `cargo-apk2` 1.4.0.
-
-</details>
-
-<details>
-<summary><b>Build and run the indexer</b></summary>
-
-```sh
-cargo build --release -p notae-index-cli
-./target/release/notae-index --help
-```
+  (rustup selects it automatically, with `rustfmt` and `clippy`), with the
+  `aarch64-linux-android` and `x86_64-linux-android` targets and
+  `cargo-ndk` 4.1.2.
+- **Android toolchain:** a JDK (21 or newer), the Android SDK with platform 36,
+  build-tools 36.0.0 and NDK r28c (`28.2.13676358`), and `ANDROID_HOME`
+  pointing at it.
 
 </details>
 
@@ -267,57 +206,59 @@ cargo build --release -p notae-index-cli
 <summary><b>Build the Android app</b></summary>
 
 ```sh
-rustup target add aarch64-linux-android
-cargo install --locked --version 1.4.0 cargo-apk2
-export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/26.3.11579264"
+rustup target add aarch64-linux-android x86_64-linux-android
+cargo install --locked --version 4.1.2 cargo-ndk
 
-cargo apk2 check -p notae-android --target aarch64-linux-android   # the Android compile gate
-cargo apk2 build -p notae-android --target aarch64-linux-android   # debug-signed APK
+cd apps/notae-android
+./gradlew assembleDebug     # debug-signed APK, arm64-v8a and x86_64 (emulator)
+./gradlew assembleRelease   # unsigned arm64 release APK
 ```
 
-Debug builds are signed with your Android SDK debug key, so they are **not**
-update-compatible with the official release APK. Release builds need the
-maintainer's signing key and are produced only by `scripts/release.sh`
-([`docs/android-release.md`](docs/android-release.md)). For an emulator, build with
-`--target x86_64-linux-android` and see
-[`docs/android-debugging.md`](docs/android-debugging.md) for AVD setup.
+Gradle builds the Rust core with cargo-ndk and generates its Kotlin bindings
+with UniFFI. Debug builds are signed with your Android SDK debug key, so they
+are **not** update-compatible with the official release APK. Release builds
+are signed only by the release workflow
+([`docs/android-release.md`](docs/android-release.md)). See
+[`docs/android-debugging.md`](docs/android-debugging.md) for emulator setup.
 
 </details>
 
 `scripts/check.sh` runs the quality gates (format, Clippy, tests, docs,
-`cargo deny`, coverage, the Android compile check); see
-[`CONTRIBUTING.md`](CONTRIBUTING.md#quality-gates).
+`cargo deny`, coverage, and the Gradle lint, tests, screenshot checks and
+release build); see [`CONTRIBUTING.md`](CONTRIBUTING.md#quality-gates).
 
 ## Project layout
 
 ```text
 crates/
   notae-domain/     Filename convention, note metadata, file identity.
-  notae-index/      SQLite persistence, FTS5 search, the sidecar format and
-                    the importer the Android app uses.
-  notae-ocr/        Tesseract-backed OCR provider (Linux).
+  notae-index/      SQLite persistence, FTS5 search and the
+                    rescan reconciler.
+  notae-app-core/   The app logic (state, stores, browse, search, sets,
+                    scans) behind a UniFFI API for the Kotlin app.
 apps/
-  notae-index/      The `notae-index` command-line indexer.
-  notae-android/    The Android app: Slint UI, Storage Access Framework
-                    adapter and a thin Java activity shim.
+  notae-android/    The Android app (Gradle): Jetpack Compose UI and the
+                    Storage Access Framework, PDF and speech platform code.
 docs/               Release procedure, engineering standards, debugging guide,
                     design spec and plans.
 ```
 
-The app is written in Rust with a [Slint](https://slint.dev) UI, packaged with
-`cargo-apk2`. Domain logic, indexing, search and import live in the host-tested
-crates; the Android crate only adds platform glue. The product scope and
+The UI is Kotlin with Jetpack Compose; the app logic is Rust. Domain logic,
+indexing, search, sets and the screen state live in the host-tested crates;
+the Kotlin app draws the core's snapshots and adds the platform code. The product scope and
 architecture are in the
 [design spec](docs/superpowers/specs/2026-10-09-notae-design.md).
 
 ## Privacy & security
 
-- **No network access by Notae.** The Android manifest requests no permissions,
-  so there is no `INTERNET` permission. Check an APK yourself:
-  `aapt2 dump permissions notae-$V-arm64.apk` prints only the package name.
-  The Android build's dependency graph
-  (`cargo tree -p notae-android --target aarch64-linux-android`) contains no
-  HTTP client, TLS or async-network crates. There are no accounts and no
+- **No network access by Notae.** The Android manifest requests no Android
+  permissions, so there is no `INTERNET` permission. Check an APK yourself:
+  `aapt2 dump permissions notae-$V-arm64.apk` prints only the package name and
+  AndroidX's `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, an app-private
+  permission that keeps the app's internal broadcasts to itself.
+  The Rust core's Android dependency graph
+  (`cargo tree -p notae-app-core --no-default-features --target aarch64-linux-android`)
+  contains no HTTP client, TLS or async-network crates. There are no accounts and no
   telemetry.
 - **No broad storage access.** Notae reads only the folder you pick through
   Android's Storage Access Framework, and only reads from it.
@@ -336,13 +277,9 @@ privately.
 
 ## Documentation
 
-- [`apps/notae-index/README.md`](apps/notae-index/README.md): indexer guide,
-  sidecar format, Android import contract.
-- [`crates/notae-ocr/README.md`](crates/notae-ocr/README.md): building against
-  system Tesseract and Leptonica.
 - [`ROADMAP.md`](ROADMAP.md): what is being built now, next and later.
-- [`GLOSSARY.md`](GLOSSARY.md): the domain terms (library, score, sidecar,
-  scope, set, ...).
+- [`GLOSSARY.md`](GLOSSARY.md): the domain terms (library, score, scope,
+  set, ...).
 - [`CONTRIBUTING.md`](CONTRIBUTING.md#development-workflow): setup, quality
   gates and the development workflow from issue to release.
 - [`docs/android-release.md`](docs/android-release.md): cutting a release,
@@ -364,22 +301,20 @@ commit conventions and what must never be committed.
 
 What comes next is in [`ROADMAP.md`](ROADMAP.md).
 
-- **0.3.0 is not yet run on the physical tablet.** Favorites, Sets and the
-  Polish UI are verified with host tests and the tablet emulator only; the
-  Galaxy Tab S10 FE+ check is pending.
-- **No on-device OCR.** Scanned PDFs get searchable text from the desktop
-  indexer ([#28](https://github.com/eRgo35/notae/issues/28),
-  [ADR 0001](docs/adr/0001-on-device-ocr.md)).
-- **TalkBack has no long-press action**, so the long-press menu is not
-  reachable that way; its actions are on the card itself and its Info button.
-- **Platforms:** the Android release is arm64 only (minSdk 23); the indexer is
-  Linux only. There is no iOS, Windows or macOS build.
+- **0.5.0 is verified with host tests, screenshot tests and the tablet
+  emulator;** the Galaxy Tab S10 FE+ check is pending.
+- **No on-device OCR.** Scanned PDFs are found by file name only
+  ([#28](https://github.com/eRgo35/notae/issues/28),
+  [ADR 0001](docs/adr/0001-on-device-ocr.md)). The desktop indexer and its
+  OCR were removed in 0.5.0.
+- **Platforms:** Notae is Android tablets only, and the release is arm64 (minSdk 26).
+  There is no desktop, iOS, Windows or macOS build, and no phone layout.
 - **No in-app PDF viewing or annotation, and no cloud sync**, by design.
 - Preview thumbnails are 400 px wide, so the full-width preview can look soft
   on a large tablet.
 
 ## License
 
-Notae is released under the [MIT License](LICENSE). Third-party dependencies,
-including the [Slint](https://slint.dev) UI toolkit, keep their own licenses;
-the accepted set is enforced by `cargo deny` ([`deny.toml`](deny.toml)).
+Notae is released under the [MIT License](LICENSE). Third-party dependencies
+keep their own licenses; for the Rust crates the accepted set is enforced by
+`cargo deny` ([`deny.toml`](deny.toml)).

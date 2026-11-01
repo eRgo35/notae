@@ -2,14 +2,14 @@
 
 The domain terms Notae's code, docs and issues use. Use these words; avoid the synonyms listed.
 
-- **Library**: the one folder of PDFs the user picks (a Storage Access Framework grant on Android, the path argument of `notae-index`). Notae reads it and never modifies the PDFs in it. _Avoid:_ collection, catalogue (for the folder).
+- **Library**: the one folder of PDFs the user picks (a Storage Access Framework grant on Android). Notae reads it and never modifies the PDFs in it. _Avoid:_ collection, catalogue (for the folder).
 - **Score / piece**: one PDF in the library and its one record in the index. The UI says "score"; the favorites and sets code says "piece". _Avoid:_ note, song, file (except for the PDF itself).
 - **Number** and **title**: parsed from a file named `<number> - <title>.pdf`. Other names work and have no number.
 - **Details**: the editable metadata of a score (number, title, composer, tags). Edits live in the index and never rename the PDF.
 - **File identity**: the SHA-256 content hash that keeps a renamed or moved PDF one record.
 - **Scan**: walking the library to build or refresh the index. Always started by the user, never in the background. _Avoid:_ sync.
 - **Index**: the SQLite database (with FTS5 search) built from a library. On Android it is private to the app.
-- **Sidecar**: the `.notae/` directory (`index.sqlite` and `manifest.json`) that `notae-index` writes next to the PDFs and the app imports after an **import preview**. Removed in 0.5.0.
+- **Sidecar**: the `.notae/` directory (`index.sqlite` and `manifest.json`) that the removed desktop indexer wrote next to the PDFs. Sidecar import is removed in 0.5.0; Notae no longer reads or writes it. Indexes written by earlier versions can still hold fields whose provenance records an import from a sidecar, and those keep reading normally.
 - **Text layer**: text embedded in a PDF, read on-device on Android 15 and later.
 - **Lyrics**: the searchable page text of a score, from its text layer or from OCR. The code calls it page text (`SearchScope::Text`). _Avoid:_ content.
 - **Scope**: which fields a search looks at: All, Titles, Composers, Lyrics or Tags (`SearchScope`).

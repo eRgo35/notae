@@ -9,6 +9,39 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+Notae 0.5.0 is a new Android app: the same library, search, favorites and sets,
+rebuilt in Jetpack Compose over the Rust core.
+
+### Changed
+
+- **New application id `com.c2yz.notae`.** 0.5.0 installs beside 0.3.0 and
+  0.4.0 instead of updating them, and starts with no library. To keep your
+  favorites and sets, use **Export sets** in the old app's Settings, then
+  **Import from a previous Notae** on 0.5.0's first screen (or **Import sets**
+  in Settings later). Pick the score folder again; the PDFs are rescanned.
+  Only favorites and sets move across: edited details (number, title,
+  composer, tags) and the Recent list are not carried over, so keep the old
+  app installed until you have checked the new one.
+- The UI is Jetpack Compose (Android 8.0, API 26, or newer; tablets only), and
+  the Rust core is a library the app calls through UniFFI. The app is built
+  with Gradle and cargo-ndk, with 16 KB-aligned native code.
+- GitHub CI runs every Rust gate, the Gradle gates (lint, unit and screenshot
+  tests, Roborazzi verify, the release build and a 16 KB alignment check) and
+  an emulator smoke test. `scripts/check.sh full` runs the Gradle gates too.
+- Releases are built, signed and verified by `.github/workflows/release.yml`
+  from a pushed `vX.Y.Z` tag, which attaches the APK to the GitHub Release.
+
+### Removed
+
+- The desktop indexer (`notae-index` CLI) and its Tesseract OCR, and the
+  sidecar import of its `.notae/manifest.json`. Scanned PDFs without a text
+  layer are found by file name only (number and title) until on-device OCR
+  exists ([#28](https://github.com/eRgo35/notae/issues/28)).
+- The Slint UI and its `cargo-apk2` build, the vendored Slint backend patch,
+  and `scripts/release.sh`, `scripts/build-apk.sh` and
+  `scripts/prepare-release-keystore.sh`.
+- The only `unsafe` code: every crate now forbids it.
+
 ## [0.4.0] - 2026-10-31
 
 Maintenance release: tooling and documentation only, no app changes. The APK
