@@ -747,11 +747,14 @@ impl CoreState {
         }
     }
 
-    /// Leaves search, opening `selected`'s details, and refreshes the library rows.
+    /// Leaves search, opening `selected`'s details when a result was chosen, and refreshes the
+    /// library rows. Without one, the details open before search stay open (ruling R45).
     fn close_search(&mut self, selected: Option<String>) {
         let scope = self.model.state().search().scope;
         report(self.model.dispatch(UiEvent::CloseSearch));
-        self.model.select_note(selected);
+        if selected.is_some() {
+            self.model.select_note(selected);
+        }
         self.search(|controller| controller.set_search(String::new(), scope));
     }
 
@@ -777,12 +780,13 @@ impl CoreState {
             model.close_metadata_editor();
         } else if model.add_picker_open() {
             model.add_picker_closed();
-        } else if model.selected_row().is_some() {
-            model.select_note(None);
+        // Search and Settings are drawn over the details, so they close before them (ruling R45).
         } else if matches!(model.state().screen(), crate::state::Screen::Search) {
             self.close_search(None);
         } else if matches!(model.state().screen(), crate::state::Screen::Settings) {
             report(model.dispatch(UiEvent::CloseSettings));
+        } else if model.selected_row().is_some() {
+            model.select_note(None);
         } else if model.reordering() {
             model.reorder_finished();
         } else if matches!(model.section(), LibrarySection::Set(_)) {

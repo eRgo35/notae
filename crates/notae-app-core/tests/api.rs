@@ -268,15 +268,15 @@ fn back_closes_innermost_first() {
     assert!(after.delete_set.is_none());
     assert!(after.selection.is_some());
 
-    assert!(harness.core.back(), "closes the details");
-    let after = harness.core.snapshot();
-    assert!(after.selection.is_none());
-    assert_eq!(after.screen, Screen::Search);
-
+    // Search is drawn over the details (ruling R45), so it closes first.
     assert!(harness.core.back(), "closes search");
     let after = harness.core.snapshot();
     assert_eq!(after.screen, Screen::Library);
     assert_eq!(after.section_key, format!("set:{set_id}"));
+    assert!(after.selection.is_some(), "the details stay open");
+
+    assert!(harness.core.back(), "closes the details");
+    assert!(harness.core.snapshot().selection.is_none());
 
     harness.core.dispatch(Action::OpenSettings);
     assert_eq!(harness.core.snapshot().screen, Screen::Settings);
@@ -304,6 +304,56 @@ fn back_closes_innermost_first() {
     // Every back that closed something told Kotlin.
     let received = harness.listener.snapshot_count();
     assert!(received >= 8, "{received} snapshots");
+}
+
+#[test]
+fn back_closes_search_and_settings_before_the_details() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    let selection_id = library.rows[1].selection_id.clone();
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: selection_id.clone(),
+    });
+    let selected = |snapshot: &Snapshot| {
+        snapshot
+            .selection
+            .as_ref()
+            .map(|s| s.row.selection_id.clone())
+    };
+
+    harness.core.dispatch(Action::OpenSearch);
+    assert!(harness.core.back(), "closes search");
+    let after = harness.core.snapshot();
+    assert_eq!(after.screen, Screen::Library);
+    assert_eq!(
+        selected(&after),
+        Some(selection_id.clone()),
+        "back keeps the details"
+    );
+
+    harness.core.dispatch(Action::OpenSearch);
+    harness.core.dispatch(Action::CloseSearch);
+    let after = harness.core.snapshot();
+    assert_eq!(after.screen, Screen::Library);
+    assert_eq!(
+        selected(&after),
+        Some(selection_id.clone()),
+        "Escape keeps the details too"
+    );
+
+    harness.core.dispatch(Action::OpenSettings);
+    assert!(harness.core.back(), "closes settings");
+    let after = harness.core.snapshot();
+    assert_eq!(after.screen, Screen::Library);
+    assert_eq!(
+        selected(&after),
+        Some(selection_id),
+        "back keeps the details"
+    );
+
+    assert!(harness.core.back(), "closes the details");
+    assert!(harness.core.snapshot().selection.is_none());
 }
 
 fn entry_ids(snapshot: &Snapshot) -> Vec<String> {

@@ -30,7 +30,7 @@ private const val SET_PREFIX = "set:"
 
 /**
  * The back stack the snapshot shows (design spec §4.4). It mirrors `NotaeCore.back`: what the core
- * closes first is last, so the details sit above search or settings, which sit above the open set.
+ * closes first is last, so search or settings sit above the details (ruling R45), which sit above the open set.
  */
 fun backStackFor(snapshot: Snapshot): List<NavKey> {
     val section = when (snapshot.screen) {
@@ -45,11 +45,11 @@ fun backStackFor(snapshot: Snapshot): List<NavKey> {
     } else {
         stack += Route.Library(section)
     }
+    snapshot.selection?.let { stack += Route.Details(it.row.selectionId) }
     when (snapshot.screen) {
         Screen.Search -> stack += Route.Search
         Screen.Settings -> stack += Route.Settings
         else -> Unit
     }
-    snapshot.selection?.let { stack += Route.Details(it.row.selectionId) }
     return stack
 }

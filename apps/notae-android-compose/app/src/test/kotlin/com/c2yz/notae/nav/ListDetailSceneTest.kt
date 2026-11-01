@@ -31,6 +31,7 @@ import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.MetadataDraft
 import com.c2yz.notae.core.PositionOf
 import com.c2yz.notae.core.Row
+import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.Selection
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.ui.details.DETAILS_BODY_TAG
@@ -237,6 +238,30 @@ class ListDetailSceneTest {
         compose.waitForIdle()
         compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
         assertEquals(listOf<Action>(next, next), actions)
+    }
+
+    @Test
+    fun ctrl_k_from_the_details_shows_search_on_top_and_back_returns_to_them() {
+        show(selecting(ave))
+        compose.onRoot().performKeyInput { withKeyDown(Key.CtrlLeft) { pressKey(Key.K) } }
+        assertEquals(listOf<Action>(Action.OpenSearch), actions)
+
+        // The core keeps the selection under Search (ruling R45): Search is shown on top and takes the keys.
+        snapshot = snapshot.copy(screen = Screen.Search)
+        compose.waitForIdle()
+        compose.onNodeWithText("Search your library").assertIsDisplayed()
+        compose.onNodeWithText("Open score").assertDoesNotExist()
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        assertEquals(listOf(Action.OpenSearch, Action.CloseSearch), actions)
+
+        // Back goes to the core, which closes Search and keeps the selection: the details show again with the keys.
+        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        assertEquals(1, backs)
+        snapshot = snapshot.copy(screen = Screen.Library)
+        compose.waitForIdle()
+        compose.onNodeWithText("Open score").assertIsDisplayed()
+        compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
+        assertEquals(Action.SelectScore(rows[ave + 1].selectionId), actions.last())
     }
 
     @Test
