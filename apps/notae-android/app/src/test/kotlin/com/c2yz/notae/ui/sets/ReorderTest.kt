@@ -16,6 +16,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -44,6 +45,7 @@ import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.library.REORDER_TAG
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -174,6 +176,37 @@ class ReorderTest {
         handle.performTouchInput { up() }
 
         assertEquals(listOf<Action>(Action.MoveSetItemTo("item-1", 2u)), actions)
+    }
+
+    @Test
+    fun a_dropped_row_stays_where_it_was_dropped_until_the_order_arrives() {
+        show(reordering)
+        val row = with(density) { 80.dp.toPx() }
+        val handle = { compose.onAllNodesWithContentDescription("Drag to reorder Ave Maria")[0] }
+        val start = handle().getBoundsInRoot().top.value * density.density
+
+        handle().performTouchInput {
+            down(center)
+            moveBy(Offset(0f, row))
+            moveBy(Offset(0f, row * 1.5f))
+            up()
+        }
+        compose.waitForIdle()
+        // The core has not answered yet: the row stays near where the finger left it, not back in its old place.
+        val dropped = handle().getBoundsInRoot().top.value * density.density
+        assertTrue("dropped at $dropped, started at $start", dropped - start > row * 1.5f)
+
+        // The new order arrives: the row sits in its new place, without the drag's offset on top.
+        val moved = reordering.setEntries.toMutableList().apply { add(2, removeAt(0)) }.mapIndexed { index, entry ->
+            when (entry) {
+                is SetEntry.Piece -> SetEntry.Piece(entry.row.copy(position = (index + 1).toUInt()))
+                is SetEntry.Note -> entry.copy(position = (index + 1).toUInt())
+            }
+        }
+        shown = reordering.copy(rows = moved.filterIsInstance<SetEntry.Piece>().map { it.row }, setEntries = moved)
+        compose.waitForIdle()
+        val settled = handle().getBoundsInRoot().top.value * density.density
+        assertEquals(start + row * 2, settled, 2f)
     }
 
     @Test
@@ -315,3 +348,4 @@ class ReorderTest {
         assertEquals(listOf(listOf(label)), focused)
     }
 }
+

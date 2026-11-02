@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.library
 
+import androidx.compose.animation.Crossfade
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -111,12 +112,15 @@ internal fun ScoreGrid(
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 items(entries, key = { it.key() }) { entry ->
-                    when (entry) {
-                        is SetEntry.Piece -> {
-                            val row = entry.row
-                            ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.height(cellHeight), selected = row.selectionId == selectedId)
+                    // Items glide to their new places, and fade in or out, when the section's scores change.
+                    Box(Modifier.animateItem()) {
+                        when (entry) {
+                            is SetEntry.Piece -> {
+                                val row = entry.row
+                                ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.height(cellHeight), selected = row.selectionId == selectedId)
+                            }
+                            is SetEntry.Note -> NoteCard(entry, { onNoteMore(entry) }, Modifier.height(cellHeight))
                         }
-                        is SetEntry.Note -> NoteCard(entry, { onNoteMore(entry) }, Modifier.height(cellHeight))
                     }
                 }
             }
@@ -139,12 +143,14 @@ internal fun ScoreList(
         val state = rememberLazyListState()
         LazyColumn(Modifier.testTag(LIST_TAG).fillMaxSize().padding(8.dp), state = state) {
             items(entries, key = { it.key() }) { entry ->
-                when (entry) {
-                    is SetEntry.Piece -> {
-                        val row = entry.row
-                        ScoreRow(row, { onOpen(row) }, { onMore(row) }, selected = row.selectionId == selectedId)
+                Box(Modifier.animateItem()) {
+                    when (entry) {
+                        is SetEntry.Piece -> {
+                            val row = entry.row
+                            ScoreRow(row, { onOpen(row) }, { onMore(row) }, selected = row.selectionId == selectedId)
+                        }
+                        is SetEntry.Note -> NoteRow(entry, { onNoteMore(entry) })
                     }
-                    is SetEntry.Note -> NoteRow(entry, { onNoteMore(entry) })
                 }
             }
         }
@@ -331,12 +337,16 @@ internal fun PagePreview(thumbnail: String?, modifier: Modifier = Modifier, radi
         modifier.clip(shape).background(c.paper).border(BorderStroke(1.dp, c.paperEdge), shape),
         contentAlignment = Alignment.Center,
     ) {
-        val bitmap = image
-        if (bitmap != null) {
-            Image(bitmap, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-        } else {
-            val glyph = minOf(40.dp, maxWidth / 2)
-            Icon(painterResource(R.drawable.ic_document), null, Modifier.size(glyph), tint = c.muted)
+        val glyph = minOf(40.dp, maxWidth / 2)
+        // A page decoded after the card shows fades in over the glyph; one already in the cache shows at once.
+        Crossfade(image, Modifier.fillMaxSize(), NotaeMotion.medium(), label = "page") { bitmap ->
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (bitmap != null) {
+                    Image(bitmap, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                } else {
+                    Icon(painterResource(R.drawable.ic_document), null, Modifier.size(glyph), tint = c.muted)
+                }
+            }
         }
     }
 }

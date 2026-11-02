@@ -1,5 +1,12 @@
 package com.c2yz.notae.ui.library
 
+import androidx.compose.animation.Crossfade
+import com.c2yz.notae.ui.components.AnimatedPresence
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandVertically
 import com.c2yz.notae.ui.components.backProgress
 import com.c2yz.notae.ui.components.LocalBackProgress
 import com.c2yz.notae.ui.components.AnimatedOverlay
@@ -195,7 +202,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                     Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
                     if (!sidebar) Chips(snapshot, onAction)
                     OperationBanner(snapshot.banner, onAction)
-                    snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+                    PdfError(snapshot.pdfOpenError)
                     content()
                 }
             }
@@ -400,25 +407,33 @@ private fun ColumnScope.Content(
     onNoteMore: (SetEntry.Note) -> Unit,
     onSetMore: (SetCard) -> Unit,
 ) {
-    val area = Modifier.weight(1f).fillMaxWidth()
+    val area = Modifier.fillMaxSize()
     val open = { row: com.c2yz.notae.core.Row -> onAction(Action.OpenPdf(row.relativePath, row.noteKey, row.itemId)) }
     // The score shown in the details pane beside the library.
     val selected = snapshot.selection?.row?.selectionId
-    when {
-        snapshot.sectionKey == "sets" && snapshot.setCards.isEmpty() -> EmptyState(snapshot, onAction, area)
-        snapshot.sectionKey == "sets" -> SetsPane(
-            snapshot.setCards,
-            snapshot.layout.libraryView == LibraryView.LIST,
-            { onAction(Action.OpenSet(it.id)) },
-            onSetMore,
-            area,
-        )
-        entries.isEmpty() -> EmptyState(snapshot, onAction, area)
-        reordering -> ReorderList(entries, onAction, area)
-        snapshot.layout.libraryView == LibraryView.LIST -> ScoreList(entries, open, onMore, onNoteMore, area, selected)
-        else -> ScoreGrid(entries, open, onMore, onNoteMore, area, selected)
+    val list = snapshot.layout.libraryView == LibraryView.LIST
+    val sets = snapshot.sectionKey == "sets"
+    val mode = when {
+        sets && snapshot.setCards.isEmpty() -> ContentMode.EMPTY
+        sets -> ContentMode.SETS
+        entries.isEmpty() -> ContentMode.EMPTY
+        reordering -> ContentMode.REORDER
+        list -> ContentMode.LIST
+        else -> ContentMode.GRID
+    }
+    // Grid and list, reorder mode and an emptied section fade into each other instead of swapping in one frame.
+    Crossfade(mode, Modifier.weight(1f).fillMaxWidth(), NotaeMotion.short(), label = "library content") { shown ->
+        when (shown) {
+            ContentMode.EMPTY -> EmptyState(snapshot, onAction, area)
+            ContentMode.SETS -> SetsPane(snapshot.setCards, list, { onAction(Action.OpenSet(it.id)) }, onSetMore, area)
+            ContentMode.REORDER -> ReorderList(entries, onAction, area)
+            ContentMode.LIST -> ScoreList(entries, open, onMore, onNoteMore, area, selected)
+            ContentMode.GRID -> ScoreGrid(entries, open, onMore, onNoteMore, area, selected)
+        }
     }
 }
+
+private enum class ContentMode { EMPTY, SETS, REORDER, LIST, GRID }
 
 /** The section's empty card: folder glyph, title and detail; All scores also offers Scan library. */
 @Composable
@@ -486,6 +501,16 @@ internal fun subtitleText(subtitle: Subtitle): String = when (subtitle) {
     is Subtitle.Scores -> pluralStringResource(R.plurals.library_scores, subtitle.count.toCount(), subtitle.count.toLong())
     is Subtitle.Sets -> pluralStringResource(R.plurals.library_sets_subtitle, subtitle.count.toCount(), subtitle.count.toLong())
     is Subtitle.Set -> setSubtitle(subtitle)
+}
+
+/** The PDF launch error under the banner, opening and closing in place as the banner does. */
+@Composable
+internal fun PdfError(error: PdfOpenError?) {
+    AnimatedPresence(
+        error,
+        expandVertically(NotaeMotion.medium()) + fadeIn(NotaeMotion.medium()),
+        shrinkVertically(NotaeMotion.medium()) + fadeOut(NotaeMotion.short()),
+    ) { Text(pdfErrorText(it), color = NotaeTheme.colors.error, fontSize = 15.sp) }
 }
 
 /** Why the PDF could not be opened, in the English it has always carried (texts.rs `viewer_error`). */

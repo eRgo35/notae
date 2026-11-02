@@ -83,7 +83,7 @@ import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.library.PagePreview
 import com.c2yz.notae.ui.library.isCtrlK
-import com.c2yz.notae.ui.library.pdfErrorText
+import com.c2yz.notae.ui.library.PdfError
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.theme.NotaeTheme
 
@@ -122,7 +122,7 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     ) {
         if (!besideList) {
             OperationBanner(snapshot.banner, onAction)
-            snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+            PdfError(snapshot.pdfOpenError)
         }
         NotaeCard(Modifier.weight(1f).fillMaxWidth()) {
             Column(Modifier.fillMaxSize().padding(8.dp)) {
@@ -156,7 +156,7 @@ private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (
         }
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             OperationBanner(snapshot.banner, onAction)
-            snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+            PdfError(snapshot.pdfOpenError)
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val preview = maxOf(120.dp, minOf(220.dp, maxWidth * 0.55f, maxHeight * 0.4f / 1.3f))

@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.search
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -144,7 +145,7 @@ private fun ColumnScope.Results(snapshot: Snapshot, onAction: (Action) -> Unit) 
             val state = rememberLazyListState()
             LazyColumn(Modifier.fillMaxSize().padding(8.dp), state = state) {
                 items(snapshot.rows, key = { it.selectionId }) { row ->
-                    ResultRow(row) { onAction(Action.SearchResultChosen(row.noteKey)) }
+                    Box(Modifier.animateItem()) { ResultRow(row) { onAction(Action.SearchResultChosen(row.noteKey)) } }
                 }
             }
             ListScrollbar(state, Modifier.align(Alignment.TopEnd).padding(vertical = 8.dp))

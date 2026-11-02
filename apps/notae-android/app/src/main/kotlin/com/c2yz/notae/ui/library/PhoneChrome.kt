@@ -136,7 +136,7 @@ internal fun CompactLibrary(
                         ComposerChip(composerName(snapshot), { composerSheet = true })
                     }
                     OperationBanner(snapshot.banner, onAction)
-                    snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+                    PdfError(snapshot.pdfOpenError)
                     content()
                     Spacer(Modifier.height(4.dp))
                 }
@@ -203,7 +203,7 @@ internal fun MediumLibrary(
                 }
             }
             OperationBanner(snapshot.banner, onAction)
-            snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+            PdfError(snapshot.pdfOpenError)
             content()
         }
     }

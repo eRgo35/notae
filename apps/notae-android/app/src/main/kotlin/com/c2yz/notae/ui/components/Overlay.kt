@@ -29,18 +29,32 @@ fun backProgress(state: NavigationEventState<*>): () -> Float = {
 }
 
 /**
- * Draws [content] for [value] while it is set, animating in when it arrives and out when it goes. While it goes, the
- * last value stays on screen, but it is gone for TalkBack at once and takes no touches, so nothing acts on it twice.
- * An overlay already open when this first composes shows without animating.
+ * Draws the dialog or sheet [content] for [value] while it is set, animating in when it arrives and out when it goes
+ * ([ModalSurface] animates its own scrim and card). An overlay already open when this first composes shows at once.
  */
 @Composable
-fun <T : Any> AnimatedOverlay(value: T?, content: @Composable (T) -> Unit) {
+fun <T : Any> AnimatedOverlay(value: T?, content: @Composable (T) -> Unit) =
+    AnimatedPresence(value, EnterTransition.None, ExitTransition.None, overlay = true, content = content)
+
+/**
+ * Draws [content] for [value] while it is set, with [enter] when it arrives and [exit] when it goes. While it goes, the
+ * last value stays on screen, but it is gone for TalkBack at once and takes no touches, so nothing acts on it twice.
+ */
+@Composable
+fun <T : Any> AnimatedPresence(
+    value: T?,
+    enter: EnterTransition,
+    exit: ExitTransition,
+    modifier: Modifier = Modifier,
+    overlay: Boolean = false,
+    content: @Composable (T) -> Unit,
+) {
     val last = remember { Last<T>() }
     if (value != null) last.value = value
     val shown = last.value ?: return
     val closing = value == null
-    AnimatedVisibility(visible = !closing, enter = EnterTransition.None, exit = ExitTransition.None) {
-        CompositionLocalProvider(LocalOverlayScope provides this) {
+    AnimatedVisibility(visible = !closing, modifier = modifier, enter = enter, exit = exit) {
+        CompositionLocalProvider(LocalOverlayScope provides if (overlay) this else null) {
             Box(if (closing) Modifier.clearAndSetSemantics { }.pointerInput(Unit) { swallowTouches() } else Modifier) {
                 content(shown)
             }
