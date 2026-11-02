@@ -9,6 +9,30 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-02
+
+Notae 0.6.0 runs on phones as well as tablets, with layouts in the style of
+Samsung's One UI. See [`docs/release-notes/v0.6.0.md`](docs/release-notes/v0.6.0.md).
+
+### Added
+
+- **Phone layouts** (windows under 600 dp): a bottom bar with the sections, a
+  large title that folds into the toolbar, Search and a ⋮ menu (Scan library,
+  grid or list, Settings), a composer filter in a bottom sheet, New set and Add
+  as floating buttons, and Done at the bottom while reordering. The details put
+  Previous, Open score and Next in a bottom bar. Edit details and Add pieces
+  take the whole screen.
+- **A navigation rail** between 600 and 840 dp (a small tablet, or a phone on
+  its side), with the composers as chips.
+
+### Changed
+
+- The app no longer declares itself tablet only.
+- Dialogs use One UI's text buttons split by a divider; on a phone they float
+  at the bottom of the screen.
+- Score and set grids fit two columns on a phone; set rows show when they were
+  edited under the date.
+
 ## [0.5.0] - 2026-11-01
 
 Notae 0.5.0 is a new Android app: the same library, search, favorites and sets,
@@ -342,7 +366,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/eRgo35/notae/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/eRgo35/notae/releases/tag/v0.5.0
 [0.4.0]: https://github.com/eRgo35/notae/releases/tag/v0.4.0
 [0.3.0]: https://github.com/eRgo35/notae/releases/tag/v0.3.0
