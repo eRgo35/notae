@@ -1,6 +1,15 @@
 package com.c2yz.notae.ui.details
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +53,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Dp
+import com.c2yz.notae.ui.theme.NotaeMotion
+import com.c2yz.notae.ui.theme.Tokens
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
@@ -105,7 +120,7 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         NotaeCard(Modifier.weight(1f).fillMaxWidth()) {
             Column(Modifier.fillMaxSize().padding(8.dp)) {
                 Header(selection, onAction)
-                Body(selection.row, onAction)
+                Stepping(selection, Modifier.weight(1f)) { shown, scroll -> Body(shown.row, scroll, onAction) }
             }
         }
     }
@@ -138,36 +153,7 @@ private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val preview = maxOf(120.dp, minOf(220.dp, maxWidth * 0.55f, maxHeight * 0.4f / 1.3f))
-            Column(
-                Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    PagePreview(row.thumbnail, Modifier.size(preview, preview * 1.3f), radius = 16.dp)
-                }
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    row.number?.let { Text(stringResource(R.string.details_number, it), color = c.accentText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
-                    Text(row.title, color = c.foreground, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, lineHeight = 32.sp)
-                    row.composer?.takeIf { it.isNotEmpty() }?.let { Text(it, color = c.muted, fontSize = 17.sp) }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PillButton(
-                        stringResource(R.string.score_edit_details),
-                        { onAction(Action.EditMetadata(row.noteKey)) },
-                        Modifier.weight(1f),
-                        icon = painterResource(R.drawable.ic_edit),
-                        tonal = true,
-                    )
-                    PillButton(
-                        stringResource(R.string.score_add_to_set),
-                        { onAction(Action.AddToSet(row.noteKey)) },
-                        Modifier.weight(1f),
-                        icon = painterResource(R.drawable.ic_folder),
-                        tonal = true,
-                    )
-                }
-                InfoCard(row, stretch = false, stacked = true, background = c.card)
-            }
+            Stepping(selection, Modifier.fillMaxSize()) { shown, scroll -> CompactBody(shown.row, scroll, preview, onAction) }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
         Row(
@@ -185,6 +171,70 @@ private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (
             )
             StepButton(selection, previous = false, onAction)
         }
+    }
+}
+
+/**
+ * The details' body moving with the score: Next slides it in from the end, Previous from the start, by
+ * [Tokens.motionShift]; the score leaving keeps drawing its own row as it goes. Another change to the same score (its
+ * star, say) redraws it in place. The score arriving starts where the last one was scrolled to, so stepping through a
+ * set keeps the same part of the details in view.
+ */
+@Composable
+private fun Stepping(selection: Selection, modifier: Modifier, content: @Composable (Selection, ScrollState) -> Unit) {
+    val carried = remember { mutableIntStateOf(0) }
+    val shift = with(LocalDensity.current) { Tokens.motionShift.roundToPx() } * if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
+    AnimatedContent(
+        selection,
+        modifier,
+        transitionSpec = {
+            val back = (targetState.position?.position ?: 0u) < (initialState.position?.position ?: 0u)
+            val by = if (back) -shift else shift
+            (slideInHorizontally(NotaeMotion.medium()) { by } + fadeIn(NotaeMotion.medium())) togetherWith
+                (slideOutHorizontally(NotaeMotion.medium()) { -by } + fadeOut(NotaeMotion.short()))
+        },
+        contentKey = { it.row.selectionId },
+        label = "details step",
+    ) { shown ->
+        val scroll = rememberScrollState(carried.intValue)
+        LaunchedEffect(scroll) { snapshotFlow { scroll.value }.collect { carried.intValue = it } }
+        content(shown, scroll)
+    }
+}
+
+/** The phone's scrolling body: the page, the headline, Edit details and Add to set, and the info. */
+@Composable
+private fun CompactBody(row: ScoreRowData, scroll: ScrollState, preview: Dp, onAction: (Action) -> Unit) {
+    val c = NotaeTheme.colors
+    Column(
+        Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            PagePreview(row.thumbnail, Modifier.size(preview, preview * 1.3f), radius = 16.dp)
+        }
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            row.number?.let { Text(stringResource(R.string.details_number, it), color = c.accentText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+            Text(row.title, color = c.foreground, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, lineHeight = 32.sp)
+            row.composer?.takeIf { it.isNotEmpty() }?.let { Text(it, color = c.muted, fontSize = 17.sp) }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton(
+                stringResource(R.string.score_edit_details),
+                { onAction(Action.EditMetadata(row.noteKey)) },
+                Modifier.weight(1f),
+                icon = painterResource(R.drawable.ic_edit),
+                tonal = true,
+            )
+            PillButton(
+                stringResource(R.string.score_add_to_set),
+                { onAction(Action.AddToSet(row.noteKey)) },
+                Modifier.weight(1f),
+                icon = painterResource(R.drawable.ic_folder),
+                tonal = true,
+            )
+        }
+        InfoCard(row, stretch = false, stacked = true, background = c.card)
     }
 }
 
@@ -250,8 +300,8 @@ private fun Header(selection: Selection, onAction: (Action) -> Unit) {
 
 /** The scrolling body; its layout follows the card's own width, as 0.3.0's `wide` does. */
 @Composable
-private fun ColumnScope.Body(row: ScoreRowData, onAction: (Action) -> Unit) {
-    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+private fun Body(row: ScoreRowData, scroll: ScrollState, onAction: (Action) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
         // The card's size: this box plus the card's 8 dp padding, and the 48 dp header above it.
         val cardWidth = maxWidth + 16.dp
         val cardHeight = maxHeight + 64.dp
@@ -261,7 +311,7 @@ private fun ColumnScope.Body(row: ScoreRowData, onAction: (Action) -> Unit) {
         } else {
             maxOf(140.dp, minOf(300.dp, cardWidth - 64.dp))
         }
-        Column(Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
+        Column(Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
             if (wide) {
                 Row(
                     Modifier.fillMaxWidth().height(IntrinsicSize.Min),
