@@ -2,6 +2,8 @@ package com.c2yz.notae.ui
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.animation.core.TweenSpec
+import com.c2yz.notae.ui.theme.NotaeMotion
 import com.c2yz.notae.ui.theme.TokenColors
 import com.c2yz.notae.ui.theme.Tokens
 import org.junit.Assert.assertEquals
@@ -39,5 +41,11 @@ class TokensTest {
         assertEquals(120, Tokens.motionShortMillis)
         assertEquals(220, Tokens.motionMediumMillis)
         assertEquals(24f, Tokens.motionShift.value)
+    }
+
+    @Test
+    fun motion_specs_use_the_tokens() {
+        assertEquals(120, (NotaeMotion.short<Float>() as TweenSpec).durationMillis)
+        assertEquals(220, (NotaeMotion.medium<Float>() as TweenSpec).durationMillis)
     }
 }
