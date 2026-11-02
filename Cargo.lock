@@ -438,7 +438,7 @@ dependencies = [
 
 [[package]]
 name = "notae-app-core"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "notae-domain",
  "notae-index",
@@ -453,7 +453,7 @@ dependencies = [
 
 [[package]]
 name = "notae-domain"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "notae-index"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "notae-domain",
  "rusqlite",

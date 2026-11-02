@@ -5,7 +5,7 @@
 **Browse and search your sheet-music PDFs on an Android phone or tablet. No
 cloud, no account, no network access.**
 
-<sub>Version 0.6.0 · Android phone and tablet (arm64) · one maintainer ·
+<sub>Version 0.6.1 · Android phone and tablet (arm64) · one maintainer ·
 <a href="ROADMAP.md">roadmap</a></sub>
 
 [![CI](https://github.com/eRgo35/notae/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eRgo35/notae/actions/workflows/ci.yml)
@@ -132,7 +132,7 @@ release workflow builds, signs and verifies it from the release tag.
    check is what proves the APK came from the Notae release key.
 
    ```sh
-   V=0.6.0
+   V=0.6.1
    sha256sum -c "notae-$V-arm64.apk.sha256"
    apksigner verify --print-certs "notae-$V-arm64.apk" \
      | grep -i 'SHA-256 digest: be27cd781766c5c28a9db106c07b051ceee4e0003105964595e2a848f371f601'
@@ -301,9 +301,9 @@ commit conventions and what must never be committed.
 
 What comes next is in [`ROADMAP.md`](ROADMAP.md).
 
-- **0.6.0 is verified with host tests and screenshot tests only;** the phone
-  layouts have not been checked on a device or an emulator yet, and the Galaxy
-  Tab S10 FE+ check is pending.
+- **0.6.1 is verified with host tests and screenshot tests only;** its
+  animations and the phone layouts have not been checked on a device or an
+  emulator yet, and the Galaxy Tab S10 FE+ check is pending.
 - **No on-device OCR.** Scanned PDFs are found by file name only
   ([#28](https://github.com/eRgo35/notae/issues/28),
   [ADR 0001](docs/adr/0001-on-device-ocr.md)). The desktop indexer and its
