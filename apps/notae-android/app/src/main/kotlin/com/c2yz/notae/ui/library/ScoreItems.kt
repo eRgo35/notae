@@ -334,7 +334,7 @@ internal fun PagePreview(thumbnail: String?, modifier: Modifier = Modifier, radi
     val shape = RoundedCornerShape(radius)
     val image by rememberThumbnail(thumbnail)
     BoxWithConstraints(
-        modifier.clip(shape).background(c.paper).border(BorderStroke(1.dp, c.paperEdge), shape),
+        modifier.clip(shape).background(if (image != null) c.paper else c.pageBlank).border(BorderStroke(1.dp, c.paperEdge), shape),
         contentAlignment = Alignment.Center,
     ) {
         val glyph = minOf(40.dp, maxWidth / 2)

@@ -27,6 +27,9 @@ class TokensTest {
         "error" to Triple({ it.error }, 0xC62828, 0xFF8A80),
         "paper" to Triple({ it.paper }, 0xFFFFFF, 0xE4E4E8),
         "paperEdge" to Triple({ it.paperEdge }, 0xE3E3E8, 0x2A2A2E),
+        // 0.6.1's: the details' info card on a tablet, and a page not drawn yet.
+        "well" to Triple({ it.well }, 0xF3F3F5, 0x222226),
+        "pageBlank" to Triple({ it.pageBlank }, 0xFFFFFF, 0x26262B),
     )
 
     private fun argb(rgb: Long) = (0xFF000000L or rgb).toInt()

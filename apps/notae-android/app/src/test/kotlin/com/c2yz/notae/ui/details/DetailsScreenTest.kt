@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.details
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.hapticfeedback.HapticFeedback
@@ -187,6 +189,18 @@ class DetailsScreenTest {
         compose.onNodeWithContentDescription("Add to favorites").performClick()
 
         assertEquals(listOf(HapticFeedbackType.ToggleOff, HapticFeedbackType.ToggleOn), felt)
+    }
+
+    @Test
+    @Config(qualifiers = "w800dp-h1280dp-xhdpi")
+    fun a_portrait_tablet_stacks_the_page_above_the_title() {
+        show(aveMariaDetails())
+        val title = compose.onAllNodesWithText("Ave Maria")[0].getBoundsInRoot()
+        val open = compose.onNodeWithText("Open score").getBoundsInRoot()
+        // Stacked: the headline sits under the page, its buttons centred with it (Open score beside the edit icon),
+        // not in a column to the right of the page.
+        assertTrue("the title starts at ${title.top}", title.top > 400.dp)
+        assertEquals(400f, (open.left + open.right).value / 2, 48f)
     }
 
     @Test

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's background behind the first frame and between screens, so launch shows no other colour. -->
+    <style name="Theme.Notae" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/notae_background</item>
+    </style>
+</resources>

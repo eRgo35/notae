@@ -208,7 +208,7 @@ private fun LanguageCard(modifier: Modifier) {
     var current by remember(LocalConfiguration.current) { mutableStateOf(appLanguage().substringBefore('-')) }
     SettingsCard(modifier) {
         CardTitle(stringResource(R.string.settings_language))
-        Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.selectableGroup()) {
             LANGUAGES.forEach { (tag, label) ->
                 ChoiceRow(stringResource(label), selected = current == tag) {
                     setAppLanguage(tag)
@@ -301,7 +301,7 @@ private fun FactRow(label: String, value: String, alarm: Boolean = false) {
     }
 }
 
-/** 0.3.0's `ChoiceRow`: 52 dp, 18 radius, the field colour while pressed, an accent ring on focus, a check when chosen. */
+/** 0.3.0's `ChoiceRow` at the 48 dp target (52 with 8 between left the list twice as tall as the cards' other rows): 18 radius, the field colour while pressed, an accent ring on focus, a check when chosen. */
 @Composable
 private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
     val c = NotaeTheme.colors
@@ -312,7 +312,7 @@ private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(48.dp)
             .clip(shape)
             .background(animateColorAsState(if (pressed) c.field else c.field.copy(alpha = 0f), NotaeMotion.short(), label = "choice fill").value)
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)

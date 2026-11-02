@@ -332,11 +332,13 @@ private fun Body(row: ScoreRowData, scroll: ScrollState, onAction: (Action) -> U
         // The card's size: this box plus the card's 8 dp padding, and the 48 dp header above it.
         val cardWidth = maxWidth + 16.dp
         val cardHeight = maxHeight + 64.dp
-        val wide = cardWidth >= 720.dp
+        // Side by side only on a landscape card: on a portrait tablet that left the bottom half of the card empty.
+        val wide = cardWidth >= 720.dp && cardWidth > cardHeight
         val preview = if (wide) {
             maxOf(160.dp, minOf(380.dp, cardWidth * 0.4f, (cardHeight - 112.dp) / 1.3f))
         } else {
-            maxOf(140.dp, minOf(300.dp, cardWidth - 64.dp))
+            // As before in a narrow pane; larger on a portrait tablet, up to 45% of the card's height.
+            maxOf(140.dp, minOf(300.dp, cardWidth - 64.dp), minOf(420.dp, cardWidth * 0.5f, cardHeight * 0.45f / 1.3f))
         }
         Column(Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
             if (wide) {
@@ -355,12 +357,11 @@ private fun Body(row: ScoreRowData, scroll: ScrollState, onAction: (Action) -> U
                     }
                 }
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        PagePreview(row.thumbnail, Modifier.size(preview, preview * 1.3f), radius = 16.dp)
-                    }
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    PagePreview(row.thumbnail, Modifier.size(preview, preview * 1.3f), radius = 16.dp)
                     Headline(row, centered = true, onAction)
-                    InfoCard(row, stretch = false)
+                    // Reading width, as beside the page.
+                    InfoCard(row, stretch = false, Modifier.widthIn(max = 640.dp))
                 }
             }
         }
@@ -400,7 +401,7 @@ private fun InfoCard(
     stretch: Boolean,
     modifier: Modifier = Modifier,
     stacked: Boolean = false,
-    background: Color = NotaeTheme.colors.background,
+    background: Color = NotaeTheme.colors.well,
 ) {
     // An image-only PDF shows no status: the library does not nag about it (0.3.0's `rows.rs`).
     val status = if (row.textPending) null else statusText(row.status)
