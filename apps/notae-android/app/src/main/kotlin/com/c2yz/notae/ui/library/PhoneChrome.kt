@@ -1,5 +1,12 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.components.AnimatedPresence
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.animateColorAsState
@@ -148,14 +155,17 @@ internal fun CompactLibrary(
             inSet && !reordering -> Triple(R.string.set_add, R.drawable.ic_add, Action.OpenAddPicker)
             else -> null
         }
-        fab?.let { (label, icon, action) ->
+        // The button grows in where it is needed and shrinks away where it is not (reorder mode, another section).
+        AnimatedPresence(
+            fab,
+            scaleIn(NotaeMotion.medium(), initialScale = 0.8f) + fadeIn(NotaeMotion.medium()),
+            scaleOut(NotaeMotion.short(), targetScale = 0.8f) + fadeOut(NotaeMotion.short()),
+            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp),
+        ) { (label, icon, action) ->
             PillButton(
                 stringResource(label),
                 { onAction(action) },
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp)
-                    .shadow(6.dp, RoundedCornerShape(26.dp)),
+                Modifier.shadow(6.dp, RoundedCornerShape(26.dp)),
                 icon = painterResource(icon),
                 primary = true,
             )
@@ -223,7 +233,8 @@ private fun navSelected(key: String, current: String): Boolean =
 
 /**
  * Folds the large title as the content scrolls up, before the list moves, and unfolds it once the list is back at its
- * top, as One UI's collapsing app bar does.
+ * top, as One UI's collapsing app bar does. When the finger lifts (after any fling) a half-folded title finishes the
+ * way it was nearer to.
  */
 private class TitleCollapse(
     private val range: Float,
@@ -238,6 +249,14 @@ private class TitleCollapse(
     override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
         if (available.y <= 0f) return Offset.Zero
         return Offset(0f, fold(available.y))
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        val now = folded()
+        if (now > 0f && now < range) {
+            animate(now, if (now > range / 2) range else 0f, animationSpec = NotaeMotion.medium()) { value, _ -> setFolded(value) }
+        }
+        return Velocity.Zero
     }
 
     /** Moves the title by [delta] (negative folds it) within its range and returns what it took. */
@@ -283,7 +302,8 @@ private fun Toolbar(snapshot: Snapshot, onAction: (Action) -> Unit, inSet: Boole
             IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) })
         }
         Box(Modifier.weight(1f).padding(start = if (inSet) 4.dp else 16.dp)) {
-            if (showTitle) {
+            // Qualified: the toolbar Row's scope would otherwise pick its own overload.
+            androidx.compose.animation.AnimatedVisibility(showTitle, enter = fadeIn(NotaeMotion.short()), exit = fadeOut(NotaeMotion.short())) {
                 Text(
                     sectionTitle(snapshot.title),
                     Modifier.semantics { heading() },
