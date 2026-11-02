@@ -36,9 +36,11 @@ import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.MetadataDraft
+import com.c2yz.notae.ui.components.COMPACT_WIDTH
+import com.c2yz.notae.ui.components.DialogButtons
+import com.c2yz.notae.ui.components.EXPANDED_WIDTH
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.ModalSurface
-import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.TextField
 import com.c2yz.notae.ui.components.failureText
 import com.c2yz.notae.ui.theme.NotaeTheme
@@ -46,7 +48,7 @@ import com.c2yz.notae.ui.theme.NotaeTheme
 /**
  * 0.3.0's "Score details" sheet: a card at most 600 × 620 over a scrim that ignores taps, with the title
  * and close, the intro, Title, Composer or artist, Score number and Tags, the core's error in red, then Cancel and
- * Save details at the bottom; it scrolls when the window is shorter. The fields are this composable's own state, filled
+ * Save details at the bottom; it scrolls when the window is shorter. On a phone it takes the whole screen. The fields are this composable's own state, filled
  * again whenever the core sends a different draft (the record has loaded); Save sends them, Close and Cancel drop them.
  * The dialog takes the focus itself, as buttons cannot hold it in touch mode, so Escape cancels at once.
  */
@@ -62,7 +64,9 @@ fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: M
     val keys = remember { FocusRequester() }
     LaunchedEffect(Unit) { keys.requestFocus() }
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val expanded = maxWidth >= 840.dp
+        val expanded = maxWidth >= EXPANDED_WIDTH
+        // A phone gives the form the whole screen, so the keyboard leaves room for the fields.
+        val compact = maxWidth < COMPACT_WIDTH
         ModalSurface(
             stringResource(R.string.metadata_dialog),
             onDismiss = null,
@@ -77,6 +81,7 @@ fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: M
             padding = PaddingValues(0.dp),
             spacing = 0.dp,
             cardHeight = 620.dp,
+            fullScreen = compact,
         ) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 Column(
@@ -84,7 +89,7 @@ fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: M
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                         .heightIn(min = maxHeight)
-                        .padding(if (expanded) 28.dp else 20.dp),
+                        .padding(start = if (expanded) 28.dp else 20.dp, top = if (expanded) 28.dp else 20.dp, end = if (expanded) 28.dp else 20.dp, bottom = 8.dp),
                     verticalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -105,17 +110,13 @@ fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: M
                         Field(stringResource(R.string.details_tags), tags, { tags = it }, stringResource(R.string.metadata_tags_hint))
                         draft.error?.let { Text(failureText(it), color = c.error, fontSize = 14.sp) }
                     }
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-                    ) {
-                        PillButton(stringResource(R.string.metadata_cancel), cancel)
-                        PillButton(
-                            stringResource(R.string.metadata_save),
-                            { onAction(Action.SaveMetadata(draft.noteKey, number, title, composer, tags)) },
-                            primary = true,
-                        )
-                    }
+                    DialogButtons(
+                        stringResource(R.string.metadata_cancel),
+                        cancel,
+                        stringResource(R.string.metadata_save),
+                        { onAction(Action.SaveMetadata(draft.noteKey, number, title, composer, tags)) },
+                        Modifier.padding(top = 16.dp),
+                    )
                 }
             }
         }

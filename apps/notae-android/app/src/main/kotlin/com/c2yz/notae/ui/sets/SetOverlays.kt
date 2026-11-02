@@ -61,7 +61,7 @@ import com.c2yz.notae.platform.pickerMillisToIso
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.ModalSurface
 import com.c2yz.notae.ui.components.NotaeDialog
-import com.c2yz.notae.ui.components.PillButton
+import com.c2yz.notae.ui.components.DialogButtons
 import com.c2yz.notae.ui.components.TextField
 import com.c2yz.notae.ui.theme.NotaeTheme
 
@@ -137,10 +137,12 @@ private fun SetDialogCard(dialog: SetDialog, onAction: (Action) -> Unit) {
             }
             dialog.error?.let { Text(fieldError(it), color = c.error, fontSize = 14.sp) }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-            PillButton(stringResource(R.string.set_cancel), cancel)
-            PillButton(stringResource(R.string.set_save), { onAction(Action.SaveSetDialog(name, date, notes.ifBlank { null })) }, primary = true)
-        }
+        DialogButtons(
+            stringResource(R.string.set_cancel),
+            cancel,
+            stringResource(R.string.set_save),
+            { onAction(Action.SaveSetDialog(name, date, notes.ifBlank { null })) },
+        )
     }
     if (picking) {
         val state = rememberDatePickerState(initialSelectedDateMillis = date?.let(::isoToPickerMillis))
@@ -221,17 +223,15 @@ private fun DeleteSetDialog(confirmation: DeleteSetConfirmation, onAction: (Acti
         modifier = Modifier.closeOnEscape(cancel).focusRequester(keys).focusable(),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(stringResource(R.string.set_delete_title, confirmation.name), color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-            Text(stringResource(R.string.set_delete_body), color = c.muted, fontSize = 14.sp)
+            Text(stringResource(R.string.set_delete_title, confirmation.name), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.set_delete_body), color = c.muted, fontSize = 15.sp)
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-            PillButton(stringResource(R.string.set_cancel), cancel)
-            PillButton(
-                stringResource(R.string.set_delete_confirm),
-                { onAction(Action.ConfirmDeleteSet) },
-                icon = painterResource(R.drawable.ic_delete),
-                primary = true,
-            )
-        }
+        DialogButtons(
+            stringResource(R.string.set_cancel),
+            cancel,
+            stringResource(R.string.set_delete_confirm),
+            { onAction(Action.ConfirmDeleteSet) },
+            destructive = true,
+        )
     }
 }

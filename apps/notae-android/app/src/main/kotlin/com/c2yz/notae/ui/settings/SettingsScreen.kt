@@ -65,6 +65,8 @@ import com.c2yz.notae.core.SettingsInfo
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.platform.appLanguage
 import com.c2yz.notae.platform.setAppLanguage
+import com.c2yz.notae.ui.components.COMPACT_WIDTH
+import com.c2yz.notae.ui.components.DialogButtons
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.ModalSurface
 import com.c2yz.notae.ui.components.NotaeCard
@@ -141,13 +143,14 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
 @Composable
 private fun SettingsCard(modifier: Modifier, spacing: Int = 8, content: @Composable ColumnScope.() -> Unit) {
     NotaeCard(modifier) {
-        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(spacing.dp), content = content)
+        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(spacing.dp), content = content)
     }
 }
 
 @Composable
 private fun CardTitle(text: String) {
-    Text(text, color = NotaeTheme.colors.foreground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+    // One UI names a settings group in the accent colour.
+    Text(text, color = NotaeTheme.colors.accentText, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
 }
 
 @Composable
@@ -268,22 +271,29 @@ fun ImportConfirmationDialog(confirmation: ImportConfirmation, onAction: (Action
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             val sets = confirmation.sets.toInt()
-            Text(pluralStringResource(R.plurals.import_title, sets, sets), color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text(pluralStringResource(R.plurals.import_title, sets, sets), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
             if (confirmation.replaced.isNotEmpty()) {
                 Text(stringResource(R.string.import_replaced, confirmation.replaced.joinToString(", ")), color = c.muted, fontSize = 14.sp)
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-            PillButton(stringResource(R.string.set_cancel), cancel)
-            PillButton(stringResource(R.string.import_confirm), { onAction(Action.ImportConfirmed) }, primary = true)
-        }
+        DialogButtons(stringResource(R.string.set_cancel), cancel, stringResource(R.string.import_confirm), { onAction(Action.ImportConfirmed) })
     }
 }
 
-/** 0.3.0's `FactRow`: the muted label, the value at the right (red for [alarm]); read as one "label, value". */
+/**
+ * 0.3.0's `FactRow`: the muted label, the value at the right (red for [alarm]); read as one "label, value". On a phone a
+ * long value (the last scan's summary) goes below its label instead of squeezing beside it.
+ */
 @Composable
 private fun FactRow(label: String, value: String, alarm: Boolean = false) {
     val c = NotaeTheme.colors
+    if (LocalConfiguration.current.screenWidthDp < COMPACT_WIDTH.value && value.length > 24) {
+        Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, color = c.muted, fontSize = 15.sp)
+            Text(value, color = if (alarm) c.error else c.foreground, fontSize = 15.sp)
+        }
+        return
+    }
     Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(label, color = c.muted, fontSize = 15.sp)
         Text(value, Modifier.weight(1f), color = if (alarm) c.error else c.foreground, fontSize = 15.sp, textAlign = TextAlign.End)

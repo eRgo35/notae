@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -53,6 +54,8 @@ import com.c2yz.notae.core.RowStatus
 import com.c2yz.notae.core.Selection
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.ui.components.IconButton
+import com.c2yz.notae.ui.components.WidthClass
+import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
@@ -65,7 +68,7 @@ import com.c2yz.notae.ui.theme.NotaeTheme
 internal const val DETAILS_BODY_TAG = "details-body"
 
 /**
- * 0.3.0's `ScoreDetails`: full screen on a narrow window, and the detail pane beside the library or a set on a wide one
+ * 0.3.0's `ScoreDetails`: full screen on a narrow window ([CompactDetails] on a phone), and the detail pane beside the library or a set on a wide one
  * ([besideList]). Alone, the operation banner and the PDF launch error stay above the card; beside a list, the list's
  * pane shows them. The header has back, "X of Y", the star, previous and next. The body scrolls and puts the page
  * beside the headline and the info card when the card is at least 720 dp wide; under that, it stacks them centred.
@@ -81,6 +84,10 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     val keys = remember { FocusRequester() }
     val overlay = overlayOpen(snapshot)
     LaunchedEffect(overlay) { if (!overlay) keys.requestFocus() }
+    if (!besideList && windowWidthClass() == WidthClass.COMPACT) {
+        CompactDetails(snapshot, selection, onAction, modifier.focusRequester(keys))
+        return
+    }
     Column(
         modifier
             .fillMaxSize()
@@ -105,6 +112,119 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
 }
 
 /**
+ * The details on a phone, in One UI's shape: back, "X of Y" and the star at the top; the page, the headline with Edit
+ * details and Add to set as tonal buttons, and the info with each label above its value, scrolling; then a bottom bar
+ * with Previous, Open score and Next, where the thumb is.
+ */
+@Composable
+private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (Action) -> Unit, modifier: Modifier) {
+    val c = NotaeTheme.colors
+    val row = selection.row
+    Column(
+        modifier
+            .fillMaxSize()
+            .background(c.background)
+            .onPreviewKeyEvent { event -> detailsKeyAction(event, selection)?.also(onAction) != null }
+            .focusable(),
+    ) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(stringResource(R.string.details_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.ClearSelection) })
+            Position(selection, Modifier.weight(1f))
+            FavoriteButton(row, onAction)
+        }
+        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            OperationBanner(snapshot.banner, onAction)
+            snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+        }
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val preview = maxOf(120.dp, minOf(220.dp, maxWidth * 0.55f, maxHeight * 0.4f / 1.3f))
+            Column(
+                Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    PagePreview(row.thumbnail, Modifier.size(preview, preview * 1.3f), radius = 16.dp)
+                }
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    row.number?.let { Text(stringResource(R.string.details_number, it), color = c.accentText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+                    Text(row.title, color = c.foreground, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, lineHeight = 32.sp)
+                    row.composer?.takeIf { it.isNotEmpty() }?.let { Text(it, color = c.muted, fontSize = 17.sp) }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PillButton(
+                        stringResource(R.string.score_edit_details),
+                        { onAction(Action.EditMetadata(row.noteKey)) },
+                        Modifier.weight(1f),
+                        icon = painterResource(R.drawable.ic_edit),
+                        tonal = true,
+                    )
+                    PillButton(
+                        stringResource(R.string.score_add_to_set),
+                        { onAction(Action.AddToSet(row.noteKey)) },
+                        Modifier.weight(1f),
+                        icon = painterResource(R.drawable.ic_folder),
+                        tonal = true,
+                    )
+                }
+                InfoCard(row, stretch = false, stacked = true, background = c.card)
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
+        Row(
+            Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StepButton(selection, previous = true, onAction)
+            PillButton(
+                stringResource(R.string.score_open),
+                { onAction(Action.OpenPdf(row.relativePath, row.noteKey, row.itemId)) },
+                Modifier.weight(1f),
+                icon = painterResource(R.drawable.ic_external_link),
+                primary = true,
+            )
+            StepButton(selection, previous = false, onAction)
+        }
+    }
+}
+
+/** "X of Y" in a set or a list, read as "Score X of Y". */
+@Composable
+private fun Position(selection: Selection, modifier: Modifier) {
+    val position = selection.position?.let { stringResource(R.string.details_position, it.position.toLong(), it.total.toLong()) }
+    val positionLabel = position?.let { stringResource(R.string.details_position_label, it) }
+    Text(
+        position.orEmpty(),
+        modifier.then(if (positionLabel != null) Modifier.semantics { contentDescription = positionLabel } else Modifier),
+        color = NotaeTheme.colors.muted,
+        fontSize = 15.sp,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@Composable
+private fun FavoriteButton(row: ScoreRowData, onAction: (Action) -> Unit) {
+    IconButton(
+        stringResource(if (row.favorite) R.string.score_remove_favorite else R.string.score_add_favorite),
+        painterResource(if (row.favorite) R.drawable.ic_star_filled else R.drawable.ic_star),
+        { onAction(Action.ToggleFavorite(row.noteKey)) },
+        selected = row.favorite,
+    )
+}
+
+/** Previous or Next score, disabled at the ends. */
+@Composable
+private fun StepButton(selection: Selection, previous: Boolean, onAction: (Action) -> Unit) {
+    val target = if (previous) selection.previous else selection.next
+    IconButton(
+        stringResource(if (previous) R.string.details_previous else R.string.details_next),
+        painterResource(if (previous) R.drawable.ic_chevron_left else R.drawable.ic_chevron_right),
+        { target?.let { onAction(Action.SelectScore(it)) } },
+        enabled = target != null,
+    )
+}
+
+/**
  * The details' keys: Left and Right to the core's neighbours, Escape back, Ctrl K to search. The library pane beside
  * the details uses them too, so the keys step whichever pane holds focus.
  */
@@ -119,37 +239,12 @@ internal fun detailsKeyAction(event: KeyEvent, selection: Selection): Action? = 
 
 @Composable
 private fun Header(selection: Selection, onAction: (Action) -> Unit) {
-    val c = NotaeTheme.colors
-    val row = selection.row
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(stringResource(R.string.details_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.ClearSelection) })
-        val position = selection.position?.let { stringResource(R.string.details_position, it.position.toLong(), it.total.toLong()) }
-        val positionLabel = position?.let { stringResource(R.string.details_position_label, it) }
-        Text(
-            position.orEmpty(),
-            Modifier.weight(1f).then(if (positionLabel != null) Modifier.semantics { contentDescription = positionLabel } else Modifier),
-            color = c.muted,
-            fontSize = 15.sp,
-            textAlign = TextAlign.Center,
-        )
-        IconButton(
-            stringResource(if (row.favorite) R.string.score_remove_favorite else R.string.score_add_favorite),
-            painterResource(if (row.favorite) R.drawable.ic_star_filled else R.drawable.ic_star),
-            { onAction(Action.ToggleFavorite(row.noteKey)) },
-            selected = row.favorite,
-        )
-        IconButton(
-            stringResource(R.string.details_previous),
-            painterResource(R.drawable.ic_chevron_left),
-            { selection.previous?.let { onAction(Action.SelectScore(it)) } },
-            enabled = selection.previous != null,
-        )
-        IconButton(
-            stringResource(R.string.details_next),
-            painterResource(R.drawable.ic_chevron_right),
-            { selection.next?.let { onAction(Action.SelectScore(it)) } },
-            enabled = selection.next != null,
-        )
+        Position(selection, Modifier.weight(1f))
+        FavoriteButton(selection.row, onAction)
+        StepButton(selection, previous = true, onAction)
+        StepButton(selection, previous = false, onAction)
     }
 }
 
@@ -223,27 +318,41 @@ private fun Headline(row: ScoreRowData, centered: Boolean, onAction: (Action) ->
  * as tall as the page allows ([stretch]) and its rows share the extra height.
  */
 @Composable
-private fun InfoCard(row: ScoreRowData, stretch: Boolean, modifier: Modifier = Modifier) {
-    val c = NotaeTheme.colors
+private fun InfoCard(
+    row: ScoreRowData,
+    stretch: Boolean,
+    modifier: Modifier = Modifier,
+    stacked: Boolean = false,
+    background: Color = NotaeTheme.colors.background,
+) {
     // An image-only PDF shows no status: the library does not nag about it (0.3.0's `rows.rs`).
     val status = if (row.textPending) null else statusText(row.status)
     Column(
-        modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.background).padding(horizontal = 20.dp, vertical = 4.dp),
+        modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(background).padding(horizontal = 20.dp, vertical = 4.dp),
     ) {
         val share = if (stretch) Modifier.weight(1f) else Modifier
-        InfoRow(stringResource(R.string.details_title), row.title, originText(row.titleOrigin), share)
+        InfoRow(stringResource(R.string.details_title), row.title, originText(row.titleOrigin), share, stacked)
         Divider()
-        InfoRow(stringResource(R.string.details_composer), row.composer.orEmpty(), originText(row.composerOrigin), share)
+        InfoRow(stringResource(R.string.details_composer), row.composer.orEmpty(), originText(row.composerOrigin), share, stacked)
         Divider()
-        InfoRow(stringResource(R.string.details_tags), row.tags.joinToString(", "), null, share)
+        InfoRow(stringResource(R.string.details_tags), row.tags.joinToString(", "), null, share, stacked)
         Divider()
-        InfoRow(stringResource(R.string.details_file), row.relativePath, status, share)
+        InfoRow(stringResource(R.string.details_file), row.relativePath, status, share, stacked)
     }
 }
 
 @Composable
-private fun InfoRow(label: String, value: String, note: String?, modifier: Modifier) {
+private fun InfoRow(label: String, value: String, note: String?, modifier: Modifier, stacked: Boolean) {
     val c = NotaeTheme.colors
+    if (stacked) {
+        // A phone puts the label above its value, so a long file path keeps the whole width.
+        Column(modifier.fillMaxWidth().heightIn(min = 60.dp).padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label, color = c.muted, fontSize = 13.sp)
+            Text(value.ifEmpty { "—" }, color = c.foreground, fontSize = 16.sp)
+            note?.takeIf { it.isNotEmpty() }?.let { Text(it, color = c.muted, fontSize = 13.sp) }
+        }
+        return
+    }
     Row(
         modifier.fillMaxWidth().heightIn(min = 60.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),

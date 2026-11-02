@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 /**
- * 0.3.0's `NavRow`: 52 high (above the 48 dp target), 18 radius, 14 padding and spacing, optional 22 dp icon,
+ * One UI's drawer row: 52 high (above the 48 dp target), a full pill (26 radius), 14 padding and spacing, optional 22 dp icon,
  * 16 sp label (semi-bold when selected) and an optional 14 sp count.
  */
 @Composable
@@ -49,7 +49,7 @@ fun SidebarItem(
     selected: Boolean = false,
 ) {
     val c = NotaeTheme.colors
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(26.dp)
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val focused by source.collectIsFocusedAsState()
@@ -63,7 +63,7 @@ fun SidebarItem(
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
             .semantics { this.selectedState = selected }
             .clickable(source, null, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = 18.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

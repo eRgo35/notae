@@ -39,7 +39,7 @@ import com.c2yz.notae.R
 import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.ui.components.ActionSheet
 import com.c2yz.notae.ui.components.NotaeDialog
-import com.c2yz.notae.ui.components.PillButton
+import com.c2yz.notae.ui.components.DialogButtons
 import com.c2yz.notae.ui.components.SheetAction
 import com.c2yz.notae.ui.components.TextField
 import com.c2yz.notae.ui.theme.NotaeTheme
@@ -172,9 +172,6 @@ internal fun NoteEditor(note: SetEntry.Note, onCancel: () -> Unit, onSave: (Stri
     NotaeDialog(stringResource(R.string.note_edit)) {
         Text(stringResource(R.string.note_edit), color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         TextField(text, { text = it }, stringResource(R.string.note_field), Modifier.focusRequester(field), multiLine = true)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-            PillButton(stringResource(R.string.set_cancel), onCancel)
-            PillButton(stringResource(R.string.note_save), { onSave(text) }, primary = true, enabled = text.isNotBlank())
-        }
+        DialogButtons(stringResource(R.string.set_cancel), onCancel, stringResource(R.string.note_save), { onSave(text) }, confirmEnabled = text.isNotBlank())
     }
 }

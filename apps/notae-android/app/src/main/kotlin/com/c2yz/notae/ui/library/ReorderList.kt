@@ -48,6 +48,8 @@ import androidx.compose.ui.zIndex
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.SetEntry
+import com.c2yz.notae.ui.components.WidthClass
+import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.theme.NotaeTheme
@@ -149,6 +151,7 @@ private fun ReorderRow(
     modifier: Modifier = Modifier,
 ) {
     val c = NotaeTheme.colors
+    val compact = windowWidthClass() == WidthClass.COMPACT
     val itemId = entry.itemId() ?: return
     val (title, position) = when (entry) {
         is SetEntry.Piece -> entry.row.title to entry.row.position
@@ -193,7 +196,7 @@ private fun ReorderRow(
                 },
             )
             .padding(end = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val drag = stringResource(R.string.set_drag, title)
@@ -204,7 +207,8 @@ private fun ReorderRow(
         when (entry) {
             is SetEntry.Piece -> {
                 val row = entry.row
-                PagePreview(row.thumbnail, Modifier.size(44.dp, 58.dp), radius = 6.dp)
+                // A phone drops the page, leaving the title room beside the three buttons.
+                if (!compact) PagePreview(row.thumbnail, Modifier.size(44.dp, 58.dp), radius = 6.dp)
                 Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     val label = (position?.let { "$it. " } ?: "") + title
                     Text(
@@ -220,7 +224,7 @@ private fun ReorderRow(
                 }
             }
             is SetEntry.Note -> {
-                NoteTile(44.dp, 58.dp)
+                if (!compact) NoteTile(44.dp, 58.dp)
                 val label = noteLabel(entry)
                 NoteText(entry.text, Modifier.weight(1f).clearAndSetSemantics { contentDescription = label })
             }

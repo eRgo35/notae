@@ -52,6 +52,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
@@ -60,6 +61,7 @@ import com.c2yz.notae.core.Row as ScoreRowData
 import com.c2yz.notae.core.SearchScope
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.Snippet
+import com.c2yz.notae.ui.components.COMPACT_WIDTH
 import com.c2yz.notae.ui.components.Chip
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.NotaeCard
@@ -93,7 +95,8 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
                 (event.type == KeyEventType.KeyDown && event.key == Key.Escape).also { if (it) onAction(Action.CloseSearch) }
             },
     ) {
-        val side = if (maxWidth < 600.dp) 16.dp else 24.dp
+        val compact = maxWidth < COMPACT_WIDTH
+        val side = if (compact) 16.dp else 24.dp
         Column(
             Modifier.fillMaxSize().padding(start = side, top = side, end = side, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -112,16 +115,17 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
                 }
             }
             OperationBanner(snapshot.banner, onAction)
-            ScopeChips(snapshot.search.scope, onAction)
+            // On a phone the chips start at the edge, under Back, instead of lining up with the field.
+            ScopeChips(snapshot.search.scope, onAction, indent = if (compact) 0.dp else 56.dp)
             Results(snapshot, onAction)
         }
     }
 }
 
 @Composable
-private fun ScopeChips(selected: SearchScope, onAction: (Action) -> Unit) {
+private fun ScopeChips(selected: SearchScope, onAction: (Action) -> Unit, indent: Dp) {
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 56.dp),
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = indent),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SCOPES.forEach { (scope, label) ->

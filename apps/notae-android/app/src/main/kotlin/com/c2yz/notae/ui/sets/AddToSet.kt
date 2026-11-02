@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,7 +53,10 @@ import com.c2yz.notae.core.AddToSetSheet
 import com.c2yz.notae.core.PickerRow
 import com.c2yz.notae.core.SetChoice
 import com.c2yz.notae.ui.components.ActionSheet
+import com.c2yz.notae.ui.components.COMPACT_WIDTH
 import com.c2yz.notae.ui.components.Chip
+import com.c2yz.notae.ui.components.DIALOG_PADDING
+import com.c2yz.notae.ui.components.DialogButtons
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.ModalSurface
 import com.c2yz.notae.ui.components.PillButton
@@ -178,15 +182,21 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
     val noteField = remember { FocusRequester() }
     LaunchedEffect(noteTab) { if (noteTab) noteField.requestFocus() else field.requestFocus() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val listHeight = maxOf(144.dp, minOf(432.dp, maxHeight - 340.dp))
+        // A phone gives the picker the whole screen, its list taking what the tabs, field and footer leave.
+        val compact = maxWidth < COMPACT_WIDTH
+        val listHeight = if (compact) maxOf(144.dp, maxHeight - 260.dp) else maxOf(144.dp, minOf(432.dp, maxHeight - 340.dp))
         ModalSurface(
             stringResource(R.string.picker_dialog),
             onDismiss = close,
             bottomSheet = false,
             cardWidth = 720.dp,
             modifier = Modifier.closeOnEscape(close),
+            padding = if (noteTab) DIALOG_PADDING else PaddingValues(if (compact) 20.dp else 24.dp),
+            spacing = if (compact) 16.dp else 20.dp,
+            fullScreen = compact,
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (compact) IconButton(stringResource(R.string.dismiss), painterResource(R.drawable.ic_close), close)
                 Chip(stringResource(R.string.picker_title), !noteTab, { noteTab = false })
                 Chip(stringResource(R.string.note_tab), noteTab, { noteTab = true })
             }
@@ -195,10 +205,13 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
                     TextField(note, { note = it }, stringResource(R.string.note_field), Modifier.focusRequester(noteField), multiLine = true)
                     Text(stringResource(R.string.note_added_at_end), color = c.muted, fontSize = 14.sp)
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                    PillButton(stringResource(R.string.set_cancel), close)
-                    PillButton(stringResource(R.string.note_add), { onAction(Action.AddNote(note)) }, primary = true, enabled = note.isNotBlank())
-                }
+                DialogButtons(
+                    stringResource(R.string.set_cancel),
+                    close,
+                    stringResource(R.string.note_add),
+                    { onAction(Action.AddNote(note)) },
+                    confirmEnabled = note.isNotBlank(),
+                )
             } else {
                 SearchField(picker.query, { onAction(Action.AddPickerSearch(it)) }, stringResource(R.string.search_placeholder), field)
                 Box(Modifier.fillMaxWidth().height(listHeight)) {

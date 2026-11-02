@@ -1,13 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Tablets only. -->
-    <supports-screens
-        android:smallScreens="false"
-        android:normalScreens="false"
-        android:largeScreens="true"
-        android:xlargeScreens="true" />
-
     <!-- Apps that can open a PDF or take a note, and speech recognition for search. -->
     <queries>
         <package android:name="com.samsung.android.app.notes" />

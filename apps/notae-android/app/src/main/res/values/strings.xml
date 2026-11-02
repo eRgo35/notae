@@ -48,6 +48,9 @@
     <string name="library_list_view">Switch to list view</string>
     <string name="library_new_set">New set</string>
     <string name="library_scan">Scan library</string>
+    <string name="more_options">More options</string>
+    <string name="all_composers">All composers</string>
+    <string name="choose_composer">Choose composer, %1$s</string>
     <string name="library_empty_all">A little space for your scores</string>
     <string name="library_empty_all_detail">Scan your library folder to add the PDFs it contains.</string>
     <string name="library_empty_recent">No recent scores</string>

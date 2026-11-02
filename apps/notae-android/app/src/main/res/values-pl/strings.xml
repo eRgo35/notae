@@ -52,6 +52,9 @@
     <string name="library_list_view">Przełącz na widok listy</string>
     <string name="library_new_set">Nowy zestaw</string>
     <string name="library_scan">Skanuj bibliotekę</string>
+    <string name="more_options">Więcej opcji</string>
+    <string name="all_composers">Wszyscy kompozytorzy</string>
+    <string name="choose_composer">Wybierz kompozytora, %1$s</string>
     <string name="library_empty_all">Miejsce na Twoje nuty</string>
     <string name="library_empty_all_detail">Zeskanuj folder biblioteki, aby dodać znajdujące się w nim pliki PDF.</string>
     <string name="library_empty_recent">Brak ostatnich utworów</string>

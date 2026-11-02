@@ -64,9 +64,12 @@ import com.c2yz.notae.ui.components.ActionSheet
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.SheetAction
+import com.c2yz.notae.ui.components.WidthClass
 import com.c2yz.notae.ui.components.toCount
+import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.library.GridScrollbar
 import com.c2yz.notae.ui.library.ListScrollbar
+import com.c2yz.notae.ui.library.NARROW_GRID
 import com.c2yz.notae.ui.theme.NotaeTheme
 import kotlin.math.floor
 
@@ -84,16 +87,19 @@ internal fun SetsPane(cards: List<SetCard>, list: Boolean, onOpen: (SetCard) -> 
             // 0.3.0's `SetGrid`: 20 dp inset, columns of at least 200 dp with 16 dp gaps, 24 dp between rows, and cards
             // 0.85 times as tall as wide plus 88 dp for the text.
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                val inner = maxWidth - 40.dp
-                val columns = floor((inner + 16.dp) / 216.dp).toInt().coerceAtLeast(1)
-                val cellWidth = (inner - 16.dp * (columns - 1)) / columns
+                val narrow = maxWidth < NARROW_GRID
+                val inset = if (narrow) 12.dp else 20.dp
+                val gap = if (narrow) 12.dp else 16.dp
+                val inner = maxWidth - inset * 2
+                val columns = floor((inner + gap) / ((if (narrow) 140.dp else 200.dp) + gap)).toInt().coerceAtLeast(1)
+                val cellWidth = (inner - gap * (columns - 1)) / columns
                 val state = rememberLazyGridState()
                 LazyVerticalGrid(
                     GridCells.Fixed(columns),
-                    Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                    Modifier.fillMaxSize().padding(horizontal = inset),
                     state = state,
-                    contentPadding = PaddingValues(top = 20.dp, bottom = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(top = inset, bottom = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
                     items(cards, key = { it.id }) { card ->
@@ -157,6 +163,7 @@ private fun FolderPage(modifier: Modifier) {
 @Composable
 private fun SetRow(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit) {
     val c = NotaeTheme.colors
+    val compact = windowWidthClass() == WidthClass.COMPACT
     val shape = RoundedCornerShape(18.dp)
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
@@ -164,21 +171,25 @@ private fun SetRow(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(80.dp)
+            .height(if (compact) 88.dp else 80.dp)
             .clip(shape)
             .background(if (pressed) c.field else Color.Transparent)
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
             .setClick(card, source, onOpen)
-            .padding(start = 16.dp, end = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(start = if (compact) 12.dp else 16.dp, end = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FolderTile(52.dp, 14.dp, 26.dp)
+        FolderTile(if (compact) 44.dp else 52.dp, 14.dp, if (compact) 22.dp else 26.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(card.name, Modifier.clearAndSetSemantics { }, color = c.foreground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(setDetail(card.date, card.count), color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // On a phone the edit time goes under the date, which leaves the name its width.
+            if (compact) Text(edited(card.edited), color = c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        Text(edited(card.edited), Modifier.width(160.dp), color = c.muted, fontSize = 14.sp, textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (!compact) {
+            Text(edited(card.edited), Modifier.width(160.dp), color = c.muted, fontSize = 14.sp, textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
         SetActions(card.name, onMore)
     }
 }

@@ -64,12 +64,15 @@ import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.Subtitle
 import com.c2yz.notae.ui.components.Chip
+import com.c2yz.notae.ui.components.EXPANDED_WIDTH
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.SidebarItem
+import com.c2yz.notae.ui.components.WidthClass
 import com.c2yz.notae.ui.components.toCount
+import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.details.detailsKeyAction
 import com.c2yz.notae.ui.sets.SetActionsSheet
 import com.c2yz.notae.ui.sets.overlayOpen
@@ -80,10 +83,11 @@ import com.c2yz.notae.ui.theme.NotaeTheme
 private const val SET_PREFIX = "set:"
 
 /**
- * 0.3.0's `LibraryScreen`: the side panel (or the chips when it is hidden or the window is under 840 dp), the large
+ * 0.3.0's `LibraryScreen` on a tablet: the side panel (or the chips when it is hidden or the pane is under 840 dp), the large
  * title with its header actions, the operation banner, the PDF launch error, and the scores as a grid or a list, the
  * sets as folder cards or rows, or the section's empty state. Inside a set the header gains Back to sets, the set's
  * subtitle and notes, and Add. The ⋮ sheets are the screen's own state, as in 0.3.0; Back and Escape close them first.
+ * A phone's window gets [CompactLibrary] and one between a phone's and a tablet's [MediumLibrary] around the same content.
  */
 @Composable
 fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
@@ -153,27 +157,42 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             .focusRequester(keys)
             .focusable(),
     ) {
-        val expanded = maxWidth >= 840.dp
+        val expanded = maxWidth >= EXPANDED_WIDTH
         val portrait = maxHeight > maxWidth
         val layout = snapshot.layout
         val collapsed = if (portrait) layout.sidebarCollapsedPortrait else layout.sidebarCollapsedLandscape
         val sidebar = expanded && !collapsed
-        Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight())
-            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
-                if (!sidebar) Chips(snapshot, onAction)
-                OperationBanner(snapshot.banner, onAction)
-                snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
-                Content(
-                    snapshot,
-                    entries,
-                    onAction,
-                    reordering,
-                    onMore = { menuFor = it.selectionId },
-                    onNoteMore = { noteMenuFor = it.itemId },
-                    onSetMore = { setMenuFor = it.id },
-                )
+        val content: @Composable ColumnScope.() -> Unit = {
+            Content(
+                snapshot,
+                entries,
+                onAction,
+                reordering,
+                onMore = { menuFor = it.selectionId },
+                onNoteMore = { noteMenuFor = it.itemId },
+                onSetMore = { setMenuFor = it.id },
+            )
+        }
+        // The window decides the chrome: a phone gets the bottom bar, a window between a phone and a tablet the rail,
+        // and a tablet the side panel (or chips when it is hidden or the library shares the window with the details).
+        when (windowWidthClass()) {
+            WidthClass.COMPACT -> CompactLibrary(snapshot, onAction, inSet, reordering, content)
+            WidthClass.MEDIUM -> MediumLibrary(
+                snapshot,
+                onAction,
+                { Header(snapshot, onAction, expanded = false, sidebar = true, portrait, inSet, reordering) },
+                inSet,
+                content,
+            )
+            WidthClass.EXPANDED -> Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight())
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
+                    if (!sidebar) Chips(snapshot, onAction)
+                    OperationBanner(snapshot.banner, onAction)
+                    snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+                    content()
+                }
             }
         }
         if (menuRow != null) {
@@ -436,7 +455,7 @@ internal fun KeyEvent.isCtrlK(): Boolean = type == KeyEventType.KeyDown && isCtr
 /** A side-panel row is selected for its own section; the Sets row also inside a set. */
 private fun isSelected(key: String, current: String): Boolean = key == current || (key == "sets" && current.startsWith(SET_PREFIX))
 
-private fun sectionIcon(key: String): Int = when (key) {
+internal fun sectionIcon(key: String): Int = when (key) {
     "all" -> R.drawable.ic_library
     "recent" -> R.drawable.ic_schedule
     "favorites" -> R.drawable.ic_star
@@ -456,7 +475,7 @@ internal fun sectionTitle(title: SectionTitle): String = when (title) {
 
 /** "N scores", "N sets · recently edited first", or the open set's date and counts. */
 @Composable
-private fun subtitleText(subtitle: Subtitle): String = when (subtitle) {
+internal fun subtitleText(subtitle: Subtitle): String = when (subtitle) {
     is Subtitle.Scores -> pluralStringResource(R.plurals.library_scores, subtitle.count.toCount(), subtitle.count.toLong())
     is Subtitle.Sets -> pluralStringResource(R.plurals.library_sets_subtitle, subtitle.count.toCount(), subtitle.count.toLong())
     is Subtitle.Set -> setSubtitle(subtitle)

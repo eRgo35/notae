@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -58,6 +59,8 @@ import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Row as ScoreRowData
 import com.c2yz.notae.core.SetEntry
+import com.c2yz.notae.ui.components.WidthClass
+import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.Scrollbar
@@ -68,6 +71,9 @@ internal const val GRID_TAG = "library-grid"
 internal const val LIST_TAG = "library-list"
 internal const val REORDER_TAG = "set-reorder-list"
 internal const val FAVORITE_BADGE_TAG = "favorite-badge"
+
+/** A grid narrower than this (a phone) packs its cards tighter, two to a row. */
+internal val NARROW_GRID = 480.dp
 
 /**
  * 0.3.0's `ScoreGrid` in its card: 20 dp inset, columns of at least 176 dp with 16 dp gaps, 20 dp between rows, and
@@ -85,17 +91,21 @@ internal fun ScoreGrid(
 ) {
     NotaeCard(modifier.fillMaxSize()) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val inner = maxWidth - 40.dp
-            val columns = floor((inner + 16.dp) / 192.dp).toInt().coerceAtLeast(1)
-            val cellWidth = (inner - 16.dp * (columns - 1)) / columns
+            // On a phone the cards shrink to 140 dp with tighter gaps, so two columns fit.
+            val narrow = maxWidth < NARROW_GRID
+            val inset = if (narrow) 12.dp else 20.dp
+            val gap = if (narrow) 12.dp else 16.dp
+            val inner = maxWidth - inset * 2
+            val columns = floor((inner + gap) / ((if (narrow) 140.dp else 176.dp) + gap)).toInt().coerceAtLeast(1)
+            val cellWidth = (inner - gap * (columns - 1)) / columns
             val cellHeight = cellWidth * 1.3f + 64.dp
             val state = rememberLazyGridState()
             LazyVerticalGrid(
                 GridCells.Fixed(columns),
-                Modifier.testTag(GRID_TAG).fillMaxSize().padding(horizontal = 20.dp),
+                Modifier.testTag(GRID_TAG).fillMaxSize().padding(horizontal = inset),
                 state = state,
-                contentPadding = PaddingValues(top = 20.dp, bottom = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(top = inset, bottom = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(gap),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 items(entries, key = { it.key() }) { entry ->
@@ -218,6 +228,7 @@ internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit
 internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier, selected: Boolean = false) {
     val c = NotaeTheme.colors
     val highlighted = selected || row.justOpened
+    val compact = windowWidthClass() == WidthClass.COMPACT
     val shape = RoundedCornerShape(18.dp)
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
@@ -225,13 +236,13 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
     Row(
         modifier
             .fillMaxWidth()
-            .height(80.dp)
+            .then(if (compact) Modifier.heightIn(min = 80.dp) else Modifier.height(80.dp))
             .clip(shape)
             .background(itemBackground(highlighted, pressed))
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
             .scoreClick(row, source, onOpen, selected)
-            .padding(start = 14.dp, end = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(start = 14.dp, end = 8.dp, top = if (compact) 8.dp else 0.dp, bottom = if (compact) 8.dp else 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         row.position?.let { PositionBadge(it) }
@@ -250,8 +261,10 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
             if (row.tags.isNotEmpty()) {
                 Text(row.tags.joinToString(", "), color = if (highlighted) c.onAccentSoft else c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+            // On a phone the chip goes under the text, which keeps the width for the title.
+            if (row.justOpened && compact) JustOpenedChip()
         }
-        if (row.justOpened) JustOpenedChip()
+        if (row.justOpened && !compact) JustOpenedChip()
         if (row.favorite) FavoriteBadge()
         MoreActions(row.title, onMore)
     }
