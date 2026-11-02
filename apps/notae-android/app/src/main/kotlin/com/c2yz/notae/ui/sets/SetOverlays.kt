@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.sets
 
+import com.c2yz.notae.ui.components.AnimatedOverlay
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -72,10 +73,10 @@ import com.c2yz.notae.ui.theme.NotaeTheme
  */
 @Composable
 fun SetOverlays(snapshot: Snapshot, onAction: (Action) -> Unit) {
-    snapshot.setDialog?.let { SetDialogCard(it, onAction) }
-    snapshot.deleteSet?.let { DeleteSetDialog(it, onAction) }
-    snapshot.addToSet?.let { AddToSetSheet(it, onAction) }
-    snapshot.addPicker?.let { AddPickerDialog(it, onAction) }
+    AnimatedOverlay(snapshot.setDialog) { SetDialogCard(it, onAction) }
+    AnimatedOverlay(snapshot.deleteSet) { DeleteSetDialog(it, onAction) }
+    AnimatedOverlay(snapshot.addToSet) { AddToSetSheet(it, onAction) }
+    AnimatedOverlay(snapshot.addPicker) { AddPickerDialog(it, onAction) }
 }
 
 /**

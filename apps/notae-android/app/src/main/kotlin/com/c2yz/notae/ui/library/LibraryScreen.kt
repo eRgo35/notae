@@ -1,5 +1,9 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.components.backProgress
+import com.c2yz.notae.ui.components.LocalBackProgress
+import com.c2yz.notae.ui.components.AnimatedOverlay
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -114,8 +118,9 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         noteMenuFor = null
         noteEditFor = null
     }
+    val backState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(
-        state = rememberNavigationEventState(NavigationEventInfo.None),
+        state = backState,
         isBackEnabled = sheetOpen,
         onBackCompleted = closeSheets,
     )
@@ -195,49 +200,51 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 }
             }
         }
-        if (menuRow != null) {
-            ScoreActionsSheet(
-                menuRow,
-                onDismiss = { menuFor = null },
-                onAction = {
-                    menuFor = null
-                    onAction(it)
-                },
-            )
-        }
-        if (menuNote != null) {
-            NoteActionsSheet(
-                menuNote,
-                onDismiss = { noteMenuFor = null },
-                onEdit = {
-                    noteMenuFor = null
-                    noteEditFor = menuNote.itemId
-                },
-                onRemove = {
-                    noteMenuFor = null
-                    onAction(Action.RemoveSetItem(menuNote.itemId))
-                },
-            )
-        }
-        if (editNote != null) {
-            NoteEditor(
-                editNote,
-                onCancel = { noteEditFor = null },
-                onSave = {
-                    noteEditFor = null
-                    onAction(Action.EditNote(editNote.itemId, it))
-                },
-            )
-        }
-        if (menuSet != null) {
-            SetActionsSheet(
-                menuSet,
-                onDismiss = { setMenuFor = null },
-                onAction = {
-                    setMenuFor = null
-                    onAction(it)
-                },
-            )
+        CompositionLocalProvider(LocalBackProgress provides backProgress(backState)) {
+            AnimatedOverlay(menuRow) { row ->
+                ScoreActionsSheet(
+                    row,
+                    onDismiss = { menuFor = null },
+                    onAction = {
+                        menuFor = null
+                        onAction(it)
+                    },
+                )
+            }
+            AnimatedOverlay(menuNote) { note ->
+                NoteActionsSheet(
+                    note,
+                    onDismiss = { noteMenuFor = null },
+                    onEdit = {
+                        noteMenuFor = null
+                        noteEditFor = note.itemId
+                    },
+                    onRemove = {
+                        noteMenuFor = null
+                        onAction(Action.RemoveSetItem(note.itemId))
+                    },
+                )
+            }
+            AnimatedOverlay(editNote) { note ->
+                NoteEditor(
+                    note,
+                    onCancel = { noteEditFor = null },
+                    onSave = {
+                        noteEditFor = null
+                        onAction(Action.EditNote(note.itemId, it))
+                    },
+                )
+            }
+            AnimatedOverlay(menuSet) { set ->
+                SetActionsSheet(
+                    set,
+                    onDismiss = { setMenuFor = null },
+                    onAction = {
+                        setMenuFor = null
+                        onAction(it)
+                    },
+                )
+            }
         }
     }
 }

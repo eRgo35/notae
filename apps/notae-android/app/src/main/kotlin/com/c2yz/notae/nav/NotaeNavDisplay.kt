@@ -1,5 +1,9 @@
 package com.c2yz.notae.nav
 
+import com.c2yz.notae.ui.components.backProgress
+import com.c2yz.notae.ui.components.LocalBackProgress
+import com.c2yz.notae.ui.components.AnimatedOverlay
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.annotation.StringRes
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.MutableTransitionState
@@ -77,6 +81,7 @@ fun NotaeNavDisplay(
     voiceAvailable: Boolean = false,
 ) {
     val backStack = backStackFor(snapshot)
+    val backState = rememberNavigationEventState(NavigationEventInfo.None)
     BoxWithConstraints(modifier.shellFrame()) {
         // R37: two panes from 840 dp (a tablet in landscape), Details alone below that (portrait).
         val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH
@@ -100,15 +105,17 @@ fun NotaeNavDisplay(
             entryProvider = { key -> entryFor(key, shown) },
         )
         // Snapshot fields, not navigation entries: drawn over whichever screen opened it, and gone when it closes.
-        snapshot.metadataEditor?.let { MetadataEditor(it, onAction) }
-        SetOverlays(snapshot, onAction)
-        snapshot.importConfirmation?.let { ImportConfirmationDialog(it, onAction) }
+        CompositionLocalProvider(LocalBackProgress provides backProgress(backState)) {
+            AnimatedOverlay(snapshot.metadataEditor) { MetadataEditor(it, onAction) }
+            SetOverlays(snapshot, onAction)
+            AnimatedOverlay(snapshot.importConfirmation) { ImportConfirmationDialog(it, onAction) }
+        }
     }
     // Registered after NavDisplay's own handler, so it wins while enabled: a dialog or sheet closes
     // before any screen, without the predictive animation of the screen below, and on a single
     // screen (where NavDisplay handles nothing) the core still decides whether the activity ends.
     NavigationBackHandler(
-        state = rememberNavigationEventState(NavigationEventInfo.None),
+        state = backState,
         // Reorder mode is not an entry: Back ends it without previewing the list of sets below the set.
         isBackEnabled = backStack.size == 1 || overlayOpen(snapshot) || snapshot.reordering,
         onBackCompleted = onBack,

@@ -1,5 +1,12 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.components.backProgress
+import com.c2yz.notae.ui.components.LocalBackProgress
+import com.c2yz.notae.ui.components.AnimatedOverlay
+import androidx.navigationevent.compose.rememberNavigationEventState
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -151,10 +158,15 @@ internal fun CompactLibrary(
                 primary = true,
             )
         }
-        if (composerSheet) {
-            ComposerSheet(snapshot, { composerSheet = false }) {
-                composerSheet = false
-                onAction(Action.SelectSection(it))
+        // Back closes the sheet before it reaches the core, which would otherwise leave the app under it.
+        val backState = rememberNavigationEventState(NavigationEventInfo.None)
+        NavigationBackHandler(state = backState, isBackEnabled = composerSheet, onBackCompleted = { composerSheet = false })
+        CompositionLocalProvider(LocalBackProgress provides backProgress(backState)) {
+            AnimatedOverlay(if (composerSheet) Unit else null) {
+                ComposerSheet(snapshot, { composerSheet = false }) {
+                    composerSheet = false
+                    onAction(Action.SelectSection(it))
+                }
             }
         }
     }
