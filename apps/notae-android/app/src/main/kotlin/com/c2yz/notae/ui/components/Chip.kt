@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.components
 
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,7 +35,8 @@ import com.c2yz.notae.ui.theme.NotaeTheme
 fun Chip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = NotaeTheme.colors
     val shape = RoundedCornerShape(20.dp)
-    val ink = if (selected) c.onAccent else c.foreground
+    val ink by animateColorAsState(if (selected) c.onAccent else c.foreground, NotaeMotion.short(), label = "chip ink")
+    val fill by animateColorAsState(if (selected) c.accent else c.card, NotaeMotion.short(), label = "chip fill")
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     Box(
@@ -48,7 +51,7 @@ fun Chip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifi
             Modifier
                 .height(40.dp)
                 .clip(shape)
-                .background(if (selected) c.accent else c.card)
+                .background(fill)
                 .then(if (focused) Modifier.border(BorderStroke(2.dp, if (selected) c.onAccent else c.accent), shape) else Modifier)
                 .padding(horizontal = 18.dp),
             contentAlignment = Alignment.Center,

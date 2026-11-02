@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.settings
 
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,7 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -313,7 +314,7 @@ private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
             .fillMaxWidth()
             .height(52.dp)
             .clip(shape)
-            .background(if (pressed) c.field else Color.Transparent)
+            .background(animateColorAsState(if (pressed) c.field else c.field.copy(alpha = 0f), NotaeMotion.short(), label = "choice fill").value)
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
             .selectable(selected, source, null, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 4.dp),

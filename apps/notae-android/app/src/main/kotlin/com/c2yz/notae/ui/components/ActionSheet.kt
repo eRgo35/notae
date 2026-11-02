@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.components
 
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -24,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -62,7 +63,7 @@ fun SheetAction(label: String, icon: Painter, onClick: () -> Unit, modifier: Mod
             .fillMaxWidth()
             .height(56.dp)
             .clip(shape)
-            .background(if (pressed) c.field else Color.Transparent)
+            .background(animateColorAsState(if (pressed) c.field else c.field.copy(alpha = 0f), NotaeMotion.short(), label = "sheet action fill").value)
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
             .clickable(source, null, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp),

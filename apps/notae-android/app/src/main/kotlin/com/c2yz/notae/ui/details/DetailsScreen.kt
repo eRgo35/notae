@@ -1,5 +1,12 @@
 package com.c2yz.notae.ui.details
 
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -254,10 +261,24 @@ private fun Position(selection: Selection, modifier: Modifier) {
 
 @Composable
 private fun FavoriteButton(row: ScoreRowData, onAction: (Action) -> Unit) {
+    // The star pops when it turns on; not when the screen opens on a favorite, nor when it turns off.
+    val pop = remember { Animatable(1f) }
+    var was by remember { mutableStateOf(row.favorite) }
+    LaunchedEffect(row.favorite) {
+        if (row.favorite && !was) {
+            pop.animateTo(1.2f, NotaeMotion.short())
+            pop.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy))
+        }
+        was = row.favorite
+    }
     IconButton(
         stringResource(if (row.favorite) R.string.score_remove_favorite else R.string.score_add_favorite),
         painterResource(if (row.favorite) R.drawable.ic_star_filled else R.drawable.ic_star),
         { onAction(Action.ToggleFavorite(row.noteKey)) },
+        Modifier.graphicsLayer {
+            scaleX = pop.value
+            scaleY = pop.value
+        },
         selected = row.favorite,
     )
 }

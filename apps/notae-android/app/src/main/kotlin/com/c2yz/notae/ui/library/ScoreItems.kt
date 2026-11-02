@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -272,10 +274,13 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
 
 /** 0.3.0's item background: accent-soft while the score shows in the details beside the list or was just opened, else the press. */
 @Composable
-private fun itemBackground(highlighted: Boolean, pressed: Boolean): Color = when {
-    highlighted -> NotaeTheme.colors.accentSoft
-    pressed -> NotaeTheme.colors.field
-    else -> Color.Transparent
+private fun itemBackground(highlighted: Boolean, pressed: Boolean): Color {
+    val target = when {
+        highlighted -> NotaeTheme.colors.accentSoft
+        pressed -> NotaeTheme.colors.field
+        else -> NotaeTheme.colors.field.copy(alpha = 0f)
+    }
+    return animateColorAsState(target, NotaeMotion.short(), label = "item fill").value
 }
 
 /**

@@ -1,5 +1,8 @@
 package com.c2yz.notae.ui.library
 
+import androidx.compose.animation.core.animateDpAsState
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.animateColorAsState
 import com.c2yz.notae.ui.components.backProgress
 import com.c2yz.notae.ui.components.LocalBackProgress
 import com.c2yz.notae.ui.components.AnimatedOverlay
@@ -54,7 +57,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -502,15 +504,18 @@ private fun NavItem(label: String, icon: Painter, selected: Boolean, onClick: ()
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val pill = RoundedCornerShape(16.dp)
+        // The pill grows out from the icon as the destination is chosen, as One UI's and Material's do.
+        val pillWidth by animateDpAsState(if (selected) 56.dp else 32.dp, NotaeMotion.medium(), label = "nav pill width")
+        val fill by animateColorAsState(if (selected) c.accentSoft else c.accentSoft.copy(alpha = 0f), NotaeMotion.short(), label = "nav pill fill")
+        val ink by animateColorAsState(if (selected) c.onAccentSoft else c.muted, NotaeMotion.short(), label = "nav ink")
         Box(
             Modifier
                 .size(56.dp, 32.dp)
-                .clip(pill)
-                .background(if (selected) c.accentSoft else Color.Transparent)
                 .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), pill) else Modifier),
             Alignment.Center,
         ) {
-            Icon(icon, null, Modifier.size(24.dp), tint = if (selected) c.onAccentSoft else c.muted)
+            Box(Modifier.size(pillWidth, 32.dp).clip(pill).background(fill))
+            Icon(icon, null, Modifier.size(24.dp), tint = ink)
         }
         Text(
             label,
