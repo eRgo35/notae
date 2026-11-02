@@ -26,7 +26,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.animation.core.animate
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,6 +77,7 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
     var offset by remember { mutableFloatStateOf(0f) }
     // A tick each time the dragged row passes another, a firmer one when it is picked up and when it is let go.
     val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
     // A dropped row stays where the finger left it until the core's new order arrives, instead of jumping back first.
     var settling by remember { mutableStateOf<String?>(null) }
     var entriesAtDrop by remember { mutableStateOf<List<SetEntry>?>(null) }
@@ -118,6 +122,13 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
                                 settling = key
                                 entriesAtDrop = current
                                 act(Action.MoveSetItemTo(itemId, to.toUInt()))
+                                // Glide onto the whole row it lands on, so the new order arrives without a jump.
+                                val target = (to - from) * ROW_HEIGHT.toPx()
+                                scope.launch {
+                                    animate(offset, target, animationSpec = NotaeMotion.short()) { value, _ ->
+                                        if (settling == key) offset = value
+                                    }
+                                }
                             } else {
                                 offset = 0f
                             }

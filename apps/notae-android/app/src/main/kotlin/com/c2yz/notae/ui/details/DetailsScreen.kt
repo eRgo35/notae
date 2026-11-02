@@ -205,7 +205,7 @@ private fun Stepping(selection: Selection, modifier: Modifier, content: @Composa
         contentKey = { it.row.selectionId },
         label = "details step",
     ) { shown ->
-        val scroll = rememberScrollState(carried.intValue)
+        val scroll = rememberScrollState(androidx.compose.runtime.snapshots.Snapshot.withoutReadObservation { carried.intValue })
         LaunchedEffect(scroll) { snapshotFlow { scroll.value }.collect { carried.intValue = it } }
         content(shown, scroll)
     }

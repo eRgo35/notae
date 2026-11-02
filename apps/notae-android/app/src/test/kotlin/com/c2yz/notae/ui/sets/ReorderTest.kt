@@ -182,22 +182,25 @@ class ReorderTest {
     fun a_dropped_row_stays_where_it_was_dropped_until_the_order_arrives() {
         show(reordering)
         val row = with(density) { 80.dp.toPx() }
-        val handle = { compose.onAllNodesWithContentDescription("Drag to reorder Ave Maria")[0] }
+        // Kyrie eleison is item 2, and the only row by that name (Ave Maria is two, which a raised row reorders).
+        val handle = { compose.onNodeWithContentDescription("Drag to reorder Kyrie eleison") }
         val start = handle().getBoundsInRoot().top.value * density.density
 
         handle().performTouchInput {
             down(center)
             moveBy(Offset(0f, row))
-            moveBy(Offset(0f, row * 1.5f))
+            moveBy(Offset(0f, row * 1.4f))
             up()
         }
         compose.waitForIdle()
         // The core has not answered yet: the row stays near where the finger left it, not back in its old place.
         val dropped = handle().getBoundsInRoot().top.value * density.density
         assertTrue("dropped at $dropped, started at $start", dropped - start > row * 1.5f)
+        // And it settles on the slot it will take, so the new order changes nothing on screen.
+        assertEquals(start + row * 2, dropped, 2f)
 
         // The new order arrives: the row sits in its new place, without the drag's offset on top.
-        val moved = reordering.setEntries.toMutableList().apply { add(2, removeAt(0)) }.mapIndexed { index, entry ->
+        val moved = reordering.setEntries.toMutableList().apply { add(3, removeAt(1)) }.mapIndexed { index, entry ->
             when (entry) {
                 is SetEntry.Piece -> SetEntry.Piece(entry.row.copy(position = (index + 1).toUInt()))
                 is SetEntry.Note -> entry.copy(position = (index + 1).toUInt())

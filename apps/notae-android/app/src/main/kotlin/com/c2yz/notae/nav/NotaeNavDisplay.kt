@@ -90,7 +90,7 @@ fun NotaeNavDisplay(
         val besideList = twoPane && isListRoute(backStack.getOrNull(backStack.size - 2))
         // Navigation 3 remembers the entries until the back stack changes, so they read the newest snapshot from
         // here instead of keeping the one they were built with (a banner, a star or new rows change no key).
-        val shown = rememberUpdatedState(Shown(snapshot, onAction, voiceAvailable, besideList))
+        val shown = rememberUpdatedState(Shown(snapshot, onAction, voiceAvailable, besideList, backStack))
         // Toward the end of the line: right in a left-to-right language.
         val shift = with(LocalDensity.current) { Tokens.motionShift.roundToPx() } * if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
         val motion = remember(shift) { ScreenMotion(shift) }
@@ -182,13 +182,38 @@ private val TWO_PANE_MIN_WIDTH = 840.dp
 
 private val ABOUT = AboutInfo(version = BuildConfig.VERSION_NAME, build = BuildConfig.BUILD_IDENTITY)
 
-/** What the entries show: the newest snapshot and how to act on it. */
-private data class Shown(val snapshot: Snapshot, val onAction: (Action) -> Unit, val voiceAvailable: Boolean, val besideList: Boolean)
+/** What the entries show: the newest snapshot, how to act on it, and the stack it makes. */
+private data class Shown(
+    val snapshot: Snapshot,
+    val onAction: (Action) -> Unit,
+    val voiceAvailable: Boolean,
+    val besideList: Boolean,
+    val stack: List<NavKey>,
+)
+
+/**
+ * What the entry for [key] draws: the newest [Shown] while the entry is on screen (on top, or the list beside the
+ * details), and the last one it was on screen with once it is not, so a screen sliding away keeps its own content
+ * instead of drawing the screen it leaves for.
+ */
+@Composable
+private fun shownFor(key: NavKey, shown: State<Shown>): Shown {
+    val held = remember { Held(shown.value) }
+    val stack = shown.value.stack
+    val top = stack.lastOrNull()
+    val visible = key == top || (key is Route.Details && top is Route.Details) ||
+        (top is Route.Details && stack.getOrNull(stack.size - 2) == key)
+    if (visible) held.value = shown.value
+    return held.value
+}
+
+/** Not state: a new value always comes with a recomposition. */
+private class Held(var value: Shown)
 
 private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when (key) {
     Route.Loading -> placeholder(key, R.string.screen_loading)
     Route.Setup -> NavEntry(key) {
-        val (snapshot, onAction) = shown.value
+        val (snapshot, onAction) = shownFor(key, shown)
         val setup = (snapshot.screen as? Screen.Setup)?.setup
         if (setup != null) {
             WelcomeScreen(setup, snapshot.importAvailable, onAction, importStatus = snapshot.settings.importStatus)
@@ -197,15 +222,23 @@ private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when 
     // The set view is the library screen inside the set (0.3.0 drew it in the same chrome).
     // ListPane comes from isListRoute, which also decides besideList, so the scene and the details agree.
     is Route.Library, is Route.Set -> NavEntry(key, metadata = metadata { if (isListRoute(key)) put(ListPane, true) }) {
-        LibraryScreen(shown.value.snapshot, shown.value.onAction)
+        val (snapshot, onAction) = shownFor(key, shown)
+        LibraryScreen(snapshot, onAction)
     }
     // One content key for every score: previous and next (and another score chosen in the list beside it) swap the
-    // content in place, keeping the scroll and without a transition.
+    // content in place, and the details slide between the scores themselves.
     is Route.Details -> NavEntry(key, contentKey = DETAILS_CONTENT_KEY, metadata = metadata { put(DetailPane, true) }) {
-        DetailsScreen(shown.value.snapshot, shown.value.onAction, besideList = shown.value.besideList)
+        val it = shownFor(key, shown)
+        DetailsScreen(it.snapshot, it.onAction, besideList = it.besideList)
     }
-    Route.Search -> NavEntry(key) { SearchScreen(shown.value.snapshot, shown.value.onAction, shown.value.voiceAvailable) }
-    Route.Settings -> NavEntry(key) { SettingsScreen(shown.value.snapshot, shown.value.onAction, ABOUT) }
+    Route.Search -> NavEntry(key) {
+        val it = shownFor(key, shown)
+        SearchScreen(it.snapshot, it.onAction, it.voiceAvailable)
+    }
+    Route.Settings -> NavEntry(key) {
+        val (snapshot, onAction) = shownFor(key, shown)
+        SettingsScreen(snapshot, onAction, ABOUT)
+    }
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)
 }

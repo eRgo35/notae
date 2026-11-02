@@ -1,5 +1,17 @@
 package com.c2yz.notae.ui.components
 
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Text
@@ -73,6 +85,35 @@ class OverlayTest {
         compose.onRoot().performTouchInput { click(center) }
         compose.mainClock.advanceTimeBy(1_000)
         assertEquals(0, taps)
+    }
+
+    @Test
+    fun a_closing_dialog_takes_no_keys() {
+        var escapes = 0
+        val focus = FocusRequester()
+        compose.setContent {
+            NotaeTheme {
+                AnimatedOverlay(open) {
+                    NotaeDialog("Dialog", Modifier.onPreviewKeyEvent { event -> (event.key == Key.Escape && event.type == KeyEventType.KeyDown).also { if (it) escapes++ } }) {
+                        Box(Modifier.size(48.dp).focusRequester(focus).focusable())
+                    }
+                }
+            }
+        }
+        compose.runOnIdle { focus.requestFocus() }
+        closeMidway()
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        assertEquals(0, escapes)
+    }
+
+    @Test
+    fun a_card_closed_by_the_back_gesture_stays_as_small_as_the_gesture_left_it() {
+        val hold = BackHold()
+        assertEquals(0.6f, hold.read(0.6f, closing = false))
+        // The gesture commits: the system reports no progress any more while the card animates away.
+        assertEquals(0.6f, hold.read(0f, closing = true))
+        // Reopened, it follows the next gesture again.
+        assertEquals(0f, hold.read(0f, closing = false))
     }
 
     private fun showSheet() {

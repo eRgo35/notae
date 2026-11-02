@@ -11,6 +11,8 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -38,7 +40,8 @@ fun <T : Any> AnimatedOverlay(value: T?, content: @Composable (T) -> Unit) =
 
 /**
  * Draws [content] for [value] while it is set, with [enter] when it arrives and [exit] when it goes. While it goes, the
- * last value stays on screen, but it is gone for TalkBack at once and takes no touches, so nothing acts on it twice.
+ * last value stays on screen, but it is gone for TalkBack at once and takes no touches or keys, so nothing acts on it
+ * twice.
  */
 @Composable
 fun <T : Any> AnimatedPresence(
@@ -55,7 +58,7 @@ fun <T : Any> AnimatedPresence(
     val closing = value == null
     AnimatedVisibility(visible = !closing, modifier = modifier, enter = enter, exit = exit) {
         CompositionLocalProvider(LocalOverlayScope provides if (overlay) this else null) {
-            Box(if (closing) Modifier.clearAndSetSemantics { }.pointerInput(Unit) { swallowTouches() } else Modifier) {
+            Box(if (closing) Modifier.closed() else Modifier) {
                 content(shown)
             }
         }
@@ -67,8 +70,26 @@ private class Last<T : Any> {
     var value: T? = null
 }
 
+private fun Modifier.closed(): Modifier = clearAndSetSemantics { }
+    .pointerInput(Unit) { swallowTouches() }
+    .onPreviewKeyEvent { true }
+    .focusProperties { canFocus = false }
+
 private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.swallowTouches() {
     awaitPointerEventScope {
         while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+    }
+}
+
+/**
+ * Keeps a card at the size the back gesture left it while it animates away: once the gesture commits the system
+ * reports no progress, and the card would otherwise jump back to full size before it goes.
+ */
+internal class BackHold {
+    private var held = 0f
+
+    fun read(progress: Float, closing: Boolean): Float {
+        if (!closing) held = progress
+        return held
     }
 }

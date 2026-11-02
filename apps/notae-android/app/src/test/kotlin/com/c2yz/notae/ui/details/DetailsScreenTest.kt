@@ -277,6 +277,22 @@ class DetailsScreenTest {
         assertEquals(minOf(scrolled, range.maxValue()), range.value(), 0.5f)
     }
 
+    @Test
+    @Config(qualifiers = "w700dp-h500dp-xhdpi")
+    fun the_details_keep_drawing_while_back_slides_them_away() {
+        var snapshot by mutableStateOf(inSet(0))
+        compose.setContent { NotaeTheme { NotaeNavDisplay(snapshot, onAction = {}, onBack = {}) } }
+        compose.onNodeWithText("1 of 3").assertIsDisplayed()
+
+        compose.mainClock.autoAdvance = false
+        snapshot = inSet(0).copy(selection = null)
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        compose.mainClock.advanceTimeBy(64)
+
+        // Mid-pop the leaving screen still shows the score it was showing, not an empty frame.
+        compose.onNodeWithText("1 of 3").assertExists()
+    }
+
     private fun scrollOffset(): Float =
         compose.onNodeWithTag(DETAILS_BODY_TAG).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 

@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.components
 
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animate
@@ -120,6 +121,7 @@ internal fun ModalSurface(
         val density = LocalDensity.current
         var dragged by remember { mutableFloatStateOf(0f) }
         var cardPx by remember { mutableIntStateOf(0) }
+        val backHold = remember { BackHold() }
         val draggable = bottomSheet && onDismiss != null
         val dragState = rememberDraggableState { delta -> dragged = (dragged + delta).coerceAtLeast(0f) }
         Box(
@@ -162,7 +164,7 @@ internal fun ModalSurface(
                 .then(overlay?.run { Modifier.animateEnterExit(cardEnter(bottomSheet || fullScreen), cardExit(bottomSheet || fullScreen)) } ?: Modifier)
                 .onSizeChanged { cardPx = it.height }
                 .graphicsLayer {
-                    val back = backProgress()
+                    val back = backHold.read(backProgress(), closing = overlay?.transition?.targetState == EnterExitState.PostExit)
                     val scale = 1f - BACK_SHRINK * back
                     scaleX = scale
                     scaleY = scale
