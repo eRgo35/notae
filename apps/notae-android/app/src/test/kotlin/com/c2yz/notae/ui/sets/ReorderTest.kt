@@ -213,6 +213,29 @@ class ReorderTest {
     }
 
     @Test
+    fun a_thumbnail_arriving_after_a_drop_keeps_the_row_in_place() {
+        show(reordering)
+        val row = with(density) { 80.dp.toPx() }
+        val handle = { compose.onNodeWithContentDescription("Drag to reorder Kyrie eleison") }
+        val start = handle().getBoundsInRoot().top.value * density.density
+        handle().performTouchInput {
+            down(center)
+            moveBy(Offset(0f, row))
+            moveBy(Offset(0f, row * 1.4f))
+            up()
+        }
+        compose.waitForIdle()
+
+        // A page decoded meanwhile changes a row but not the order: the dropped row still waits for the new order.
+        val decoded = reordering.setEntries.map { entry ->
+            if (entry is SetEntry.Piece) SetEntry.Piece(entry.row.copy(thumbnail = "decoded.png")) else entry
+        }
+        shown = reordering.copy(rows = decoded.filterIsInstance<SetEntry.Piece>().map { it.row }, setEntries = decoded)
+        compose.waitForIdle()
+        assertEquals(start + row * 2, handle().getBoundsInRoot().top.value * density.density, 2f)
+    }
+
+    @Test
     fun reorder_keys_work_without_a_click() {
         show(reordering)
 

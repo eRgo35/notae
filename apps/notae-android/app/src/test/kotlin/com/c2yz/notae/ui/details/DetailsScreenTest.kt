@@ -98,6 +98,14 @@ class DetailsScreenTest {
     )
 
     @Test
+    fun a_score_picked_without_a_position_fades_instead_of_sliding() {
+        assertEquals(0, stepDirection(null, 3u))
+        assertEquals(0, stepDirection(2u, null))
+        assertEquals(1, stepDirection(1u, 2u))
+        assertEquals(-1, stepDirection(2u, 1u))
+    }
+
+    @Test
     fun second_copy_keeps_position() {
         show(inSet(2))
 

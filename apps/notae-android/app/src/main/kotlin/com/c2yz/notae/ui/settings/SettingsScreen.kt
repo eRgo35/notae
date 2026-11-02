@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.settings
 
+import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -113,7 +114,7 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
             .focusable(),
     ) {
         val narrow = maxWidth < 420.dp
-        Column(Modifier.fillMaxSize().padding(start = 16.dp, top = 16.dp, end = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxSize().padding(start = 16.dp, top = 16.dp, end = 16.dp), verticalArrangement = collapsingGaps(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(stringResource(R.string.details_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseSettings) })
                 Text(stringResource(R.string.screen_settings), color = c.foreground, fontSize = if (narrow) 26.sp else 32.sp, fontWeight = FontWeight.SemiBold)

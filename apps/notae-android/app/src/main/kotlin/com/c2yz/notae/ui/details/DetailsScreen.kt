@@ -66,6 +66,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
+import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.theme.NotaeMotion
 import com.c2yz.notae.ui.theme.Tokens
 import androidx.compose.ui.unit.dp
@@ -120,7 +121,7 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             .onPreviewKeyEvent { event -> detailsKeyAction(event, selection)?.also(onAction) != null }
             .focusRequester(keys)
             .focusable(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = collapsingGaps(12.dp),
     ) {
         if (!besideList) {
             OperationBanner(snapshot.banner, onAction)
@@ -156,7 +157,7 @@ private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (
             Position(selection, Modifier.weight(1f))
             FavoriteButton(row, onAction)
         }
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = collapsingGaps(12.dp)) {
             OperationBanner(snapshot.banner, onAction)
             PdfError(snapshot.pdfOpenError)
         }
@@ -185,7 +186,7 @@ private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (
 
 /**
  * The details' body moving with the score: Next slides it in from the end, Previous from the start, by
- * [Tokens.motionShift]; the score leaving keeps drawing its own row as it goes. Another change to the same score (its
+ * [Tokens.motionShift], and a score picked without a place in a list fades in; the score leaving keeps drawing its own row as it goes. Another change to the same score (its
  * star, say) redraws it in place. The score arriving starts where the last one was scrolled to, so stepping through a
  * set keeps the same part of the details in view.
  */
@@ -197,10 +198,13 @@ private fun Stepping(selection: Selection, modifier: Modifier, content: @Composa
         selection,
         modifier,
         transitionSpec = {
-            val back = (targetState.position?.position ?: 0u) < (initialState.position?.position ?: 0u)
-            val by = if (back) -shift else shift
-            (slideInHorizontally(NotaeMotion.medium()) { by } + fadeIn(NotaeMotion.medium())) togetherWith
-                (slideOutHorizontally(NotaeMotion.medium()) { -by } + fadeOut(NotaeMotion.short()))
+            val by = shift * stepDirection(initialState.position?.position, targetState.position?.position)
+            if (by == 0) {
+                fadeIn(NotaeMotion.medium()) togetherWith fadeOut(NotaeMotion.short())
+            } else {
+                (slideInHorizontally(NotaeMotion.medium()) { by } + fadeIn(NotaeMotion.medium())) togetherWith
+                    (slideOutHorizontally(NotaeMotion.medium()) { -by } + fadeOut(NotaeMotion.short()))
+            }
         },
         contentKey = { it.row.selectionId },
         label = "details step",
@@ -471,4 +475,11 @@ private fun statusText(status: RowStatus): String? = when (status) {
     RowStatus.STALE -> stringResource(R.string.status_stale)
     RowStatus.ID_CONFLICT -> stringResource(R.string.status_id_conflict)
     RowStatus.IMPORT_MISMATCH -> stringResource(R.string.status_import_mismatch)
+}
+
+/** Toward the end (1) for a later place in the list, the start (-1) for an earlier one, and 0 without both places. */
+internal fun stepDirection(from: UInt?, to: UInt?): Int = when {
+    from == null || to == null -> 0
+    to < from -> -1
+    else -> 1
 }

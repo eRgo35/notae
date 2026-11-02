@@ -4,10 +4,12 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -16,6 +18,8 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.navigationevent.NavigationEventTransitionState
 import androidx.navigationevent.compose.NavigationEventState
 
@@ -53,21 +57,30 @@ fun <T : Any> AnimatedPresence(
     content: @Composable (T) -> Unit,
 ) {
     val last = remember { Last<T>() }
-    if (value != null) last.value = value
+    if (value != null) {
+        // Reopened while it was still going: start afresh (no leftover drag, and the focus requested again).
+        if (last.closed) last.opened++
+        last.closed = false
+        last.value = value
+    } else {
+        last.closed = true
+    }
     val shown = last.value ?: return
     val closing = value == null
     AnimatedVisibility(visible = !closing, modifier = modifier, enter = enter, exit = exit) {
         CompositionLocalProvider(LocalOverlayScope provides if (overlay) this else null) {
             Box(if (closing) Modifier.closed() else Modifier) {
-                content(shown)
+                key(last.opened) { content(shown) }
             }
         }
     }
 }
 
-/** The value last shown; not state, since a new value always comes with a recomposition. */
+/** The value last shown, and how often it opened again; not state, since a new value always comes with a recomposition. */
 private class Last<T : Any> {
     var value: T? = null
+    var closed = false
+    var opened = 0
 }
 
 private fun Modifier.closed(): Modifier = clearAndSetSemantics { }
@@ -91,5 +104,22 @@ internal class BackHold {
     fun read(progress: Float, closing: Boolean): Float {
         if (!closing) held = progress
         return held
+    }
+}
+
+/**
+ * [Arrangement.spacedBy] [gap], except that the gap after an item is never taller than the item: an [AnimatedPresence]
+ * closing or opening between other items takes its gap with it, instead of the gap jumping at the end.
+ */
+internal fun collapsingGaps(gap: Dp): Arrangement.Vertical = object : Arrangement.Vertical {
+    override val spacing = gap
+
+    override fun Density.arrange(totalSize: Int, sizes: IntArray, outPositions: IntArray) {
+        val px = gap.roundToPx()
+        var y = 0
+        sizes.forEachIndexed { index, size ->
+            outPositions[index] = y
+            y += size + minOf(px, size)
+        }
     }
 }

@@ -334,13 +334,14 @@ internal fun PagePreview(thumbnail: String?, modifier: Modifier = Modifier, radi
     val shape = RoundedCornerShape(radius)
     val image by rememberThumbnail(thumbnail)
     BoxWithConstraints(
-        modifier.clip(shape).background(if (image != null) c.paper else c.pageBlank).border(BorderStroke(1.dp, c.paperEdge), shape),
+        modifier.clip(shape).border(BorderStroke(1.dp, c.paperEdge), shape),
         contentAlignment = Alignment.Center,
     ) {
         val glyph = minOf(40.dp, maxWidth / 2)
         // A page decoded after the card shows fades in over the glyph; one already in the cache shows at once.
         Crossfade(image, Modifier.fillMaxSize(), NotaeMotion.medium(), label = "page") { bitmap ->
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            // The paper fades in with the page, instead of cutting in before it.
+            Box(Modifier.fillMaxSize().background(if (bitmap != null) c.paper else c.pageBlank), contentAlignment = Alignment.Center) {
                 if (bitmap != null) {
                     Image(bitmap, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                 } else {

@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.components.AnimatedPresence
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.animation.scaleOut
@@ -137,7 +138,7 @@ internal fun CompactLibrary(
                 Toolbar(snapshot, onAction, inSet, reordering, showTitle = fraction > 0.6f)
                 Column(
                     Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = collapsingGaps(12.dp),
                 ) {
                     if (showsComposers(snapshot, inSet)) {
                         ComposerChip(composerName(snapshot), { composerSheet = true })
@@ -173,7 +174,7 @@ internal fun CompactLibrary(
         // Back closes the sheet before it reaches the core, which would otherwise leave the app under it.
         val backState = rememberNavigationEventState(NavigationEventInfo.None)
         NavigationBackHandler(state = backState, isBackEnabled = composerSheet, onBackCompleted = { composerSheet = false })
-        CompositionLocalProvider(LocalBackProgress provides backProgress(backState)) {
+        CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
             AnimatedOverlay(if (composerSheet) Unit else null) {
                 ComposerSheet(snapshot, { composerSheet = false }) {
                     composerSheet = false
@@ -201,7 +202,7 @@ internal fun MediumLibrary(
         NavRail(snapshot, onAction, Modifier.width(88.dp).fillMaxHeight())
         Column(
             Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = collapsingGaps(12.dp),
         ) {
             header()
             if (showsComposers(snapshot, inSet)) {

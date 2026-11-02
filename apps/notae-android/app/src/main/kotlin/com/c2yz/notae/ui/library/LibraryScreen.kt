@@ -1,6 +1,7 @@
 package com.c2yz.notae.ui.library
 
 import androidx.compose.animation.Crossfade
+import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.components.AnimatedPresence
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.shrinkVertically
@@ -198,7 +199,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             )
             WidthClass.EXPANDED -> Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight())
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = collapsingGaps(12.dp)) {
                     Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
                     if (!sidebar) Chips(snapshot, onAction)
                     OperationBanner(snapshot.banner, onAction)
@@ -207,7 +208,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 }
             }
         }
-        CompositionLocalProvider(LocalBackProgress provides backProgress(backState)) {
+        CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
             AnimatedOverlay(menuRow) { row ->
                 ScoreActionsSheet(
                     row,

@@ -56,6 +56,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Row as ScoreRowData
@@ -100,7 +101,7 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
         val side = if (compact) 16.dp else 24.dp
         Column(
             Modifier.fillMaxSize().padding(start = side, top = side, end = side, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = collapsingGaps(16.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(stringResource(R.string.details_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseSearch) })

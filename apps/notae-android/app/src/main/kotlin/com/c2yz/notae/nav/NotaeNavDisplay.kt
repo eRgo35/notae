@@ -105,7 +105,7 @@ fun NotaeNavDisplay(
             entryProvider = { key -> entryFor(key, shown) },
         )
         // Snapshot fields, not navigation entries: drawn over whichever screen opened it, and gone when it closes.
-        CompositionLocalProvider(LocalBackProgress provides backProgress(backState)) {
+        CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
             AnimatedOverlay(snapshot.metadataEditor) { MetadataEditor(it, onAction) }
             SetOverlays(snapshot, onAction)
             AnimatedOverlay(snapshot.importConfirmation) { ImportConfirmationDialog(it, onAction) }

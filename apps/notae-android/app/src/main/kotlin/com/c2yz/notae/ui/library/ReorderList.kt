@@ -80,9 +80,11 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
     val scope = rememberCoroutineScope()
     // A dropped row stays where the finger left it until the core's new order arrives, instead of jumping back first.
     var settling by remember { mutableStateOf<String?>(null) }
-    var entriesAtDrop by remember { mutableStateOf<List<SetEntry>?>(null) }
-    LaunchedEffect(entries) {
-        if (settling != null && entries != entriesAtDrop) {
+    // Compared by order, so a row that changes in place (its page decoded, say) does not end the hold.
+    val order = entries.map { it.key() }
+    var orderAtDrop by remember { mutableStateOf<List<String>?>(null) }
+    LaunchedEffect(order) {
+        if (settling != null && order != orderAtDrop) {
             settling = null
             offset = 0f
         }
@@ -93,14 +95,14 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
         val state = rememberLazyListState()
         // A lazy list keeps its first row by key, so a dropped first row would scroll the list after it; the drop keeps
         // the list where it is instead.
-        if (settling != null && entries != entriesAtDrop) {
+        if (settling != null && order != orderAtDrop) {
             state.requestScrollToItem(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset)
         }
         LazyColumn(Modifier.testTag(REORDER_TAG).fillMaxSize().padding(8.dp), state = state) {
             itemsIndexed(entries, key = { _, entry -> entry.key() }) { index, entry ->
                 val key = entry.key()
                 val dragged = dragging == key
-                val held = settling == key && entries == entriesAtDrop
+                val held = settling == key && order == orderAtDrop
                 val moving = dragged || settling == key
                 // Keyed on the item only, so a snapshot arriving mid-drag (a banner, say) does not cancel the gesture.
                 val handle: Modifier.() -> Modifier = { pointerInput(key) {
@@ -120,7 +122,7 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
                             haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
                             if (from >= 0 && to != from && itemId != null) {
                                 settling = key
-                                entriesAtDrop = current
+                                orderAtDrop = current.map { it.key() }
                                 act(Action.MoveSetItemTo(itemId, to.toUInt()))
                                 // Glide onto the whole row it lands on, so the new order arrives without a jump.
                                 val target = (to - from) * ROW_HEIGHT.toPx()

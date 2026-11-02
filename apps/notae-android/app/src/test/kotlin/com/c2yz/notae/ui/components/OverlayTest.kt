@@ -30,8 +30,10 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.c2yz.notae.ui.theme.NotaeTheme
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -114,6 +116,34 @@ class OverlayTest {
         assertEquals(0.6f, hold.read(0f, closing = true))
         // Reopened, it follows the next gesture again.
         assertEquals(0f, hold.read(0f, closing = false))
+    }
+
+    @Test
+    fun a_gap_after_a_collapsing_item_shrinks_with_it() {
+        val positions = IntArray(4)
+        with(collapsingGaps(12.dp)) { with(Density(1f)) { arrange(400, intArrayOf(100, 5, 0, 50), positions) } }
+        // A full gap after the header, then gaps no taller than the banner shrinking (5) and the one gone (0).
+        assertArrayEquals(intArrayOf(0, 112, 122, 122), positions)
+    }
+
+    @Test
+    fun a_sheet_reopened_while_it_closes_comes_back_in_place() {
+        compose.setContent {
+            NotaeTheme {
+                AnimatedOverlay(open) { text ->
+                    ActionSheet("Sheet", { open = null }) { Text(text, Modifier.fillMaxWidth().height(240.dp)) }
+                }
+            }
+        }
+        val top = compose.onNodeWithText("Hello").getBoundsInRoot().top
+        compose.onNodeWithText("Hello").performTouchInput { swipeDown() }
+        compose.mainClock.autoAdvance = false
+        Snapshot.sendApplyNotifications()
+        compose.mainClock.advanceTimeBy(48)
+        open = "Hello"
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals(top, compose.onNodeWithText("Hello").getBoundsInRoot().top)
     }
 
     private fun showSheet() {
