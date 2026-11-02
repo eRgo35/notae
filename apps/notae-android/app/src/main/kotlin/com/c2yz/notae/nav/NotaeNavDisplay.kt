@@ -1,6 +1,19 @@
 package com.c2yz.notae.nav
 
+import com.c2yz.notae.ui.components.backProgress
+import com.c2yz.notae.ui.components.LocalBackProgress
+import com.c2yz.notae.ui.components.AnimatedOverlay
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.annotation.StringRes
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,7 +31,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
@@ -47,12 +63,14 @@ import com.c2yz.notae.ui.sets.SetOverlays
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.settings.SettingsScreen
 import com.c2yz.notae.ui.setup.WelcomeScreen
+import com.c2yz.notae.ui.theme.NotaeMotion
 import com.c2yz.notae.ui.theme.NotaeTheme
+import com.c2yz.notae.ui.theme.Tokens
 
 /**
  * The app's screens, as the snapshot's back stack ([backStackFor]). The core owns navigation: every
  * back, gesture or key, goes to [onBack], which asks the core and sends the app to the background when it has
- * nothing left to close. Navigation 3 animates the change when the next snapshot arrives.
+ * nothing left to close. Navigation 3 animates the change when the next snapshot arrives ([ScreenMotion]).
  */
 @Composable
 fun NotaeNavDisplay(
@@ -63,6 +81,7 @@ fun NotaeNavDisplay(
     voiceAvailable: Boolean = false,
 ) {
     val backStack = backStackFor(snapshot)
+    val backState = rememberNavigationEventState(NavigationEventInfo.None)
     BoxWithConstraints(modifier.shellFrame()) {
         // R37: two panes from 840 dp (a tablet in landscape), Details alone below that (portrait).
         val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH
@@ -71,24 +90,32 @@ fun NotaeNavDisplay(
         val besideList = twoPane && isListRoute(backStack.getOrNull(backStack.size - 2))
         // Navigation 3 remembers the entries until the back stack changes, so they read the newest snapshot from
         // here instead of keeping the one they were built with (a banner, a star or new rows change no key).
-        val shown = rememberUpdatedState(Shown(snapshot, onAction, voiceAvailable, besideList))
+        val shown = rememberUpdatedState(Shown(snapshot, onAction, voiceAvailable, besideList, backStack))
+        // Toward the end of the line: right in a left-to-right language.
+        val shift = with(LocalDensity.current) { Tokens.motionShift.roundToPx() } * if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
+        val motion = remember(shift) { ScreenMotion(shift) }
         NavDisplay(
             backStack = backStack,
             modifier = Modifier.fillMaxSize(),
             onBack = onBack,
             sceneStrategies = listOf(strategy),
+            transitionSpec = { motion.forward(initialState, targetState) },
+            popTransitionSpec = { motion.back(initialState, targetState) },
+            predictivePopTransitionSpec = { motion.predictiveBack(initialState, targetState) },
             entryProvider = { key -> entryFor(key, shown) },
         )
         // Snapshot fields, not navigation entries: drawn over whichever screen opened it, and gone when it closes.
-        snapshot.metadataEditor?.let { MetadataEditor(it, onAction) }
-        SetOverlays(snapshot, onAction)
-        snapshot.importConfirmation?.let { ImportConfirmationDialog(it, onAction) }
+        CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
+            AnimatedOverlay(snapshot.metadataEditor) { MetadataEditor(it, onAction) }
+            SetOverlays(snapshot, onAction)
+            AnimatedOverlay(snapshot.importConfirmation) { ImportConfirmationDialog(it, onAction) }
+        }
     }
     // Registered after NavDisplay's own handler, so it wins while enabled: a dialog or sheet closes
     // before any screen, without the predictive animation of the screen below, and on a single
     // screen (where NavDisplay handles nothing) the core still decides whether the activity ends.
     NavigationBackHandler(
-        state = rememberNavigationEventState(NavigationEventInfo.None),
+        state = backState,
         // Reorder mode is not an entry: Back ends it without previewing the list of sets below the set.
         isBackEnabled = backStack.size == 1 || overlayOpen(snapshot) || snapshot.reordering,
         onBackCompleted = onBack,
@@ -105,18 +132,88 @@ internal fun Modifier.shellFrame(): Modifier =
 
 private const val DETAILS_CONTENT_KEY = "details"
 
+/**
+ * How screens change, by [shift] px toward the end of the line: a deeper screen slides in from the end and fades in
+ * over the one it covers, and Back reverses that; the back gesture shrinks the screen it leaves. Switching sections
+ * ([isLateral]) is not deeper navigation, so it only fades through.
+ */
+private class ScreenMotion(private val shift: Int) {
+    fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
+        if (isLateral(from, to)) {
+            fadeThrough()
+        } else {
+            (slideInHorizontally(NotaeMotion.medium()) { shift } + fadeIn(NotaeMotion.medium())) togetherWith fadeOut(NotaeMotion.short())
+        }
+
+    fun back(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
+        if (isLateral(from, to)) {
+            fadeThrough()
+        } else {
+            ContentTransform(
+                fadeIn(NotaeMotion.medium()),
+                slideOutHorizontally(NotaeMotion.medium()) { shift } + fadeOut(NotaeMotion.medium()),
+                targetContentZIndex = -1f,
+            )
+        }
+
+    fun predictiveBack(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
+        if (isLateral(from, to)) {
+            fadeThrough()
+        } else {
+            ContentTransform(fadeIn(NotaeMotion.medium()), scaleOut(NotaeMotion.medium(), targetScale = 0.9f) + fadeOut(NotaeMotion.medium()), targetContentZIndex = -1f)
+        }
+
+    private fun fadeThrough(): ContentTransform =
+        fadeIn(tween(Tokens.motionMediumMillis, delayMillis = FADE_OUT_MILLIS)) togetherWith fadeOut(tween(FADE_OUT_MILLIS))
+}
+
+private const val FADE_OUT_MILLIS = 90
+
+/**
+ * A change of the stack's root (a section switch, Setup to the library, the first screen after Loading) moves sideways;
+ * one that keeps the root opens or closes a screen above it.
+ */
+internal fun isLateral(from: Scene<*>, to: Scene<*>): Boolean = rootKey(from) != rootKey(to)
+
+private fun rootKey(scene: Scene<*>): Any? = (scene.previousEntries.firstOrNull() ?: scene.entries.firstOrNull())?.contentKey
+
 /** R37: the M3 expanded width, which a 1280×800 tablet reaches in landscape and not in portrait. */
 private val TWO_PANE_MIN_WIDTH = 840.dp
 
 private val ABOUT = AboutInfo(version = BuildConfig.VERSION_NAME, build = BuildConfig.BUILD_IDENTITY)
 
-/** What the entries show: the newest snapshot and how to act on it. */
-private data class Shown(val snapshot: Snapshot, val onAction: (Action) -> Unit, val voiceAvailable: Boolean, val besideList: Boolean)
+/** What the entries show: the newest snapshot, how to act on it, and the stack it makes. */
+private data class Shown(
+    val snapshot: Snapshot,
+    val onAction: (Action) -> Unit,
+    val voiceAvailable: Boolean,
+    val besideList: Boolean,
+    val stack: List<NavKey>,
+)
+
+/**
+ * What the entry for [key] draws: the newest [Shown] while the entry is on screen (on top, or the list beside the
+ * details), and the last one it was on screen with once it is not, so a screen sliding away keeps its own content
+ * instead of drawing the screen it leaves for.
+ */
+@Composable
+private fun shownFor(key: NavKey, shown: State<Shown>): Shown {
+    val held = remember { Held(shown.value) }
+    val stack = shown.value.stack
+    val top = stack.lastOrNull()
+    val visible = key == top || (key is Route.Details && top is Route.Details) ||
+        (top is Route.Details && stack.getOrNull(stack.size - 2) == key)
+    if (visible) held.value = shown.value
+    return held.value
+}
+
+/** Not state: a new value always comes with a recomposition. */
+private class Held(var value: Shown)
 
 private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when (key) {
     Route.Loading -> placeholder(key, R.string.screen_loading)
     Route.Setup -> NavEntry(key) {
-        val (snapshot, onAction) = shown.value
+        val (snapshot, onAction) = shownFor(key, shown)
         val setup = (snapshot.screen as? Screen.Setup)?.setup
         if (setup != null) {
             WelcomeScreen(setup, snapshot.importAvailable, onAction, importStatus = snapshot.settings.importStatus)
@@ -125,15 +222,23 @@ private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when 
     // The set view is the library screen inside the set (0.3.0 drew it in the same chrome).
     // ListPane comes from isListRoute, which also decides besideList, so the scene and the details agree.
     is Route.Library, is Route.Set -> NavEntry(key, metadata = metadata { if (isListRoute(key)) put(ListPane, true) }) {
-        LibraryScreen(shown.value.snapshot, shown.value.onAction)
+        val (snapshot, onAction) = shownFor(key, shown)
+        LibraryScreen(snapshot, onAction)
     }
     // One content key for every score: previous and next (and another score chosen in the list beside it) swap the
-    // content in place, keeping the scroll and without a transition.
+    // content in place, and the details slide between the scores themselves.
     is Route.Details -> NavEntry(key, contentKey = DETAILS_CONTENT_KEY, metadata = metadata { put(DetailPane, true) }) {
-        DetailsScreen(shown.value.snapshot, shown.value.onAction, besideList = shown.value.besideList)
+        val it = shownFor(key, shown)
+        DetailsScreen(it.snapshot, it.onAction, besideList = it.besideList)
     }
-    Route.Search -> NavEntry(key) { SearchScreen(shown.value.snapshot, shown.value.onAction, shown.value.voiceAvailable) }
-    Route.Settings -> NavEntry(key) { SettingsScreen(shown.value.snapshot, shown.value.onAction, ABOUT) }
+    Route.Search -> NavEntry(key) {
+        val it = shownFor(key, shown)
+        SearchScreen(it.snapshot, it.onAction, it.voiceAvailable)
+    }
+    Route.Settings -> NavEntry(key) {
+        val (snapshot, onAction) = shownFor(key, shown)
+        SettingsScreen(snapshot, onAction, ABOUT)
+    }
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)
 }
@@ -185,10 +290,20 @@ private class ListDetailScene(
     override val entries: List<NavEntry<NavKey>> = listOfNotNull(list, detail)
     override val content: @Composable () -> Unit = {
         BoxWithConstraints(Modifier.fillMaxSize()) {
+            // Not animated: a grid re-flowing its columns at each step of a moving width loses its place.
             val listWidth = if (detail == null) maxWidth else minOf(LIST_PANE_WIDTH, maxWidth * LIST_SHARE)
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.width(listWidth).fillMaxHeight()) { list.Content() }
-                if (detail != null) Box(Modifier.weight(1f).fillMaxHeight()) { detail.Content() }
+                if (detail != null) {
+                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                        // A new state each time the pane opens; another score keeps the pane and does not replay this.
+                        val opening = remember { MutableTransitionState(false).apply { targetState = true } }
+                        // Qualified: the Row's scope would otherwise pick its own overload.
+                        androidx.compose.animation.AnimatedVisibility(visibleState = opening, enter = slideInHorizontally(NotaeMotion.medium()) { it / 4 } + fadeIn(NotaeMotion.medium())) {
+                            detail.Content()
+                        }
+                    }
+                }
             }
         }
     }

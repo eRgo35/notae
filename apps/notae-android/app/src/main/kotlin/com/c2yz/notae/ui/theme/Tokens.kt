@@ -23,11 +23,16 @@ data class TokenColors(
     /** A set's text note, from the favorites mockup; 0.3.0 never drew notes, so these have no `Theme` twin. */
     val note: Color,
     val onNote: Color,
+    /** A panel sunk into a card, as the details' info card on a tablet; one step darker than the card, also in dark. */
+    val well: Color,
+    /** A page whose thumbnail is not drawn: blank paper in light, a quiet field in dark instead of a bright slab. */
+    val pageBlank: Color,
 )
 
 /**
  * 0.3.0's `Theme` and `Motion` tokens; `TokensTest` keeps them.
- * [TokenColors.note] and [TokenColors.onNote] are Compose's own (text notes were never built in 0.3.0).
+ * [TokenColors.note] and [TokenColors.onNote] are Compose's own (text notes were never built in 0.3.0), as are
+ * [TokenColors.well] and [TokenColors.pageBlank] (0.6.1's dark-mode fixes).
  */
 object Tokens {
     val light = TokenColors(
@@ -47,6 +52,8 @@ object Tokens {
         paperEdge = Color(0xFFE3E3E8),
         note = Color(0xFFFFF4E0),
         onNote = Color(0xFF6B3A00),
+        well = Color(0xFFF3F3F5),
+        pageBlank = Color(0xFFFFFFFF),
     )
 
     val dark = TokenColors(
@@ -66,6 +73,8 @@ object Tokens {
         paperEdge = Color(0xFF2A2A2E),
         note = Color(0xFF3A2A12),
         onNote = Color(0xFFFFD9A0),
+        well = Color(0xFF222226),
+        pageBlank = Color(0xFF26262B),
     )
 
     /** 0.3.0's `Theme.motion-short` / `motion-medium` with animations enabled. */

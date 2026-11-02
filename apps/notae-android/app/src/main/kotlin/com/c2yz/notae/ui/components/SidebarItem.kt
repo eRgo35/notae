@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.components
 
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected as selectedState
@@ -53,13 +54,14 @@ fun SidebarItem(
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val focused by source.collectIsFocusedAsState()
-    val ink = if (selected) c.onAccentSoft else c.foreground
+    val ink by animateColorAsState(if (selected) c.onAccentSoft else c.foreground, NotaeMotion.short(), label = "sidebar ink")
+    val fill by animateColorAsState(if (selected) c.accentSoft else if (pressed) c.field else c.field.copy(alpha = 0f), NotaeMotion.short(), label = "sidebar fill")
     Row(
         modifier
             .fillMaxWidth()
             .height(52.dp)
             .clip(shape)
-            .background(if (selected) c.accentSoft else if (pressed) c.field else Color.Transparent)
+            .background(fill)
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
             .semantics { this.selectedState = selected }
             .clickable(source, null, role = Role.Button, onClick = onClick)

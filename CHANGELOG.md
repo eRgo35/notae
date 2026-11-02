@@ -9,6 +9,42 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-02
+
+Notae 0.6.1 adds the motion a current Android app has and fixes screens that
+looked wrong in 0.6.0. See [`docs/release-notes/v0.6.1.md`](docs/release-notes/v0.6.1.md).
+
+### Added
+
+- **Screen transitions:** a deeper screen slides in from the end and Back
+  reverses it; the back gesture shrinks the screen it leaves; switching
+  sections fades through. The details pane slides in beside the list, and
+  Previous and Next slide the details between scores.
+- **Dialogs and sheets animate** in and out. Sheets close when dragged down,
+  and follow the back gesture.
+- **State changes fade** (selection, press, enabled) as in 0.3.0; the bottom
+  bar's pill grows from the icon and the details star pops when it turns on.
+- **Lists animate** when items are added, removed, filtered or reordered;
+  thumbnails fade in; grid, list, reorder and empty states cross-fade; the
+  operation banner and the PDF error expand and collapse.
+- **Phone chrome:** the large title snaps fully open or folded when the finger
+  lifts, the toolbar title fades in, and the floating button grows in and out.
+- **Haptics** when a row is picked up, moved past another and dropped in
+  reorder mode, and on the details star.
+
+### Fixed
+
+- Dark mode: the details' info card was black inside its card, and pages
+  without a thumbnail were bright grey blocks.
+- A portrait tablet stacks the details (page, title, info) instead of leaving
+  the bottom of the card empty.
+- The welcome screen is centred on tall screens; Settings' language rows are
+  no taller than its other rows.
+- Launch shows the app's background colour (also in Android 12's splash).
+- Back closes the phone's composer sheet instead of leaving the app.
+- A dropped row in reorder mode no longer jumps back before it moves, and
+  moving the first visible row no longer scrolls the list.
+
 ## [0.6.0] - 2026-11-02
 
 Notae 0.6.0 runs on phones as well as tablets, with layouts in the style of
@@ -366,7 +402,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/eRgo35/notae/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/eRgo35/notae/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/eRgo35/notae/releases/tag/v0.5.0
 [0.4.0]: https://github.com/eRgo35/notae/releases/tag/v0.4.0

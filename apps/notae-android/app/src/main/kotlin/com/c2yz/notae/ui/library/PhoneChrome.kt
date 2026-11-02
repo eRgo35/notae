@@ -1,5 +1,23 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.components.collapsingGaps
+import com.c2yz.notae.ui.components.AnimatedPresence
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.animateDpAsState
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.animateColorAsState
+import com.c2yz.notae.ui.components.backProgress
+import com.c2yz.notae.ui.components.LocalBackProgress
+import com.c2yz.notae.ui.components.AnimatedOverlay
+import androidx.navigationevent.compose.rememberNavigationEventState
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.NavigationEventInfo
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -47,7 +65,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -121,13 +138,13 @@ internal fun CompactLibrary(
                 Toolbar(snapshot, onAction, inSet, reordering, showTitle = fraction > 0.6f)
                 Column(
                     Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = collapsingGaps(12.dp),
                 ) {
                     if (showsComposers(snapshot, inSet)) {
                         ComposerChip(composerName(snapshot), { composerSheet = true })
                     }
                     OperationBanner(snapshot.banner, onAction)
-                    snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+                    PdfError(snapshot.pdfOpenError)
                     content()
                     Spacer(Modifier.height(4.dp))
                 }
@@ -139,22 +156,30 @@ internal fun CompactLibrary(
             inSet && !reordering -> Triple(R.string.set_add, R.drawable.ic_add, Action.OpenAddPicker)
             else -> null
         }
-        fab?.let { (label, icon, action) ->
+        // The button grows in where it is needed and shrinks away where it is not (reorder mode, another section).
+        AnimatedPresence(
+            fab,
+            scaleIn(NotaeMotion.medium(), initialScale = 0.8f) + fadeIn(NotaeMotion.medium()),
+            scaleOut(NotaeMotion.short(), targetScale = 0.8f) + fadeOut(NotaeMotion.short()),
+            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp),
+        ) { (label, icon, action) ->
             PillButton(
                 stringResource(label),
                 { onAction(action) },
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp)
-                    .shadow(6.dp, RoundedCornerShape(26.dp)),
+                Modifier.shadow(6.dp, RoundedCornerShape(26.dp)),
                 icon = painterResource(icon),
                 primary = true,
             )
         }
-        if (composerSheet) {
-            ComposerSheet(snapshot, { composerSheet = false }) {
-                composerSheet = false
-                onAction(Action.SelectSection(it))
+        // Back closes the sheet before it reaches the core, which would otherwise leave the app under it.
+        val backState = rememberNavigationEventState(NavigationEventInfo.None)
+        NavigationBackHandler(state = backState, isBackEnabled = composerSheet, onBackCompleted = { composerSheet = false })
+        CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
+            AnimatedOverlay(if (composerSheet) Unit else null) {
+                ComposerSheet(snapshot, { composerSheet = false }) {
+                    composerSheet = false
+                    onAction(Action.SelectSection(it))
+                }
             }
         }
     }
@@ -177,7 +202,7 @@ internal fun MediumLibrary(
         NavRail(snapshot, onAction, Modifier.width(88.dp).fillMaxHeight())
         Column(
             Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = collapsingGaps(12.dp),
         ) {
             header()
             if (showsComposers(snapshot, inSet)) {
@@ -189,7 +214,7 @@ internal fun MediumLibrary(
                 }
             }
             OperationBanner(snapshot.banner, onAction)
-            snapshot.pdfOpenError?.let { Text(pdfErrorText(it), color = c.error, fontSize = 15.sp) }
+            PdfError(snapshot.pdfOpenError)
             content()
         }
     }
@@ -209,7 +234,8 @@ private fun navSelected(key: String, current: String): Boolean =
 
 /**
  * Folds the large title as the content scrolls up, before the list moves, and unfolds it once the list is back at its
- * top, as One UI's collapsing app bar does.
+ * top, as One UI's collapsing app bar does. When the finger lifts (after any fling) a half-folded title finishes the
+ * way it was nearer to.
  */
 private class TitleCollapse(
     private val range: Float,
@@ -224,6 +250,14 @@ private class TitleCollapse(
     override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
         if (available.y <= 0f) return Offset.Zero
         return Offset(0f, fold(available.y))
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        val now = folded()
+        if (now > 0f && now < range) {
+            animate(now, if (now > range / 2) range else 0f, animationSpec = NotaeMotion.medium()) { value, _ -> setFolded(value) }
+        }
+        return Velocity.Zero
     }
 
     /** Moves the title by [delta] (negative folds it) within its range and returns what it took. */
@@ -269,7 +303,8 @@ private fun Toolbar(snapshot: Snapshot, onAction: (Action) -> Unit, inSet: Boole
             IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) })
         }
         Box(Modifier.weight(1f).padding(start = if (inSet) 4.dp else 16.dp)) {
-            if (showTitle) {
+            // Qualified: the toolbar Row's scope would otherwise pick its own overload.
+            androidx.compose.animation.AnimatedVisibility(showTitle, enter = fadeIn(NotaeMotion.short()), exit = fadeOut(NotaeMotion.short())) {
                 Text(
                     sectionTitle(snapshot.title),
                     Modifier.semantics { heading() },
@@ -490,15 +525,18 @@ private fun NavItem(label: String, icon: Painter, selected: Boolean, onClick: ()
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val pill = RoundedCornerShape(16.dp)
+        // The pill grows out from the icon as the destination is chosen, as One UI's and Material's do.
+        val pillWidth by animateDpAsState(if (selected) 56.dp else 32.dp, NotaeMotion.medium(), label = "nav pill width")
+        val fill by animateColorAsState(if (selected) c.accentSoft else c.accentSoft.copy(alpha = 0f), NotaeMotion.short(), label = "nav pill fill")
+        val ink by animateColorAsState(if (selected) c.onAccentSoft else c.muted, NotaeMotion.short(), label = "nav ink")
         Box(
             Modifier
                 .size(56.dp, 32.dp)
-                .clip(pill)
-                .background(if (selected) c.accentSoft else Color.Transparent)
                 .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), pill) else Modifier),
             Alignment.Center,
         ) {
-            Icon(icon, null, Modifier.size(24.dp), tint = if (selected) c.onAccentSoft else c.muted)
+            Box(Modifier.size(pillWidth, 32.dp).clip(pill).background(fill))
+            Icon(icon, null, Modifier.size(24.dp), tint = ink)
         }
         Text(
             label,

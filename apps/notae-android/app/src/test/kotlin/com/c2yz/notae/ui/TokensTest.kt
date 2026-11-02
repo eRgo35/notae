@@ -2,6 +2,8 @@ package com.c2yz.notae.ui
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.animation.core.TweenSpec
+import com.c2yz.notae.ui.theme.NotaeMotion
 import com.c2yz.notae.ui.theme.TokenColors
 import com.c2yz.notae.ui.theme.Tokens
 import org.junit.Assert.assertEquals
@@ -25,6 +27,9 @@ class TokensTest {
         "error" to Triple({ it.error }, 0xC62828, 0xFF8A80),
         "paper" to Triple({ it.paper }, 0xFFFFFF, 0xE4E4E8),
         "paperEdge" to Triple({ it.paperEdge }, 0xE3E3E8, 0x2A2A2E),
+        // 0.6.1's: the details' info card on a tablet, and a page not drawn yet.
+        "well" to Triple({ it.well }, 0xF3F3F5, 0x222226),
+        "pageBlank" to Triple({ it.pageBlank }, 0xFFFFFF, 0x26262B),
     )
 
     private fun argb(rgb: Long) = (0xFF000000L or rgb).toInt()
@@ -39,5 +44,11 @@ class TokensTest {
         assertEquals(120, Tokens.motionShortMillis)
         assertEquals(220, Tokens.motionMediumMillis)
         assertEquals(24f, Tokens.motionShift.value)
+    }
+
+    @Test
+    fun motion_specs_use_the_tokens() {
+        assertEquals(120, (NotaeMotion.short<Float>() as TweenSpec).durationMillis)
+        assertEquals(220, (NotaeMotion.medium<Float>() as TweenSpec).durationMillis)
     }
 }

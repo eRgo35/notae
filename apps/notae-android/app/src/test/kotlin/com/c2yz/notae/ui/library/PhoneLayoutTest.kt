@@ -1,5 +1,11 @@
 package com.c2yz.notae.ui.library
 
+import kotlin.math.abs
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -75,6 +81,19 @@ class PhoneLayoutTest {
         compose.onNodeWithText("Favorites").assertIsDisplayed().performClick()
 
         assertEquals(listOf<Action>(Action.SelectSection("favorites")), actions)
+    }
+
+    @Test
+    fun the_large_title_never_rests_half_folded() {
+        show(Fixture.library())
+        val grid = compose.onNodeWithTag(GRID_TAG)
+        val start = grid.getBoundsInRoot().top
+        // A third of the 200 dp title space, slowly, so the drag ends without a fling.
+        grid.performTouchInput { swipe(center, center - Offset(0f, 66.dp.toPx()), 1_000) }
+        compose.waitForIdle()
+        val top = grid.getBoundsInRoot().top
+        val folded = start - 199.68.dp
+        assertTrue("the grid stopped at $top, between $folded and $start", abs((top - start).value) < 1f || abs((top - folded).value) < 1f)
     }
 
     @Test

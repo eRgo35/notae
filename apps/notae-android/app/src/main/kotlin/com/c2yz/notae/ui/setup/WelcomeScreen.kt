@@ -63,9 +63,10 @@ fun WelcomeScreen(
         val column = (maxWidth - 32.dp).coerceAtLeast(1.dp).coerceAtMost(560.dp)
         val narrow = maxWidth < 420.dp
         val top = ((maxHeight - 640.dp) / 6).coerceAtLeast(16.dp).coerceAtMost(64.dp)
+        // Centred in the window: on a tall screen the welcome no longer leaves its bottom half empty.
         Column(
             Modifier.fillMaxSize().padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
         ) {
             Column(
                 Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = top),

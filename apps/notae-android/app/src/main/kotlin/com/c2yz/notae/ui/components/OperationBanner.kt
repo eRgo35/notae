@@ -1,5 +1,10 @@
 package com.c2yz.notae.ui.components
 
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -58,10 +63,21 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun OperationBanner(banner: Banner, onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
+    // It opens and closes in place, so the content below it moves instead of jumping.
+    AnimatedPresence(
+        banner.takeIf { it.message != null },
+        expandVertically(NotaeMotion.medium()) + fadeIn(NotaeMotion.medium()),
+        shrinkVertically(NotaeMotion.medium()) + fadeOut(NotaeMotion.short()),
+        modifier.fillMaxWidth(),
+    ) { BannerCard(it, onAction) }
+}
+
+@Composable
+private fun BannerCard(banner: Banner, onAction: (Action) -> Unit) {
     val message = banner.message ?: return
     val c = NotaeTheme.colors
     val text = statusText(message)
-    NotaeCard(modifier.fillMaxWidth()) {
+    NotaeCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 20.dp, top = 16.dp, end = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 val glyph = if (banner.busy) R.drawable.ic_scan else if (banner.failed) R.drawable.ic_warning else R.drawable.ic_check

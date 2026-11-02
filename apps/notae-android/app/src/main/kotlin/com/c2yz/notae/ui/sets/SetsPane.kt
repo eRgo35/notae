@@ -80,7 +80,7 @@ internal fun SetsPane(cards: List<SetCard>, list: Boolean, onOpen: (SetCard) -> 
         if (list) {
             val state = rememberLazyListState()
             LazyColumn(Modifier.fillMaxSize().padding(8.dp), state = state) {
-                items(cards, key = { it.id }) { card -> SetRow(card, { onOpen(card) }, { onMore(card) }) }
+                items(cards, key = { it.id }) { card -> Box(Modifier.animateItem()) { SetRow(card, { onOpen(card) }, { onMore(card) }) } }
             }
             ListScrollbar(state, Modifier.align(Alignment.TopEnd).padding(vertical = 8.dp))
         } else {
@@ -103,7 +103,7 @@ internal fun SetsPane(cards: List<SetCard>, list: Boolean, onOpen: (SetCard) -> 
                     verticalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
                     items(cards, key = { it.id }) { card ->
-                        SetFolderCard(card, { onOpen(card) }, { onMore(card) }, Modifier.height(cellWidth * 0.85f + 88.dp))
+                        SetFolderCard(card, { onOpen(card) }, { onMore(card) }, Modifier.animateItem().height(cellWidth * 0.85f + 88.dp))
                     }
                 }
                 GridScrollbar(state, Modifier.align(Alignment.TopEnd).padding(top = 20.dp))

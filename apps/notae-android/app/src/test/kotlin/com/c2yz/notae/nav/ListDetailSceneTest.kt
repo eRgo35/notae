@@ -28,6 +28,9 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.withKeyDown
+import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.scene.Scene
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.MetadataDraft
 import com.c2yz.notae.core.PositionOf
@@ -313,4 +316,20 @@ class ListDetailSceneTest {
 
     private fun gridScroll(): Float =
         compose.onNodeWithTag(GRID_TAG).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+
+    /** A scene of [keys], the last one on top, for the transition rule. */
+    private fun scene(vararg keys: NavKey): Scene<NavKey> = object : Scene<NavKey> {
+        override val key: Any = keys.last()
+        override val entries: List<NavEntry<NavKey>> = listOf(NavEntry(keys.last()) {})
+        override val previousEntries: List<NavEntry<NavKey>> = keys.dropLast(1).map { NavEntry(it) {} }
+        override val content: @androidx.compose.runtime.Composable () -> Unit = {}
+    }
+
+    @Test
+    fun switching_sections_is_lateral_and_opening_a_set_is_not() {
+        assertTrue(isLateral(scene(Route.Library("all")), scene(Route.Library("recent"))))
+        assertTrue(isLateral(scene(Route.Setup), scene(Route.Library("all"))))
+        assertFalse(isLateral(scene(Route.Library("sets")), scene(Route.Library("sets"), Route.Set("s1"))))
+        assertFalse(isLateral(scene(Route.Library("all"), Route.Search), scene(Route.Library("all"))))
+    }
 }

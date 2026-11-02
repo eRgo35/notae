@@ -1,5 +1,11 @@
 package com.c2yz.notae.ui.details
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -92,6 +98,14 @@ class DetailsScreenTest {
     )
 
     @Test
+    fun a_score_picked_without_a_position_fades_instead_of_sliding() {
+        assertEquals(0, stepDirection(null, 3u))
+        assertEquals(0, stepDirection(2u, null))
+        assertEquals(1, stepDirection(1u, 2u))
+        assertEquals(-1, stepDirection(2u, 1u))
+    }
+
+    @Test
     fun second_copy_keeps_position() {
         show(inSet(2))
 
@@ -159,6 +173,42 @@ class DetailsScreenTest {
         shown = snapshot.copy(selection = snapshot.selection!!.copy(row = row.copy(favorite = false)))
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Add to favorites").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_star_answers_with_a_toggle_haptic() {
+        val snapshot = aveMariaDetails()
+        val felt = mutableListOf<HapticFeedbackType>()
+        val haptics = object : HapticFeedback {
+            override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
+                felt += hapticFeedbackType
+            }
+        }
+        shown = snapshot
+        compose.setContent {
+            CompositionLocalProvider(LocalHapticFeedback provides haptics) {
+                NotaeTheme { shown?.let { DetailsScreen(it, { action -> actions += action }) } }
+            }
+        }
+
+        compose.onNodeWithContentDescription("Remove from favorites").performClick()
+        val row = snapshot.selection!!.row
+        shown = snapshot.copy(selection = snapshot.selection!!.copy(row = row.copy(favorite = false)))
+        compose.onNodeWithContentDescription("Add to favorites").performClick()
+
+        assertEquals(listOf(HapticFeedbackType.ToggleOff, HapticFeedbackType.ToggleOn), felt)
+    }
+
+    @Test
+    @Config(qualifiers = "w800dp-h1280dp-xhdpi")
+    fun a_portrait_tablet_stacks_the_page_above_the_title() {
+        show(aveMariaDetails())
+        val title = compose.onAllNodesWithText("Ave Maria")[0].getBoundsInRoot()
+        val open = compose.onNodeWithText("Open score").getBoundsInRoot()
+        // Stacked: the headline sits under the page, its buttons centred with it (Open score beside the edit icon),
+        // not in a column to the right of the page.
+        assertTrue("the title starts at ${title.top}", title.top > 400.dp)
+        assertEquals(400f, (open.left + open.right).value / 2, 48f)
     }
 
     @Test
@@ -233,6 +283,22 @@ class DetailsScreenTest {
         // entry would start at 0.
         val range = compose.onNodeWithTag(DETAILS_BODY_TAG).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
         assertEquals(minOf(scrolled, range.maxValue()), range.value(), 0.5f)
+    }
+
+    @Test
+    @Config(qualifiers = "w700dp-h500dp-xhdpi")
+    fun the_details_keep_drawing_while_back_slides_them_away() {
+        var snapshot by mutableStateOf(inSet(0))
+        compose.setContent { NotaeTheme { NotaeNavDisplay(snapshot, onAction = {}, onBack = {}) } }
+        compose.onNodeWithText("1 of 3").assertIsDisplayed()
+
+        compose.mainClock.autoAdvance = false
+        snapshot = inSet(0).copy(selection = null)
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications()
+        compose.mainClock.advanceTimeBy(64)
+
+        // Mid-pop the leaving screen still shows the score it was showing, not an empty frame.
+        compose.onNodeWithText("1 of 3").assertExists()
     }
 
     private fun scrollOffset(): Float =

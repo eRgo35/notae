@@ -1,5 +1,8 @@
 package com.c2yz.notae.ui.library
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -23,7 +26,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.animation.core.animate
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,31 +75,65 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
     // The row under the finger and how far it has moved; only the drop reaches the core.
     var dragging by remember { mutableStateOf<String?>(null) }
     var offset by remember { mutableFloatStateOf(0f) }
+    // A tick each time the dragged row passes another, a firmer one when it is picked up and when it is let go.
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    // A dropped row stays where the finger left it until the core's new order arrives, instead of jumping back first.
+    var settling by remember { mutableStateOf<String?>(null) }
+    // Compared by order, so a row that changes in place (its page decoded, say) does not end the hold.
+    val order = entries.map { it.key() }
+    var orderAtDrop by remember { mutableStateOf<List<String>?>(null) }
+    LaunchedEffect(order) {
+        if (settling != null && order != orderAtDrop) {
+            settling = null
+            offset = 0f
+        }
+    }
     // After a keyboard removal, the neighbour whose remove button takes the focus the removed row held.
     var focusRemoveOn by remember { mutableStateOf<String?>(null) }
     NotaeCard(modifier.fillMaxSize()) {
         val state = rememberLazyListState()
+        // A lazy list keeps its first row by key, so a dropped first row would scroll the list after it; the drop keeps
+        // the list where it is instead.
+        if (settling != null && order != orderAtDrop) {
+            state.requestScrollToItem(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset)
+        }
         LazyColumn(Modifier.testTag(REORDER_TAG).fillMaxSize().padding(8.dp), state = state) {
             itemsIndexed(entries, key = { _, entry -> entry.key() }) { index, entry ->
                 val key = entry.key()
                 val dragged = dragging == key
+                val held = settling == key && order == orderAtDrop
+                val moving = dragged || settling == key
                 // Keyed on the item only, so a snapshot arriving mid-drag (a banner, say) does not cancel the gesture.
                 val handle: Modifier.() -> Modifier = { pointerInput(key) {
                     detectVerticalDragGestures(
                         onDragStart = {
+                            settling = null
                             dragging = key
                             offset = 0f
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         },
                         onDragEnd = {
                             // The entries are all the set's items, so the list index is the core's place.
                             val from = current.indexOfFirst { it.key() == key }
                             val to = (from + (offset / ROW_HEIGHT.toPx()).roundToInt()).coerceIn(0, current.lastIndex)
                             val itemId = entry.itemId()
-                            if (from >= 0 && to != from && itemId != null) {
-                                act(Action.MoveSetItemTo(itemId, to.toUInt()))
-                            }
                             dragging = null
-                            offset = 0f
+                            haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
+                            if (from >= 0 && to != from && itemId != null) {
+                                settling = key
+                                orderAtDrop = current.map { it.key() }
+                                act(Action.MoveSetItemTo(itemId, to.toUInt()))
+                                // Glide onto the whole row it lands on, so the new order arrives without a jump.
+                                val target = (to - from) * ROW_HEIGHT.toPx()
+                                scope.launch {
+                                    animate(offset, target, animationSpec = NotaeMotion.short()) { value, _ ->
+                                        if (settling == key) offset = value
+                                    }
+                                }
+                            } else {
+                                offset = 0f
+                            }
                         },
                         onDragCancel = {
                             dragging = null
@@ -101,7 +141,9 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
                         },
                     ) { change, amount ->
                         change.consume()
+                        val rows = (offset / ROW_HEIGHT.toPx()).roundToInt()
                         offset += amount
+                        if ((offset / ROW_HEIGHT.toPx()).roundToInt() != rows) haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
                     }
                 } }
                 ReorderRow(
@@ -117,7 +159,11 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
                     onRemoveFocused = { focusRemoveOn = null },
                     handle = handle,
                     dragged = dragged,
-                    modifier = Modifier.zIndex(if (dragged) 1f else 0f).graphicsLayer { translationY = if (dragged) offset else 0f },
+                    // The row under the finger, or held after its drop, places itself; the others glide to their places.
+                    modifier = Modifier
+                        .animateItem(placementSpec = if (moving) null else NotaeMotion.medium())
+                        .zIndex(if (moving) 1f else 0f)
+                        .graphicsLayer { translationY = if (dragged || held) offset else 0f },
                 )
             }
         }

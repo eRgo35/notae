@@ -1,5 +1,26 @@
 package com.c2yz.notae.ui.components
 
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -73,6 +94,10 @@ val DIALOG_PADDING = PaddingValues(start = 24.dp, top = 26.dp, end = 24.dp, bott
  * The scrim and card shared by [NotaeDialog] and [ActionSheet]. With [cardHeight] the card is that tall, or the window
  * less 16 dp above and below when that is shorter (the metadata sheet on a tablet). [fullScreen] fills the window, as
  * One UI's long forms do on a phone.
+ *
+ * Inside an [AnimatedOverlay] the scrim fades, a dialog grows in from 92% and a sheet or full-screen form rises from the
+ * bottom; the back gesture shrinks the card as it goes ([LocalBackProgress]). A sheet that can be dismissed also follows
+ * a drag down and closes when let go past [SHEET_DISMISS_FRACTION] of its height or flung.
  */
 @Composable
 internal fun ModalSurface(
@@ -91,9 +116,18 @@ internal fun ModalSurface(
     BoxWithConstraints(modifier.fillMaxSize()) {
         // A phone's dialog floats at the bottom edge, as One UI's do, so its buttons are within reach.
         val floating = !bottomSheet && !fullScreen && cardHeight == null && maxWidth < COMPACT_WIDTH
+        val overlay = LocalOverlayScope.current
+        val backProgress = LocalBackProgress.current
+        val density = LocalDensity.current
+        var dragged by remember { mutableFloatStateOf(0f) }
+        var cardPx by remember { mutableIntStateOf(0) }
+        val backHold = remember { BackHold() }
+        val draggable = bottomSheet && onDismiss != null
+        val dragState = rememberDraggableState { delta -> dragged = (dragged + delta).coerceAtLeast(0f) }
         Box(
             Modifier
                 .fillMaxSize()
+                .then(overlay?.run { Modifier.animateEnterExit(fadeIn(NotaeMotion.medium()), fadeOut(NotaeMotion.short())) } ?: Modifier)
                 .background(Color.Black.copy(alpha = 0.4f))
                 .then(
                     if (onDismiss != null) {
@@ -127,6 +161,32 @@ internal fun ModalSurface(
                 )
                 .then(if (cardHeight != null && !fullScreen) Modifier.padding(vertical = 16.dp).heightIn(max = cardHeight).fillMaxHeight() else Modifier)
                 .then(if (fullScreen) Modifier else Modifier.widthIn(max = cardWidth))
+                .then(overlay?.run { Modifier.animateEnterExit(cardEnter(bottomSheet || fullScreen), cardExit(bottomSheet || fullScreen)) } ?: Modifier)
+                .onSizeChanged { cardPx = it.height }
+                .graphicsLayer {
+                    val back = backHold.read(backProgress(), closing = overlay?.transition?.targetState == EnterExitState.PostExit)
+                    val scale = 1f - BACK_SHRINK * back
+                    scaleX = scale
+                    scaleY = scale
+                    translationY = dragged + if (bottomSheet) cardPx * BACK_DROP * back else 0f
+                }
+                .then(
+                    if (draggable) {
+                        Modifier.draggable(
+                            dragState,
+                            Orientation.Vertical,
+                            onDragStopped = { velocity ->
+                                if (dragged > cardPx * SHEET_DISMISS_FRACTION || velocity > with(density) { SHEET_FLING.toPx() }) {
+                                    onDismiss?.invoke()
+                                } else {
+                                    animate(dragged, 0f, animationSpec = spring()) { value, _ -> dragged = value }
+                                }
+                            },
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
                 .clip(shape)
                 .background(NotaeTheme.colors.card)
                 .pointerInput(Unit) { detectTapGestures { } }
@@ -137,6 +197,23 @@ internal fun ModalSurface(
         )
     }
 }
+
+/** A sheet let go past this share of its height closes. */
+private const val SHEET_DISMISS_FRACTION = 0.3f
+
+/** A sheet flung down faster than this, per second, closes. */
+private val SHEET_FLING = 1000.dp
+
+/** How much the card shrinks, and a sheet drops by its height, at the end of the back gesture. */
+private const val BACK_SHRINK = 0.05f
+private const val BACK_DROP = 0.1f
+
+/** A sheet or full-screen form rises from the bottom edge; a dialog grows in from 92% where it stands. */
+private fun cardEnter(fromBottom: Boolean): EnterTransition =
+    if (fromBottom) slideInVertically(NotaeMotion.medium()) { it } else fadeIn(NotaeMotion.medium()) + scaleIn(NotaeMotion.medium(), initialScale = 0.92f)
+
+private fun cardExit(fromBottom: Boolean): ExitTransition =
+    if (fromBottom) slideOutVertically(NotaeMotion.short()) { it } else fadeOut(NotaeMotion.short()) + scaleOut(NotaeMotion.short(), targetScale = 0.92f)
 
 /**
  * One UI's dialog buttons: two text buttons sharing the card's width, split by a short divider. [confirm] is in the

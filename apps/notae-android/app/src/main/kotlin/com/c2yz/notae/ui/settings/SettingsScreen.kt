@@ -1,5 +1,8 @@
 package com.c2yz.notae.ui.settings
 
+import com.c2yz.notae.ui.components.collapsingGaps
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -112,7 +114,7 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
             .focusable(),
     ) {
         val narrow = maxWidth < 420.dp
-        Column(Modifier.fillMaxSize().padding(start = 16.dp, top = 16.dp, end = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxSize().padding(start = 16.dp, top = 16.dp, end = 16.dp), verticalArrangement = collapsingGaps(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(stringResource(R.string.details_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseSettings) })
                 Text(stringResource(R.string.screen_settings), color = c.foreground, fontSize = if (narrow) 26.sp else 32.sp, fontWeight = FontWeight.SemiBold)
@@ -207,7 +209,7 @@ private fun LanguageCard(modifier: Modifier) {
     var current by remember(LocalConfiguration.current) { mutableStateOf(appLanguage().substringBefore('-')) }
     SettingsCard(modifier) {
         CardTitle(stringResource(R.string.settings_language))
-        Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.selectableGroup()) {
             LANGUAGES.forEach { (tag, label) ->
                 ChoiceRow(stringResource(label), selected = current == tag) {
                     setAppLanguage(tag)
@@ -300,7 +302,7 @@ private fun FactRow(label: String, value: String, alarm: Boolean = false) {
     }
 }
 
-/** 0.3.0's `ChoiceRow`: 52 dp, 18 radius, the field colour while pressed, an accent ring on focus, a check when chosen. */
+/** 0.3.0's `ChoiceRow` at the 48 dp target (52 with 8 between left the list twice as tall as the cards' other rows): 18 radius, the field colour while pressed, an accent ring on focus, a check when chosen. */
 @Composable
 private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
     val c = NotaeTheme.colors
@@ -311,9 +313,9 @@ private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .height(48.dp)
             .clip(shape)
-            .background(if (pressed) c.field else Color.Transparent)
+            .background(animateColorAsState(if (pressed) c.field else c.field.copy(alpha = 0f), NotaeMotion.short(), label = "choice fill").value)
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
             .selectable(selected, source, null, role = Role.RadioButton, onClick = onClick)
             .padding(horizontal = 4.dp),

@@ -85,7 +85,7 @@ internal fun AddToSetSheet(sheet: AddToSetSheet, onAction: (Action) -> Unit) {
             Column {
                 LazyColumn(Modifier.heightIn(max = listHeight)) {
                     items(sheet.choices, key = { it.id }) { choice ->
-                        SetChoiceRow(choice) { onAction(Action.ToggleSetMembership(choice.id, sheet.noteKey)) }
+                        Box(Modifier.animateItem()) { SetChoiceRow(choice) { onAction(Action.ToggleSetMembership(choice.id, sheet.noteKey)) } }
                     }
                 }
                 NewSetRow { onAction(Action.AddToSetNewSet) }
@@ -220,7 +220,7 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
                     } else {
                         LazyColumn(Modifier.fillMaxSize()) {
                             items(picker.rows, key = { it.noteKey }) { row ->
-                                PickerEntry(row) { onAction(Action.ToggleAddPickerPiece(row.noteKey)) }
+                                Box(Modifier.animateItem()) { PickerEntry(row) { onAction(Action.ToggleAddPickerPiece(row.noteKey)) } }
                             }
                         }
                     }

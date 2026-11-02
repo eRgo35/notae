@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.components
 
+import com.c2yz.notae.ui.theme.NotaeMotion
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -48,8 +49,12 @@ fun PillButton(
     enabled: Boolean = true,
 ) {
     val c = NotaeTheme.colors
-    val ink = if (!enabled) c.muted else if (primary) c.onAccent else c.foreground
-    val background = if (!enabled) c.field else if (primary) c.accent else if (tonal) c.field else Color.Transparent
+    val ink by animateColorAsState(if (!enabled) c.muted else if (primary) c.onAccent else c.foreground, NotaeMotion.short(), label = "pill ink")
+    val background by animateColorAsState(
+        if (!enabled) c.field else if (primary) c.accent else if (tonal) c.field else c.field.copy(alpha = 0f),
+        NotaeMotion.short(),
+        label = "pill fill",
+    )
     val shape = RoundedCornerShape(26.dp)
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
