@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.details
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -271,10 +273,14 @@ private fun FavoriteButton(row: ScoreRowData, onAction: (Action) -> Unit) {
         }
         was = row.favorite
     }
+    val haptics = LocalHapticFeedback.current
     IconButton(
         stringResource(if (row.favorite) R.string.score_remove_favorite else R.string.score_add_favorite),
         painterResource(if (row.favorite) R.drawable.ic_star_filled else R.drawable.ic_star),
-        { onAction(Action.ToggleFavorite(row.noteKey)) },
+        {
+            haptics.performHapticFeedback(if (row.favorite) HapticFeedbackType.ToggleOff else HapticFeedbackType.ToggleOn)
+            onAction(Action.ToggleFavorite(row.noteKey))
+        },
         Modifier.graphicsLayer {
             scaleX = pop.value
             scaleY = pop.value

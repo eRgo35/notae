@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.library
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -70,6 +72,8 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
     // The row under the finger and how far it has moved; only the drop reaches the core.
     var dragging by remember { mutableStateOf<String?>(null) }
     var offset by remember { mutableFloatStateOf(0f) }
+    // A tick each time the dragged row passes another, a firmer one when it is picked up and when it is let go.
+    val haptics = LocalHapticFeedback.current
     // A dropped row stays where the finger left it until the core's new order arrives, instead of jumping back first.
     var settling by remember { mutableStateOf<String?>(null) }
     var entriesAtDrop by remember { mutableStateOf<List<SetEntry>?>(null) }
@@ -101,6 +105,7 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
                             settling = null
                             dragging = key
                             offset = 0f
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         },
                         onDragEnd = {
                             // The entries are all the set's items, so the list index is the core's place.
@@ -108,6 +113,7 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
                             val to = (from + (offset / ROW_HEIGHT.toPx()).roundToInt()).coerceIn(0, current.lastIndex)
                             val itemId = entry.itemId()
                             dragging = null
+                            haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
                             if (from >= 0 && to != from && itemId != null) {
                                 settling = key
                                 entriesAtDrop = current
@@ -122,7 +128,9 @@ internal fun ReorderList(entries: List<SetEntry>, onAction: (Action) -> Unit, mo
                         },
                     ) { change, amount ->
                         change.consume()
+                        val rows = (offset / ROW_HEIGHT.toPx()).roundToInt()
                         offset += amount
+                        if ((offset / ROW_HEIGHT.toPx()).roundToInt() != rows) haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
                     }
                 } }
                 ReorderRow(

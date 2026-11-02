@@ -1,5 +1,9 @@
 package com.c2yz.notae.ui.details
 
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -159,6 +163,30 @@ class DetailsScreenTest {
         shown = snapshot.copy(selection = snapshot.selection!!.copy(row = row.copy(favorite = false)))
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Add to favorites").assertIsDisplayed()
+    }
+
+    @Test
+    fun the_star_answers_with_a_toggle_haptic() {
+        val snapshot = aveMariaDetails()
+        val felt = mutableListOf<HapticFeedbackType>()
+        val haptics = object : HapticFeedback {
+            override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
+                felt += hapticFeedbackType
+            }
+        }
+        shown = snapshot
+        compose.setContent {
+            CompositionLocalProvider(LocalHapticFeedback provides haptics) {
+                NotaeTheme { shown?.let { DetailsScreen(it, { action -> actions += action }) } }
+            }
+        }
+
+        compose.onNodeWithContentDescription("Remove from favorites").performClick()
+        val row = snapshot.selection!!.row
+        shown = snapshot.copy(selection = snapshot.selection!!.copy(row = row.copy(favorite = false)))
+        compose.onNodeWithContentDescription("Add to favorites").performClick()
+
+        assertEquals(listOf(HapticFeedbackType.ToggleOff, HapticFeedbackType.ToggleOn), felt)
     }
 
     @Test
