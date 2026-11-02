@@ -68,8 +68,7 @@ The Gradle build (`apps/notae-android/app/build.gradle.kts`) signs the release b
    ```
 
 5. `release.yml` then:
-   - refuses, before building anything, when a signing secret is missing, the tag is not `vMAJOR.MINOR.PATCH`, does not equal `v` plus the workspace version at the tag, has no release notes at the tag or is not on `main`;
-   - runs every CI gate on the tag (`ci.yml`);
+   - refuses, before building anything, when a signing secret is missing, the tag is not `vMAJOR.MINOR.PATCH`, does not equal `v` plus the workspace version at the tag, has no release notes at the tag, is not on `main`, or is on a commit `ci.yml` has not passed on (step 3's run; it does not run the gates again);
    - builds the signed release APK and AAB;
    - runs `scripts/verify-release-apk.sh`, which checks `versionName`, `versionCode`, `apksigner verify` (v2 scheme), that the certificate is not the Android debug certificate and that it equals the pinned fingerprint, and writes `notae-X.Y.Z-arm64.apk` plus `.sha256`; then checks the AAB's certificate;
    - keeps the APK, its checksum and `notae-X.Y.Z.aab` as workflow artifacts (the AAB is for a store upload; it is not attached to the release);

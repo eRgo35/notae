@@ -1,8 +1,8 @@
 name: CI
 
 # The quality gates of docs/engineering-standards.md: the Rust gates, the Gradle gates of the
-# Android app (with the 16 KB alignment check). release.yml runs this workflow on the tag before
-# it builds a release.
+# Android app (with the 16 KB alignment check). release.yml builds a release only from a commit
+# this workflow passed on.
 on:
   # Branch work is covered by its pull request, so a push to a PR branch does not run twice.
   push:
@@ -11,7 +11,6 @@ on:
   pull_request:
     paths-ignore: ['**.md', 'docs/**']
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: read
