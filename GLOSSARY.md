@@ -14,5 +14,11 @@ The domain terms Notae's code, docs and issues use. Use these words; avoid the s
 - **Lyrics**: the searchable page text of a score, from its text layer or from OCR. The code calls it page text (`SearchScope::Text`). _Avoid:_ content.
 - **Scope**: which fields a search looks at: All, Titles, Composers, Lyrics or Tags (`SearchScope`).
 - **Favorite**: a starred score, listed newest first in Favorites.
-- **Set**: a named, ordered list of references to scores, for example one per Mass, with an optional date and notes. A score can be in several sets. _Avoid:_ playlist, setlist.
+- **Set**: a named, ordered list of references to scores, for example one per Mass, with an optional date and set description. A score can be in several sets, and more than once in the same set. _Avoid:_ playlist, setlist.
+- **Set description**: the free text about a whole set (occasion, time, cantor). _Avoid:_ set notes.
+- **Text note**: a free-text row placed between scores in a set.
+- **Score note**: the user's own note on a score, shown wherever the score opens. Private: never shared with others.
+- **Set note**: a note on one occurrence of a score in a set, shown after the score note when the score is opened from that set. A score that appears twice in a set has two set notes.
+- **Drawing**: the user's marks (pen, highlighter, text) on the pages of one occurrence of a score in a set, kept apart from the PDF and drawn over it. _Avoid:_ annotation (for the PDF format's own annotations), edit.
+- **Viewer**: Notae's own screen for reading a score's pages. The alternative, chosen in Settings, is the system's default app. _Avoid:_ preview (the thumbnail and details layout).
 - **Recent**: the scores opened most recently.

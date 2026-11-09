@@ -6,6 +6,8 @@
 - **Supersedes:** the settled decision "The Android app does not run OCR" in `docs/superpowers/specs/2026-10-09-notae-design.md` (line 308), which that spec now marks as superseded by this ADR, and the note "Android never runs OCR" in `docs/android-debugging.md`. That note is not yet updated; it is updated in a separate change.
 - **Evidence and plan:** [`docs/superpowers/specs/2026-10-18-on-device-ocr-design.md`](../superpowers/specs/2026-10-18-on-device-ocr-design.md)
 
+> **Note (2026-11-09):** the build constraints below (`cargo-apk2` without Gradle, minSdk 23) date from before 0.5.0. Since 0.5.0 the app is built with Gradle and cargo-ndk, with minSdk 26 (ADR 0002). The engine choice and the manual, foreground workflow stand; re-check the build plan (Decision item 4) against Gradle before implementing.
+
 ## Acceptance (2026-10-19)
 
 The maintainer accepted this ADR on 2026-10-19 and decided:
