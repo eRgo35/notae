@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onRoot
 import com.c2yz.notae.core.Banner
 import com.c2yz.notae.core.Failure
@@ -204,16 +206,21 @@ class LibraryScreenTest {
     }
 
     @Test
-    fun a_missing_piece_offers_only_removal() {
-        val piece = Fixture.library().rows.first().copy(itemId = "item-8", position = 8u, missing = true, selectionId = "item-8")
+    fun a_missing_piece_offers_its_set_note_and_removal() {
+        val piece = Fixture.library().rows.first()
+            .copy(itemId = "item-8", position = 8u, missing = true, selectionId = "item-8", setNote = "Bring the copy")
         show(Fixture.library().copy(sectionKey = "set:0123", rows = listOf(piece), setEntries = listOf(SetEntry.Piece(piece))))
 
         compose.onNodeWithText("Missing from library").assertIsDisplayed()
         compose.onNodeWithContentDescription("More actions for Agnus Dei").performClick()
         compose.onNodeWithText("Open score").assertDoesNotExist()
+        compose.onNodeWithText("Set note").performClick()
+        compose.onNodeWithContentDescription("Note").assertTextEquals("Bring the copy").performTextReplacement("Copy at the desk")
+        compose.onNodeWithText("Save note").performClick()
+        compose.onNodeWithContentDescription("More actions for Agnus Dei").performClick()
         compose.onNodeWithText("Remove from set").performClick()
 
-        assertEquals(listOf<Action>(Action.RemoveSetItem("item-8")), actions)
+        assertEquals(listOf(Action.SaveSetNote("item-8", "Copy at the desk"), Action.RemoveSetItem("item-8")), actions)
     }
 
     @Test

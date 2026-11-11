@@ -36,7 +36,7 @@ import com.c2yz.notae.ui.theme.NotaeTheme
 /**
  * The score's ⋮ sheet (0.3.0's `LibraryScreen`'s actions sheet): handle, page, title and "number · composer", then
  * Open score, the favorite toggle, Add to set…, Score details, Edit details and, inside a set, Set note and Remove from
- * set. A piece missing from the library offers only Remove from set. Every action closes the sheet; focus starts on the
+ * set. A piece missing from the library offers only Set note and Remove from set. Every action closes the sheet; focus starts on the
  * first. Set note opens the set note's editor, which the caller owns ([onEditSetNote]).
  */
 @Composable
@@ -67,7 +67,8 @@ internal fun ScoreActionsSheet(row: ScoreRowData, onDismiss: () -> Unit, onActio
         val itemId = row.itemId
         if (row.missing) {
             if (itemId != null) {
-                SheetAction(stringResource(R.string.score_remove_from_set), painterResource(R.drawable.ic_delete), { onAction(Action.RemoveSetItem(itemId)) }, Modifier.focusRequester(first))
+                SheetAction(stringResource(R.string.edit_set_note), painterResource(R.drawable.ic_note), onEditSetNote, Modifier.focusRequester(first))
+                SheetAction(stringResource(R.string.score_remove_from_set), painterResource(R.drawable.ic_delete), { onAction(Action.RemoveSetItem(itemId)) })
             }
         } else {
             SheetAction(
