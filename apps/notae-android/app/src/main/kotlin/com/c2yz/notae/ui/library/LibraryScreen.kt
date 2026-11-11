@@ -162,12 +162,14 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         setNoteFor = null
     }
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    // A core dialog drawn over the sheet (a set file arriving, say) takes Back first.
+    val sheetTakesBack = sheetOpen && !overlayOpen(snapshot)
     NavigationBackHandler(
         state = backState,
-        isBackEnabled = sheetOpen,
+        isBackEnabled = sheetTakesBack,
         onBackCompleted = closeSheets,
     )
-    ClaimBack(sheetOpen)
+    ClaimBack(sheetTakesBack)
     val reordering = inSet && snapshot.reordering
     // The keys work as soon as the library shows, as 0.3.0 focuses its shortcuts, and again once a sheet,
     // dialog or picker closes. While one is open, 0.3.0 ignored them (Escape closes a ⋮ sheet).

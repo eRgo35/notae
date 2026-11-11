@@ -1,5 +1,6 @@
 package com.c2yz.notae.nav
 
+import com.c2yz.notae.core.ImportConfirmation
 import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
@@ -91,6 +92,19 @@ class LibraryBackTest {
 
         compose.onNodeWithText("Open score").assertDoesNotExist()
         assertEquals("the core is not asked while the sheet is open", 0, backs)
+    }
+
+    @Test
+    fun back_goes_to_a_dialog_that_opens_over_the_score_sheet() {
+        // A set file arriving while the sheet is open shows its import review on top: Back closes that first.
+        show(Fixture.library())
+        compose.onNodeWithContentDescription("More actions for Ave Maria").performClick()
+        snapshot = Fixture.library().copy(importConfirmation = ImportConfirmation(sets = 1u, replaced = emptyList(), shared = null))
+        compose.waitForIdle()
+
+        back()
+
+        assertEquals("the core is asked to close the dialog", 1, backs)
     }
 
     @Test
