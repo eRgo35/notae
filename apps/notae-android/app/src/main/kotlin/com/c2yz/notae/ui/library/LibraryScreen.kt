@@ -87,12 +87,13 @@ import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.details.detailsKeyAction
 import com.c2yz.notae.ui.sets.SetActionsSheet
+import com.c2yz.notae.ui.sets.ShareSetButton
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.sets.SetsPane
 import com.c2yz.notae.ui.sets.setSubtitle
 import com.c2yz.notae.ui.theme.NotaeTheme
 
-private const val SET_PREFIX = "set:"
+internal const val SET_PREFIX = "set:"
 
 /**
  * 0.3.0's `LibraryScreen` on a tablet: the side panel (or the chips when it is hidden or the pane is under 840 dp), the large
@@ -343,6 +344,7 @@ private fun Header(
                 } else {
                     IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) })
                 }
+                ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction)
                 PillButton(stringResource(R.string.set_add), { onAction(Action.OpenAddPicker) }, icon = painterResource(R.drawable.ic_add), primary = true)
             }
             if (!sidebar) {

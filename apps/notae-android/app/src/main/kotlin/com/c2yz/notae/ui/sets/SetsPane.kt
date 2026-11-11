@@ -27,11 +27,14 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +69,7 @@ import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.library.GridScrollbar
 import com.c2yz.notae.ui.library.ListScrollbar
+import com.c2yz.notae.ui.library.MenuItem
 import com.c2yz.notae.ui.library.NARROW_GRID
 import com.c2yz.notae.ui.theme.NotaeTheme
 import kotlin.math.floor
@@ -198,12 +202,13 @@ private fun SetActions(name: String, onClick: () -> Unit, modifier: Modifier = M
 
 /**
  * The set's ⋮ sheet (0.3.0's `LibraryScreen`'s actions sheet for a set): handle, [MiniStack], name and "date · N items",
- * then Edit set and Delete set. Each action closes the sheet; focus starts on Edit set.
+ * then Edit set, Share (its [ShareSetMenu]) and Delete set. Each action closes the sheet; focus starts on Edit set.
  */
 @Composable
 internal fun SetActionsSheet(card: SetCard, onDismiss: () -> Unit, onAction: (Action) -> Unit) {
     val c = NotaeTheme.colors
     val first = remember { FocusRequester() }
+    var sharing by remember { mutableStateOf(false) }
     ActionSheet(
         stringResource(R.string.set_actions_dialog),
         onDismiss,
@@ -226,9 +231,44 @@ internal fun SetActionsSheet(card: SetCard, onDismiss: () -> Unit, onAction: (Ac
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
         SheetAction(stringResource(R.string.set_edit), painterResource(R.drawable.ic_edit), { onAction(Action.EditSet(card.id)) }, Modifier.focusRequester(first))
+        Box {
+            SheetAction(stringResource(R.string.share_set), painterResource(R.drawable.ic_share), { sharing = true })
+            ShareSetMenu(card.id, sharing, { sharing = false }, onAction)
+        }
         SheetAction(stringResource(R.string.set_delete), painterResource(R.drawable.ic_delete), { onAction(Action.DeleteSet(card.id)) })
     }
     LaunchedEffect(card.id) { first.requestFocus() }
+}
+
+/** The open set's Share icon, with its [ShareSetMenu] under it. */
+@Composable
+internal fun ShareSetButton(setId: String, onAction: (Action) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(stringResource(R.string.share_set), painterResource(R.drawable.ic_share), { open = true })
+        ShareSetMenu(setId, open, { open = false }, onAction)
+    }
+}
+
+/** D10's choice under Share: Share set or Share set with notes, each dispatching [Action.ShareSet] and closing the menu. */
+@Composable
+private fun ShareSetMenu(setId: String, expanded: Boolean, onDismiss: () -> Unit, onAction: (Action) -> Unit) {
+    val choose = { withNotes: Boolean ->
+        onDismiss()
+        onAction(Action.ShareSet(setId, withNotes))
+    }
+    val c = NotaeTheme.colors
+    // The outline sets the menu apart from the set sheet, whose card colour it shares.
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        containerColor = c.card,
+        border = BorderStroke(1.dp, c.divider),
+    ) {
+        MenuItem(stringResource(R.string.share_set_plain), painterResource(R.drawable.ic_share), { choose(false) })
+        MenuItem(stringResource(R.string.share_set_with_notes), painterResource(R.drawable.ic_note), { choose(true) })
+    }
 }
 
 /** A core ISO date in the app's locale ([formatIsoDate]). */

@@ -13,6 +13,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.c2yz.notae.platform.FolderPicker
 import com.c2yz.notae.platform.ImportFilePicker
 import com.c2yz.notae.platform.PdfOpener
+import com.c2yz.notae.platform.SetSharer
 import com.c2yz.notae.platform.VoiceSearch
 import com.c2yz.notae.platform.pdfOpenFailure
 import kotlinx.coroutines.CancellationException
@@ -23,7 +24,7 @@ import java.io.FileNotFoundException
 
 /**
  * Carries out the core's [Effect]s for [activity] and reports each outcome back through [model].
- * Pickers and the viewer start on the main thread; file and folder walks run on [Dispatchers.IO].
+ * Pickers, the viewer and the share sheet start on the main thread; file and folder walks run on [Dispatchers.IO].
  * Create it in `onCreate`: its activity-result launchers must be registered before the activity
  * is started. It handles effects while the activity is started; the rest wait in the view model.
  */
@@ -42,6 +43,7 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
     var voiceAvailable by mutableStateOf(voiceSearch.isAvailable())
         private set
     private val pdfOpener = PdfOpener(activity)
+    private val setSharer = SetSharer(activity)
     private val exportFile = activity.registerForActivityResult(
         ActivityResultContracts.CreateDocument(JSON),
     ) { uri -> uri?.let(::writeExport) }
@@ -75,8 +77,7 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
                 exportFile.launch(effect.suggestedName)
             }
             Effect.PickImportFile -> importPicker.launch()
-            // Task 11 sends the set through the share sheet.
-            is Effect.ShareSet -> Unit
+            is Effect.ShareSet -> shareSet(effect.fileName, effect.json, effect.text)
         }
     }
 
@@ -91,6 +92,18 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
                 pdfOpenFailure(error)
             }
             model.pdfOpened(error)
+        }
+    }
+
+    private fun shareSet(fileName: String, json: String, text: String) {
+        activity.lifecycleScope.launch {
+            try {
+                setSharer.share(fileName, json, text)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "sharing the set failed", error)
+            }
         }
     }
 

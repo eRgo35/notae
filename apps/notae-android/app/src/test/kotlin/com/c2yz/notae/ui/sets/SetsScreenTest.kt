@@ -310,6 +310,29 @@ class SetsScreenTest {
     }
 
     @Test
+    fun shareMenuFromToolbarAndSheet() {
+        show(Fixture.palmSunday())
+
+        compose.onNodeWithContentDescription("Share").performClick()
+        compose.onNodeWithText("Share set").assertIsDisplayed()
+        compose.onNodeWithText("Share set with notes").performClick()
+        compose.onNodeWithText("Share set with notes").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Share").performClick()
+        compose.onNodeWithText("Share set").performClick()
+
+        shown = Fixture.sets()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("More actions for Pusty zestaw").performClick()
+        compose.onNodeWithText("Share").performClick()
+        compose.onNodeWithText("Share set with notes").assertIsDisplayed()
+        compose.onNodeWithText("Share set").performClick()
+        // The choice closes the menu and the sheet.
+        compose.onNodeWithText("Delete set").assertDoesNotExist()
+
+        assertEquals(listOf(Action.ShareSet("palm", true), Action.ShareSet("palm", false), Action.ShareSet("empty", false)), actions)
+    }
+
+    @Test
     fun empty_set_says_so() {
         show(Fixture.palmSunday().copy(sectionKey = "set:empty", rows = emptyList(), setEntries = emptyList(), setNotes = null))
 

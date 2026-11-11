@@ -32,6 +32,7 @@ import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.library.rememberThumbnail
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
 import org.junit.Test
@@ -54,7 +55,8 @@ class SetsScreenshotTest {
 
     private var shown by mutableStateOf<Snapshot?>(null)
 
-    private fun shot(state: String, snapshot: Snapshot, landscape: Boolean, dark: Boolean, before: () -> Unit = {}) {
+    /** [popup]: the capture takes in the drop-down menus, which open in their own windows. */
+    private fun shot(state: String, snapshot: Snapshot, landscape: Boolean, dark: Boolean, popup: Boolean = false, before: () -> Unit = {}) {
         RuntimeEnvironment.setQualifiers(if (landscape) "+w1280dp-h800dp-xhdpi" else "+w800dp-h1280dp-xhdpi")
         shown = snapshot
         compose.setContent {
@@ -70,7 +72,8 @@ class SetsScreenshotTest {
         before()
         compose.waitForIdle()
         val orientation = if (landscape) "landscape" else "portrait"
-        compose.onRoot().captureRoboImage("src/test/screenshots/$state-$orientation-${if (dark) "dark" else "light"}.png")
+        val file = "src/test/screenshots/$state-$orientation-${if (dark) "dark" else "light"}.png"
+        if (popup) captureScreenRoboImage(file) else compose.onRoot().captureRoboImage(file)
     }
 
     private fun Snapshot.withView(view: LibraryView) = copy(layout = layout.copy(libraryView = view))
@@ -174,6 +177,25 @@ class SetsScreenshotTest {
     @Test fun sheet_set_menu_light() = shot("sheet-set-menu", sets, landscape = true, dark = false, before = openSetMenu)
 
     @Test fun sheet_set_menu_dark() = shot("sheet-set-menu", sets, landscape = true, dark = true, before = openSetMenu)
+
+    private val openShareMenu = { compose.onNodeWithContentDescription("Share").performClick(); Unit }
+    private val openSheetShareMenu = {
+        openSetMenu()
+        compose.onNodeWithText("Share").performClick()
+        Unit
+    }
+
+    @Test fun share_menu_landscape_light() = shot("set-share-menu", palm, landscape = true, dark = false, popup = true, before = openShareMenu)
+
+    @Test fun share_menu_landscape_dark() = shot("set-share-menu", palm, landscape = true, dark = true, popup = true, before = openShareMenu)
+
+    @Test fun share_menu_portrait_light() = shot("set-share-menu", palm, landscape = false, dark = false, popup = true, before = openShareMenu)
+
+    @Test fun share_menu_portrait_dark() = shot("set-share-menu", palm, landscape = false, dark = true, popup = true, before = openShareMenu)
+
+    @Test fun sheet_set_share_light() = shot("sheet-set-share", sets, landscape = true, dark = false, popup = true, before = openSheetShareMenu)
+
+    @Test fun sheet_set_share_dark() = shot("sheet-set-share", sets, landscape = true, dark = true, popup = true, before = openSheetShareMenu)
 
     @Test fun sheet_set_item_light() = shot("sheet-set-item", palmList, landscape = true, dark = false, before = openItemMenu)
 

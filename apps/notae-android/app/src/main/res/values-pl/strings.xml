@@ -216,6 +216,9 @@
     <string name="set_actions_dialog">Okno działań dla zestawu</string>
     <string name="set_edit">Edytuj zestaw</string>
     <string name="set_delete">Usuń zestaw</string>
+    <string name="share_set">Udostępnij</string>
+    <string name="share_set_plain">Udostępnij zestaw</string>
+    <string name="share_set_with_notes">Udostępnij zestaw z notatkami</string>
     <string name="set_back">Wróć do zestawów</string>
     <string name="set_add">Dodaj</string>
     <string name="set_reorder">Zmień kolejność</string>

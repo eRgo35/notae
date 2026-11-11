@@ -213,6 +213,9 @@
     <string name="set_actions_dialog">Set actions dialog</string>
     <string name="set_edit">Edit set</string>
     <string name="set_delete">Delete set</string>
+    <string name="share_set">Share</string>
+    <string name="share_set_plain">Share set</string>
+    <string name="share_set_with_notes">Share set with notes</string>
     <string name="set_back">Back to sets</string>
     <string name="set_add">Add</string>
     <string name="set_reorder">Reorder</string>
