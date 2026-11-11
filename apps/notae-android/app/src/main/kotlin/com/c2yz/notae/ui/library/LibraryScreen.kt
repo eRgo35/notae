@@ -37,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +62,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
@@ -111,6 +113,11 @@ internal const val SIDE_PANEL_TAG = "side-panel"
 
 /** The side panel's slide in or out: a little under a screen's, as the panel crosses less of the window. */
 internal const val PANEL_MILLIS = 250
+
+/** Each half of the chips' fade through as the side panel hides or shows: the old row out, then the new one in. */
+internal const val CHIPS_FADE_MILLIS = 150
+
+internal const val CHIPS_TAG = "chips"
 
 private val SIDE_PANEL_WIDTH = 288.dp
 
@@ -231,6 +238,13 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 val shown by panel.animateFloat({ tween(PANEL_MILLIS, easing = NotaeMotion.emphasized) }, label = "side panel shown") {
                     if (it) 1f else 0f
                 }
+                // The chips fade through, linear in time like a screen's bars: going, they fade out over the first half
+                // and their room goes after; coming, their room is taken at once, as the rest takes its new place, and
+                // they fade in over the second half.
+                val chipsTime = panel.animateFloat({ tween(2 * CHIPS_FADE_MILLIS, easing = LinearEasing) }, label = "chips") {
+                    if (it) 0f else 1f
+                }
+                val chipsGoing by remember { derivedStateOf { chipsTime.value > 0.5f } }
                 val toEnd = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
                 if (panel.currentState || panel.targetState) {
                     SidePanel(
@@ -253,7 +267,14 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 ) {
                     // Each bar on its own, so the column keeps its children (its gaps count them).
                     Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
-                    if (!sidebar) Box(Modifier.screenBar("chips")) { Chips(snapshot, onAction) }
+                    // Only while there are chips: the column's gaps take room for each of its children.
+                    if (!sidebar || chipsGoing) {
+                        Box(Modifier.screenBar("chips")) {
+                            Box(Modifier.testTag(CHIPS_TAG).graphicsLayer { alpha = ((chipsTime.value - 0.5f) * 2f).coerceIn(0f, 1f) }) {
+                                Chips(snapshot, onAction)
+                            }
+                        }
+                    }
                     OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
                     PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
                     content()

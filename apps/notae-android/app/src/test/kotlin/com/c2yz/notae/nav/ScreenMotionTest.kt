@@ -22,6 +22,8 @@ import com.c2yz.notae.core.SectionTitle
 import com.c2yz.notae.core.Selection
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.ui.details.DETAILS_BODY_TAG
+import com.c2yz.notae.ui.library.CHIPS_TAG
+import com.c2yz.notae.ui.library.CHIPS_FADE_MILLIS
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.GRID_TAG
 import com.c2yz.notae.ui.library.SIDE_PANEL_TAG
@@ -148,6 +150,7 @@ class ScreenMotionTest {
     private val search = hasContentDescription("Search")
     private val favorites = hasText("Favorites")
     private val sidePanel = hasTestTag(SIDE_PANEL_TAG)
+    private val chips = hasTestTag(CHIPS_TAG)
     private val sets = hasText("Sets")
     private val grid = hasTestTag(GRID_TAG)
     private val palmCard = hasContentDescription("More actions for Niedziela Palmowa")
@@ -184,25 +187,25 @@ class ScreenMotionTest {
 
         halfway(selecting(ave))
         val gridMiddle = bounds(grid).single()
-        val gridSizeMiddle = size(grid)
+        val gridWidthMiddle = size(grid).width
         val backMiddle = bounds(detailsBack).single()
         finish()
         val gridOpen = bounds(grid).single()
         val backOpen = bounds(detailsBack).single()
         // The list takes its narrow width as the pane starts to open, and moves to the start with the side panel hiding.
-        assertEquals("the list is at its new width while the pane opens", size(grid), gridSizeMiddle)
+        assertEquals("the list is at its new width while the pane opens", size(grid).width, gridWidthMiddle)
         assertTrue("the list moves to the start with the side panel: $gridOpen <- $gridMiddle", gridMiddle.left > gridOpen.left + 100f)
         assertEquals("the list stays at its height", gridOpen.top, gridMiddle.top)
         assertTrue("the pane comes in from the end: $backOpen <- $backMiddle", backMiddle.left > backOpen.left + 100f)
 
         halfway(Fixture.library())
         val gridClosing = bounds(grid).single()
-        val gridSizeClosing = size(grid)
+        val gridWidthClosing = size(grid).width
         val backClosing = bounds(detailsBack).single()
         finish()
         // The list takes its full width as the pane starts to close, under the pane sliding away, and moves to the end
         // with the side panel coming back.
-        assertEquals("the list is at its new width while the pane closes", size(grid), gridSizeClosing)
+        assertEquals("the list is at its new width while the pane closes", size(grid).width, gridWidthClosing)
         assertTrue("the list moves to the end with the side panel: ${bounds(grid)} <- $gridClosing", gridClosing.left < bounds(grid).single().left - 100f)
         assertTrue("the pane leaves to the end: $backOpen -> $backClosing", backClosing.left > backOpen.left + 100f)
         assertTrue("the pane is gone", bounds(detailsBack).isEmpty())
@@ -328,27 +331,79 @@ class ScreenMotionTest {
         show(shown)
         for (to in listOf(hidden, shown)) {
             val panelFrom = bounds(sidePanel)
-            val before = size(grid)
+            val before = size(grid).width
             compose.mainClock.autoAdvance = false
             snapshot = to
-            val sizes = mutableListOf<IntSize>()
+            val sizes = mutableListOf<Int>()
             val panel = mutableListOf<Rect>()
             repeat(PANEL_FRAMES) {
                 compose.mainClock.advanceTimeByFrame()
                 compose.waitForIdle()
-                sizes += size(grid)
+                sizes += size(grid).width
                 panel += bounds(sidePanel)
             }
             finish()
             val panelTo = bounds(sidePanel)
             // The grid takes its new width, and so its new columns, on the first frame of the change, and keeps it while it
             // moves.
-            assertEquals("the grid's width changes once: $sizes", listOf(size(grid)), sizes.dropWhile { it == before }.distinct())
+            assertEquals("the grid's width changes once: $sizes", listOf(size(grid).width), sizes.dropWhile { it == before }.distinct())
             // The panel is on its way between showing and gone, at the start of the line.
             val restEnd = (panelFrom + panelTo).single().right
             val middle = panel.filter { it.width > 0f }.map { it.right }
             assertTrue("the panel slides at the start: $restEnd, $middle", middle.any { it < restEnd - 50f && it > 50f })
         }
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun the_chips_fade_through_as_the_side_panel_hides_and_shows() {
+        val shown = Fixture.library()
+        val hidden = shown.copy(layout = shown.layout.copy(sidebarCollapsedLandscape = true))
+        show(hidden)
+        val area = bounds(chips).single()
+        // The start of the row as drawn, wherever it is (it moves with the panel, and narrows): see-through while it fades.
+        fun row(): android.graphics.Bitmap {
+            val at = bounds(chips).single()
+            val window = compose.activity.window.decorView.drawToBitmap()
+            return android.graphics.Bitmap.createBitmap(window, at.left.toInt(), at.top.toInt(), ROW_START_PIXELS, area.height.toInt())
+        }
+        val atRest = row()
+        // A frame at a time, each composing and drawing.
+        fun frameAt(millis: Long) = repeat((millis / FRAME_MILLIS).toInt()) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        fun drawn() = differing(row(), atRest, Rect(0f, 0f, atRest.width.toFloat(), atRest.height.toFloat()))
+
+        // Showing the panel: the chips fade out over the first half, then their row goes.
+        compose.mainClock.autoAdvance = false
+        snapshot = shown
+        frameAt(FADE_QUARTER_MILLIS)
+        val fading = bounds(chips)
+        val fadingDiffers = drawn()
+        frameAt(2 * FADE_QUARTER_MILLIS)
+        val gone = bounds(chips)
+        finish()
+        assertTrue("the chips are still there early on: $fading", fading.size == 1)
+        assertTrue("the chips are fading out: $fadingDiffers", fadingDiffers > 20)
+        assertTrue("the chips are gone in the second half: $gone", gone.isEmpty())
+
+        // Hiding it: the chips' room comes at once, empty over the first half, then the chips fade in.
+        compose.mainClock.autoAdvance = false
+        snapshot = hidden
+        frameAt(FADE_QUARTER_MILLIS)
+        val early = row().let { image ->
+            val blank = android.graphics.Bitmap.createBitmap(image.width, image.height, image.config!!).apply { eraseColor(image.getPixel(0, 0)) }
+            differing(image, blank, Rect(0f, 0f, image.width.toFloat(), image.height.toFloat()))
+        }
+        frameAt(2 * FADE_QUARTER_MILLIS)
+        val coming = drawn()
+        finish()
+        val shownAgain = drawn()
+        assertEquals("the room is empty over the first half", 0, early)
+        assertTrue("the chips are fading in: $coming", coming > 20)
+        assertEquals("the chips end as they were", 0, shownAgain)
+        assertEquals("the chips end where they were", area, bounds(chips).single())
     }
 
     @Test
@@ -518,6 +573,14 @@ class ScreenMotionTest {
         const val TURN_JUMP = 150f
         /** About 100 ms into the 300 ms change, before the emphasized curve has settled the content. */
         const val HALFWAY_STEPS = 3
+        const val FRAME_MILLIS = 16L
+
+        /** How much of the chips' row the fade test compares: the chips themselves, short of where a narrower row ends. */
+        const val ROW_START_PIXELS = 1200
+
+        /** A quarter of the chips' fade through: halfway into its first half. */
+        const val FADE_QUARTER_MILLIS = CHIPS_FADE_MILLIS / 2L
+
         const val STEP_MILLIS = 40L
     }
 }
