@@ -1,5 +1,11 @@
 package com.c2yz.notae.ui.sets
 
+import com.c2yz.notae.ui.components.TextField
+
+import androidx.compose.ui.unit.dp
+
+import androidx.compose.ui.test.getBoundsInRoot
+
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
@@ -184,6 +190,24 @@ class NotesTest {
         compose.onNodeWithText("Cancel").performClick()
 
         assertEquals(listOf<Action>(Action.CloseAddPicker), actions)
+    }
+
+    @Test
+    fun the_add_picker_note_field_shows_four_lines() {
+        show(Fixture.palmSunday().copy(addPicker = AddPicker("", emptyList(), 0u)))
+
+        compose.onNodeWithText("Text note").performClick()
+        val field = compose.onNodeWithContentDescription("Note").getBoundsInRoot()
+        assertTrue("four lines of 16 sp text and the padding: ${field.bottom - field.top}", field.bottom - field.top >= 100.dp)
+    }
+
+    @Test
+    fun a_one_line_field_ignores_a_line_minimum() {
+        // A single-line field cannot be taller than one line, whatever minimum it is given.
+        compose.setContent { NotaeTheme { TextField("Psalm 23", {}, "Name", multiLine = false, minLines = 4) } }
+
+        val field = compose.onNodeWithContentDescription("Name").getBoundsInRoot()
+        assertEquals(52.dp, field.bottom - field.top)
     }
 
     @Test

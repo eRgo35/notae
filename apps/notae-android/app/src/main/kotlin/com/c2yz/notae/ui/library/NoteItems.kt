@@ -177,5 +177,5 @@ internal fun NoteEditor(title: String, initial: String, onCancel: () -> Unit, al
     }
 }
 
-/** The note editor's field is this many lines tall before it grows, so it reads as a note and not as a title. */
-private const val NOTE_LINES = 4
+/** A note field (the note editor, the add picker's Text note) is this many lines tall before it grows, so it reads as a note and not as a title. */
+internal const val NOTE_LINES = 4
