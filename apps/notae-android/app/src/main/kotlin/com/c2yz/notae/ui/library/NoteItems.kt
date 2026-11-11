@@ -160,12 +160,12 @@ internal fun NoteActionsSheet(note: SetEntry.Note, onDismiss: () -> Unit, onEdit
 
 /**
  * A note's editor, for a text note ("Edit note"), a score note or a set note ([title]): the text in a multi-line field
- * (focused), Cancel and Save note. Saving blank text clears a score or set note (the core ignores a blank text note).
- * The text is this dialog's own state, set from [initial] once when it opens, so a snapshot arriving while the owner
- * types never resets it.
+ * (focused), Cancel and Save note. Save note stays disabled while the text is blank unless [allowBlank]: saving blank
+ * text clears a score or set note, while the core ignores a blank text note. The text is this dialog's own state, set
+ * from [initial] once when it opens, so a snapshot arriving while the owner types never resets it.
  */
 @Composable
-internal fun NoteEditor(title: String, initial: String, onCancel: () -> Unit, onSave: (String) -> Unit) {
+internal fun NoteEditor(title: String, initial: String, onCancel: () -> Unit, allowBlank: Boolean = false, onSave: (String) -> Unit) {
     val c = NotaeTheme.colors
     var text by remember { mutableStateOf(initial) }
     val field = remember { FocusRequester() }
@@ -173,6 +173,6 @@ internal fun NoteEditor(title: String, initial: String, onCancel: () -> Unit, on
     NotaeDialog(title) {
         Text(title, color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         TextField(text, { text = it }, stringResource(R.string.note_field), Modifier.focusRequester(field), multiLine = true)
-        DialogButtons(stringResource(R.string.set_cancel), onCancel, stringResource(R.string.note_save), { onSave(text) })
+        DialogButtons(stringResource(R.string.set_cancel), onCancel, stringResource(R.string.note_save), { onSave(text) }, confirmEnabled = allowBlank || text.isNotBlank())
     }
 }

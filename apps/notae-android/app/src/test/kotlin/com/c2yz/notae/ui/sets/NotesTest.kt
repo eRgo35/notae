@@ -29,6 +29,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -40,6 +41,7 @@ import com.c2yz.notae.core.AddPicker
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.NotaeCore
 import com.c2yz.notae.core.Screen
+import com.c2yz.notae.core.SectionTitle
 import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
@@ -254,6 +256,9 @@ class NotesTest {
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Note").performTextInput(", verses 1-6")
         compose.onNodeWithContentDescription("Note").assertTextEquals("Psalm 24, verses 1-6")
+        compose.onNodeWithContentDescription("Note").performTextReplacement(" ")
+        compose.onNodeWithText("Save note").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Note").performTextReplacement("Psalm 24")
         compose.onNodeWithText("Save note").performClick()
         compose.onNodeWithText("Save note").assertDoesNotExist()
 
@@ -271,9 +276,22 @@ class NotesTest {
         compose.onNodeWithText("Save note").assertDoesNotExist()
 
         assertEquals(
-            listOf(Action.EditNote("note-1", "Psalm 24, verses 1-6"), Action.OpenSearch, Action.RemoveSetItem("note-2")),
+            listOf(Action.EditNote("note-1", "Psalm 24"), Action.OpenSearch, Action.RemoveSetItem("note-2")),
             actions,
         )
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h832dp-xhdpi")
+    fun phoneDetailsFromASetShowTheSetNote() = withSet { core, _ ->
+        // Opened from the set's row on a phone, the details take the whole screen; the core keeps the set as the title.
+        core.dispatch(Action.SelectScore(core.snapshot().rows.first().selectionId))
+        val snapshot = core.snapshot()
+        assertTrue(snapshot.title is SectionTitle.Set)
+        compose.setContent { NotaeTheme { DetailsScreen(snapshot, { actions += it }) } }
+
+        compose.onNodeWithText("Note for Mass").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Add set note").assertExists()
     }
 
     @Test

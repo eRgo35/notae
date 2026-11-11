@@ -141,11 +141,11 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 val close = { editing = null }
                 Box(Modifier.closeOnEscape(close)) {
                     when (kind) {
-                        NoteKind.SCORE -> NoteEditor(stringResource(R.string.score_note), row.scoreNote.orEmpty(), close) { text ->
+                        NoteKind.SCORE -> NoteEditor(stringResource(R.string.score_note), row.scoreNote.orEmpty(), close, allowBlank = true) { text ->
                             close()
                             onAction(Action.SaveScoreNote(row.noteKey, text))
                         }
-                        NoteKind.SET -> NoteEditor(stringResource(R.string.set_note_in, setName.orEmpty()), row.setNote.orEmpty(), close) { text ->
+                        NoteKind.SET -> NoteEditor(stringResource(R.string.set_note_in, setName.orEmpty()), row.setNote.orEmpty(), close, allowBlank = true) { text ->
                             close()
                             row.itemId?.let { onAction(Action.SaveSetNote(it, text)) }
                         }

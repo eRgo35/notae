@@ -232,6 +232,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                     stringResource(R.string.set_note_in, (snapshot.title as? SectionTitle.Set)?.name.orEmpty()),
                     row.setNote.orEmpty(),
                     onCancel = { setNoteFor = null },
+                    allowBlank = true,
                     onSave = { text ->
                         setNoteFor = null
                         row.itemId?.let { onAction(Action.SaveSetNote(it, text)) }
