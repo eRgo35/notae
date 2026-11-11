@@ -29,6 +29,7 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.withKeyDown
 import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.metadata
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.scene.Scene
 import com.c2yz.notae.core.Action
@@ -44,6 +45,7 @@ import com.c2yz.notae.ui.library.GRID_TAG
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -320,16 +322,39 @@ class ListDetailSceneTest {
     /** A scene of [keys], the last one on top, for the transition rule. */
     private fun scene(vararg keys: NavKey): Scene<NavKey> = object : Scene<NavKey> {
         override val key: Any = keys.last()
-        override val entries: List<NavEntry<NavKey>> = listOf(NavEntry(keys.last()) {})
-        override val previousEntries: List<NavEntry<NavKey>> = keys.dropLast(1).map { NavEntry(it) {} }
+        override val entries: List<NavEntry<NavKey>> = listOf(entry(keys.last()))
+        override val previousEntries: List<NavEntry<NavKey>> = keys.dropLast(1).map { entry(it) }
         override val content: @androidx.compose.runtime.Composable () -> Unit = {}
     }
 
+    private fun entry(key: NavKey) = NavEntry(key, metadata = metadata { if (key is Route.Library) put(SectionKey, key.section) }) {}
+
+    private val order = listOf("all", "favorites", "sets", "recent", "composer:Bach")
+
     @Test
-    fun switching_sections_is_lateral_and_opening_a_set_is_not() {
-        assertTrue(isLateral(scene(Route.Library("all")), scene(Route.Library("recent"))))
-        assertTrue(isLateral(scene(Route.Setup), scene(Route.Library("all"))))
-        assertFalse(isLateral(scene(Route.Library("sets")), scene(Route.Library("sets"), Route.Set("s1"))))
-        assertFalse(isLateral(scene(Route.Library("all"), Route.Search), scene(Route.Library("all"))))
+    fun lateralSlidesInSectionOrder() {
+        assertEquals(Lateral.Forward, lateral(scene(Route.Library("all")), scene(Route.Library("sets")), order))
+        assertEquals(Lateral.Backward, lateral(scene(Route.Library("recent")), scene(Route.Library("favorites")), order))
+    }
+
+    @Test
+    fun setupAndLoadingFade() {
+        assertEquals(Lateral.Fade, lateral(scene(Route.Setup), scene(Route.Library("all")), order))
+        assertEquals(Lateral.Fade, lateral(scene(Route.Loading), scene(Route.Library("sets")), order))
+    }
+
+    @Test
+    fun deeperIsNotLateral() {
+        val sets = scene(Route.Library("sets"))
+        assertNull(lateral(sets, scene(Route.Library("sets"), Route.Set("s1")), order))
+        assertNull(lateral(sets, scene(Route.Library("sets"), Route.Details("d1")), order))
+        assertNull(lateral(sets, scene(Route.Library("sets"), Route.Search), order))
+        assertNull(lateral(sets, scene(Route.Library("sets"), Route.Settings), order))
+    }
+
+    @Test
+    fun unknownSectionSlidesFromTheEnd() {
+        assertEquals(Lateral.Forward, lateral(scene(Route.Library("all")), scene(Route.Library("composer:Unknown")), order))
+        assertEquals(Lateral.Backward, lateral(scene(Route.Library("composer:Unknown")), scene(Route.Library("all")), order))
     }
 }

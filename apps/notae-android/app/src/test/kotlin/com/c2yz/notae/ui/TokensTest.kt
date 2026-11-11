@@ -51,4 +51,9 @@ class TokensTest {
         assertEquals(120, (NotaeMotion.short<Float>() as TweenSpec).durationMillis)
         assertEquals(220, (NotaeMotion.medium<Float>() as TweenSpec).durationMillis)
     }
+
+    @Test
+    fun longMotionIs300() {
+        assertEquals(300, (NotaeMotion.long<Float>() as TweenSpec).durationMillis)
+    }
 }

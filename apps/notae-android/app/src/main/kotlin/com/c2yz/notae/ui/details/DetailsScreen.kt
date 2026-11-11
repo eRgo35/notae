@@ -256,8 +256,7 @@ private fun Stepping(selection: Selection, modifier: Modifier, content: @Composa
             if (by == 0) {
                 fadeIn(NotaeMotion.medium()) togetherWith fadeOut(NotaeMotion.short())
             } else {
-                (slideInHorizontally(NotaeMotion.medium()) { by } + fadeIn(NotaeMotion.medium())) togetherWith
-                    (slideOutHorizontally(NotaeMotion.medium()) { -by } + fadeOut(NotaeMotion.short()))
+                slideInHorizontally(NotaeMotion.medium()) { by } togetherWith slideOutHorizontally(NotaeMotion.medium()) { -by }
             }
         },
         contentKey = { it.row.selectionId },

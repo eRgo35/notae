@@ -81,6 +81,9 @@ object Tokens {
     const val motionShortMillis = 120
     const val motionMediumMillis = 220
 
+    /** A screen sliding the full width of the window. */
+    const val motionLongMillis = 300
+
     /** 0.3.0's `Motion.shift`: how far a view slides while it enters or leaves. */
     val motionShift = 24.dp
 }
