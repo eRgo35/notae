@@ -6,7 +6,7 @@ use notae_app_core::text::RowStatus;
 use notae_app_core::ui::UiModel;
 use notae_app_core::ui::browse::{
     ComposerCount, LibrarySection, SectionContext, SetEntry, composers, neighbours, section_rows,
-    sections, set_entries, set_subtitle,
+    sections, set_cards, set_entries, set_subtitle,
 };
 use notae_app_core::ui::search::SearchRow;
 use notae_domain::MetadataOrigin;
@@ -640,4 +640,20 @@ fn missing_piece_has_missing_status() {
     let rows = section_rows(&library(), &LibrarySection::Set(id), &context);
     assert_eq!(rows[1].status, RowStatus::MissingFromLibrary);
     assert_eq!(rows[0].status, RowStatus::Ready);
+}
+
+#[test]
+fn set_card_previews_skip_notes_and_stop_at_three() {
+    let preview_keys = |items: &[Option<char>]| {
+        let (store, _) = store_with(items);
+        set_cards(&store, NOV_1_2026)[0].preview_keys.clone()
+    };
+    let key = |letter: char| letter.to_string().repeat(64);
+    assert_eq!(
+        preview_keys(&[None, Some('a'), Some('b'), None, Some('c'), Some('d')]),
+        [key('a'), key('b'), key('c')]
+    );
+    assert_eq!(preview_keys(&[]), Vec::<String>::new());
+    assert_eq!(preview_keys(&[None, None]), Vec::<String>::new());
+    assert_eq!(preview_keys(&[Some('a'), Some('a')]), [key('a'), key('a')]);
 }

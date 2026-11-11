@@ -102,9 +102,9 @@ object Fixture {
 
     /** The three sets, most recently edited first. */
     val setCards = listOf(
-        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today),
-        SetCard("empty", "Pusty zestaw", null, 0u, Edited.Today),
-        SetCard("friday", FRIDAY_NAME, "2026-04-03", 0u, Edited.Today),
+        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, emptyList()),
+        SetCard("empty", "Pusty zestaw", null, 0u, Edited.Today, emptyList()),
+        SetCard("friday", FRIDAY_NAME, "2026-04-03", 0u, Edited.Today, emptyList()),
     )
 
     /** Niedziela Palmowa's nine items: two repeats and a piece missing from the library. */
