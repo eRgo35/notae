@@ -1,5 +1,6 @@
 package com.c2yz.notae.nav
 
+import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,10 +49,46 @@ class ScreenMotionTest {
 
     private var snapshot by mutableStateOf(Fixture.library())
 
+    /** What the core shows once Back reaches it; nothing changes when `null`. */
+    private var afterBack: Snapshot? = null
+    private var backed = false
+
     private fun show(first: Snapshot) {
         snapshot = first
-        compose.setContent { NotaeTheme { NotaeNavDisplay(snapshot, onAction = {}, onBack = {}) } }
+        compose.setContent { NotaeTheme { NotaeNavDisplay(snapshot, onAction = {}, onBack = { backed = true }) } }
         compose.waitForIdle()
+    }
+
+    /**
+     * The Back key as 3-button navigation on Android 16 sends it: a back gesture that starts and ends at once, through the
+     * activity's dispatcher. The core answers on its own thread, a frame later. Then [steps] steps of [STEP_MILLIS].
+     */
+    private fun pressBack(steps: Int) {
+        compose.mainClock.autoAdvance = false
+        val dispatcher = compose.activity.onBackPressedDispatcher
+        fun frame() {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        compose.runOnUiThread { dispatcher.dispatchOnBackStarted(BackEventCompat(0f, 0f, 0f, BackEventCompat.EDGE_LEFT)) }
+        frame()
+        compose.runOnUiThread { dispatcher.dispatchOnBackProgressed(BackEventCompat(0f, 0f, 0f, BackEventCompat.EDGE_LEFT)) }
+        frame()
+        compose.runOnUiThread { dispatcher.onBackPressed() }
+        frame()
+        if (backed) afterBack?.let { snapshot = it }
+        steps(steps)
+    }
+
+    /** How many sampled pixels of [area] differ between two frames. */
+    private fun differing(a: android.graphics.Bitmap, b: android.graphics.Bitmap, area: Rect): Int {
+        var count = 0
+        for (x in area.left.toInt() until area.right.toInt() step 4) {
+            for (y in area.top.toInt().coerceAtLeast(0) until area.bottom.toInt() step 4) {
+                if (a.getPixel(x, y) != b.getPixel(x, y)) count++
+            }
+        }
+        return count
     }
 
     /** Sends [next] and stops the clock early in the 300 ms change, while everything that moves is well off its place. */
@@ -243,6 +280,44 @@ class ScreenMotionTest {
         assertEquals("Search does not slide sideways", atRest.left, rising.left)
         assertTrue("Search rises out: $atRest -> $rising", rising.top < atRest.top - 1f)
         assertTrue("Search is gone", bounds(field).isEmpty())
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun the_back_key_closes_search_rising_over_the_library_as_its_arrow_does() {
+        show(Fixture.library())
+        snapshot = Fixture.library().copy(screen = Screen.Search)
+        compose.waitForIdle()
+        val field = hasSetTextAction()
+        val atRest = bounds(field).single()
+        afterBack = Fixture.library()
+
+        pressBack(DROP_STEPS)
+        val rising = bounds(field)
+        val risingFrame = compose.activity.window.decorView.drawToBitmap()
+        finish()
+        val library = compose.activity.window.decorView.drawToBitmap()
+        assertTrue("Search still shows partway: $rising", rising.size == 1)
+        assertTrue("Search rises out: $atRest -> $rising", rising.single().top < atRest.top - 1f && rising.single().top > atRest.top - 41f)
+        val drawn = differing(risingFrame, library, rising.single())
+        assertTrue("Search draws over the library as it rises: $drawn", drawn > 100)
+        assertTrue("Search is gone", bounds(field).isEmpty())
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun the_back_key_closes_a_set_in_reverse() {
+        show(Fixture.palmSunday())
+        val piecesAtRest = bounds(grid).single()
+        afterBack = Fixture.sets()
+
+        pressBack(HALFWAY_STEPS)
+        val leaving = bounds(grid).filter { it.left > piecesAtRest.left + 100f }
+        val cardMiddle = bounds(palmCard).single()
+        finish()
+        val cardAtRest = bounds(palmCard).single()
+        assertTrue("the set's pieces leave to the end: $piecesAtRest -> ${bounds(grid)}", leaving.isNotEmpty())
+        assertTrue("the sets come back from the start: $cardAtRest <- $cardMiddle", cardMiddle.left < cardAtRest.left - 100f)
     }
 
     @Test

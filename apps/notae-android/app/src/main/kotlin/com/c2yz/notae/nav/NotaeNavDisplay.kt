@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
@@ -120,12 +121,17 @@ fun NotaeNavDisplay(
     // Registered after NavDisplay's own handler, so it wins while enabled: a dialog or sheet closes
     // before any screen, without the predictive animation of the screen below, and on a single
     // screen (where NavDisplay handles nothing) the core still decides whether the activity ends.
-    NavigationBackHandler(
-        state = backState,
-        // Reorder mode is not an entry: Back ends it without previewing the list of sets below the set.
-        isBackEnabled = backStack.size == 1 || overlayOpen(snapshot) || snapshot.reordering,
-        onBackCompleted = onBack,
-    )
+    // NavDisplay registers its handler again when the stack changes, so this one does too, after it.
+    key(backStack) {
+        NavigationBackHandler(
+            state = backState,
+            // Reorder mode is not an entry: Back ends it without previewing the list of sets below the set. Search closes here
+            // too: Navigation 3 draws the screen below over it when Back starts and ends at once (the Back key with 3-button
+            // navigation on Android 16 starts a back gesture), so Search would vanish instead of rising out.
+            isBackEnabled = backStack.size == 1 || overlayOpen(snapshot) || snapshot.reordering || snapshot.screen is Screen.Search,
+            onBackCompleted = onBack,
+        )
+    }
 }
 
 /**
@@ -180,8 +186,18 @@ internal class ScreenMotion(
             null -> null
         }
 
+    /**
+     * Navigation 3 asks this one, not [predictiveBack], for the back gesture's preview, and for Back started as one (the
+     * Back key with 3-button navigation on Android 16 is), so a change back to the screen below runs as Back.
+     */
     fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        start(lateralChange(from, to) ?: if (isSearch(to)) Change.Drop else Change.Push)
+        if (goesBack(from, to)) back(from, to) else start(lateralChange(from, to) ?: if (isSearch(to)) Change.Drop else Change.Push)
+
+    /** Whether [to] is a screen below [from] on the stack: the top of [to] is among the entries under [from]'s. */
+    private fun goesBack(from: Scene<NavKey>, to: Scene<NavKey>): Boolean {
+        val top = to.entries.lastOrNull()?.contentKey ?: return false
+        return from.key != to.key && from.previousEntries.any { it.contentKey == top }
+    }
 
     fun back(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
         lateralChange(from, to)?.let { start(it) } ?: start(if (isSearch(from)) Change.Drop else Change.Pop, popping = true)
@@ -389,6 +405,13 @@ private class ListDetailScene(
             }
         }
     }
+
+    // Equal for the same entries, as Navigation 3's own scenes are: Back pops the stack while the back gesture's
+    // preview (the Back key's too) runs toward this scene, and a new instance would restart the change mid-way.
+    override fun equals(other: Any?): Boolean =
+        other is ListDetailScene && list == other.list && detail == other.detail && previousEntries == other.previousEntries
+
+    override fun hashCode(): Int = (list.hashCode() * 31 + detail.hashCode()) * 31 + previousEntries.hashCode()
 
     private companion object {
         val LIST_PANE_WIDTH = 720.dp
