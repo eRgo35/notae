@@ -147,6 +147,7 @@ class ImportTest {
 
         compose.onNodeWithText("Import “Choir Mass”?").assertIsDisplayed()
         compose.onNodeWithText("2 of 4 scores matched").assertIsDisplayed()
+        compose.onNodeWithText("You already have this set as “Sunday Mass”.").assertIsDisplayed()
         compose.onNodeWithText("Not in your library").assertIsDisplayed()
         compose.onNodeWithText("117").assertIsDisplayed()
         compose.onNodeWithText("Ojcze nasz").assertIsDisplayed()
@@ -222,7 +223,7 @@ class ImportTest {
         fun reviewing(exists: Boolean) = settings.copy(
             importConfirmation = ImportConfirmation(
                 sets = 1u,
-                replaced = if (exists) listOf("Choir Mass") else emptyList(),
+                replaced = if (exists) listOf("Sunday Mass") else emptyList(),
                 shared = SharedSetReview(
                     name = "Choir Mass",
                     matched = 2u,

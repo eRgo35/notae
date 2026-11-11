@@ -266,7 +266,7 @@ fun importStatusText(resources: Resources, status: ImportStatus): String = when 
  * The import confirmation, drawn by the shell over Settings or the setup screen. For a backup: "Import N sets?", the
  * current names of the sets the file replaces (when it replaces any), then Cancel and Import. For a shared set, the
  * review: "Import “name”?", how many of its scores matched, the unmatched ones by number and title, then Cancel and
- * Import, or Cancel, Replace and Keep both when a set with its id exists. The dialog takes the focus when it opens, so
+ * Import, or, when a set with its id exists, its current name and Cancel, Replace and Keep both. The dialog takes the focus when it opens, so
  * Escape cancels at once, as Back does through the core (buttons cannot hold focus in touch mode); Tab reaches Cancel.
  */
 @Composable
@@ -284,7 +284,7 @@ fun ImportConfirmationDialog(confirmation: ImportConfirmation, onAction: (Action
         modifier = Modifier.closeOnEscape(cancel).focusRequester(keys).focusable(),
     ) {
         if (shared != null) {
-            SharedSetSummary(shared)
+            SharedSetSummary(shared, confirmation.replaced.firstOrNull())
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 val sets = confirmation.sets.toInt()
@@ -310,15 +310,21 @@ fun ImportConfirmationDialog(confirmation: ImportConfirmation, onAction: (Action
     }
 }
 
-/** The shared-set review's text: the title, "N of M scores matched", and the unmatched pieces in a list that scrolls. */
+/**
+ * The shared-set review's text: the title, "N of M scores matched", the name of the set Replace would change (when one
+ * exists), and the unmatched pieces in a list that scrolls.
+ */
 @Composable
-private fun SharedSetSummary(shared: SharedSetReview) {
+private fun SharedSetSummary(shared: SharedSetReview, replaced: String?) {
     val c = NotaeTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         val matched = shared.matched.toInt()
         val total = matched + shared.unmatched.size
         Text(stringResource(R.string.shared_set_review_title, shared.name), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         Text(pluralStringResource(R.plurals.shared_set_matched, total, matched, total), color = c.muted, fontSize = 14.sp)
+        if (replaced != null) {
+            Text(stringResource(R.string.shared_set_exists, replaced), color = c.muted, fontSize = 14.sp)
+        }
         if (shared.unmatched.isNotEmpty()) {
             Text(
                 stringResource(R.string.shared_set_unmatched),

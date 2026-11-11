@@ -6,7 +6,8 @@ use notae_app_core::score_notes::ScoreNotes;
 use notae_app_core::sets::{ItemKind, Set};
 use notae_app_core::sets::{SetFields, SetStore};
 use notae_app_core::share::{
-    MatchedSet, SharedSet, keep_both, match_pieces, share_file_name, share_json, share_text,
+    MatchedSet, SharedSet, keep_both, keep_set_notes, match_pieces, share_file_name, share_json,
+    share_text,
 };
 use notae_app_core::ui::browse::{SetEntry, set_entries};
 use notae_app_core::ui::search::SearchRow;
@@ -306,4 +307,80 @@ fn keep_both_names_and_ids() {
     ids.sort_unstable();
     ids.dedup();
     assert_eq!(ids.len(), copy.items.len(), "item ids stay unique");
+}
+
+/// A set named `name` holding pieces `(key char, path, set note)` in order.
+fn set_of(name: &str, pieces: &[(char, &str, Option<&str>)]) -> Set {
+    let mut store = SetStore::default();
+    let id = store.create(
+        SetFields {
+            name: name.to_owned(),
+            date: None,
+            notes: None,
+        },
+        1,
+    );
+    for (c, path, note) in pieces {
+        let item = store.add_piece(&id, piece(*c, path), 2).expect("set");
+        if let Some(note) = note {
+            store.edit_set_note(&id, &item, note, 3);
+        }
+    }
+    store.get(&id).expect("set").clone()
+}
+
+fn set_notes(set: &Set) -> Vec<Option<&str>> {
+    set.items
+        .iter()
+        .map(|item| item.set_note.as_deref())
+        .collect()
+}
+
+#[test]
+fn replace_keeps_the_local_set_notes_the_file_lacks() {
+    let local = set_of(
+        "Mass",
+        &[
+            ('a', "Gloria.pdf", Some("breathe")),
+            ('x', "mass/Sanctus.pdf", Some("local")),
+            ('y', "Benedictus.pdf", Some("soft")),
+            ('c', "Credo.pdf", Some("not in the file")),
+        ],
+    );
+    let mut incoming = set_of(
+        "Mass",
+        &[
+            ('a', "Gloria.pdf", None),
+            ('b', "mass/Sanctus.pdf", Some("louder")),
+            ('e', "Benedictus.pdf", None),
+            ('d', "Agnus.pdf", None),
+        ],
+    );
+
+    keep_set_notes(&mut incoming, &local);
+
+    assert_eq!(
+        set_notes(&incoming),
+        [Some("breathe"), Some("louder"), Some("soft"), None],
+        "kept by key, the file's note wins, kept by path, no local piece"
+    );
+}
+
+#[test]
+fn replace_pairs_repeated_pieces_in_order() {
+    let local = set_of(
+        "Mass",
+        &[
+            ('a', "Gloria.pdf", Some("first")),
+            ('a', "Gloria.pdf", Some("second")),
+        ],
+    );
+    let mut incoming = set_of(
+        "Mass",
+        &[('a', "Gloria.pdf", None), ('a', "Gloria.pdf", None)],
+    );
+
+    keep_set_notes(&mut incoming, &local);
+
+    assert_eq!(set_notes(&incoming), [Some("first"), Some("second")]);
 }

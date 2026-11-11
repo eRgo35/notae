@@ -101,6 +101,40 @@ pub fn keep_both(mut set: Set, store: &SetStore) -> Set {
     set
 }
 
+/// Keeps the recipient's set notes when `set` replaces `local`: each piece of `set` without a set note takes the
+/// note of the same piece in `local`, matched by key, else by path. A piece in a set more than once pairs with
+/// the local copies in order. A note in `set` wins over the local one.
+pub fn keep_set_notes(set: &mut Set, local: &Set) {
+    let mut unpaired: Vec<_> = local
+        .items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            ItemKind::Piece(piece) => Some((piece, item.set_note.as_ref())),
+            ItemKind::Note { .. } => None,
+        })
+        .collect();
+    for item in &mut set.items {
+        let ItemKind::Piece(piece) = &item.kind else {
+            continue;
+        };
+        let Some(index) = unpaired
+            .iter()
+            .position(|(local, _)| local.key == piece.key)
+            .or_else(|| {
+                unpaired
+                    .iter()
+                    .position(|(local, _)| local.path == piece.path)
+            })
+        else {
+            continue;
+        };
+        let (_, note) = unpaired.remove(index);
+        if item.set_note.is_none() {
+            item.set_note = note.cloned();
+        }
+    }
+}
+
 /// The title shown for a score: the library's, or the stored path's file stem when the library lacks it.
 fn piece_info(rows: &[SearchRow], key: &str, path: &str) -> SharedPiece {
     match rows.iter().find(|row| row.note_key == key) {

@@ -291,6 +291,7 @@
         <item quantity="one">%1$d of %2$d score matched</item>
         <item quantity="other">%1$d of %2$d scores matched</item>
     </plurals>
+    <string name="shared_set_exists">You already have this set as “%1$s”.</string>
     <string name="shared_set_unmatched">Not in your library</string>
     <string name="replace">Replace</string>
     <string name="keep_both">Keep both</string>

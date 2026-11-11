@@ -1632,7 +1632,11 @@ fn shared_set_replace_and_keep_both() {
         .expect("Ave Maria")
         .note_key
         .clone();
-    set_with_first_piece(&harness, &library);
+    let in_set = set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::SaveSetNote {
+        item_id: in_set.rows[0].selection_id.clone(),
+        text: "breathe".to_owned(),
+    });
     let set_id = harness.core.snapshot().set_cards[0].id.clone();
     let file = shared_set_file(&set_id, "Choir Mass");
     let before_import = std::time::SystemTime::now()
@@ -1664,6 +1668,11 @@ fn shared_set_replace_and_keep_both() {
         panic!("a piece");
     };
     assert_eq!(first.key, ave, "the matched piece takes the library's key");
+    assert_eq!(
+        set.items[0].set_note.as_deref(),
+        Some("breathe"),
+        "the file has no set note there, so the local one stays"
+    );
     let notae_app_core::sets::ItemKind::Piece(lost) = &set.items[1].kind else {
         panic!("a piece");
     };
