@@ -30,6 +30,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -97,6 +99,8 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
         modifier
             .fillMaxSize()
             .screenBackground(c.background)
+            // Search takes every tap on it, so none reaches the library still fading out beneath it.
+            .pointerInput(Unit) { detectTapGestures { } }
             .onPreviewKeyEvent { event ->
                 (event.type == KeyEventType.KeyDown && event.key == Key.Escape).also { if (it) onAction(Action.CloseSearch) }
             },

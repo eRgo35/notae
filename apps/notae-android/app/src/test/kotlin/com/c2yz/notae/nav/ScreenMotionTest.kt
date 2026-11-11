@@ -277,7 +277,7 @@ class ScreenMotionTest {
     }
 
     @Test
-    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    @Config(qualifiers = "w800dp-h1280dp-xhdpi")
     fun portrait_rail_stays_while_a_set_opens() {
         show(Fixture.sets())
         val railAtRest = bounds(favorites) + bounds(sets)
