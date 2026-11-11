@@ -409,25 +409,32 @@ impl UiModel {
         &self.sets
     }
 
-    /// The suggested file name and the text of a favorites-and-sets export made at `now`.
+    /// The suggested file name and the text of the export (favorites, sets, score notes) made at
+    /// `now`.
     #[must_use]
     pub fn export_sets(&self, now: u64) -> (String, String) {
         (
             crate::backup::suggested_file_name(now),
-            crate::backup::export_json(&self.favorites, &self.sets),
+            crate::backup::export_json(&self.favorites, &self.sets, &self.score_notes),
         )
     }
 
     /// Adds the backup's sets beside the current ones, replacing those with the same id, merges
     /// its favorites, and saves both files. Pieces are re-linked against the open library.
     pub fn import_backup(&mut self, backup: crate::backup::Backup) {
-        crate::backup::apply_import(&mut self.favorites, &mut self.sets, backup);
+        crate::backup::apply_import(
+            &mut self.favorites,
+            &mut self.sets,
+            &mut self.score_notes,
+            backup,
+        );
         if let Some(path) = &self.favorites_path
             && let Err(error) = self.favorites.save(path)
         {
             eprintln!("notae: cannot save favorites: {error}");
         }
         self.save_sets();
+        self.save_score_notes();
         self.relink_saved_pieces();
     }
 

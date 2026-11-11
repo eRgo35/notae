@@ -1376,7 +1376,7 @@ fn import_of_a_wrong_file_says_why_and_back_closes_the_confirmation() {
     );
     harness
         .core
-        .import_file_read(r#"{"app":"notae","schema_version":2}"#.to_owned());
+        .import_file_read(r#"{"app":"notae","schema_version":3}"#.to_owned());
     assert_eq!(
         harness.core.snapshot().settings.import_status,
         Some(ImportStatus::Failed {

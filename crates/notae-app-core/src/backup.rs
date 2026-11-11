@@ -1,4 +1,4 @@
-//! The export file that carries favorites and sets to another install: build it, parse it, and
+//! The export file that carries favorites, sets and score notes to another install: build it, parse it, and
 //! plan and apply an import.
 
 #![forbid(unsafe_code)]
@@ -10,10 +10,14 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::favorites::{Favorites, PieceRef};
+use crate::recent::is_content_key;
+use crate::score_notes::{ScoreNote, ScoreNotes};
 use crate::sets::{Set, SetStore};
 use crate::ui::browse::civil_from_days;
 
-const SCHEMA_VERSION: u64 = 1;
+const SCHEMA_VERSION: u64 = 2;
+/// The first export version, which has no score notes.
+const FIRST_SCHEMA_VERSION: u64 = 1;
 const APP: &str = "notae";
 
 /// The export file's MIME type.
@@ -29,12 +33,15 @@ struct ExportOut<'a> {
     app: &'a str,
     favorites: &'a [PieceRef],
     sets: &'a [Set],
+    score_notes: &'a [ScoreNote],
 }
 
 #[derive(Deserialize)]
 struct ExportIn {
     favorites: Vec<PieceRef>,
     sets: Vec<Set>,
+    #[serde(default)]
+    score_notes: Vec<ScoreNote>,
 }
 
 /// The contents of a parsed export file.
@@ -44,6 +51,8 @@ pub struct Backup {
     pub favorites: Favorites,
     /// The exported sets.
     pub sets: Vec<Set>,
+    /// The exported score notes; empty for a version 1 file.
+    pub score_notes: ScoreNotes,
 }
 
 /// Why a file is not an importable export.
@@ -69,14 +78,15 @@ pub struct ImportPlan {
     pub replaced: Vec<String>,
 }
 
-/// The export file text: `{"schema_version":1,"app":"notae","favorites":[…],"sets":[…]}`.
+/// The export file text: `{"schema_version":2,"app":"notae","favorites":[…],"sets":[…],"score_notes":[…]}`.
 #[must_use]
-pub fn export_json(favorites: &Favorites, sets: &SetStore) -> String {
+pub fn export_json(favorites: &Favorites, sets: &SetStore, score_notes: &ScoreNotes) -> String {
     let file = ExportOut {
         schema_version: SCHEMA_VERSION,
         app: APP,
         favorites: favorites.items(),
         sets: sets.sets(),
+        score_notes: score_notes.items(),
     };
     serde_json::to_string(&file).unwrap_or_default()
 }
@@ -88,7 +98,7 @@ pub fn suggested_file_name(now: u64) -> String {
     format!("notae-sets-{year:04}-{month:02}-{day:02}.json")
 }
 
-/// Parses an export file. Invalid keys, repeated favorites, repeated set ids and repeated item
+/// Parses an export file. Invalid keys, blank score notes, repeated favorites, repeated set ids and repeated item
 /// ids within a set are dropped.
 ///
 /// # Errors
@@ -101,7 +111,7 @@ pub fn parse_export(text: &str) -> Result<Backup, BackupError> {
         return Err(BackupError::NotNotae);
     }
     match value.get("schema_version").and_then(Value::as_u64) {
-        Some(SCHEMA_VERSION) => {}
+        Some(FIRST_SCHEMA_VERSION | SCHEMA_VERSION) => {}
         Some(_) => return Err(BackupError::UnsupportedVersion),
         None => return Err(BackupError::Invalid),
     }
@@ -112,9 +122,22 @@ pub fn parse_export(text: &str) -> Result<Backup, BackupError> {
     for set in &mut sets {
         set.drop_invalid_items();
     }
+    let mut score_notes = ScoreNotes::default();
+    for note in file.score_notes {
+        if is_content_key(&note.key) {
+            score_notes.set(
+                PieceRef {
+                    key: note.key,
+                    path: note.path,
+                },
+                &note.text,
+            );
+        }
+    }
     Ok(Backup {
         favorites: Favorites::from_items(file.favorites),
         sets,
+        score_notes,
     })
 }
 
@@ -134,10 +157,16 @@ pub fn plan_import(current: &SetStore, backup: &Backup) -> ImportPlan {
     plan
 }
 
-/// Adds the backup's new sets, replaces sets with the same id, and adds favorites not yet
-/// listed at the end.
-pub fn apply_import(favorites: &mut Favorites, sets: &mut SetStore, backup: Backup) {
+/// Adds the backup's new sets, replaces sets with the same id, adds favorites not yet listed
+/// at the end, and merges score notes (an imported note replaces the one on the same score).
+pub fn apply_import(
+    favorites: &mut Favorites,
+    sets: &mut SetStore,
+    score_notes: &mut ScoreNotes,
+    backup: Backup,
+) {
     favorites.merge(&backup.favorites);
+    score_notes.merge(backup.score_notes);
     for set in backup.sets {
         sets.put(set);
     }
