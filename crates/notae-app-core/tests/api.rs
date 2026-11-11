@@ -917,6 +917,60 @@ fn a_thumbnail_rendered_after_a_snapshot_shows_in_the_next() {
     );
 }
 
+#[test]
+fn set_card_previews_use_rendered_thumbnails() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::ToggleAddPickerPiece {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    harness.core.dispatch(Action::CloseAddPicker);
+
+    let path = dir
+        .path()
+        .join("thumbnails")
+        .join(format!("{}.png", library.rows[0].note_key));
+    std::fs::create_dir_all(path.parent().expect("thumbnail directory")).expect("directory");
+    std::fs::write(&path, b"png").expect("thumbnail");
+    assert_eq!(
+        harness.core.snapshot().set_cards[0].previews,
+        [Some(path.to_string_lossy().into_owned()), None]
+    );
+}
+
+#[test]
+fn set_choice_previews_match_the_set_card() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::ToggleAddPickerPiece {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    harness.core.dispatch(Action::CloseAddPicker);
+
+    let path = dir
+        .path()
+        .join("thumbnails")
+        .join(format!("{}.png", library.rows[0].note_key));
+    std::fs::create_dir_all(path.parent().expect("thumbnail directory")).expect("directory");
+    std::fs::write(&path, b"png").expect("thumbnail");
+    harness.core.dispatch(Action::AddToSet {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    let snapshot = harness.core.snapshot();
+    let sheet = snapshot.add_to_set.expect("checklist");
+    assert_eq!(
+        sheet.choices[0].previews,
+        [Some(path.to_string_lossy().into_owned()), None]
+    );
+    assert_eq!(sheet.choices[0].previews, snapshot.set_cards[0].previews);
+}
+
 /// Runs `calls` on another thread and fails, instead of hanging, if it does not return soon.
 fn returns_promptly<T: Send + 'static>(
     what: &str,

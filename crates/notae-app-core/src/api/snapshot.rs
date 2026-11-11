@@ -347,6 +347,8 @@ pub struct SetCard {
     pub count: u32,
     /// When the set was last edited.
     pub edited: Edited,
+    /// Thumbnail paths of the set's first pieces, in set order; `None` is a blank page.
+    pub previews: Vec<Option<String>>,
 }
 
 /// When a set was last edited ([`text::Edited`]).
@@ -667,6 +669,8 @@ pub struct SetChoice {
     pub count: u32,
     /// The set holds the score.
     pub checked: bool,
+    /// Thumbnail paths of the set's first pieces, as on its card; `None` is a blank page.
+    pub previews: Vec<Option<String>>,
 }
 
 /// The add picker over the open set.
@@ -741,6 +745,11 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         _ => None,
     };
     let set_cards = browse::set_cards(model.sets(), crate::ui::unix_now());
+    let library_keys: HashSet<&str> = model
+        .search_rows()
+        .iter()
+        .map(|row| row.note_key.as_str())
+        .collect();
     let subtitle = if let Some(set) = open_set {
         let subtitle = browse::set_subtitle(set);
         Subtitle::Set {
@@ -806,6 +815,11 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         set_cards: set_cards
             .into_iter()
             .map(|card| SetCard {
+                previews: card
+                    .preview_keys
+                    .iter()
+                    .map(|key| lookup.thumbnail_for(key, !library_keys.contains(key.as_str())))
+                    .collect(),
                 id: card.id,
                 name: card.name,
                 date: card.date,
@@ -872,6 +886,11 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
                 .add_to_set_choices()
                 .into_iter()
                 .map(|choice| SetChoice {
+                    previews: choice
+                        .preview_keys
+                        .iter()
+                        .map(|key| lookup.thumbnail_for(key, !library_keys.contains(key.as_str())))
+                        .collect(),
                     id: choice.id,
                     name: choice.name,
                     date: choice.date,
@@ -941,17 +960,21 @@ impl<'a> RowLookup<'a> {
         }
     }
 
+    /// The rendered thumbnail's path for the piece with content `key`.
+    fn thumbnail_for(&self, key: &str, missing: bool) -> Option<String> {
+        if missing || !self.thumbnails.contains(key) {
+            // A missing piece has no PDF, so a thumbnail left from its old content is stale.
+            return None;
+        }
+        self.model
+            .thumbnail_cache()
+            .and_then(|cache| cache.path_for(key))
+            .map(|path| path.to_string_lossy().into_owned())
+    }
+
     fn row(&self, row: SearchRow) -> Row {
         let model = self.model;
-        let thumbnail = if row.missing || !self.thumbnails.contains(&row.note_key) {
-            // A missing piece has no PDF, so a thumbnail left from its old content is stale.
-            None
-        } else {
-            model
-                .thumbnail_cache()
-                .and_then(|cache| cache.path_for(&row.note_key))
-                .map(|path| path.to_string_lossy().into_owned())
-        };
+        let thumbnail = self.thumbnail_for(&row.note_key, row.missing);
         Row {
             selection_id: browse::row_id(&row).to_owned(),
             favorite: self.favorites.contains(row.note_key.as_str()),

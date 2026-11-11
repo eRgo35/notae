@@ -1,5 +1,9 @@
 package com.c2yz.notae.ui.sets
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,15 +29,20 @@ import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.GRID_TAG
 import com.c2yz.notae.ui.library.LIST_TAG
 import com.c2yz.notae.ui.library.LibraryScreen
+import com.c2yz.notae.ui.library.rememberThumbnail
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
+import org.junit.rules.TemporaryFolder
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.io.File
+import kotlin.random.Random
+import android.graphics.Color as AndroidColor
 
 /** The sets screens' Roborazzi captures (app/src/test/screenshots), named after their docs/compose-parity references. */
 @RunWith(RobolectricTestRunner::class)
@@ -87,7 +96,7 @@ class SetsScreenshotTest {
         addToSet = AddToSetSheet(
             ave.noteKey,
             ave.title,
-            Fixture.setCards.map { SetChoice(it.id, it.name, it.date, it.count, checked = it.id == "palm") },
+            Fixture.setCards.map { SetChoice(it.id, it.name, it.date, it.count, checked = it.id == "palm", previews = it.previews) },
         ),
     )
     private val inPalm = Fixture.palmRows.mapNotNull { row -> row.takeUnless { it.missing }?.title }.toSet()
@@ -255,4 +264,119 @@ class SetsScreenshotTest {
     @Test fun just_opened_list_light() = shot("set-just-opened-list", justOpenedList, landscape = true, dark = false)
 
     @Test fun just_opened_list_dark() = shot("set-just-opened-list", justOpenedList, landscape = true, dark = true)
+
+    // No reference: 0.3.0 drew a set as a folder. Each stack shape, with first pages drawn like printed scores.
+    @get:Rule
+    val pagesDir = TemporaryFolder()
+
+    /** A first page like a printed score: a title, a composer, and systems of five-line staves with notes. */
+    private fun scorePage(name: String, seed: Int): String {
+        val random = Random(seed)
+        val width = 420
+        val bitmap = Bitmap.createBitmap(width, 594, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(AndroidColor.WHITE)
+        val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AndroidColor.rgb(40, 40, 40) }
+        val title = 140 + random.nextInt(120)
+        canvas.drawRect(((width - title) / 2).toFloat(), 40f, ((width + title) / 2).toFloat(), 56f, ink)
+        canvas.drawRect(290f, 74f, 380f, 82f, ink)
+        ink.strokeWidth = 1.5f
+        var top = 112f
+        while (top < 540f) {
+            for (line in 0 until 5) canvas.drawLine(36f, top + line * 7, 384f, top + line * 7, ink)
+            var x = 56f
+            while (x < 370f) {
+                val y = top + random.nextInt(9) * 3.5f
+                canvas.drawOval(x - 4f, y - 3f, x + 4f, y + 3f, ink)
+                canvas.drawLine(x + 3.5f, y, x + 3.5f, y - 22f, ink)
+                x += 18f + random.nextInt(4) * 6f
+            }
+            top += 62f
+        }
+        val file = File(pagesDir.root, name)
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        // The sandbox's first native decode must run on the test thread: one on the IO thread aborts the process.
+        BitmapFactory.decodeFile(file.path)
+        return file.path
+    }
+
+    private val pages by lazy { listOf(scorePage("kyrie.png", 1), scorePage("gloria.png", 2), scorePage("sanctus.png", 3)) }
+
+    /** Like [shot] at a named window, once the pages are decoded, so the captures never catch a fade. */
+    private fun stackShot(state: String, window: String, dark: Boolean, snapshot: (List<String>) -> Snapshot, before: () -> Unit = {}) {
+        RuntimeEnvironment.setQualifiers(WINDOWS.getValue(window))
+        shown = snapshot(pages)
+        var decoded = false
+        compose.setContent {
+            decoded = pages.map { rememberThumbnail(it).value }.all { it != null }
+            NotaeTheme(dark = dark) {
+                if (decoded) {
+                    shown?.let {
+                        Box {
+                            LibraryScreen(it, {})
+                            SetOverlays(it, {})
+                        }
+                    }
+                }
+            }
+        }
+        compose.waitUntil(5_000) { decoded }
+        before()
+        compose.waitForIdle()
+        compose.onRoot().captureRoboImage("src/test/screenshots/$state-$window-${if (dark) "dark" else "light"}.png")
+    }
+
+    private val stackGrid = { pages: List<String> -> Fixture.stackSets(pages) }
+    private val stackList = { pages: List<String> -> Fixture.stackSets(pages).withView(LibraryView.LIST) }
+    private val stackChecklist = { pages: List<String> ->
+        Fixture.library().copy(
+            addToSet = AddToSetSheet(
+                ave.noteKey,
+                ave.title,
+                Fixture.stackCards(pages).map { SetChoice(it.id, it.name, it.date, it.count, it.id == "palm", it.previews) },
+            ),
+        )
+    }
+
+    @Test fun stack_grid_phone_light() = stackShot("set-stack-grid", "phone", dark = false, stackGrid)
+
+    @Test fun stack_grid_phone_dark() = stackShot("set-stack-grid", "phone", dark = true, stackGrid)
+
+    @Test fun stack_grid_rail_light() = stackShot("set-stack-grid", "rail", dark = false, stackGrid)
+
+    @Test fun stack_grid_rail_dark() = stackShot("set-stack-grid", "rail", dark = true, stackGrid)
+
+    @Test fun stack_grid_landscape_light() = stackShot("set-stack-grid", "landscape", dark = false, stackGrid)
+
+    @Test fun stack_grid_landscape_dark() = stackShot("set-stack-grid", "landscape", dark = true, stackGrid)
+
+    @Test fun stack_grid_portrait_light() = stackShot("set-stack-grid", "portrait", dark = false, stackGrid)
+
+    @Test fun stack_grid_portrait_dark() = stackShot("set-stack-grid", "portrait", dark = true, stackGrid)
+
+    @Test fun stack_list_light() = stackShot("set-stack-list", "landscape", dark = false, stackList)
+
+    @Test fun stack_list_dark() = stackShot("set-stack-list", "landscape", dark = true, stackList)
+
+    @Test fun stack_list_phone_light() = stackShot("set-stack-list", "phone", dark = false, stackList)
+
+    @Test fun stack_list_phone_dark() = stackShot("set-stack-list", "phone", dark = true, stackList)
+
+    @Test fun stack_checklist_light() = stackShot("set-stack-checklist", "landscape", dark = false, stackChecklist)
+
+    @Test fun stack_checklist_dark() = stackShot("set-stack-checklist", "landscape", dark = true, stackChecklist)
+
+    @Test fun stack_set_menu_light() = stackShot("set-stack-menu", "landscape", dark = false, stackGrid, before = openSetMenu)
+
+    @Test fun stack_set_menu_dark() = stackShot("set-stack-menu", "landscape", dark = true, stackGrid, before = openSetMenu)
+
+    private companion object {
+        /** The phone, a phone on its side with the rail, and the tablet both ways. */
+        val WINDOWS = mapOf(
+            "phone" to "+w384dp-h832dp-xhdpi",
+            "rail" to "+w700dp-h500dp-xhdpi",
+            "landscape" to "+w1280dp-h800dp-xhdpi",
+            "portrait" to "+w800dp-h1280dp-xhdpi",
+        )
+    }
 }

@@ -367,7 +367,12 @@ pub struct SetCard {
     pub count: usize,
     /// When the set was last edited, relative to now.
     pub edited: Edited,
+    /// Content keys of the set's first pieces (notes skipped, repeats kept), for the card's stack.
+    pub preview_keys: Vec<String>,
 }
+
+/// How many pieces a set card previews.
+const CARD_PREVIEWS: usize = 3;
 
 /// The folder cards of the Sets section, most recently edited first. `now` is Unix seconds.
 #[must_use]
@@ -380,6 +385,15 @@ pub fn set_cards(sets: &SetStore, now: u64) -> Vec<SetCard> {
             date: set.date.clone(),
             count: set.items.len(),
             edited: edited(set.modified, now),
+            preview_keys: set
+                .items
+                .iter()
+                .filter_map(|item| match &item.kind {
+                    ItemKind::Piece(piece) => Some(piece.key.clone()),
+                    ItemKind::Note { .. } => None,
+                })
+                .take(CARD_PREVIEWS)
+                .collect(),
         })
         .collect()
 }

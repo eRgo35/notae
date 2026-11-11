@@ -1,9 +1,12 @@
 package com.c2yz.notae.ui.sets
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
@@ -13,7 +16,9 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -23,6 +28,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.AddPicker
 import com.c2yz.notae.core.AddToSetSheet
@@ -274,6 +280,23 @@ class SetsScreenTest {
     }
 
     @Test
+    fun cardKeepsPaperAspect() {
+        var width by mutableStateOf(360.dp)
+        compose.setContent {
+            NotaeTheme {
+                SetsPane(Fixture.stackCards(listOf(null, null, null)), list = false, {}, {}, Modifier.width(width).height(1600.dp))
+            }
+        }
+        // Phone, rail, portrait and landscape tablet panes, and the widths between their column breaks.
+        for (pane in listOf(360, 420, 520, 612, 720, 800, 1000, 1180)) {
+            width = pane.dp
+            compose.waitForIdle()
+            val page = compose.onAllNodesWithTag(STACK_FRONT_TAG, useUnmergedTree = true)[0].getBoundsInRoot()
+            assertEquals("page aspect at $pane dp", 1.41f, (page.bottom - page.top) / (page.right - page.left), 0.02f)
+        }
+    }
+
+    @Test
     fun set_header_shows_subtitle_notes_and_actions() {
         show(Fixture.palmSunday())
 
@@ -344,9 +367,9 @@ class SetsScreenTest {
     }
 
     private val choices = listOf(
-        SetChoice("palm", "Niedziela Palmowa", "2026-03-29", 9u, true),
-        SetChoice("empty", "Pusty zestaw", null, 0u, false),
-        SetChoice("friday", Fixture.FRIDAY_NAME, "2026-04-03", 0u, false),
+        SetChoice("palm", "Niedziela Palmowa", "2026-03-29", 9u, true, listOf(null, null, null)),
+        SetChoice("empty", "Pusty zestaw", null, 0u, false, emptyList()),
+        SetChoice("friday", Fixture.FRIDAY_NAME, "2026-04-03", 0u, false, emptyList()),
     )
 
     @Test
