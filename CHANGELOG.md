@@ -9,6 +9,44 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-11
+
+Notae 0.7.0 slides instead of fading, shows each set as a stack of its scores,
+adds notes on scores and sets, and lets you share a set. See
+[`docs/release-notes/v0.7.0.md`](docs/release-notes/v0.7.0.md).
+
+### Added
+
+- **Score notes and set notes.** A score note is written on a score and shown
+  wherever it opens in the details. A set note belongs to one occurrence of a
+  score in a set and is shown in the details when the score is opened from
+  that set; rows with a set note are marked.
+- **Share a set** with the toolbar icon in the set or **Share** in the set's
+  ⋮ menu: **Share set** or **Share set with notes** sends a `.notae-set` file
+  and a readable list through Android's share sheet. PDFs and personal score
+  notes are never sent.
+- **Receive a shared set:** opening the file in Notae (Open with, Share to, or
+  **Import sets** in Settings) shows a review first: how many scores matched
+  and which did not. Scores that did not match stay in the set as placeholders
+  that link up after a later scan. If the set already exists, choose
+  **Replace** or **Keep both**.
+- **Set artwork is a stack of the set's first score previews**, in A4
+  proportions at every size. Small tiles show a mini stack; a set with only
+  text notes shows a note page; an empty set shows an outline.
+
+### Changed
+
+- **Switching sections slides** in the order of the rail or bottom bar. Deeper
+  screens slide in and out at full width without fading. Setup and loading
+  still fade. This corrects 0.6.1, where section changes faded through and
+  deeper screens faded as they slid.
+- The set's **Notes** field is now called **Description**; **Text note** rows
+  are unchanged.
+- **Export sets** now includes score notes (export format v2). Exports from
+  earlier versions still import.
+- The sets file is stored in format v2. Earlier files are read and upgraded.
+  **Downgrading to 0.6.x is not supported**: 0.6.x cannot read the new file.
+
 ## [0.6.1] - 2026-11-02
 
 Notae 0.6.1 adds the motion a current Android app has and fixes screens that
@@ -18,7 +56,8 @@ looked wrong in 0.6.0. See [`docs/release-notes/v0.6.1.md`](docs/release-notes/v
 
 - **Screen transitions:** a deeper screen slides in from the end and Back
   reverses it; the back gesture shrinks the screen it leaves; switching
-  sections fades through. The details pane slides in beside the list, and
+  sections fades through (0.7.0 changed this to sliding). The details pane
+  slides in beside the list, and
   Previous and Next slide the details between scores.
 - **Dialogs and sheets animate** in and out. Sheets close when dragged down,
   and follow the back gesture.
@@ -402,7 +441,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/eRgo35/notae/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/eRgo35/notae/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/eRgo35/notae/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/eRgo35/notae/releases/tag/v0.5.0
