@@ -430,10 +430,7 @@ fn a_score_deleted_during_search_is_unselected_when_search_closes() {
     });
     harness.core.dispatch(Action::OpenSearch);
     search_for(&harness, "Ave", &["Ave Maria"]);
-    platform.set_entries(Ok(vec![
-        readable("Ave Maria.pdf", b"Ave Maria"),
-        readable("Credo.pdf", b"Credo"),
-    ]));
+    platform.set_entries(Ok(vec![readable("Ave Maria.pdf", b"Ave Maria")]));
     harness.core.dispatch(Action::AcknowledgeOperation);
     assert!(
         !is_finished(&harness.core.snapshot()),
