@@ -55,9 +55,11 @@ internal const val MAX_IMPORT_BYTES = 16 * 1024 * 1024
 
 /**
  * The file a received intent carries: the data of a `VIEW` (Open with) or the [Intent.EXTRA_STREAM] of a `SEND` (Share
- * to), when it is a `content:` URI; null for any other action or URI.
+ * to), when it is a `content:` URI; null for any other action or URI, and for an intent relaunched from Recents, whose
+ * file was read when it first came.
  */
 internal fun importUri(intent: Intent): Uri? {
+    if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
     val uri = when (intent.action) {
         Intent.ACTION_VIEW -> intent.data
         Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)

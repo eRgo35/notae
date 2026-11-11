@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.foundation.BorderStroke
@@ -217,7 +218,8 @@ private fun cardExit(fromBottom: Boolean): ExitTransition =
 
 /**
  * One UI's dialog buttons: two text buttons sharing the card's width, split by a short divider, or three with a
- * [middle] one between them. [confirm] is in the accent colour, or the error colour when [destructive].
+ * [middle] one between them. On a phone three do not fit side by side, so they stack as full-width rows: [middle],
+ * [confirm], then [dismiss]. [confirm] is in the accent colour, or the error colour when [destructive].
  */
 @Composable
 fun DialogButtons(
@@ -232,6 +234,15 @@ fun DialogButtons(
     onMiddle: () -> Unit = {},
 ) {
     val c = NotaeTheme.colors
+    val confirmColor = if (destructive) c.error else c.accentText
+    if (middle != null && LocalConfiguration.current.screenWidthDp < COMPACT_WIDTH.value) {
+        Column(modifier.fillMaxWidth()) {
+            DialogTextButton(middle, onMiddle, c.accentText, Modifier.fillMaxWidth())
+            DialogTextButton(confirm, onConfirm, confirmColor, Modifier.fillMaxWidth(), enabled = confirmEnabled)
+            DialogTextButton(dismiss, onDismiss, c.accentText, Modifier.fillMaxWidth())
+        }
+        return
+    }
     Row(modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
         DialogTextButton(dismiss, onDismiss, c.accentText, Modifier.weight(1f))
         Box(Modifier.size(1.dp, 20.dp).background(c.divider))
@@ -239,7 +250,7 @@ fun DialogButtons(
             DialogTextButton(middle, onMiddle, c.accentText, Modifier.weight(1f))
             Box(Modifier.size(1.dp, 20.dp).background(c.divider))
         }
-        DialogTextButton(confirm, onConfirm, if (destructive) c.error else c.accentText, Modifier.weight(1f), enabled = confirmEnabled)
+        DialogTextButton(confirm, onConfirm, confirmColor, Modifier.weight(1f), enabled = confirmEnabled)
     }
 }
 

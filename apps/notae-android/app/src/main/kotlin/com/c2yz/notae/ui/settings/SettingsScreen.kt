@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.settings
 
+import android.content.res.Resources
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.animateColorAsState
@@ -50,6 +51,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -244,14 +246,17 @@ private fun SetsCard(settings: SettingsInfo, onAction: (Action) -> Unit, modifie
 
 /** "Favorites and sets imported", or "Could not import sets: …" with why; shown in Settings and on the setup screen. */
 @Composable
-fun importStatusText(status: ImportStatus): String = when (status) {
-    ImportStatus.Imported -> stringResource(R.string.settings_imported)
-    is ImportStatus.Failed -> stringResource(
+fun importStatusText(status: ImportStatus): String = importStatusText(LocalResources.current, status)
+
+/** [importStatusText] outside composition: the toast for a file opened with or shared to Notae that fails. */
+fun importStatusText(resources: Resources, status: ImportStatus): String = when (status) {
+    ImportStatus.Imported -> resources.getString(R.string.settings_imported)
+    is ImportStatus.Failed -> resources.getString(
         R.string.settings_import_failed,
         when (val error = status.error) {
-            ImportError.NotNotae -> stringResource(R.string.import_error_not_notae)
-            ImportError.UnsupportedVersion -> stringResource(R.string.import_error_version)
-            ImportError.Invalid -> stringResource(R.string.import_error_invalid)
+            ImportError.NotNotae -> resources.getString(R.string.import_error_not_notae)
+            ImportError.UnsupportedVersion -> resources.getString(R.string.import_error_version)
+            ImportError.Invalid -> resources.getString(R.string.import_error_invalid)
             is ImportError.Unreadable -> error.detail
         },
     )

@@ -169,8 +169,8 @@ class ImportTest {
     // Screenshots (app/src/test/screenshots). No reference: 0.3.0 had no import.
 
     /** The screen and the confirmation as the shell draws them, with a fixed About (the shell's shows the build hash). */
-    private fun shot(snapshot: Snapshot, name: String, dark: Boolean) {
-        RuntimeEnvironment.setQualifiers("+w1280dp-h800dp-xhdpi")
+    private fun shot(snapshot: Snapshot, name: String, dark: Boolean, qualifiers: String = "+w1280dp-h800dp-xhdpi") {
+        RuntimeEnvironment.setQualifiers(qualifiers)
         compose.setContent {
             NotaeTheme(dark = dark) {
                 Box {
@@ -183,22 +183,29 @@ class ImportTest {
             }
         }
         compose.waitForIdle()
-        compose.onRoot().captureRoboImage("src/test/screenshots/$name-landscape-${if (dark) "dark" else "light"}.png")
+        compose.onRoot().captureRoboImage("src/test/screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
 
-    @Test fun shot_confirm_light() = shot(confirming, "import-confirm", dark = false)
+    @Test fun shot_confirm_light() = shot(confirming, "import-confirm-landscape", dark = false)
 
-    @Test fun shot_confirm_dark() = shot(confirming, "import-confirm", dark = true)
+    @Test fun shot_confirm_dark() = shot(confirming, "import-confirm-landscape", dark = true)
 
-    @Test fun shot_setup_confirm_light() = shot(setupConfirming, "setup-import-confirm", dark = false)
+    @Test fun shot_setup_confirm_light() = shot(setupConfirming, "setup-import-confirm-landscape", dark = false)
 
-    @Test fun shot_setup_confirm_dark() = shot(setupConfirming, "setup-import-confirm", dark = true)
+    @Test fun shot_setup_confirm_dark() = shot(setupConfirming, "setup-import-confirm-landscape", dark = true)
 
-    @Test fun shot_shared_set_review_light() = shot(reviewing(exists = true), "shared-set-review", dark = false)
+    @Test fun shot_shared_set_review_light() = shot(reviewing(exists = true), "shared-set-review-landscape", dark = false)
 
-    @Test fun shot_shared_set_review_dark() = shot(reviewing(exists = true), "shared-set-review", dark = true)
+    @Test fun shot_shared_set_review_dark() = shot(reviewing(exists = true), "shared-set-review-landscape", dark = true)
+
+    /** A phone in Polish, the longest labels: the three buttons stack so each is whole. */
+    @Test fun shot_shared_set_review_phone_light() = shot(reviewing(exists = true), "shared-set-review-phone-pl", dark = false, qualifiers = PHONE_PL)
+
+    @Test fun shot_shared_set_review_phone_dark() = shot(reviewing(exists = true), "shared-set-review-phone-pl", dark = true, qualifiers = PHONE_PL)
 
     private companion object {
+        const val PHONE_PL = "+pl-w384dp-h832dp-xhdpi"
+
         val settings: Snapshot = Fixture.library().copy(
             screen = Screen.Settings,
             settings = Fixture.base.settings.copy(libraryName = "NotaeRef", indexedCount = 20u),

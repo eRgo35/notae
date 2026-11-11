@@ -3,6 +3,7 @@ package com.c2yz.notae
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -11,13 +12,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.lifecycleScope
 import com.c2yz.notae.core.EffectHandler
+import com.c2yz.notae.core.ImportStatus
 import com.c2yz.notae.core.NotaeViewModel
 import com.c2yz.notae.nav.NotaeNavDisplay
 import com.c2yz.notae.platform.importUri
 import com.c2yz.notae.platform.readImport
+import com.c2yz.notae.ui.settings.importStatusText
 import com.c2yz.notae.ui.theme.NotaeTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The app's only activity: draws the core's snapshots and carries out its effects, and reads a file opened with or shared
@@ -46,7 +50,11 @@ class MainActivity : AppCompatActivity() {
         receive(intent)
     }
 
-    /** Reads the file [intent] carries, if any, on [Dispatchers.IO], as the Import sets picker does. */
+    /**
+     * Reads the file [intent] carries, if any, on [Dispatchers.IO], as the Import sets picker does. The core reports the
+     * outcome synchronously; a failure (unreadable, or not a Notae file) is also a toast, since Settings, which shows
+     * it, may not be open.
+     */
     private fun receive(intent: Intent) {
         val uri = importUri(intent) ?: return
         lifecycleScope.launch(Dispatchers.IO) {
@@ -54,6 +62,10 @@ class MainActivity : AppCompatActivity() {
                 val detail = error.message ?: error.toString()
                 Log.w(TAG, "received file read failed: $detail")
                 model.importFileFailed(detail)
+            }
+            val failed = model.snapshot.value.settings.importStatus as? ImportStatus.Failed ?: return@launch
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, importStatusText(resources, failed), Toast.LENGTH_LONG).show()
             }
         }
     }
