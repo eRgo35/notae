@@ -1793,3 +1793,37 @@ fn shared_set_received_during_a_search_matches_the_whole_library() {
     };
     assert_eq!(piece.key, barka, "matched by number and title");
 }
+
+#[test]
+fn a_shared_set_waiting_for_the_confirmation_survives_a_new_core() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria", "Barka"]);
+    let expected = Some(ImportConfirmation {
+        sets: 1,
+        replaced: Vec::new(),
+        shared: Some(review("Mass", false)),
+    });
+
+    // Received before any library: it waits for one (D12), across the restart too.
+    let harness = start(dir.path(), Arc::clone(&platform));
+    harness.core.import_file_read(shared_set_file("s1", "Mass"));
+    drop(harness);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    open_and_scan(&harness);
+    assert_eq!(harness.core.snapshot().import_confirmation, expected);
+
+    // Shown and not answered yet.
+    drop(harness);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    let shown = harness.listener.wait_for("the review", |snapshot| {
+        snapshot.import_confirmation.is_some()
+    });
+    assert_eq!(shown.import_confirmation, expected);
+
+    // Answered, it is gone for good.
+    harness.core.dispatch(Action::ImportCancelled);
+    drop(harness);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    harness.listener.wait_for("the library", is_library);
+    assert_eq!(harness.core.snapshot().import_confirmation, None);
+}

@@ -24,6 +24,8 @@
 //!
 //! `recent.txt`, `ui-prefs.txt`, `favorites.json`, `score-notes.json`, `sets.json`, `index.sqlite`, `thumbnails/`,
 //! and `library-root.json`, the open folder, so a new core over the same directory reopens it.
+//! `pending-set.json` is a received shared set waiting for the confirmation, so it outlives the
+//! process.
 
 mod action;
 mod effect;
@@ -70,6 +72,9 @@ const POLL: Duration = Duration::from_millis(50);
 /// The file that remembers the open library folder.
 const ROOT_FILE: &str = "library-root.json";
 
+/// The file that keeps a shared set waiting for the confirmation.
+const PENDING_SET_FILE: &str = "pending-set.json";
+
 /// What the core tells Kotlin. Both methods may be called on any thread.
 #[uniffi::export(with_foreign)]
 pub trait CoreListener: Send + Sync {
@@ -113,6 +118,7 @@ impl NotaeCore {
             Err(error) => eprintln!("notae: no thumbnail directory: {error}"),
         }
         let saved_root = load_root(&data_dir.join(ROOT_FILE));
+        let pending_set_path = data_dir.join(PENDING_SET_FILE);
         if saved_root.is_none() {
             model.finish_startup_without_library();
         }
@@ -126,7 +132,8 @@ impl NotaeCore {
                 set_dialog: None,
                 export: None,
                 opening_pdf: None,
-                pending_import: None,
+                pending_import: load_pending_set(&pending_set_path),
+                pending_set_path,
                 import_status: None,
             }),
             platform,
@@ -240,10 +247,10 @@ impl NotaeCore {
                         state.close_search(None);
                     }
                     state.import_status = None;
-                    state.pending_import = Some(file);
+                    state.hold_import(file, &text);
                 }
                 Err(error) => {
-                    state.pending_import = None;
+                    state.take_pending_import();
                     state.import_status = Some(ImportStatus::Failed {
                         error: error.into(),
                     });
@@ -259,7 +266,7 @@ impl NotaeCore {
     pub fn import_file_failed(&self, detail: String) {
         let snapshot = {
             let mut state = self.shared.lock();
-            state.pending_import = None;
+            state.take_pending_import();
             state.import_status = Some(ImportStatus::Failed {
                 error: ImportError::Unreadable { detail },
             });
@@ -467,6 +474,8 @@ struct CoreState {
     opening_pdf: Option<String>,
     /// A read export or shared set file waiting for the import confirmation.
     pending_import: Option<ImportFile>,
+    /// Where a shared set in `pending_import` is kept ([`PENDING_SET_FILE`]).
+    pending_set_path: PathBuf,
     /// The outcome of the last import.
     import_status: Option<ImportStatus>,
 }
@@ -483,6 +492,30 @@ impl CoreState {
                 import_status: self.import_status.as_ref(),
             },
         )
+    }
+
+    /// Holds `file`, read from `text`, for the import confirmation. A shared set is also saved,
+    /// so it survives the process: Android may end it while the set waits.
+    fn hold_import(&mut self, file: ImportFile, text: &str) {
+        self.take_pending_import();
+        if matches!(file, ImportFile::Set(_))
+            && let Err(error) = crate::favorites::write_atomically(&self.pending_set_path, text)
+        {
+            eprintln!("notae: cannot save the received set: {error}");
+        }
+        self.pending_import = Some(file);
+    }
+
+    /// Drops the file waiting for the import confirmation, and the saved copy of a shared set.
+    fn take_pending_import(&mut self) -> Option<ImportFile> {
+        let file = self.pending_import.take();
+        if matches!(file, Some(ImportFile::Set(_)))
+            && let Err(error) = fs::remove_file(&self.pending_set_path)
+            && error.kind() != io::ErrorKind::NotFound
+        {
+            eprintln!("notae: cannot remove the received set: {error}");
+        }
+        file
     }
 
     /// Counts a change and builds its snapshot.
@@ -677,13 +710,13 @@ impl CoreState {
                 self.import_status = None;
                 return vec![Effect::PickImportFile];
             }
-            Action::ImportConfirmed => match self.pending_import.take() {
+            Action::ImportConfirmed => match self.take_pending_import() {
                 Some(ImportFile::Backup(backup)) => {
-                    model.import_backup(backup);
+                    self.model.import_backup(backup);
                     self.import_status = Some(ImportStatus::Imported);
                 }
                 Some(ImportFile::Set(shared)) => {
-                    model.import_shared_set(&shared, false);
+                    self.model.import_shared_set(&shared, false);
                     self.import_status = Some(ImportStatus::Imported);
                 }
                 None => {}
@@ -691,11 +724,13 @@ impl CoreState {
             Action::ImportKeepBoth => {
                 if let Some(ImportFile::Set(shared)) = &self.pending_import {
                     model.import_shared_set(shared, true);
-                    self.pending_import = None;
+                    self.take_pending_import();
                     self.import_status = Some(ImportStatus::Imported);
                 }
             }
-            Action::ImportCancelled => self.pending_import = None,
+            Action::ImportCancelled => {
+                self.take_pending_import();
+            }
             Action::NewSet => {
                 // A plain New set never carries a piece left from the checklist.
                 model.set_dialog_cancelled();
@@ -806,7 +841,7 @@ impl CoreState {
             None => false,
         };
         if shown {
-            self.pending_import = None;
+            self.take_pending_import();
             return true;
         }
         let model = &mut self.model;
@@ -876,6 +911,15 @@ fn load_root(path: &Path) -> Option<LibraryRoot> {
         field("display_name")?,
         field("handle")?,
     ))
+}
+
+/// The shared set saved while it waited for the confirmation, if any.
+fn load_pending_set(path: &Path) -> Option<ImportFile> {
+    let text = fs::read_to_string(path).ok()?;
+    match crate::backup::parse_import(&text) {
+        Ok(file @ ImportFile::Set(_)) => Some(file),
+        _ => None,
+    }
 }
 
 /// Saves the library folder through a temporary file.
