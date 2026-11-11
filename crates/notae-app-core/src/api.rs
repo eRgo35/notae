@@ -49,7 +49,7 @@ pub use snapshot::{
     SetupScreen, Snapshot, Snippet, StatusMessage, Subtitle,
 };
 
-use crate::backup::{Backup, BackupError};
+use crate::backup::{Backup, BackupError, ImportFile};
 use crate::operations::events::OperationEvent;
 use crate::operations::rescan::OperationController;
 use crate::platform::{PlatformCatalog, PlatformLibrary};
@@ -231,10 +231,17 @@ impl NotaeCore {
     pub fn import_file_read(&self, text: String) {
         let snapshot = {
             let mut state = self.shared.lock();
-            match crate::backup::parse_export(&text) {
-                Ok(backup) => {
+            match crate::backup::parse_import(&text) {
+                Ok(ImportFile::Backup(backup)) => {
                     state.import_status = None;
                     state.pending_import = Some(backup);
+                }
+                // Task 10 reviews and adds a shared set.
+                Ok(ImportFile::Set(_)) => {
+                    state.pending_import = None;
+                    state.import_status = Some(ImportStatus::Failed {
+                        error: ImportError::NotNotae,
+                    });
                 }
                 Err(error) => {
                     state.pending_import = None;
@@ -652,6 +659,17 @@ impl CoreState {
                 return vec![Effect::WriteExport {
                     suggested_name,
                     json,
+                }];
+            }
+            Action::ShareSet { set_id, with_notes } => {
+                let Some(set) = model.sets().get(&set_id) else {
+                    return Vec::new();
+                };
+                let rows = model.search_rows();
+                return vec![Effect::ShareSet {
+                    file_name: crate::share::share_file_name(&set.name),
+                    json: crate::share::share_json(set, rows, with_notes),
+                    text: crate::share::share_text(set, rows, with_notes),
                 }];
             }
             Action::ImportRequested => {

@@ -24,6 +24,7 @@ pub mod platform;
 pub mod recent;
 pub mod score_notes;
 pub mod sets;
+pub mod share;
 pub mod state;
 pub mod storage;
 pub mod text;

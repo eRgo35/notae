@@ -235,4 +235,12 @@ pub enum Action {
         /// The note field.
         text: String,
     },
+    /// "Share" on a set: hands Kotlin the set file and text list to send
+    /// ([`Effect::ShareSet`](super::Effect::ShareSet)). An unknown set does nothing.
+    ShareSet {
+        /// The set's id.
+        set_id: String,
+        /// Whether the set notes go with it.
+        with_notes: bool,
+    },
 }

@@ -13,12 +13,13 @@ use crate::favorites::{Favorites, PieceRef};
 use crate::recent::is_content_key;
 use crate::score_notes::{ScoreNote, ScoreNotes};
 use crate::sets::{Set, SetStore};
+use crate::share::{SharedSet, parse_shared};
 use crate::ui::browse::civil_from_days;
 
-const SCHEMA_VERSION: u64 = 2;
+pub(crate) const SCHEMA_VERSION: u64 = 2;
 /// The first export version, which has no score notes.
 const FIRST_SCHEMA_VERSION: u64 = 1;
-const APP: &str = "notae";
+pub(crate) const APP: &str = "notae";
 
 /// The export file's MIME type.
 pub const MIME_TYPE: &str = "application/json";
@@ -53,6 +54,15 @@ pub struct Backup {
     pub sets: Vec<Set>,
     /// The exported score notes; empty for a version 1 file.
     pub score_notes: ScoreNotes,
+}
+
+/// A parsed file for the import: a backup of everything, or one shared set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportFile {
+    /// An export of favorites, sets and score notes.
+    Backup(Backup),
+    /// A set shared by someone else.
+    Set(SharedSet),
 }
 
 /// Why a file is not an importable export.
@@ -98,14 +108,14 @@ pub fn suggested_file_name(now: u64) -> String {
     format!("notae-sets-{year:04}-{month:02}-{day:02}.json")
 }
 
-/// Parses an export file. Invalid keys, blank score notes, repeated favorites, repeated set ids and repeated item
+/// Parses a file to import: an export file, or a shared set file (`"kind":"set"`). Invalid keys, blank score notes, repeated favorites, repeated set ids and repeated item
 /// ids within a set are dropped.
 ///
 /// # Errors
 ///
 /// `NotNotae` for JSON that is not a Notae export, `UnsupportedVersion` for another schema
 /// version, `Invalid` for text that is not JSON or does not have the export's shape.
-pub fn parse_export(text: &str) -> Result<Backup, BackupError> {
+pub fn parse_import(text: &str) -> Result<ImportFile, BackupError> {
     let value: Value = serde_json::from_str(text).map_err(|_| BackupError::Invalid)?;
     if value.get("app").and_then(Value::as_str) != Some(APP) {
         return Err(BackupError::NotNotae);
@@ -114,6 +124,11 @@ pub fn parse_export(text: &str) -> Result<Backup, BackupError> {
         Some(FIRST_SCHEMA_VERSION | SCHEMA_VERSION) => {}
         Some(_) => return Err(BackupError::UnsupportedVersion),
         None => return Err(BackupError::Invalid),
+    }
+    match value.get("kind").and_then(Value::as_str) {
+        None | Some("backup") => {}
+        Some("set") => return parse_shared(&value).map(ImportFile::Set),
+        Some(_) => return Err(BackupError::NotNotae),
     }
     let file: ExportIn = serde_json::from_value(value).map_err(|_| BackupError::Invalid)?;
     let mut ids = HashSet::new();
@@ -134,11 +149,11 @@ pub fn parse_export(text: &str) -> Result<Backup, BackupError> {
             );
         }
     }
-    Ok(Backup {
+    Ok(ImportFile::Backup(Backup {
         favorites: Favorites::from_items(file.favorites),
         sets,
         score_notes,
-    })
+    }))
 }
 
 /// Counts the backup's new sets and names the current sets it would replace.

@@ -75,6 +75,8 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
                 exportFile.launch(effect.suggestedName)
             }
             Effect.PickImportFile -> importPicker.launch()
+            // Task 11 sends the set through the share sheet.
+            is Effect.ShareSet -> Unit
         }
     }
 

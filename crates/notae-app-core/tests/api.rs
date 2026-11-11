@@ -1454,3 +1454,41 @@ fn rows_carry_score_and_set_notes() {
     assert_eq!(row.score_note.as_deref(), Some("Slowly"));
     assert_eq!(row.set_note, None);
 }
+
+#[test]
+fn share_set_returns_the_file_and_text_and_ignores_unknown_sets() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    let set_id = harness.core.snapshot().set_cards[0].id.clone();
+
+    harness.core.dispatch(Action::ShareSet {
+        set_id: "missing".to_owned(),
+        with_notes: true,
+    });
+    assert!(
+        !harness
+            .listener
+            .effects()
+            .iter()
+            .any(|effect| matches!(effect, Effect::ShareSet { .. }))
+    );
+
+    harness.core.dispatch(Action::ShareSet {
+        set_id,
+        with_notes: false,
+    });
+    let Some(Effect::ShareSet {
+        file_name,
+        json,
+        text,
+    }) = harness.listener.effects().pop()
+    else {
+        panic!("sharing asks Kotlin to send the set");
+    };
+    assert_eq!(file_name, "Mass.notae-set");
+    assert!(json.contains(r#""kind":"set""#), "{json}");
+    assert!(text.starts_with("Mass\n1. "), "{text}");
+    assert!(text.contains("Ave Maria"), "{text}");
+}
