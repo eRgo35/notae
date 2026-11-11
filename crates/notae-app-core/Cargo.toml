@@ -22,8 +22,8 @@ default = ["bindgen-cli"]
 bindgen-cli = ["uniffi/cli"]
 
 [dependencies]
-notae-domain = { path = "../notae-domain", version = "0.6.1" }
-notae-index = { path = "../notae-index", version = "0.6.1" }
+notae-domain = { path = "../notae-domain", version = "0.7.0" }
+notae-index = { path = "../notae-index", version = "0.7.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.11"

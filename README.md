@@ -5,7 +5,7 @@
 **Browse and search your sheet-music PDFs on an Android phone or tablet. No
 cloud, no account, no network access.**
 
-<sub>Version 0.6.1 · Android phone and tablet (arm64) · one maintainer ·
+<sub>Version 0.7.0 · Android phone and tablet (arm64) · one maintainer ·
 <a href="ROADMAP.md">roadmap</a></sub>
 
 [![CI](https://github.com/eRgo35/notae/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eRgo35/notae/actions/workflows/ci.yml)
@@ -52,6 +52,12 @@ annotate scores itself: it hands each PDF to the viewer you already use.
   `lodz` finds `Łódź` in titles, composers, tags and lyrics.
 - **Edit details** (number, title, composer, tags). Manual edits are kept when
   a scan runs again.
+- **Notes:** a score note on a score, shown wherever it opens, and a set
+  note on one occurrence of a score in a set, shown when you open it from
+  that set.
+- **Share a set** through Android's share sheet as a `.notae-set` file plus a
+  readable list, with or without your set notes. Never PDFs or score notes.
+  The receiver sees a review of matched and unmatched scores first.
 - **Open scores in your PDF viewer**: Samsung Notes when installed, otherwise
   the Android PDF chooser.
 - Parses `<number> - <title>.pdf` file names and re-indexes incrementally by
@@ -132,7 +138,7 @@ release workflow builds, signs and verifies it from the release tag.
    check is what proves the APK came from the Notae release key.
 
    ```sh
-   V=0.6.1
+   V=0.7.0
    sha256sum -c "notae-$V-arm64.apk.sha256"
    apksigner verify --print-certs "notae-$V-arm64.apk" \
      | grep -i 'SHA-256 digest: be27cd781766c5c28a9db106c07b051ceee4e0003105964595e2a848f371f601'
@@ -185,6 +191,12 @@ app installed until you have checked that 0.5.0 has what you need.
 - **Edit:** change number, title, composer and tags from the **⋮** sheet's
   **Edit details** or from a score's details.
   Edits live in Notae's private index and never rename the PDF.
+- **Notes:** add a score note in a score's details; add a set note to a score
+  inside a set. Rows with a set note are marked.
+- **Share a set:** use the share icon in the open set or **Share** in its ⋮
+  menu, then **Share set** or **Share set with notes**. To receive one, open
+  the `.notae-set` file in Notae (or use **Import sets** in Settings) and
+  check the review.
 - **Rescan** from the Library header after adding files.
 
 ## Build from source
@@ -301,8 +313,8 @@ commit conventions and what must never be committed.
 
 What comes next is in [`ROADMAP.md`](ROADMAP.md).
 
-- **0.6.1 is verified with host tests and screenshot tests only;** its
-  animations and the phone layouts have not been checked on a device or an
+- **0.7.0 is verified with host tests and screenshot tests only;** its
+  animations, sharing between devices and the phone layouts have not been checked on a device or an
   emulator yet, and the Galaxy Tab S10 FE+ check is pending.
 - **No on-device OCR.** Scanned PDFs are found by file name only
   ([#28](https://github.com/eRgo35/notae/issues/28),

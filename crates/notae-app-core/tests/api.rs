@@ -14,9 +14,11 @@ use fake_platform::{FakePlatform, entry, readable};
 use notae_app_core::SetStore;
 use notae_app_core::api::{
     Action, CoreListener, Effect, ExportStatus, ImportConfirmation, ImportError, ImportStatus,
-    NotaeCore, Screen, SetEntry, SetupError, SetupScreen, Snapshot, StatusMessage, Subtitle,
+    NotaeCore, Screen, SetEntry, SetupError, SetupScreen, SharedSetReview, Snapshot, StatusMessage,
+    Subtitle, UnmatchedPiece,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
+use notae_app_core::score_notes::ScoreNotes;
 use notae_app_core::text::{Failure, RowStatus};
 
 const ROOT: &str = "content://tree/scores";
@@ -296,14 +298,52 @@ fn back_closes_innermost_first() {
     assert!(harness.core.back(), "leaves the set for the list of sets");
     assert_eq!(harness.core.snapshot().section_key, "sets");
 
+    assert!(harness.core.back(), "returns from Sets to the library");
+    assert_eq!(harness.core.snapshot().section_key, "all");
+
     assert!(
         !harness.core.back(),
         "the library itself has nothing to close"
     );
-    assert_eq!(harness.core.snapshot().section_key, "sets", "unchanged");
+    assert_eq!(harness.core.snapshot().section_key, "all", "unchanged");
     // Every back that closed something told Kotlin.
     let received = harness.listener.snapshot_count();
     assert!(received >= 8, "{received} snapshots");
+}
+
+#[test]
+fn back_from_another_section_returns_to_the_library_first() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    // A composer, so the library has a composer section.
+    let note_key = library.rows[0].note_key.clone();
+    harness.core.dispatch(Action::EditMetadata {
+        note_key: note_key.clone(),
+    });
+    harness.core.dispatch(Action::SaveMetadata {
+        note_key,
+        number: String::new(),
+        title: library.rows[0].title.clone(),
+        composer: "Schubert".to_owned(),
+        tags: String::new(),
+    });
+    let composed = harness
+        .listener
+        .wait_for("the composer section", |snapshot| {
+            !snapshot.composers.is_empty()
+        });
+    let composer = composed.composers[0].key.clone();
+
+    for key in ["recent", "favorites", "sets", composer.as_str()] {
+        harness.core.dispatch(Action::SelectSection {
+            key: key.to_owned(),
+        });
+        assert_eq!(harness.core.snapshot().section_key, key);
+        assert!(harness.core.back(), "Back leaves {key}");
+        assert_eq!(harness.core.snapshot().section_key, "all", "from {key}");
+        assert!(!harness.core.back(), "the library sends the app away");
+    }
 }
 
 #[test]
@@ -917,6 +957,117 @@ fn a_thumbnail_rendered_after_a_snapshot_shows_in_the_next() {
     );
 }
 
+#[test]
+fn set_card_previews_use_rendered_thumbnails() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::ToggleAddPickerPiece {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    harness.core.dispatch(Action::CloseAddPicker);
+
+    let path = dir
+        .path()
+        .join("thumbnails")
+        .join(format!("{}.png", library.rows[0].note_key));
+    std::fs::create_dir_all(path.parent().expect("thumbnail directory")).expect("directory");
+    std::fs::write(&path, b"png").expect("thumbnail");
+    assert_eq!(
+        harness.core.snapshot().set_cards[0].previews,
+        [Some(path.to_string_lossy().into_owned()), None]
+    );
+}
+
+#[test]
+fn set_choice_previews_match_the_set_card() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::ToggleAddPickerPiece {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    harness.core.dispatch(Action::CloseAddPicker);
+
+    let path = dir
+        .path()
+        .join("thumbnails")
+        .join(format!("{}.png", library.rows[0].note_key));
+    std::fs::create_dir_all(path.parent().expect("thumbnail directory")).expect("directory");
+    std::fs::write(&path, b"png").expect("thumbnail");
+    harness.core.dispatch(Action::AddToSet {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    let snapshot = harness.core.snapshot();
+    let sheet = snapshot.add_to_set.expect("checklist");
+    assert_eq!(
+        sheet.choices[0].previews,
+        [Some(path.to_string_lossy().into_owned()), None]
+    );
+    assert_eq!(sheet.choices[0].previews, snapshot.set_cards[0].previews);
+
+    // From a search result, Ave Maria is outside the hits but still in the library.
+    harness.core.dispatch(Action::CloseAddToSet);
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Barka", &["Barka"]);
+    harness.core.dispatch(Action::AddToSet {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    let sheet = harness.core.snapshot().add_to_set.expect("checklist");
+    assert_eq!(
+        sheet.choices[0].previews,
+        [Some(path.to_string_lossy().into_owned()), None]
+    );
+}
+
+#[test]
+fn set_choice_previews_during_a_search_show_a_piece_gone_from_the_library_as_missing() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria", "Barka", "Credo"]);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    let library = open_and_scan(&harness);
+    assert_eq!(titles(&library), ["Ave Maria", "Barka", "Credo"]);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::ToggleAddPickerPiece {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    harness.core.dispatch(Action::CloseAddPicker);
+
+    // Barka leaves the library; a thumbnail of it is still in the cache.
+    platform.set_entries(Ok(vec![
+        readable("Ave Maria.pdf", b"Ave Maria"),
+        readable("Credo.pdf", b"Credo"),
+    ]));
+    harness.core.dispatch(Action::AcknowledgeOperation);
+    harness.core.dispatch(Action::Rescan);
+    harness
+        .listener
+        .wait_for("the scan without Barka", is_finished);
+    let thumbnail = |row: &Snapshot, index: usize| {
+        let path = dir
+            .path()
+            .join("thumbnails")
+            .join(format!("{}.png", row.rows[index].note_key));
+        std::fs::create_dir_all(path.parent().expect("thumbnail directory")).expect("directory");
+        std::fs::write(&path, b"png").expect("thumbnail");
+        path.to_string_lossy().into_owned()
+    };
+    let (ave, _) = (thumbnail(&library, 0), thumbnail(&library, 1));
+
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Ave", &["Ave Maria"]);
+    harness.core.dispatch(Action::AddToSet {
+        note_key: library.rows[0].note_key.clone(),
+    });
+    let sheet = harness.core.snapshot().add_to_set.expect("checklist");
+    assert_eq!(sheet.choices[0].previews, [Some(ave), None]);
+}
+
 /// Runs `calls` on another thread and fails, instead of hanging, if it does not return soon.
 fn returns_promptly<T: Send + 'static>(
     what: &str,
@@ -1176,6 +1327,30 @@ fn import_is_offered_only_without_favorites_and_sets() {
 }
 
 #[test]
+fn score_note_survives_rescan_and_rename() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria"]);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    let library = open_and_scan(&harness);
+    let key = library.rows[0].note_key.clone();
+    harness.core.dispatch(Action::SaveScoreNote {
+        note_key: key.clone(),
+        text: "  slow start ".to_owned(),
+    });
+    let file = dir.path().join("score-notes.json");
+    assert_eq!(ScoreNotes::load(&file).get(&key), Some("slow start"));
+
+    harness.core.dispatch(Action::AcknowledgeOperation);
+    platform.set_entries(Ok(vec![readable("Renamed.pdf", b"Ave Maria")]));
+    harness.core.dispatch(Action::Rescan);
+    let rescanned = harness.listener.wait_for("the second scan", is_finished);
+    assert_eq!(rescanned.rows[0].relative_path, "Renamed.pdf");
+
+    let notes = ScoreNotes::load(&file);
+    assert_eq!(notes.get(&key), Some("slow start"));
+}
+
+#[test]
 fn opening_item_marks_just_opened_without_bumping_modified() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
@@ -1282,6 +1457,7 @@ fn import_cancel_changes_nothing() {
         Some(ImportConfirmation {
             sets: 1,
             replaced: vec!["Evening Mass".to_owned()],
+            shared: None,
         })
     );
     harness.core.dispatch(Action::ImportCancelled);
@@ -1351,7 +1527,7 @@ fn import_of_a_wrong_file_says_why_and_back_closes_the_confirmation() {
     );
     harness
         .core
-        .import_file_read(r#"{"app":"notae","schema_version":2}"#.to_owned());
+        .import_file_read(r#"{"app":"notae","schema_version":3}"#.to_owned());
     assert_eq!(
         harness.core.snapshot().settings.import_status,
         Some(ImportStatus::Failed {
@@ -1383,7 +1559,8 @@ fn import_of_a_wrong_file_says_why_and_back_closes_the_confirmation() {
         asking.import_confirmation,
         Some(ImportConfirmation {
             sets: 0,
-            replaced: Vec::new()
+            replaced: Vec::new(),
+            shared: None,
         })
     );
     assert_eq!(asking.settings.import_status, None);
@@ -1393,4 +1570,295 @@ fn import_of_a_wrong_file_says_why_and_back_closes_the_confirmation() {
     );
     assert_eq!(harness.core.snapshot().import_confirmation, None);
     assert!(!harness.core.back());
+}
+
+#[test]
+fn rows_carry_score_and_set_notes() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    let key = library.rows[0].note_key.clone();
+    let in_set = set_with_first_piece(&harness, &library);
+    let item_id = in_set.rows[0].item_id.clone().expect("a set row");
+    harness.core.dispatch(Action::SaveScoreNote {
+        note_key: key.clone(),
+        text: "Slowly".to_owned(),
+    });
+    harness.core.dispatch(Action::SaveSetNote {
+        item_id: item_id.clone(),
+        text: "Repeat twice".to_owned(),
+    });
+
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: item_id,
+    });
+    let row = harness.core.snapshot().selection.expect("details open").row;
+    assert_eq!(row.score_note.as_deref(), Some("Slowly"));
+    assert_eq!(row.set_note.as_deref(), Some("Repeat twice"));
+
+    harness.core.dispatch(Action::SelectSection {
+        key: "all".to_owned(),
+    });
+    harness
+        .core
+        .dispatch(Action::SelectScore { selection_id: key });
+    let row = harness.core.snapshot().selection.expect("details open").row;
+    assert_eq!(row.score_note.as_deref(), Some("Slowly"));
+    assert_eq!(row.set_note, None);
+}
+
+#[test]
+fn share_set_returns_the_file_and_text_and_ignores_unknown_sets() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    set_with_first_piece(&harness, &library);
+    let set_id = harness.core.snapshot().set_cards[0].id.clone();
+
+    harness.core.dispatch(Action::ShareSet {
+        set_id: "missing".to_owned(),
+        with_notes: true,
+    });
+    assert!(
+        !harness
+            .listener
+            .effects()
+            .iter()
+            .any(|effect| matches!(effect, Effect::ShareSet { .. }))
+    );
+
+    harness.core.dispatch(Action::ShareSet {
+        set_id: set_id.clone(),
+        with_notes: false,
+    });
+    let Some(Effect::ShareSet {
+        file_name,
+        json,
+        text,
+    }) = harness.listener.effects().pop()
+    else {
+        panic!("sharing asks Kotlin to send the set");
+    };
+    assert_eq!(file_name, "Mass.notae-set");
+    assert!(json.contains(r#""kind":"set""#), "{json}");
+    assert!(text.starts_with("Mass\n1. "), "{text}");
+    assert!(text.contains("Ave Maria"), "{text}");
+
+    // A search's hits lack Ave Maria's title, so the set is not shared from them.
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Barka", &["Barka"]);
+    let shared = harness.listener.effects().len();
+    harness.core.dispatch(Action::ShareSet {
+        set_id,
+        with_notes: false,
+    });
+    assert_eq!(harness.listener.effects().len(), shared);
+}
+
+/// A shared set file: "Ave Maria" under another key but the library's path, then "Lost" (9), which no library
+/// holds.
+fn shared_set_file(id: &str, name: &str) -> String {
+    let (other, lost) = ("f".repeat(64), "e".repeat(64));
+    format!(
+        r#"{{"schema_version":2,"app":"notae","kind":"set","set":{{"id":"{id}","name":"{name}","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{other}","path":"Ave Maria.pdf","title":"Ave Maria"}},{{"id":"i2","kind":"piece","key":"{lost}","path":"Lost.pdf","number":"9","title":"Lost"}}]}}}}"#
+    )
+}
+
+fn review(name: &str, exists: bool) -> SharedSetReview {
+    SharedSetReview {
+        name: name.to_owned(),
+        matched: 1,
+        unmatched: vec![UnmatchedPiece {
+            number: Some("9".to_owned()),
+            title: "Lost".to_owned(),
+        }],
+        exists,
+    }
+}
+
+#[test]
+fn shared_set_waits_for_the_library() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    assert!(matches!(
+        harness.core.snapshot().screen,
+        Screen::Setup { .. }
+    ));
+
+    harness.core.import_file_read(shared_set_file("s1", "Mass"));
+    let waiting = harness.core.snapshot();
+    assert_eq!(waiting.import_confirmation, None);
+    assert_eq!(waiting.settings.import_status, None);
+    assert!(!harness.core.back(), "Back does not drop the waiting set");
+
+    open_and_scan(&harness);
+    assert_eq!(
+        harness.core.snapshot().import_confirmation,
+        Some(ImportConfirmation {
+            sets: 1,
+            replaced: Vec::new(),
+            shared: Some(review("Mass", false)),
+        })
+    );
+}
+
+#[test]
+fn shared_set_replace_and_keep_both() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    let ave = library
+        .rows
+        .iter()
+        .find(|row| row.title == "Ave Maria")
+        .expect("Ave Maria")
+        .note_key
+        .clone();
+    let in_set = set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::SaveSetNote {
+        item_id: in_set.rows[0].selection_id.clone(),
+        text: "breathe".to_owned(),
+    });
+    let set_id = harness.core.snapshot().set_cards[0].id.clone();
+    let file = shared_set_file(&set_id, "Choir Mass");
+    let before_import = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after 1970")
+        .as_secs();
+
+    harness.core.import_file_read(file.clone());
+    assert_eq!(
+        harness.core.snapshot().import_confirmation,
+        Some(ImportConfirmation {
+            sets: 1,
+            replaced: vec!["Mass".to_owned()],
+            shared: Some(review("Choir Mass", true)),
+        })
+    );
+    harness.core.dispatch(Action::ImportConfirmed);
+    let replaced = harness.core.snapshot();
+    assert_eq!(replaced.import_confirmation, None);
+    assert_eq!(
+        replaced.settings.import_status,
+        Some(ImportStatus::Imported)
+    );
+    assert_eq!(replaced.set_cards.len(), 1);
+    assert_eq!(replaced.set_cards[0].name, "Choir Mass");
+    let saved = SetStore::load(&dir.path().join("sets.json"));
+    let set = saved.get(&set_id).expect("the replaced set is saved");
+    let notae_app_core::sets::ItemKind::Piece(first) = &set.items[0].kind else {
+        panic!("a piece");
+    };
+    assert_eq!(first.key, ave, "the matched piece takes the library's key");
+    assert_eq!(
+        set.items[0].set_note.as_deref(),
+        Some("breathe"),
+        "the file has no set note there, so the local one stays"
+    );
+    let notae_app_core::sets::ItemKind::Piece(lost) = &set.items[1].kind else {
+        panic!("a piece");
+    };
+    assert_eq!(
+        lost.path, "Lost.pdf",
+        "the unmatched piece is a placeholder"
+    );
+    assert!(
+        set.modified >= before_import,
+        "a received set is edited now, not at the sender's time (1)"
+    );
+
+    harness.core.import_file_read(file);
+    harness.core.dispatch(Action::ImportKeepBoth);
+    let both = harness.core.snapshot();
+    assert_eq!(both.import_confirmation, None);
+    let mut names: Vec<&str> = both
+        .set_cards
+        .iter()
+        .map(|card| card.name.as_str())
+        .collect();
+    names.sort_unstable();
+    assert_eq!(names, vec!["Choir Mass", "Choir Mass (2)"]);
+    let saved = SetStore::load(&dir.path().join("sets.json"));
+    assert_eq!(saved.sets().len(), 2);
+    assert_ne!(saved.sets()[0].id, saved.sets()[1].id);
+    assert!(saved.sets().iter().all(|set| set.modified >= before_import));
+}
+
+#[test]
+fn shared_set_received_during_a_search_matches_the_whole_library() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = Arc::new(FakePlatform::default());
+    platform.set_entries(Ok(vec![
+        readable("Ave Maria.pdf", b"Ave Maria"),
+        readable("12 - Barka.pdf", b"Barka"),
+    ]));
+    let harness = start(dir.path(), platform);
+    let library = open_and_scan(&harness);
+    let barka = library
+        .rows
+        .iter()
+        .find(|row| row.title == "Barka")
+        .expect("Barka")
+        .note_key
+        .clone();
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Ave", &["Ave Maria"]);
+
+    // Barka under another key and path: only its number and title can match it.
+    let other = "f".repeat(64);
+    harness.core.import_file_read(format!(
+        r#"{{"schema_version":2,"app":"notae","kind":"set","set":{{"id":"s1","name":"Mass","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{other}","path":"Old/Barka.pdf","number":"12","title":"Barka"}}]}}}}"#
+    ));
+    let review = harness.listener.wait_for("the review", |snapshot| {
+        snapshot.import_confirmation.is_some()
+    });
+    let screen = review.screen.clone();
+    let shared = review
+        .import_confirmation
+        .and_then(|confirmation| confirmation.shared)
+        .expect("a shared set review");
+    assert_eq!((shared.matched, shared.unmatched.len()), (1, 0));
+    assert_eq!(screen, Screen::Library, "the file closes Search");
+
+    harness.core.dispatch(Action::ImportConfirmed);
+    let saved = SetStore::load(&dir.path().join("sets.json"));
+    let set = saved.get("s1").expect("the imported set is saved");
+    let notae_app_core::sets::ItemKind::Piece(piece) = &set.items[0].kind else {
+        panic!("a piece");
+    };
+    assert_eq!(piece.key, barka, "matched by number and title");
+}
+
+#[test]
+fn a_shared_set_waiting_for_the_confirmation_survives_a_new_core() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria", "Barka"]);
+    let expected = Some(ImportConfirmation {
+        sets: 1,
+        replaced: Vec::new(),
+        shared: Some(review("Mass", false)),
+    });
+
+    // Received before any library: it waits for one (D12), across the restart too.
+    let harness = start(dir.path(), Arc::clone(&platform));
+    harness.core.import_file_read(shared_set_file("s1", "Mass"));
+    drop(harness);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    open_and_scan(&harness);
+    assert_eq!(harness.core.snapshot().import_confirmation, expected);
+
+    // Shown and not answered yet.
+    drop(harness);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    let shown = harness.listener.wait_for("the review", |snapshot| {
+        snapshot.import_confirmation.is_some()
+    });
+    assert_eq!(shown.import_confirmation, expected);
+
+    // Answered, it is gone for good.
+    harness.core.dispatch(Action::ImportCancelled);
+    drop(harness);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    harness.listener.wait_for("the library", is_library);
+    assert_eq!(harness.core.snapshot().import_confirmation, None);
 }

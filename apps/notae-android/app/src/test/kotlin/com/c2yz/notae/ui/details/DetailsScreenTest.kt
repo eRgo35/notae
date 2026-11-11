@@ -20,6 +20,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
@@ -301,6 +305,96 @@ class DetailsScreenTest {
         compose.onNodeWithText("1 of 3").assertExists()
     }
 
+    @Test
+    fun showsScoreNoteThenSetNote() {
+        val snapshot = inSet(1).let { it.copy(selection = it.selection!!.copy(row = it.selection!!.row.copy(scoreNote = "Wolniej", setNote = "Kantor zaczyna"))) }
+        show(snapshot)
+
+        val score = compose.onNodeWithText("Score note").fetchSemanticsNode().boundsInRoot
+        val set = compose.onNodeWithText("Note for Niedziela Palmowa").fetchSemanticsNode().boundsInRoot
+        assertTrue("the score note comes first", score.bottom <= set.top)
+        compose.onNodeWithText("Wolniej").assertExists()
+        compose.onNodeWithText("Kantor zaczyna").assertExists()
+    }
+
+    @Test
+    fun outsideASetShowsOnlyTheScoreNote() {
+        show(aveMariaDetails())
+
+        compose.onNodeWithText("Score note").assertExists()
+        compose.onNodeWithText("Add score note").assertExists()
+        compose.onNodeWithText("Note for", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("Add set note").assertDoesNotExist()
+    }
+
+    @Test
+    fun editScoreNoteDispatchesSave() {
+        val snapshot = aveMariaDetails()
+        val row = snapshot.selection!!.row
+        show(snapshot)
+
+        compose.onNodeWithText("Add score note").performScrollTo().performClick()
+        compose.assertAllClickablesLabelled()
+        compose.onNodeWithContentDescription("Note").performTextInput("Fermata dłużej")
+        compose.onNodeWithText("Save note").performClick()
+        compose.onNodeWithText("Save note").assertDoesNotExist()
+
+        shown = snapshot.copy(selection = snapshot.selection!!.copy(row = row.copy(scoreNote = "Fermata dłużej")))
+        compose.waitForIdle()
+        compose.onNodeWithText("Fermata dłużej").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Note").assertTextEquals("Fermata dłużej").performTextReplacement("")
+        compose.onNodeWithText("Save note").performClick()
+
+        assertEquals(listOf(Action.SaveScoreNote(row.noteKey, "Fermata dłużej"), Action.SaveScoreNote(row.noteKey, "")), actions)
+    }
+
+    @Test
+    fun setNoteEditorDispatchesSaveAndEscapeCancels() {
+        show(inSet(1))
+
+        compose.onNodeWithText("Add set note").performScrollTo().performClick()
+        compose.onNodeWithText("Save note").assertExists()
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        compose.onNodeWithText("Save note").assertDoesNotExist()
+
+        compose.onNodeWithText("Add set note").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Note").performTextInput("Kantor zaczyna")
+        compose.onNodeWithText("Save note").performClick()
+
+        // Escape closed the editor, not the details.
+        assertEquals(listOf<Action>(Action.SaveSetNote("item-b", "Kantor zaczyna")), actions)
+    }
+
+    @Test
+    fun blankTextClearsAScoreNoteOrASetNote() {
+        // D7: Save stays enabled with blank or whitespace-only text, and saving it clears the note.
+        val set = inSet(1)
+        val row = set.selection!!.row.copy(scoreNote = "Fermata dłużej", setNote = "Kantor zaczyna")
+        show(set.copy(selection = set.selection!!.copy(row = row)))
+
+        compose.onNodeWithText("Fermata dłużej").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Note").performTextReplacement("   ")
+        compose.onNodeWithText("Save note").assertIsEnabled().performClick()
+        compose.onNodeWithText("Kantor zaczyna").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Note").performTextReplacement("")
+        compose.onNodeWithText("Save note").assertIsEnabled().performClick()
+
+        assertEquals(listOf(Action.SaveScoreNote(row.noteKey, "   "), Action.SaveSetNote("item-b", "")), actions)
+    }
+
+    @Test
+    fun theNoteFieldShowsFourLinesAndGrows() {
+        show(aveMariaDetails())
+        compose.onNodeWithText("Add score note").performScrollTo().performClick()
+
+        val field = compose.onNodeWithContentDescription("Note")
+        val empty = field.getBoundsInRoot().let { it.bottom - it.top }
+        assertTrue("four lines of 16 sp text and the padding: $empty", empty >= 100.dp)
+        field.performTextInput("1\n2\n3\n4\n5\n6")
+        val longer = field.getBoundsInRoot().let { it.bottom - it.top }
+        assertTrue("grows past four lines: $empty -> $longer", longer > empty + 30.dp)
+    }
+
     private fun scrollOffset(): Float =
         compose.onNodeWithTag(DETAILS_BODY_TAG).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
@@ -336,12 +430,16 @@ class DetailsScreenTest {
     private val library: Snapshot
         get() = aveMariaDetails().let { it.copy(selection = it.selection!!.copy(row = it.selection!!.row.copy(number = null))) }
 
-    /** Kyrie eleison, the second piece of "Niedziela Palmowa", as in details-in-set. */
+    /** Kyrie eleison, the second piece of "Niedziela Palmowa", as in details-in-set, with a score note and a set note. */
     private val inSet: Snapshot
         get() {
             // A score without a composer has no composer origin, as the core reports it.
-            val kyrie = Fixture.palmRows[1].copy(composerOrigin = Origin.UNSET)
-            return Fixture.palmSunday().copy(
+            val kyrie = Fixture.palmRows[1].copy(
+                composerOrigin = Origin.UNSET,
+                scoreNote = "Tonacja F, wolno",
+                setNote = Fixture.KYRIE_SET_NOTE,
+            )
+            return Fixture.palmWithSetNote().copy(
                 selection = Selection(kyrie, previous = "item-1", next = "item-3", position = PositionOf(2u, 9u)),
             )
         }

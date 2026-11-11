@@ -1,5 +1,7 @@
 package com.c2yz.notae.ui.sets
 
+import com.c2yz.notae.ui.library.NOTE_LINES
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -94,7 +96,7 @@ internal fun AddToSetSheet(sheet: AddToSetSheet, onAction: (Action) -> Unit) {
     }
 }
 
-/** 0.3.0's `SetChoiceRow`: a 64 dp checkbox row with the folder, name, "date · N items" and the tick. */
+/** 0.3.0's `SetChoiceRow`: a 64 dp checkbox row with the [MiniStack], name, "date · N items" and the tick. */
 @Composable
 private fun SetChoiceRow(choice: SetChoice, onToggle: () -> Unit) {
     val c = NotaeTheme.colors
@@ -114,7 +116,7 @@ private fun SetChoiceRow(choice: SetChoice, onToggle: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FolderTile(40.dp, 12.dp, 24.dp)
+        MiniStack(choice.previews, choice.count == 0u, 40.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(choice.name, color = c.foreground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(setDetail(choice.date, choice.count), color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -202,7 +204,7 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
             }
             if (noteTab) {
                 Column(Modifier.fillMaxWidth().height(listHeight + 72.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextField(note, { note = it }, stringResource(R.string.note_field), Modifier.focusRequester(noteField), multiLine = true)
+                    TextField(note, { note = it }, stringResource(R.string.note_field), Modifier.focusRequester(noteField), multiLine = true, minLines = NOTE_LINES)
                     Text(stringResource(R.string.note_added_at_end), color = c.muted, fontSize = 14.sp)
                 }
                 DialogButtons(

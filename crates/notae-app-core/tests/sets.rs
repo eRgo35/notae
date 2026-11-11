@@ -38,12 +38,14 @@ fn kyrie_row(c: char) -> SearchRow {
         item_id: None,
         position: None,
         missing: false,
+        set_note: None,
     }
 }
 
 /// The worker's rescan result carrying `rows`.
 fn completed(rows: Vec<SearchRow>) -> OperationEvent {
     OperationEvent::Completed {
+        query: String::new(),
         summary: RescanSummary::default(),
         rows,
     }
@@ -279,7 +281,7 @@ fn json_round_trip_with_notes_and_pieces() {
         .unwrap();
     store.mark_opened(&set, &note);
     let json = store.to_json();
-    assert!(json.contains(r#""schema_version":1"#));
+    assert!(json.contains(r#""schema_version":2"#));
     assert!(json.contains(r#""kind":"piece""#));
     assert!(json.contains(r#""kind":"note","text":"Pause""#));
     assert_eq!(SetStore::from_json(&json), store);
@@ -293,7 +295,7 @@ fn json_round_trip_with_notes_and_pieces() {
 fn corrupt_and_future_version_json_load_empty() {
     assert_eq!(SetStore::from_json("not json"), SetStore::default());
     assert_eq!(SetStore::from_json(""), SetStore::default());
-    let future = r#"{"schema_version":2,"sets":[{"id":"a","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[]}]}"#;
+    let future = r#"{"schema_version":3,"sets":[{"id":"a","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[]}]}"#;
     assert_eq!(SetStore::from_json(future), SetStore::default());
 }
 
@@ -302,6 +304,24 @@ fn invalid_piece_keys_are_dropped_on_load() {
     let json = r#"{"schema_version":1,"sets":[{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{"id":"i1","kind":"piece","key":"BAD","path":"a.pdf"},{"id":"i2","kind":"note","text":"keep"}]}]}"#;
     let store = SetStore::from_json(json);
     assert_eq!(item_ids(&store, "s"), ["i2"]);
+}
+
+#[test]
+fn a_sets_file_without_placeholder_names_loads() {
+    // Before 0.7.0 a piece item held only its key and path; a note never holds a number or title.
+    let key = "a".repeat(64);
+    let json = format!(
+        r#"{{"schema_version":2,"sets":[{{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{key}","path":"a.pdf"}},{{"id":"i2","kind":"note","text":"keep","number":"1","title":"t"}}]}}]}}"#
+    );
+    let store = SetStore::from_json(&json);
+    let items = &store.sets()[0].items;
+    assert_eq!(item_ids(&store, "s"), ["i1", "i2"]);
+    assert!(
+        items
+            .iter()
+            .all(|item| item.number.is_none() && item.title.is_none())
+    );
+    assert!(!store.to_json().contains("title"), "omitted when absent");
 }
 
 #[test]
@@ -433,7 +453,10 @@ fn rescan_with_new_key_at_same_path_rewrites_both_files() {
     model.set_favorites_path(favorites_path.clone());
     model.set_sets_path(sets_path.clone());
     model
-        .apply_operation_event(OperationEvent::SearchRows(vec![row('a')]))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: vec![row('a')],
+        })
         .unwrap();
     model.toggle_favorite(&"a".repeat(64)).unwrap();
     let id = model.create_set(fields("Mass")).unwrap();
@@ -461,7 +484,10 @@ fn rescan_with_new_key_at_same_path_rewrites_both_files() {
 
     // A search after another replacement re-links the same way.
     model
-        .apply_operation_event(OperationEvent::SearchRows(vec![row('c')]))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: vec![row('c')],
+        })
         .unwrap();
     assert_eq!(
         saved_keys(&favorites_path, &sets_path, &id),
@@ -476,7 +502,7 @@ fn future_version_sets_survive_favorite_changes_and_relink() {
     let favorites_path = dir.path().join("favorites.json");
     let sets_path = dir.path().join("sets.json");
     let future_sets = format!(
-        r#"{{"schema_version":2,"sets":[{{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{}","path":"Kyrie.pdf"}}]}}]}}"#,
+        r#"{{"schema_version":3,"sets":[{{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{}","path":"Kyrie.pdf"}}]}}]}}"#,
         "a".repeat(64)
     );
     std::fs::write(&sets_path, &future_sets).unwrap();
@@ -485,7 +511,10 @@ fn future_version_sets_survive_favorite_changes_and_relink() {
     model.set_favorites_path(favorites_path.clone());
     model.set_sets_path(sets_path.clone());
     model
-        .apply_operation_event(OperationEvent::SearchRows(vec![kyrie_row('a')]))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: vec![kyrie_row('a')],
+        })
         .unwrap();
 
     // Starring is a change to favorites, so the corrupt favorites file may be replaced.
@@ -514,7 +543,10 @@ fn future_version_favorites_survive_set_changes_and_relink() {
     model.set_favorites_path(favorites_path.clone());
     model.set_sets_path(sets_path.clone());
     model
-        .apply_operation_event(OperationEvent::SearchRows(vec![kyrie_row('a')]))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: vec![kyrie_row('a')],
+        })
         .unwrap();
 
     let id = model.create_set(fields("Mass")).unwrap();
@@ -532,5 +564,99 @@ fn future_version_favorites_survive_set_changes_and_relink() {
     assert_eq!(
         std::fs::read_to_string(&favorites_path).unwrap(),
         future_favorites
+    );
+}
+
+const V1_SET: &str = r#"{"schema_version":1,"sets":[{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{"id":"i1","kind":"piece","key":"KEY","path":"a.pdf"}]}]}"#;
+
+fn store_with_two_of_a_kind() -> (SetStore, String, String, String) {
+    let mut store = SetStore::default();
+    let set = store.create(fields("Mass"), 1);
+    let first = store.add_piece(&set, piece('a'), 2).unwrap();
+    let second = store.add_piece(&set, piece('a'), 3).unwrap();
+    (store, set, first, second)
+}
+
+fn set_note(store: &SetStore, set: &str, item: &str) -> Option<String> {
+    store
+        .get(set)
+        .unwrap()
+        .items
+        .iter()
+        .find(|i| i.id == item)
+        .unwrap()
+        .set_note
+        .clone()
+}
+
+#[test]
+fn loads_v1_and_saves_v2() {
+    let store = SetStore::from_json(&V1_SET.replace("KEY", &"a".repeat(64)));
+    assert_eq!(item_ids(&store, "s"), ["i1"]);
+    assert_eq!(set_note(&store, "s", "i1"), None);
+    let json = store.to_json();
+    assert!(json.contains(r#""schema_version":2"#));
+    assert!(!json.contains("set_note"));
+}
+
+#[test]
+fn set_note_round_trips() {
+    let (mut store, set, first, _) = store_with_two_of_a_kind();
+    assert!(store.edit_set_note(&set, &first, "  Slower  ", 9));
+    assert_eq!(set_note(&store, &set, &first).as_deref(), Some("Slower"));
+    assert_eq!(store.get(&set).unwrap().modified, 9);
+    let reloaded = SetStore::from_json(&store.to_json());
+    assert_eq!(reloaded, store);
+}
+
+#[test]
+fn blank_set_note_clears() {
+    let (mut store, set, first, _) = store_with_two_of_a_kind();
+    assert!(store.edit_set_note(&set, &first, "Slower", 9));
+    assert!(store.edit_set_note(&set, &first, "   ", 10));
+    assert_eq!(set_note(&store, &set, &first), None);
+    assert!(!store.edit_set_note(&set, &first, "", 11), "already clear");
+}
+
+#[test]
+fn set_note_is_per_occurrence() {
+    let (mut store, set, first, second) = store_with_two_of_a_kind();
+    assert!(store.edit_set_note(&set, &first, "Slower", 9));
+    assert_eq!(set_note(&store, &set, &second), None);
+}
+
+#[test]
+fn note_items_never_hold_a_set_note() {
+    let mut store = SetStore::default();
+    let set = store.create(fields("Mass"), 1);
+    let note = store.add_note(&set, "Pause".to_owned(), 2).unwrap();
+    assert!(!store.edit_set_note(&set, &note, "x", 3));
+    assert!(!store.edit_set_note(&set, "nope", "x", 3));
+    let json = r#"{"schema_version":2,"sets":[{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{"id":"i1","kind":"note","text":"Pause","set_note":"stray"}]}]}"#;
+    let loaded = SetStore::from_json(json);
+    assert_eq!(set_note(&loaded, "s", "i1"), None);
+}
+
+#[test]
+fn unknown_version_3_is_empty() {
+    let json = r#"{"schema_version":3,"sets":[{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[]}]}"#;
+    assert_eq!(SetStore::from_json(json), SetStore::default());
+}
+
+#[test]
+fn save_set_note_edits_the_open_set() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sets.json");
+    let mut model = UiModel::new();
+    model.set_sets_path(path.clone());
+    let set = model.create_set(fields("Mass")).unwrap();
+    let mut store = SetStore::load(&path);
+    let item = store.add_piece(&set, piece('a'), 1).unwrap();
+    store.save(&path).unwrap();
+    model.set_sets_path(path.clone());
+    model.save_set_note(&item, " Slower ");
+    assert_eq!(
+        set_note(&SetStore::load(&path), &set, &item).as_deref(),
+        Some("Slower")
     );
 }

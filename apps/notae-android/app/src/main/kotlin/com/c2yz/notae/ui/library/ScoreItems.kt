@@ -3,6 +3,7 @@ package com.c2yz.notae.ui.library
 import androidx.compose.animation.Crossfade
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -40,12 +41,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -69,6 +72,7 @@ import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.Scrollbar
 import com.c2yz.notae.ui.theme.NotaeTheme
 import kotlin.math.floor
+import kotlin.math.roundToInt
 
 internal const val GRID_TAG = "library-grid"
 internal const val LIST_TAG = "library-list"
@@ -100,26 +104,28 @@ internal fun ScoreGrid(
             val gap = if (narrow) 12.dp else 16.dp
             val inner = maxWidth - inset * 2
             val columns = floor((inner + gap) / ((if (narrow) 140.dp else 176.dp) + gap)).toInt().coerceAtLeast(1)
-            val cellWidth = (inner - gap * (columns - 1)) / columns
-            val cellHeight = cellWidth * 1.3f + 64.dp
             val state = rememberLazyGridState()
-            LazyVerticalGrid(
-                GridCells.Fixed(columns),
-                Modifier.testTag(GRID_TAG).fillMaxSize().padding(horizontal = inset),
-                state = state,
-                contentPadding = PaddingValues(top = inset, bottom = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(gap),
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                items(entries, key = { it.key() }) { entry ->
-                    // Items glide to their new places, and fade in or out, when the section's scores change.
-                    Box(Modifier.animateItem()) {
-                        when (entry) {
-                            is SetEntry.Piece -> {
-                                val row = entry.row
-                                ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.height(cellHeight), selected = row.selectionId == selectedId)
+            // Other columns lay the grid out afresh, keeping its scroll position: its cards snap to their new places,
+            // even ones gliding, instead of flying over each other.
+            key(columns, narrow) {
+                LazyVerticalGrid(
+                    GridCells.Fixed(columns),
+                    Modifier.testTag(GRID_TAG).fillMaxSize().padding(horizontal = inset),
+                    state = state,
+                    contentPadding = PaddingValues(top = inset, bottom = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    items(entries, key = { it.key() }) { entry ->
+                        // Items glide to their new places, and fade in or out, when the section's scores change.
+                        Box(Modifier.animateItem()) {
+                            when (entry) {
+                                is SetEntry.Piece -> {
+                                    val row = entry.row
+                                    ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.cellHeight(1.3f, 64.dp), selected = row.selectionId == selectedId)
+                                }
+                                is SetEntry.Note -> NoteCard(entry, { onNoteMore(entry) }, Modifier.cellHeight(1.3f, 64.dp))
                             }
-                            is SetEntry.Note -> NoteCard(entry, { onNoteMore(entry) }, Modifier.height(cellHeight))
                         }
                     }
                 }
@@ -127,6 +133,16 @@ internal fun ScoreGrid(
             GridScrollbar(state, Modifier.align(Alignment.TopEnd).padding(top = 20.dp))
         }
     }
+}
+
+/**
+ * A grid card's height: [ratio] times its cell's width plus [extra], taken as the card is measured, so it changes in the
+ * same frame as its width rather than a composition later.
+ */
+internal fun Modifier.cellHeight(ratio: Float, extra: Dp): Modifier = layout { measurable, constraints ->
+    val height = (constraints.maxWidth * ratio + extra.roundToPx()).roundToInt()
+    val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+    layout(placeable.width, height) { placeable.place(0, 0) }
 }
 
 /** 0.3.0's list layout: 80 dp rows in a card with an 8 dp inset; a set's notes are tinted rows. Keyed as [ScoreGrid]. */
@@ -207,15 +223,7 @@ internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit
         ) {
             PagePreview(row.thumbnail, Modifier.weight(1f).fillMaxWidth())
             Column(Modifier.padding(start = 4.dp, end = 44.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    row.title,
-                    Modifier.clearAndSetSemantics { },
-                    color = if (highlighted) c.onAccentSoft else c.foreground,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                ScoreTitle(row, highlighted)
                 ScoreSubtitle(row, 14, selected = highlighted)
             }
         }
@@ -256,15 +264,7 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
         row.position?.let { PositionBadge(it) }
         PagePreview(row.thumbnail, Modifier.size(44.dp, 58.dp), radius = 6.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                row.title,
-                Modifier.clearAndSetSemantics { },
-                color = if (highlighted) c.onAccentSoft else c.foreground,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            ScoreTitle(row, highlighted)
             ScoreSubtitle(row, 14, selected = highlighted)
             if (row.tags.isNotEmpty()) {
                 Text(row.tags.joinToString(", "), color = if (highlighted) c.onAccentSoft else c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -275,6 +275,34 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
         if (row.justOpened && !compact) JustOpenedChip()
         if (row.favorite) FavoriteBadge()
         MoreActions(row.title, onMore)
+    }
+}
+
+/**
+ * The card or row's title (the item's own label reads it), followed inside a set by a small note glyph when the piece has
+ * a set note; TalkBack reads that as "Has a set note" after the item's name.
+ */
+@Composable
+private fun ScoreTitle(row: ScoreRowData, highlighted: Boolean) {
+    val c = NotaeTheme.colors
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            row.title,
+            Modifier.weight(1f, fill = false).clearAndSetSemantics { },
+            color = if (highlighted) c.onAccentSoft else c.foreground,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!row.setNote.isNullOrBlank()) {
+            Icon(
+                painterResource(R.drawable.ic_note),
+                stringResource(R.string.has_set_note),
+                Modifier.size(16.dp),
+                tint = if (highlighted) c.onAccentSoft else c.accentText,
+            )
+        }
     }
 }
 
@@ -307,13 +335,13 @@ private fun Modifier.scoreClick(row: ScoreRowData, source: MutableInteractionSou
 }
 
 /**
- * "number · composer" (either alone when the other is missing), or "Missing from library" in the error colour; in the
+ * "number · composer" (either alone when the other is missing), or "number · Missing from library" in the error colour; in the
  * accent-soft text colour on a selected item, as 0.3.0's.
  */
 @Composable
 internal fun ScoreSubtitle(row: ScoreRowData, size: Int, missingInError: Boolean = true, selected: Boolean = false) {
     val c = NotaeTheme.colors
-    val text = if (row.missing) stringResource(R.string.score_missing) else listOfNotNull(row.number, row.composer).joinToString(" · ")
+    val text = listOfNotNull(row.number, if (row.missing) stringResource(R.string.score_missing) else row.composer).joinToString(" · ")
     Text(
         text,
         color = when {

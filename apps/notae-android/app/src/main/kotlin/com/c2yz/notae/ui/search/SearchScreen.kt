@@ -1,5 +1,9 @@
 package com.c2yz.notae.ui.search
 
+import com.c2yz.notae.nav.screenBackground
+import com.c2yz.notae.nav.screenBar
+import com.c2yz.notae.nav.screenFade
+import com.c2yz.notae.nav.screenContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -26,6 +30,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,7 +98,9 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
     BoxWithConstraints(
         modifier
             .fillMaxSize()
-            .background(c.background)
+            .screenBackground(c.background)
+            // Search takes every tap on it, so none reaches the library still fading out beneath it.
+            .pointerInput(Unit) { detectTapGestures { } }
             .onPreviewKeyEvent { event ->
                 (event.type == KeyEventType.KeyDown && event.key == Key.Escape).also { if (it) onAction(Action.CloseSearch) }
             },
@@ -103,7 +111,7 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
             Modifier.fillMaxSize().padding(start = side, top = side, end = side, bottom = 16.dp),
             verticalArrangement = collapsingGaps(16.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.screenFade(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(stringResource(R.string.details_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseSearch) })
                 SearchField(
                     snapshot.search.query,
@@ -116,18 +124,18 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
                     IconButton(stringResource(R.string.search_voice), painterResource(R.drawable.ic_mic), { onAction(Action.VoiceSearch) })
                 }
             }
-            OperationBanner(snapshot.banner, onAction)
+            OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
             // On a phone the chips start at the edge, under Back, instead of lining up with the field.
-            ScopeChips(snapshot.search.scope, onAction, indent = if (compact) 0.dp else 56.dp)
+            ScopeChips(snapshot.search.scope, onAction, indent = if (compact) 0.dp else 56.dp, Modifier.screenFade())
             Results(snapshot, onAction)
         }
     }
 }
 
 @Composable
-private fun ScopeChips(selected: SearchScope, onAction: (Action) -> Unit, indent: Dp) {
+private fun ScopeChips(selected: SearchScope, onAction: (Action) -> Unit, indent: Dp, modifier: Modifier) {
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = indent),
+        modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = indent),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SCOPES.forEach { (scope, label) ->
@@ -138,7 +146,8 @@ private fun ScopeChips(selected: SearchScope, onAction: (Action) -> Unit, indent
 
 @Composable
 private fun ColumnScope.Results(snapshot: Snapshot, onAction: (Action) -> Unit) {
-    val area = Modifier.weight(1f).fillMaxWidth()
+    // The part of search that slides when the screen changes.
+    val area = Modifier.weight(1f).fillMaxWidth().screenContent(NotaeTheme.colors.background)
     when {
         snapshot.search.query.isEmpty() -> Message(R.string.search_empty_title, R.string.search_empty_detail, area, glyph = true)
         snapshot.rows.isEmpty() -> Message(R.string.search_no_results_title, R.string.search_no_results_detail, area, glyph = false)

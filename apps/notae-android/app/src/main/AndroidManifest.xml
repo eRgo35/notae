@@ -19,16 +19,45 @@
         android:enableOnBackInvokedCallback="true"
         android:localeConfig="@xml/locales_config"
         android:theme="@style/Theme.Notae">
-        <!-- `locale|layoutDirection`: a language change re-translates in place instead of restarting. -->
+        <!--
+            `locale|layoutDirection`: a language change re-translates in place instead of restarting. `singleTask`: a
+            file opened with or shared to Notae goes to the running app (onNewIntent), never a second activity and core.
+        -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|keyboard|keyboardHidden|screenSize|screenLayout|smallestScreenSize|locale|layoutDirection"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- A shared set (or a backup) from Open with and Share to; apps label it either way, the core checks it. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/json" />
+                <data android:mimeType="application/octet-stream" />
+            </intent-filter>
         </activity>
+        <!-- The set files sent through the share sheet (cacheDir/shared/), read through a granted URI. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
         <!-- AppCompat stores the per-app language itself below Android 13. -->
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"

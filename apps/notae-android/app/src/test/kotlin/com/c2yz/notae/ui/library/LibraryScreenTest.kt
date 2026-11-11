@@ -1,11 +1,16 @@
 package com.c2yz.notae.ui.library
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -13,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onRoot
 import com.c2yz.notae.core.Banner
 import com.c2yz.notae.core.Failure
@@ -23,6 +29,8 @@ import com.c2yz.notae.core.Subtitle
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.robolectric.RuntimeEnvironment
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.dp
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.ScanSummary
@@ -33,12 +41,14 @@ import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlin.math.abs
 
 /** The library screen: the Action each control sends, what a crafted snapshot shows, labels and 48 dp targets. */
 @RunWith(RobolectricTestRunner::class)
@@ -66,6 +76,95 @@ class LibraryScreenTest {
     private fun checkTargets(density: Density) {
         compose.assertAllClickablesLabelled()
         compose.assertClickTargetsAtLeast48dp(density)
+    }
+
+    @Test
+    fun gliding_scores_snap_to_their_places_when_the_columns_change() {
+        var width by mutableStateOf(720.dp)
+        var rows by mutableStateOf(Fixture.rows)
+        compose.setContent {
+            NotaeTheme { ScoreGrid(rows.map { SetEntry.Piece(it) }, {}, {}, {}, Modifier.width(width).height(1600.dp)) }
+        }
+        val fourth = compose.onNodeWithContentDescription("More actions for ${Fixture.rows[3].title}", useUnmergedTree = true)
+        val before = fourth.getBoundsInRoot()
+        // A score taken out sets the others gliding, as a search narrowing the scores does; the details then open a
+        // pane beside the grid, or close it, while they are on their way.
+        compose.mainClock.autoAdvance = false
+        rows = Fixture.rows.drop(1)
+        repeat(GLIDE_FRAMES) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val gliding = fourth.getBoundsInRoot()
+        assertTrue("the score is on its way: $before, $gliding", !near(gliding, before))
+        width = 1000.dp
+        val grid = compose.onNodeWithTag(GRID_TAG)
+        repeat(SNAP_FRAMES) {
+            if (grid.getBoundsInRoot().right == 1000.dp) return@repeat
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val frames = List(SNAP_FRAMES) {
+            fourth.getBoundsInRoot().also {
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+            }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        val after = fourth.getBoundsInRoot()
+        assertTrue("the score is in its place from the new columns on: $gliding, $frames, $after", frames.all { near(it, after) })
+    }
+
+    @Test
+    fun scores_snap_to_their_places_when_the_columns_change() {
+        var width by mutableStateOf(720.dp)
+        var rows by mutableStateOf(Fixture.rows)
+        compose.setContent {
+            NotaeTheme { ScoreGrid(rows.map { SetEntry.Piece(it) }, {}, {}, {}, Modifier.width(width).height(1600.dp)) }
+        }
+        // The fourth score moves between the second row and the first as the grid goes between three columns and five,
+        // as when the details pane closes and opens beside it.
+        val fourth = compose.onNodeWithContentDescription("More actions for ${Fixture.rows[3].title}", useUnmergedTree = true)
+        val grid = compose.onNodeWithTag(GRID_TAG)
+        for (next in listOf(1000.dp, 720.dp)) {
+            val before = fourth.getBoundsInRoot()
+            compose.mainClock.autoAdvance = false
+            width = next
+            // Frame by frame from when the grid takes its new width.
+            repeat(SNAP_FRAMES) {
+                if (grid.getBoundsInRoot().right == next) return@repeat
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+            }
+            val frames = List(SNAP_FRAMES) {
+                fourth.getBoundsInRoot().also {
+                    compose.mainClock.advanceTimeByFrame()
+                    compose.waitForIdle()
+                }
+            }
+            compose.mainClock.autoAdvance = true
+            compose.waitForIdle()
+            val after = fourth.getBoundsInRoot()
+            assertTrue("the columns change at $next dp: $before, $after", abs(after.top.value - before.top.value) > 50f)
+            // For the frame the grid takes its new width the card is still where it was; from the next it is in its new place.
+            assertTrue("the score is in its place from the frame after at $next dp: $before, $frames, $after", frames.drop(1).all { near(it, after) })
+        }
+
+        // A score taken out of the grid still lets the others glide into its place.
+        val before = fourth.getBoundsInRoot()
+        compose.mainClock.autoAdvance = false
+        rows = Fixture.rows.drop(1)
+        val frames = List(SNAP_FRAMES) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            fourth.getBoundsInRoot()
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        val after = fourth.getBoundsInRoot()
+        assertTrue("the score moves: $before, $after", !near(before, after))
+        assertTrue("the score glides: $before, $frames, $after", frames.any { !near(it, before) && !near(it, after) })
     }
 
     @Test
@@ -204,16 +303,22 @@ class LibraryScreenTest {
     }
 
     @Test
-    fun a_missing_piece_offers_only_removal() {
-        val piece = Fixture.library().rows.first().copy(itemId = "item-8", position = 8u, missing = true, selectionId = "item-8")
+    fun a_missing_piece_offers_its_set_note_and_removal() {
+        val piece = Fixture.library().rows.first()
+            .copy(number = "999", itemId = "item-8", position = 8u, missing = true, selectionId = "item-8", setNote = "Bring the copy")
         show(Fixture.library().copy(sectionKey = "set:0123", rows = listOf(piece), setEntries = listOf(SetEntry.Piece(piece))))
 
-        compose.onNodeWithText("Missing from library").assertIsDisplayed()
+        // The sender's number stays on a placeholder.
+        compose.onNodeWithText("999 · Missing from library").assertIsDisplayed()
         compose.onNodeWithContentDescription("More actions for Agnus Dei").performClick()
         compose.onNodeWithText("Open score").assertDoesNotExist()
+        compose.onNodeWithText("Set note").performClick()
+        compose.onNodeWithContentDescription("Note").assertTextEquals("Bring the copy").performTextReplacement("Copy at the desk")
+        compose.onNodeWithText("Save note").performClick()
+        compose.onNodeWithContentDescription("More actions for Agnus Dei").performClick()
         compose.onNodeWithText("Remove from set").performClick()
 
-        assertEquals(listOf<Action>(Action.RemoveSetItem("item-8")), actions)
+        assertEquals(listOf(Action.SaveSetNote("item-8", "Copy at the desk"), Action.RemoveSetItem("item-8")), actions)
     }
 
     @Test
@@ -353,3 +458,13 @@ class LibraryScreenTest {
 
     private fun Snapshot.withView(view: LibraryView) = copy(layout = layout.copy(libraryView = view))
 }
+
+/** Frames to watch a grid take new columns over. */
+private const val SNAP_FRAMES = 4
+
+/** Frames into a glide: well on the way, far from done. */
+internal const val GLIDE_FRAMES = 6
+
+/** The same place, give or take a pixel's rounding. */
+internal fun near(a: DpRect, b: DpRect): Boolean =
+    abs(a.left.value - b.left.value) <= 1f && abs(a.top.value - b.top.value) <= 1f

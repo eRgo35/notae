@@ -1,5 +1,11 @@
 package com.c2yz.notae.ui.sets
 
+import com.c2yz.notae.ui.components.TextField
+
+import androidx.compose.ui.unit.dp
+
+import androidx.compose.ui.test.getBoundsInRoot
+
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
@@ -12,7 +18,12 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -24,6 +35,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
@@ -35,6 +47,7 @@ import com.c2yz.notae.core.AddPicker
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.NotaeCore
 import com.c2yz.notae.core.Screen
+import com.c2yz.notae.core.SectionTitle
 import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.StatusMessage
@@ -180,6 +193,24 @@ class NotesTest {
     }
 
     @Test
+    fun the_add_picker_note_field_shows_four_lines() {
+        show(Fixture.palmSunday().copy(addPicker = AddPicker("", emptyList(), 0u)))
+
+        compose.onNodeWithText("Text note").performClick()
+        val field = compose.onNodeWithContentDescription("Note").getBoundsInRoot()
+        assertTrue("four lines of 16 sp text and the padding: ${field.bottom - field.top}", field.bottom - field.top >= 100.dp)
+    }
+
+    @Test
+    fun a_one_line_field_ignores_a_line_minimum() {
+        // A single-line field cannot be taller than one line, whatever minimum it is given.
+        compose.setContent { NotaeTheme { TextField("Psalm 23", {}, "Name", multiLine = false, minLines = 4) } }
+
+        val field = compose.onNodeWithContentDescription("Name").getBoundsInRoot()
+        assertEquals(52.dp, field.bottom - field.top)
+    }
+
+    @Test
     fun details_previous_next_skip_notes() = withSet { core, library ->
         core.dispatch(Action.AddNote("Psalm"))
         core.dispatch(Action.OpenAddPicker)
@@ -272,5 +303,55 @@ class NotesTest {
             listOf(Action.EditNote("note-1", "Psalm 24"), Action.OpenSearch, Action.RemoveSetItem("note-2")),
             actions,
         )
+    }
+
+    @Test
+    @Config(qualifiers = "w384dp-h832dp-xhdpi")
+    fun phoneDetailsFromASetShowTheSetNote() = withSet { core, _ ->
+        // Opened from the set's row on a phone, the details take the whole screen; the core keeps the set as the title.
+        core.dispatch(Action.SelectScore(core.snapshot().rows.first().selectionId))
+        val snapshot = core.snapshot()
+        assertTrue(snapshot.title is SectionTitle.Set)
+        compose.setContent { NotaeTheme { DetailsScreen(snapshot, { actions += it }) } }
+
+        compose.onNodeWithText("Note for Mass").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Add set note").assertExists()
+    }
+
+    @Test
+    fun setRowWithSetNoteHasMarker() {
+        val noted = Fixture.palmWithSetNote()
+        show(noted)
+
+        // Only Kyrie eleison carries the marker, in the grid and in the list, read with the piece's name.
+        compose.onAllNodes(hasContentDescription("Has a set note")).assertCountEquals(1)
+        compose.onNode(hasContentDescription("2. Kyrie eleison") and hasContentDescription("Has a set note")).assertIsDisplayed()
+        shown = noted.copy(layout = noted.layout.copy(libraryView = LibraryView.LIST))
+        compose.waitForIdle()
+        compose.onAllNodes(hasContentDescription("Has a set note")).assertCountEquals(1)
+        compose.onNode(hasContentDescription("2. Kyrie eleison") and hasContentDescription("Has a set note")).assertIsDisplayed()
+    }
+
+    @Test
+    fun setNoteFromRowSheet() {
+        val noted = Fixture.palmWithSetNote().let { it.copy(layout = it.layout.copy(libraryView = LibraryView.LIST)) }
+        show(noted)
+
+        compose.onNodeWithContentDescription("More actions for Kyrie eleison").performClick()
+        compose.onNodeWithText("Set note").performClick()
+        compose.onNodeWithText("Note for Niedziela Palmowa").assertIsDisplayed()
+        compose.assertAllClickablesLabelled()
+        compose.onNodeWithContentDescription("Note").assertTextEquals(Fixture.KYRIE_SET_NOTE).performTextReplacement("Kantor zaczyna")
+        compose.onNodeWithText("Save note").performClick()
+        compose.onNodeWithText("Save note").assertDoesNotExist()
+
+        // A piece without a set note starts empty.
+        compose.onNodeWithContentDescription("More actions for Magnificat").performClick()
+        compose.onNodeWithText("Set note").performClick()
+        compose.onNodeWithContentDescription("Note").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        compose.onNodeWithText("Save note").assertDoesNotExist()
+
+        assertEquals(listOf<Action>(Action.SaveSetNote("item-2", "Kantor zaczyna")), actions)
     }
 }

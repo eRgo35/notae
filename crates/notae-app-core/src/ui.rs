@@ -21,6 +21,7 @@ use crate::favorites::{Favorites, PieceRef};
 use crate::operations::events::{OperationEvent, RescanSummary};
 use crate::pdf_intent::ViewerError;
 use crate::recent::RecentScores;
+use crate::score_notes::ScoreNotes;
 use crate::sets::{ItemKind, SetFieldError, SetFields, SetStore};
 use crate::state::{
     AppController, AppState, EventError, OperationState, RescanPhase, Transition, UiEvent,
@@ -72,6 +73,8 @@ pub struct SetChoice {
     pub count: usize,
     /// Whether the set holds the piece the checklist is open for.
     pub checked: bool,
+    /// Content keys of the set's first pieces, as on its card.
+    pub preview_keys: Vec<String>,
 }
 
 /// Where [`UiModel::move_set_item`] moves an item.
@@ -118,6 +121,11 @@ pub struct UiModel {
     /// UI reads the root from here instead.
     ready_root: Option<LibraryRoot>,
     search_rows: Vec<SearchRow>,
+    /// The rows are a search's hits, not the whole library: the worker's query is not blank.
+    rows_filtered: bool,
+    /// Content keys known to be in the library: the whole library's latest rows, and the hits of
+    /// searches since.
+    library_keys: HashSet<String>,
     indexed_count: usize,
     latest_rescan: Option<RescanSummary>,
     metadata_editor: Option<EditableMetadata>,
@@ -128,6 +136,8 @@ pub struct UiModel {
     recent_path: Option<PathBuf>,
     favorites: Favorites,
     favorites_path: Option<PathBuf>,
+    score_notes: ScoreNotes,
+    score_notes_path: Option<PathBuf>,
     sets: SetStore,
     sets_path: Option<PathBuf>,
     /// The set whose deletion waits for the user's confirmation.
@@ -163,6 +173,8 @@ impl UiModel {
             storage,
             ready_root: None,
             search_rows: Vec::new(),
+            rows_filtered: false,
+            library_keys: HashSet::new(),
             indexed_count: 0,
             latest_rescan: None,
             metadata_editor: None,
@@ -173,6 +185,8 @@ impl UiModel {
             recent_path: None,
             favorites: Favorites::default(),
             favorites_path: None,
+            score_notes: ScoreNotes::default(),
+            score_notes_path: None,
             sets: SetStore::empty(),
             sets_path: None,
             pending_delete_set: None,
@@ -290,8 +304,7 @@ impl UiModel {
     /// Production rows arrive through [`Self::apply_operation_event`]; tests use this method
     /// to set up a library directly.
     pub fn set_search_rows(&mut self, rows: Vec<SearchRow>) {
-        self.search_rows = rows;
-        self.relink_saved_pieces();
+        self.take_rows("", rows);
         self.forget_missing_selection();
         self.forget_missing_composer();
     }
@@ -300,6 +313,33 @@ impl UiModel {
     #[must_use]
     pub fn search_rows(&self) -> &[SearchRow] {
         &self.search_rows
+    }
+
+    /// Whether [`UiModel::search_rows`] hold a search's hits instead of the whole library. This
+    /// follows the worker's replies, so it stays true after Search closes until the whole
+    /// library's rows come back.
+    #[must_use]
+    pub fn rows_filtered(&self) -> bool {
+        self.rows_filtered
+    }
+
+    /// Content keys known to be in the library, also while [`UiModel::search_rows`] are a
+    /// search's hits: the whole library's latest rows, and the hits since.
+    #[must_use]
+    pub fn library_keys(&self) -> &HashSet<String> {
+        &self.library_keys
+    }
+
+    /// Takes rows the worker projected with `query` and re-links saved pieces to them.
+    fn take_rows(&mut self, query: &str, rows: Vec<SearchRow>) {
+        self.rows_filtered = !query.trim().is_empty();
+        if !self.rows_filtered {
+            self.library_keys.clear();
+        }
+        self.library_keys
+            .extend(rows.iter().map(|row| row.note_key.clone()));
+        self.search_rows = rows;
+        self.relink_saved_pieces();
     }
 
     /// Loads the recent list from, and later saves it to, `path`.
@@ -339,6 +379,52 @@ impl UiModel {
         Ok(now)
     }
 
+    /// Loads the score notes from, and later saves them to, `path`.
+    pub fn set_score_notes_path(&mut self, path: PathBuf) {
+        self.score_notes = ScoreNotes::load(&path);
+        self.score_notes_path = Some(path);
+    }
+
+    /// The score note of the score with `key`.
+    #[must_use]
+    pub fn score_note(&self, key: &str) -> Option<&str> {
+        self.score_notes.get(key)
+    }
+
+    /// Every score note.
+    #[must_use]
+    pub fn score_notes(&self) -> &ScoreNotes {
+        &self.score_notes
+    }
+
+    /// Stores the score note of the score with `key`; blank text clears it. A key that is not
+    /// in the library changes nothing.
+    pub fn set_score_note(&mut self, key: &str, text: &str) {
+        let Some(path) = self
+            .search_rows
+            .iter()
+            .find(|row| row.note_key == key)
+            .map(|row| row.relative_path.clone())
+        else {
+            return;
+        };
+        let piece = PieceRef {
+            key: key.to_owned(),
+            path,
+        };
+        if self.score_notes.set(piece, text) {
+            self.save_score_notes();
+        }
+    }
+
+    fn save_score_notes(&self) {
+        if let Some(path) = &self.score_notes_path
+            && let Err(error) = self.score_notes.save(path)
+        {
+            eprintln!("notae: cannot save score notes: {error}");
+        }
+    }
+
     /// Whether the score with `key` is starred.
     #[must_use]
     pub fn is_favorite(&self, key: &str) -> bool {
@@ -364,24 +450,52 @@ impl UiModel {
         &self.sets
     }
 
-    /// The suggested file name and the text of a favorites-and-sets export made at `now`.
+    /// The suggested file name and the text of the export (favorites, sets, score notes) made at
+    /// `now`.
     #[must_use]
     pub fn export_sets(&self, now: u64) -> (String, String) {
         (
             crate::backup::suggested_file_name(now),
-            crate::backup::export_json(&self.favorites, &self.sets),
+            crate::backup::export_json(&self.favorites, &self.sets, &self.score_notes),
         )
     }
 
     /// Adds the backup's sets beside the current ones, replacing those with the same id, merges
     /// its favorites, and saves both files. Pieces are re-linked against the open library.
     pub fn import_backup(&mut self, backup: crate::backup::Backup) {
-        crate::backup::apply_import(&mut self.favorites, &mut self.sets, backup);
+        crate::backup::apply_import(
+            &mut self.favorites,
+            &mut self.sets,
+            &mut self.score_notes,
+            backup,
+        );
         if let Some(path) = &self.favorites_path
             && let Err(error) = self.favorites.save(path)
         {
             eprintln!("notae: cannot save favorites: {error}");
         }
+        self.save_sets();
+        self.save_score_notes();
+        self.relink_saved_pieces();
+    }
+
+    /// Adds a shared set with its pieces matched against the library now, then saves and relinks.
+    /// Call it while the rows are the whole library ([`UiModel::rows_filtered`] is false).
+    /// With `keep_both` it goes beside the set with its id ([`crate::share::keep_both`]); otherwise
+    /// it replaces that set, keeping its set notes the file lacks ([`crate::share::keep_set_notes`]).
+    /// Its edited time is now, so it sorts first among the sets.
+    pub fn import_shared_set(&mut self, shared: &crate::share::SharedSet, keep_both: bool) {
+        let mut set = crate::share::match_pieces(shared, &self.search_rows).set;
+        set.modified = unix_now();
+        let set = if keep_both {
+            crate::share::keep_both(set, &self.sets)
+        } else {
+            if let Some(local) = self.sets.get(&set.id) {
+                crate::share::keep_set_notes(&mut set, local);
+            }
+            set
+        };
+        self.sets.put(set);
         self.save_sets();
         self.relink_saved_pieces();
     }
@@ -502,6 +616,7 @@ impl UiModel {
                 date: card.date.clone(),
                 count: card.count,
                 checked: containing.iter().any(|id| card.id == id.as_str()),
+                preview_keys: card.preview_keys.clone(),
             })
             .collect()
     }
@@ -619,6 +734,16 @@ impl UiModel {
                 .sets
                 .edit_note(set_id, item_id, text.to_owned(), unix_now())
         {
+            self.save_sets();
+        }
+    }
+
+    /// Stores the set note on a piece of the open set; blank text clears it.
+    pub fn save_set_note(&mut self, item_id: &str, text: &str) {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return;
+        };
+        if self.sets.edit_set_note(set_id, item_id, text, unix_now()) {
             self.save_sets();
         }
     }
@@ -796,6 +921,9 @@ impl UiModel {
             && let Err(error) = self.favorites.save(path)
         {
             eprintln!("notae: cannot save favorites: {error}");
+        }
+        if self.score_notes.relink(&library) {
+            self.save_score_notes();
         }
         if self.sets.relink(&library) {
             self.save_sets();
@@ -1000,11 +1128,12 @@ impl UiModel {
 
     /// Closes the preview when its score left the library (or its set), so it cannot reopen if
     /// the same id later returns. Rows filtered by a search hold only its hits, so they are not
-    /// checked until Search closes and the whole library's rows return.
+    /// checked until the whole library's rows return, which may be after Search closed.
     fn forget_missing_selection(&mut self) {
         let state = self.controller.state();
         if matches!(state.screen(), crate::state::Screen::Search)
             || !state.search().query.is_empty()
+            || self.rows_filtered
         {
             return;
         }
@@ -1069,17 +1198,19 @@ impl UiModel {
             }
             OperationEvent::FileSucceeded { .. } | OperationEvent::FileFailed { .. } => {}
             OperationEvent::Canceled => self.controller.cancel_operation()?,
-            OperationEvent::Completed { summary, rows } => {
+            OperationEvent::Completed {
+                summary,
+                query,
+                rows,
+            } => {
                 self.latest_rescan = Some(summary);
-                self.search_rows = rows;
-                self.relink_saved_pieces();
+                self.take_rows(&query, rows);
                 self.startup_presentation = StartupPresentation::Ready;
                 self.controller.complete_operation(summary);
             }
-            OperationEvent::SearchRows(rows) => {
+            OperationEvent::SearchRows { query, rows } => {
                 self.startup_presentation = StartupPresentation::Ready;
-                self.search_rows = rows;
-                self.relink_saved_pieces();
+                self.take_rows(&query, rows);
             }
             OperationEvent::PickerRows { query, rows } => {
                 // Rows for an older query, or a closed picker, are stale.
@@ -1089,14 +1220,19 @@ impl UiModel {
                     picker.rows = Some(rows);
                 }
             }
-            OperationEvent::IndexedCount(count) => self.indexed_count = count,
+            OperationEvent::IndexedCount(count) => {
+                // A count changes no rows, and may follow a search's hits after Search closed,
+                // before the whole library's rows return: checking the selection against those
+                // hits would close the details.
+                self.indexed_count = count;
+                return Ok(());
+            }
             OperationEvent::MetadataLoaded(metadata) => {
                 self.metadata_error = None;
                 self.metadata_editor = Some(metadata);
             }
-            OperationEvent::MetadataSaved { rows } => {
-                self.search_rows = rows;
-                self.relink_saved_pieces();
+            OperationEvent::MetadataSaved { query, rows } => {
+                self.take_rows(&query, rows);
                 self.close_metadata_editor();
             }
             OperationEvent::MetadataFailed { failure } => {

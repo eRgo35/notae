@@ -2,22 +2,27 @@ package com.c2yz.notae.nav
 
 import com.c2yz.notae.ui.components.backProgress
 import com.c2yz.notae.ui.components.LocalBackProgress
+import com.c2yz.notae.ui.components.BackClaims
+import com.c2yz.notae.ui.components.LocalBackClaims
 import com.c2yz.notae.ui.components.AnimatedOverlay
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
@@ -40,6 +46,7 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.NavMetadataKey
 import androidx.navigation3.runtime.contains
+import androidx.navigation3.runtime.get
 import androidx.navigation3.runtime.metadata
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneStrategy
@@ -82,6 +89,7 @@ fun NotaeNavDisplay(
 ) {
     val backStack = backStackFor(snapshot)
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    val claims = remember { BackClaims() }
     BoxWithConstraints(modifier.shellFrame()) {
         // R37: two panes from 840 dp (a tablet in landscape), Details alone below that (portrait).
         val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH
@@ -91,18 +99,36 @@ fun NotaeNavDisplay(
         // Navigation 3 remembers the entries until the back stack changes, so they read the newest snapshot from
         // here instead of keeping the one they were built with (a banner, a star or new rows change no key).
         val shown = rememberUpdatedState(Shown(snapshot, onAction, voiceAvailable, besideList, backStack))
-        // Toward the end of the line: right in a left-to-right language.
-        val shift = with(LocalDensity.current) { Tokens.motionShift.roundToPx() } * if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
-        val motion = remember(shift) { ScreenMotion(shift) }
-        NavDisplay(
-            backStack = backStack,
-            modifier = Modifier.fillMaxSize(),
-            onBack = onBack,
-            sceneStrategies = listOf(strategy),
-            transitionSpec = { motion.forward(initialState, targetState) },
-            popTransitionSpec = { motion.back(initialState, targetState) },
-            predictivePopTransitionSpec = { motion.predictiveBack(initialState, targetState) },
-            entryProvider = { key -> entryFor(key, shown) },
+        val order = rememberUpdatedState(snapshot.sections.map { it.key } + snapshot.composers.map { it.key })
+        val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+        val dropPixels = with(LocalDensity.current) { DROP.roundToPx() }
+        val motion = remember(rtl, dropPixels) { ScreenMotion(rtl, order, dropPixels) }
+        // A screen claims Back while it has something of its own to close (a ⋮ sheet, a note editor).
+        CompositionLocalProvider(LocalBackClaims provides claims) {
+            NavDisplay(
+                backStack = backStack,
+                modifier = Modifier.fillMaxSize(),
+                onBack = onBack,
+                sceneStrategies = listOf(strategy),
+                transitionSpec = { motion.forward(initialState, targetState) },
+                popTransitionSpec = { motion.back(initialState, targetState) },
+                predictivePopTransitionSpec = { motion.predictiveBack(initialState, targetState) },
+                entryProvider = { key -> entryFor(key, shown, motion) },
+            )
+        }
+        // Composed right after NavDisplay, in the same composition, so it registers after NavDisplay's own handler and
+        // wins while enabled, also after the activity is recreated: a dialog or sheet of the snapshot closes before any
+        // screen, without the predictive animation of the screen below, and on a single screen (where NavDisplay handles
+        // nothing) the core still decides whether the activity ends. It stands aside while a screen claims Back for
+        // something of its own, which then closes first whatever the order the handlers registered in.
+        NavigationBackHandler(
+            state = backState,
+            // Reorder mode is not an entry: Back ends it without previewing the list of sets below the set. Search closes
+            // here too: Navigation 3 draws the screen below over it when Back starts and ends at once (the Back key with
+            // 3-button navigation on Android 16 starts a back gesture), so Search would vanish instead of rising out.
+            isBackEnabled = !claims.any &&
+                (backStack.size == 1 || overlayOpen(snapshot) || snapshot.reordering || snapshot.screen is Screen.Search),
+            onBackCompleted = onBack,
         )
         // Snapshot fields, not navigation entries: drawn over whichever screen opened it, and gone when it closes.
         CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
@@ -111,15 +137,6 @@ fun NotaeNavDisplay(
             AnimatedOverlay(snapshot.importConfirmation) { ImportConfirmationDialog(it, onAction) }
         }
     }
-    // Registered after NavDisplay's own handler, so it wins while enabled: a dialog or sheet closes
-    // before any screen, without the predictive animation of the screen below, and on a single
-    // screen (where NavDisplay handles nothing) the core still decides whether the activity ends.
-    NavigationBackHandler(
-        state = backState,
-        // Reorder mode is not an entry: Back ends it without previewing the list of sets below the set.
-        isBackEnabled = backStack.size == 1 || overlayOpen(snapshot) || snapshot.reordering,
-        onBackCompleted = onBack,
-    )
 }
 
 /**
@@ -133,35 +150,82 @@ internal fun Modifier.shellFrame(): Modifier =
 private const val DETAILS_CONTENT_KEY = "details"
 
 /**
- * How screens change, by [shift] px toward the end of the line: a deeper screen slides in from the end and fades in
- * over the one it covers, and Back reverses that; the back gesture shrinks the screen it leaves. Switching sections
- * ([isLateral]) is not deeper navigation, so it only fades through.
+ * How screens change, toward the end of the line (flipped in a right-to-left language): only content moves. Navigation 3
+ * holds both screens still while each moves its own parts ([ScreenFrame]): a deeper screen's content slides in from the
+ * end over the content it covers, which stays still, and Back and the back gesture run it in reverse with both contents
+ * moving, the screen's leaving to the end and the one below coming back from the start; switching sections ([lateral])
+ * slides both contents together in the rail's [order]. The content slides for the whole change; the bars fade through
+ * in place, the going screen's out over the first half and the coming one's in over the second, and a bar both screens
+ * have stays put ([screenBar]). Search fades in over the screen it opens from, dropping a little from the top, and out
+ * rising; Setup and Loading fade through as whole screens.
  */
-private class ScreenMotion(private val shift: Int) {
-    fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        if (isLateral(from, to)) {
-            fadeThrough()
-        } else {
-            (slideInHorizontally(NotaeMotion.medium()) { shift } + fadeIn(NotaeMotion.medium())) togetherWith fadeOut(NotaeMotion.short())
+internal class ScreenMotion(
+    rtl: Boolean,
+    private val order: State<List<String>>,
+    /** [DROP] in pixels. */
+    private val dropPixels: Int,
+) {
+    /** The change starting, set as Navigation 3 starts it; each screen records it as its own ([ScreenPart.start]). */
+    var change: Change = Change.Fade
+        private set
+
+    /** The end of the line: 1 to the right, -1 to the left. */
+    val end: Float = if (rtl) -1f else 1f
+
+    /** The bars of the screens on show, by key ([screenBar]). */
+    val bars = SharedBars()
+
+    private fun start(change: Change, popping: Boolean = false): ContentTransform {
+        this.change = change
+        if (change == Change.Fade) return fadeThrough()
+        if (change == Change.Drop) return if (popping) rise() else drop()
+        // The screen Back takes away stays on top while its content leaves.
+        return ContentTransform(EnterTransition.None, ExitTransition.None, targetContentZIndex = if (popping) -1f else 0f)
+    }
+
+    private fun lateralChange(from: Scene<NavKey>, to: Scene<NavKey>): Change? =
+        when (lateral(from, to, order.value)) {
+            Lateral.Fade -> Change.Fade
+            Lateral.Forward -> Change.Forward
+            Lateral.Backward -> Change.Backward
+            null -> null
         }
+
+    /**
+     * Navigation 3 asks this one, not [predictiveBack], for the back gesture's preview, and for Back started as one (the
+     * Back key with 3-button navigation on Android 16 is), so a change back to the screen below runs as Back.
+     */
+    fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
+        if (goesBack(from, to)) back(from, to) else start(lateralChange(from, to) ?: if (isSearch(to)) Change.Drop else Change.Push)
+
+    /** Whether [to] is a screen below [from] on the stack: the top of [to] is among the entries under [from]'s. */
+    private fun goesBack(from: Scene<NavKey>, to: Scene<NavKey>): Boolean {
+        val top = to.entries.lastOrNull()?.contentKey ?: return false
+        return from.key != to.key && from.previousEntries.any { it.contentKey == top }
+    }
 
     fun back(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        if (isLateral(from, to)) {
-            fadeThrough()
-        } else {
-            ContentTransform(
-                fadeIn(NotaeMotion.medium()),
-                slideOutHorizontally(NotaeMotion.medium()) { shift } + fadeOut(NotaeMotion.medium()),
-                targetContentZIndex = -1f,
-            )
-        }
+        lateralChange(from, to)?.let { start(it) } ?: start(if (isSearch(from)) Change.Drop else Change.Pop, popping = true)
 
     fun predictiveBack(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        if (isLateral(from, to)) {
-            fadeThrough()
-        } else {
-            ContentTransform(fadeIn(NotaeMotion.medium()), scaleOut(NotaeMotion.medium(), targetScale = 0.9f) + fadeOut(NotaeMotion.medium()), targetContentZIndex = -1f)
-        }
+        lateralChange(from, to)?.let { start(it) } ?: start(if (isSearch(from)) Change.Drop else Change.PredictivePop, popping = true)
+
+    private fun isSearch(scene: Scene<NavKey>): Boolean = scene.entries.lastOrNull()?.metadata?.contains(SearchPage) == true
+
+    /** Search coming in: it fades in dropping [DROP] from the top, over the screen it opens from, which stays. */
+    private fun drop(): ContentTransform = ContentTransform(
+        fadeIn(tween(DROP_MILLIS, easing = NotaeMotion.emphasized)) +
+            slideInVertically(tween(DROP_MILLIS, easing = NotaeMotion.emphasized)) { -dropPixels },
+        ExitTransition.None,
+    )
+
+    /** Search going: it fades out rising [DROP], over the screen it goes back to, which is already in place. */
+    private fun rise(): ContentTransform = ContentTransform(
+        EnterTransition.None,
+        fadeOut(tween(DROP_MILLIS, easing = NotaeMotion.emphasized)) +
+            slideOutVertically(tween(DROP_MILLIS, easing = NotaeMotion.emphasized)) { -dropPixels },
+        targetContentZIndex = -1f,
+    )
 
     private fun fadeThrough(): ContentTransform =
         fadeIn(tween(Tokens.motionMediumMillis, delayMillis = FADE_OUT_MILLIS)) togetherWith fadeOut(tween(FADE_OUT_MILLIS))
@@ -169,13 +233,35 @@ private class ScreenMotion(private val shift: Int) {
 
 private const val FADE_OUT_MILLIS = 90
 
-/**
- * A change of the stack's root (a section switch, Setup to the library, the first screen after Loading) moves sideways;
- * one that keeps the root opens or closes a screen above it.
- */
-internal fun isLateral(from: Scene<*>, to: Scene<*>): Boolean = rootKey(from) != rootKey(to)
+/** Search's fade: about the 200 ms of a small surface. */
+internal const val DROP_MILLIS = 200
 
-private fun rootKey(scene: Scene<*>): Any? = (scene.previousEntries.firstOrNull() ?: scene.entries.firstOrNull())?.contentKey
+/** How far Search drops in, and rises out. */
+internal val DROP = 20.dp
+
+/** How a change of the stack's root moves: [Fade] through (Setup, Loading), or a section [Forward] or [Backward] in the rail. */
+internal enum class Lateral { Fade, Forward, Backward }
+
+/**
+ * A change of the stack's root (a section switch, Setup to the library, the first screen after Loading) moves sideways,
+ * or `null` when the root is kept and a screen opens or closes above it. Sections are ordered by [order], and one
+ * missing from it counts as past the end.
+ */
+internal fun lateral(from: Scene<*>, to: Scene<*>, order: List<String>): Lateral? {
+    val a = rootEntry(from)
+    val b = rootEntry(to)
+    if (a?.contentKey == b?.contentKey) return null
+    val sectionA = a?.metadata?.get(SectionKey)
+    val sectionB = b?.metadata?.get(SectionKey)
+    if (sectionA == null || sectionB == null) return Lateral.Fade
+    fun index(section: String) = order.indexOf(section).let { if (it < 0) order.size else it }
+    return if (index(sectionB) > index(sectionA)) Lateral.Forward else Lateral.Backward
+}
+
+private fun rootEntry(scene: Scene<*>): NavEntry<*>? = scene.previousEntries.firstOrNull() ?: scene.entries.firstOrNull()
+
+/** The library section a [Route.Library] entry shows, which orders the sections for [lateral]. */
+internal data object SectionKey : NavMetadataKey<String>
 
 /** R37: the M3 expanded width, which a 1280×800 tablet reaches in landscape and not in portrait. */
 private val TWO_PANE_MIN_WIDTH = 840.dp
@@ -210,7 +296,7 @@ private fun shownFor(key: NavKey, shown: State<Shown>): Shown {
 /** Not state: a new value always comes with a recomposition. */
 private class Held(var value: Shown)
 
-private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when (key) {
+private fun entryFor(key: NavKey, shown: State<Shown>, motion: ScreenMotion): NavEntry<NavKey> = when (key) {
     Route.Loading -> placeholder(key, R.string.screen_loading)
     Route.Setup -> NavEntry(key) {
         val (snapshot, onAction) = shownFor(key, shown)
@@ -221,23 +307,26 @@ private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when 
     }
     // The set view is the library screen inside the set (0.3.0 drew it in the same chrome).
     // ListPane comes from isListRoute, which also decides besideList, so the scene and the details agree.
-    is Route.Library, is Route.Set -> NavEntry(key, metadata = metadata { if (isListRoute(key)) put(ListPane, true) }) {
+    is Route.Library, is Route.Set -> NavEntry(key, metadata = metadata {
+        if (isListRoute(key)) put(ListPane, true)
+        if (key is Route.Library) put(SectionKey, key.section)
+    }) {
         val (snapshot, onAction) = shownFor(key, shown)
-        LibraryScreen(snapshot, onAction)
+        ScreenFrame(motion) { LibraryScreen(snapshot, onAction) }
     }
     // One content key for every score: previous and next (and another score chosen in the list beside it) swap the
     // content in place, and the details slide between the scores themselves.
     is Route.Details -> NavEntry(key, contentKey = DETAILS_CONTENT_KEY, metadata = metadata { put(DetailPane, true) }) {
         val it = shownFor(key, shown)
-        DetailsScreen(it.snapshot, it.onAction, besideList = it.besideList)
+        ScreenFrame(motion) { DetailsScreen(it.snapshot, it.onAction, besideList = it.besideList) }
     }
-    Route.Search -> NavEntry(key) {
+    Route.Search -> NavEntry(key, metadata = metadata { put(SearchPage, true) }) {
         val it = shownFor(key, shown)
-        SearchScreen(it.snapshot, it.onAction, it.voiceAvailable)
+        ScreenFrame(motion) { SearchScreen(it.snapshot, it.onAction, it.voiceAvailable) }
     }
     Route.Settings -> NavEntry(key) {
         val (snapshot, onAction) = shownFor(key, shown)
-        SettingsScreen(snapshot, onAction, ABOUT)
+        ScreenFrame(motion) { SettingsScreen(snapshot, onAction, ABOUT) }
     }
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)
@@ -256,6 +345,9 @@ private fun isListRoute(key: NavKey?): Boolean = key is Route.Library || key is 
 private data object ListPane : NavMetadataKey<Boolean>
 
 private data object DetailPane : NavMetadataKey<Boolean>
+
+/** The search page, which drops in and rises out instead of sliding ([ScreenMotion]). */
+private data object SearchPage : NavMetadataKey<Boolean>
 
 /**
  * Library (or a set) and Details side by side on a wide window, as the details pane the app had beside the library
@@ -290,17 +382,28 @@ private class ListDetailScene(
     override val entries: List<NavEntry<NavKey>> = listOfNotNull(list, detail)
     override val content: @Composable () -> Unit = {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            // Not animated: a grid re-flowing its columns at each step of a moving width loses its place.
-            val listWidth = if (detail == null) maxWidth else minOf(LIST_PANE_WIDTH, maxWidth * LIST_SHARE)
-            Row(Modifier.fillMaxSize()) {
+            // Only the detail pane moves: it slides in from the end of the line, full width, as a deeper screen's
+            // content does, and Back slides it out again; another score chosen keeps the pane where it is.
+            val pane = updateTransition(detail != null, label = "detail pane")
+            // The details last shown, which the pane keeps drawing while it slides away.
+            val last = remember { LastDetail() }
+            if (detail != null) last.entry = detail
+            val end = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
+            // The list takes its layout for where the change goes as it starts, opening or closing, and the pane slides
+            // over it. Not animated: a grid re-flowing its columns at each step of a moving width loses its place.
+            val sideWidth = minOf(LIST_PANE_WIDTH, maxWidth * LIST_SHARE)
+            val listWidth = if (pane.targetState) sideWidth else maxWidth
+            val paneWidth = maxWidth - sideWidth
+            Box(Modifier.fillMaxSize()) {
                 Box(Modifier.width(listWidth).fillMaxHeight()) { list.Content() }
-                if (detail != null) {
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
-                        // A new state each time the pane opens; another score keeps the pane and does not replay this.
-                        val opening = remember { MutableTransitionState(false).apply { targetState = true } }
-                        // Qualified: the Row's scope would otherwise pick its own overload.
-                        androidx.compose.animation.AnimatedVisibility(visibleState = opening, enter = slideInHorizontally(NotaeMotion.medium()) { it / 4 } + fadeIn(NotaeMotion.medium())) {
-                            detail.Content()
+                if (pane.currentState || pane.targetState) {
+                    Box(Modifier.align(Alignment.TopEnd).width(paneWidth).fillMaxHeight().clipToBounds()) {
+                        pane.AnimatedVisibility(
+                            visible = { it },
+                            enter = slideInHorizontally(NotaeMotion.long()) { it * end },
+                            exit = slideOutHorizontally(NotaeMotion.long()) { it * end },
+                        ) {
+                            last.entry?.Content()
                         }
                     }
                 }
@@ -308,8 +411,18 @@ private class ListDetailScene(
         }
     }
 
+    // Equal for the same entries, as Navigation 3's own scenes are: Back pops the stack while the back gesture's
+    // preview (the Back key's too) runs toward this scene, and a new instance would restart the change mid-way.
+    override fun equals(other: Any?): Boolean =
+        other is ListDetailScene && list == other.list && detail == other.detail && previousEntries == other.previousEntries
+
+    override fun hashCode(): Int = (list.hashCode() * 31 + detail.hashCode()) * 31 + previousEntries.hashCode()
+
     private companion object {
         val LIST_PANE_WIDTH = 720.dp
         const val LIST_SHARE = 720f / 1280f
     }
 }
+
+/** Not state: a new detail always comes with a recomposition. */
+private class LastDetail(var entry: NavEntry<NavKey>? = null)

@@ -1,9 +1,12 @@
 package com.c2yz.notae.ui.sets
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
@@ -13,9 +16,12 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onChildAt
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -23,6 +29,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.AddPicker
 import com.c2yz.notae.core.AddToSetSheet
@@ -47,9 +54,12 @@ import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.LibraryScreen
+import com.c2yz.notae.ui.library.GLIDE_FRAMES
+import com.c2yz.notae.ui.library.near
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -274,6 +284,92 @@ class SetsScreenTest {
     }
 
     @Test
+    fun cardKeepsPaperAspect() {
+        var width by mutableStateOf(360.dp)
+        compose.setContent {
+            NotaeTheme {
+                SetsPane(Fixture.stackCards(listOf(null, null, null)), list = false, {}, {}, Modifier.width(width).height(1600.dp))
+            }
+        }
+        // Phone, rail, portrait and landscape tablet panes, and the widths between their column breaks.
+        for (pane in listOf(360, 420, 520, 612, 720, 800, 1000, 1180)) {
+            width = pane.dp
+            compose.waitForIdle()
+            val page = compose.onAllNodesWithTag(STACK_FRONT_TAG, useUnmergedTree = true)[0].getBoundsInRoot()
+            assertEquals("page aspect at $pane dp", 1.41f, (page.bottom - page.top) / (page.right - page.left), 0.02f)
+        }
+    }
+
+    @Test
+    fun gliding_sets_snap_to_their_places_when_the_columns_change() {
+        var width by mutableStateOf(720.dp)
+        var cards by mutableStateOf(Fixture.stackCards(listOf(null, null, null)))
+        compose.setContent {
+            NotaeTheme { SetsPane(cards, list = false, {}, {}, Modifier.width(width).height(1600.dp)) }
+        }
+        val fourth = compose.onNodeWithContentDescription("More actions for Rekolekcje - teksty", useUnmergedTree = true)
+        val before = fourth.getBoundsInRoot()
+        // A set deleted sets the others gliding; the window then widens while they are on their way.
+        compose.mainClock.autoAdvance = false
+        cards = cards.drop(1)
+        repeat(GLIDE_FRAMES) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val gliding = fourth.getBoundsInRoot()
+        assertTrue("the set is on its way: $before, $gliding", !near(gliding, before))
+        width = 1180.dp
+        val pane = compose.onRoot(useUnmergedTree = true).onChildAt(0)
+        repeat(FRAMES) {
+            if (pane.getBoundsInRoot().right > 1000.dp) return@repeat
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val frames = List(FRAMES) {
+            fourth.getBoundsInRoot().also {
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+            }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        val after = fourth.getBoundsInRoot()
+        assertTrue("the set is in its place from the new columns on: $gliding, $frames, $after", frames.all { near(it, after) })
+    }
+
+    @Test
+    fun sets_snap_to_their_places_when_the_columns_change() {
+        var width by mutableStateOf(720.dp)
+        compose.setContent {
+            NotaeTheme { SetsPane(Fixture.stackCards(listOf(null, null, null)), list = false, {}, {}, Modifier.width(width).height(1600.dp)) }
+        }
+        // The fourth set moves from the second row to the first as the pane widens from three columns to five.
+        val fourth = compose.onNodeWithContentDescription("More actions for Rekolekcje - teksty", useUnmergedTree = true)
+        val narrow = fourth.getBoundsInRoot()
+        compose.mainClock.autoAdvance = false
+        width = 1180.dp
+        // Frame by frame from when the pane takes its new width.
+        val pane = compose.onRoot(useUnmergedTree = true).onChildAt(0)
+        repeat(FRAMES) {
+            if (pane.getBoundsInRoot().right > 1000.dp) return@repeat
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val frames = List(FRAMES) {
+            fourth.getBoundsInRoot().also {
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+            }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        val wide = fourth.getBoundsInRoot()
+        assertTrue("the columns change: $narrow, $wide", wide.top < narrow.top - 50.dp)
+        // For the frame the grid takes its new width the card is still where it was; from the next it is in its new place.
+        assertTrue("the set is in its place from the frame after the new columns: $narrow, $frames, $wide", frames.drop(1).all { near(it, wide) })
+    }
+
+    @Test
     fun set_header_shows_subtitle_notes_and_actions() {
         show(Fixture.palmSunday())
 
@@ -284,6 +380,29 @@ class SetsScreenTest {
         compose.onNodeWithText("Add").performClick()
 
         assertEquals(listOf(Action.SelectSection("sets"), Action.OpenAddPicker), actions)
+    }
+
+    @Test
+    fun shareMenuFromToolbarAndSheet() {
+        show(Fixture.palmSunday())
+
+        compose.onNodeWithContentDescription("Share").performClick()
+        compose.onNodeWithText("Share set").assertIsDisplayed()
+        compose.onNodeWithText("Share set with notes").performClick()
+        compose.onNodeWithText("Share set with notes").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Share").performClick()
+        compose.onNodeWithText("Share set").performClick()
+
+        shown = Fixture.sets()
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("More actions for Pusty zestaw").performClick()
+        compose.onNodeWithText("Share").performClick()
+        compose.onNodeWithText("Share set with notes").assertIsDisplayed()
+        compose.onNodeWithText("Share set").performClick()
+        // The choice closes the menu and the sheet.
+        compose.onNodeWithText("Delete set").assertDoesNotExist()
+
+        assertEquals(listOf(Action.ShareSet("palm", true), Action.ShareSet("palm", false), Action.ShareSet("empty", false)), actions)
     }
 
     @Test
@@ -344,9 +463,9 @@ class SetsScreenTest {
     }
 
     private val choices = listOf(
-        SetChoice("palm", "Niedziela Palmowa", "2026-03-29", 9u, true),
-        SetChoice("empty", "Pusty zestaw", null, 0u, false),
-        SetChoice("friday", Fixture.FRIDAY_NAME, "2026-04-03", 0u, false),
+        SetChoice("palm", "Niedziela Palmowa", "2026-03-29", 9u, true, listOf(null, null, null)),
+        SetChoice("empty", "Pusty zestaw", null, 0u, false, emptyList()),
+        SetChoice("friday", Fixture.FRIDAY_NAME, "2026-04-03", 0u, false, emptyList()),
     )
 
     @Test
@@ -413,3 +532,6 @@ internal object NoListener : CoreListener {
 
     override fun onEffect(effect: Effect) = Unit
 }
+
+/** Frames to watch a grid take new columns over. */
+private const val FRAMES = 4

@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -28,12 +27,15 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Icon
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,7 +53,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
@@ -69,11 +70,13 @@ import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.library.GridScrollbar
 import com.c2yz.notae.ui.library.ListScrollbar
+import com.c2yz.notae.ui.library.cellHeight
+import com.c2yz.notae.ui.library.MenuItem
 import com.c2yz.notae.ui.library.NARROW_GRID
 import com.c2yz.notae.ui.theme.NotaeTheme
 import kotlin.math.floor
 
-/** 0.3.0's `SetsPane`: the sets as folder cards (grid) or rows (list) in a card, with the scrollbar handle. */
+/** 0.3.0's `SetsPane`: the sets as cards (grid) or rows (list) in a card, with the scrollbar handle. */
 @Composable
 internal fun SetsPane(cards: List<SetCard>, list: Boolean, onOpen: (SetCard) -> Unit, onMore: (SetCard) -> Unit, modifier: Modifier = Modifier) {
     NotaeCard(modifier.fillMaxSize()) {
@@ -92,18 +95,20 @@ internal fun SetsPane(cards: List<SetCard>, list: Boolean, onOpen: (SetCard) -> 
                 val gap = if (narrow) 12.dp else 16.dp
                 val inner = maxWidth - inset * 2
                 val columns = floor((inner + gap) / ((if (narrow) 140.dp else 200.dp) + gap)).toInt().coerceAtLeast(1)
-                val cellWidth = (inner - gap * (columns - 1)) / columns
                 val state = rememberLazyGridState()
-                LazyVerticalGrid(
-                    GridCells.Fixed(columns),
-                    Modifier.fillMaxSize().padding(horizontal = inset),
-                    state = state,
-                    contentPadding = PaddingValues(top = inset, bottom = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(gap),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                ) {
-                    items(cards, key = { it.id }) { card ->
-                        SetFolderCard(card, { onOpen(card) }, { onMore(card) }, Modifier.animateItem().height(cellWidth * 0.85f + 88.dp))
+                // As the score grid: other columns lay the grid out afresh, so its cards snap to their new places.
+                key(columns, narrow) {
+                    LazyVerticalGrid(
+                        GridCells.Fixed(columns),
+                        Modifier.fillMaxSize().padding(horizontal = inset),
+                        state = state,
+                        contentPadding = PaddingValues(top = inset, bottom = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                    ) {
+                        items(cards, key = { it.id }) { card ->
+                            SetFolderCard(card, { onOpen(card) }, { onMore(card) }, Modifier.animateItem().cellHeight(0.85f, 88.dp))
+                        }
                     }
                 }
                 GridScrollbar(state, Modifier.align(Alignment.TopEnd).padding(top = 20.dp))
@@ -112,7 +117,7 @@ internal fun SetsPane(cards: List<SetCard>, list: Boolean, onOpen: (SetCard) -> 
     }
 }
 
-/** 0.3.0's `SetFolderCard`: blank pages leaning out of an accent-soft folder with the count badge, then name, date and edit time. */
+/** 0.3.0's `SetFolderCard`, now a [ScoreStack] on accent-soft with the count badge, then name, date and edit time. */
 @Composable
 private fun SetFolderCard(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit, modifier: Modifier = Modifier) {
     val c = NotaeTheme.colors
@@ -131,9 +136,8 @@ private fun SetFolderCard(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit,
                 .padding(6.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.accentSoft)) {
-                FolderPage(Modifier.offset(x = maxWidth * 0.2f, y = 30.dp).size(maxWidth * 0.46f, maxHeight))
-                FolderPage(Modifier.offset(x = maxWidth * 0.34f, y = 20.dp).size(maxWidth * 0.46f, maxHeight))
+            Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.accentSoft)) {
+                ScoreStack(card.previews, card.count == 0u, Modifier.fillMaxSize().padding(vertical = 14.dp))
                 Box(
                     Modifier.align(Alignment.BottomStart).padding(12.dp).height(28.dp).clip(RoundedCornerShape(14.dp)).background(c.card).padding(horizontal = 12.dp),
                     contentAlignment = Alignment.Center,
@@ -151,15 +155,7 @@ private fun SetFolderCard(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit,
     }
 }
 
-/** A blank page leaning out of a folder, drawn like the score paper. */
-@Composable
-private fun FolderPage(modifier: Modifier) {
-    val c = NotaeTheme.colors
-    val shape = RoundedCornerShape(10.dp)
-    Box(modifier.clip(shape).background(c.paper).border(BorderStroke(1.dp, c.paperEdge), shape))
-}
-
-/** 0.3.0's `SetRow`: an 80 dp line with the folder, name, "date · N items", the edit time at the right and the ⋮. */
+/** 0.3.0's `SetRow`: an 80 dp line with the [MiniStack], name, "date · N items", the edit time at the right and the ⋮. */
 @Composable
 private fun SetRow(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit) {
     val c = NotaeTheme.colors
@@ -180,7 +176,7 @@ private fun SetRow(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FolderTile(if (compact) 44.dp else 52.dp, 14.dp, if (compact) 22.dp else 26.dp)
+        MiniStack(card.previews, card.count == 0u, if (compact) 44.dp else 52.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(card.name, Modifier.clearAndSetSemantics { }, color = c.foreground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(setDetail(card.date, card.count), color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -191,15 +187,6 @@ private fun SetRow(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit) {
             Text(edited(card.edited), Modifier.width(160.dp), color = c.muted, fontSize = 14.sp, textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         SetActions(card.name, onMore)
-    }
-}
-
-/** The folder glyph on an accent-soft tile, as on set rows, the set sheet and the checklist. */
-@Composable
-internal fun FolderTile(size: Dp, radius: Dp, glyph: Dp) {
-    val c = NotaeTheme.colors
-    Box(Modifier.size(size).clip(RoundedCornerShape(radius)).background(c.accentSoft), Alignment.Center) {
-        Icon(painterResource(R.drawable.ic_folder), null, Modifier.size(glyph), tint = c.onAccentSoft)
     }
 }
 
@@ -218,13 +205,14 @@ private fun SetActions(name: String, onClick: () -> Unit, modifier: Modifier = M
 }
 
 /**
- * The set's ⋮ sheet (0.3.0's `LibraryScreen`'s actions sheet for a set): handle, folder, name and "date · N items",
- * then Edit set and Delete set. Each action closes the sheet; focus starts on Edit set.
+ * The set's ⋮ sheet (0.3.0's `LibraryScreen`'s actions sheet for a set): handle, [MiniStack], name and "date · N items",
+ * then Edit set, Share (its [ShareSetMenu]) and Delete set. Each action closes the sheet; focus starts on Edit set.
  */
 @Composable
 internal fun SetActionsSheet(card: SetCard, onDismiss: () -> Unit, onAction: (Action) -> Unit) {
     val c = NotaeTheme.colors
     val first = remember { FocusRequester() }
+    var sharing by remember { mutableStateOf(false) }
     ActionSheet(
         stringResource(R.string.set_actions_dialog),
         onDismiss,
@@ -239,7 +227,7 @@ internal fun SetActionsSheet(card: SetCard, onDismiss: () -> Unit, onAction: (Ac
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            FolderTile(44.dp, 12.dp, 24.dp)
+            MiniStack(card.previews, card.count == 0u, 44.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(card.name, color = c.foreground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(setDetail(card.date, card.count), color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -247,9 +235,44 @@ internal fun SetActionsSheet(card: SetCard, onDismiss: () -> Unit, onAction: (Ac
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
         SheetAction(stringResource(R.string.set_edit), painterResource(R.drawable.ic_edit), { onAction(Action.EditSet(card.id)) }, Modifier.focusRequester(first))
+        Box {
+            SheetAction(stringResource(R.string.share_set), painterResource(R.drawable.ic_share), { sharing = true })
+            ShareSetMenu(card.id, sharing, { sharing = false }, onAction)
+        }
         SheetAction(stringResource(R.string.set_delete), painterResource(R.drawable.ic_delete), { onAction(Action.DeleteSet(card.id)) })
     }
     LaunchedEffect(card.id) { first.requestFocus() }
+}
+
+/** The open set's Share icon, with its [ShareSetMenu] under it. */
+@Composable
+internal fun ShareSetButton(setId: String, onAction: (Action) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(stringResource(R.string.share_set), painterResource(R.drawable.ic_share), { open = true })
+        ShareSetMenu(setId, open, { open = false }, onAction)
+    }
+}
+
+/** D10's choice under Share: Share set or Share set with notes, each dispatching [Action.ShareSet] and closing the menu. */
+@Composable
+private fun ShareSetMenu(setId: String, expanded: Boolean, onDismiss: () -> Unit, onAction: (Action) -> Unit) {
+    val choose = { withNotes: Boolean ->
+        onDismiss()
+        onAction(Action.ShareSet(setId, withNotes))
+    }
+    val c = NotaeTheme.colors
+    // The outline sets the menu apart from the set sheet, whose card colour it shares.
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        containerColor = c.card,
+        border = BorderStroke(1.dp, c.divider),
+    ) {
+        MenuItem(stringResource(R.string.share_set_plain), painterResource(R.drawable.ic_share), { choose(false) })
+        MenuItem(stringResource(R.string.share_set_with_notes), painterResource(R.drawable.ic_note), { choose(true) })
+    }
 }
 
 /** A core ISO date in the app's locale ([formatIsoDate]). */

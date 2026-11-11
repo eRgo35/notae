@@ -6,9 +6,9 @@
 //! as they are. Nothing here is display text: Kotlin formats every title, count, date and status
 //! from these values.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use crate::backup::{Backup, plan_import};
+use crate::backup::{ImportFile, plan_import};
 use crate::sets::SetFieldError;
 use crate::state::OperationState;
 use crate::storage::StorageError;
@@ -274,6 +274,10 @@ pub struct Row {
     pub favorite: bool,
     /// The first-page PNG, once a scan has rendered it.
     pub thumbnail: Option<String>,
+    /// The score note, shown wherever the score is.
+    pub score_note: Option<String>,
+    /// The set note on this occurrence of the piece; `None` outside a set.
+    pub set_note: Option<String>,
 }
 
 /// Where a metadata value came from ([`notae_domain::MetadataOrigin`]).
@@ -347,6 +351,8 @@ pub struct SetCard {
     pub count: u32,
     /// When the set was last edited.
     pub edited: Edited,
+    /// Thumbnail paths of the set's first pieces, in set order; `None` is a blank page.
+    pub previews: Vec<Option<String>>,
 }
 
 /// When a set was last edited ([`text::Edited`]).
@@ -590,6 +596,30 @@ pub struct ImportConfirmation {
     pub sets: u32,
     /// The current names of the sets the file replaces (same id), in file order.
     pub replaced: Vec<String>,
+    /// The review of a shared set file; `None` for an export file.
+    pub shared: Option<SharedSetReview>,
+}
+
+/// The review before adding a shared set: how its pieces match the library.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct SharedSetReview {
+    /// The shared set's name.
+    pub name: String,
+    /// How many pieces matched a score in the library.
+    pub matched: u32,
+    /// The pieces no score in the library matched, in set order.
+    pub unmatched: Vec<UnmatchedPiece>,
+    /// A set with the same id exists: offer Replace or Keep both.
+    pub exists: bool,
+}
+
+/// A shared piece no score in the library matched, as the sender's library knew it.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct UnmatchedPiece {
+    /// The score's number.
+    pub number: Option<String>,
+    /// The score's title.
+    pub title: String,
 }
 
 /// The saved layout choices.
@@ -613,7 +643,7 @@ pub struct SetDialog {
     pub name: String,
     /// ISO `YYYY-MM-DD`, or `None`.
     pub date: Option<String>,
-    /// The notes, or `None`.
+    /// The set description, or `None`.
     pub notes: Option<String>,
     /// Why the last save was rejected.
     pub error: Option<SetFieldError>,
@@ -667,6 +697,8 @@ pub struct SetChoice {
     pub count: u32,
     /// The set holds the score.
     pub checked: bool,
+    /// Thumbnail paths of the set's first pieces, as on its card; `None` is a blank page.
+    pub previews: Vec<Option<String>>,
 }
 
 /// The add picker over the open set.
@@ -726,7 +758,7 @@ pub(super) struct Extras<'a> {
     pub(super) revision: u64,
     pub(super) set_dialog: Option<&'a SetDialog>,
     pub(super) export: Option<&'a ExportStatus>,
-    pub(super) pending_import: Option<&'a Backup>,
+    pub(super) pending_import: Option<&'a ImportFile>,
     pub(super) import_status: Option<&'a ImportStatus>,
 }
 
@@ -741,6 +773,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         _ => None,
     };
     let set_cards = browse::set_cards(model.sets(), crate::ui::unix_now());
+    let library_keys = model.library_keys();
     let subtitle = if let Some(set) = open_set {
         let subtitle = browse::set_subtitle(set);
         Subtitle::Set {
@@ -806,6 +839,11 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         set_cards: set_cards
             .into_iter()
             .map(|card| SetCard {
+                previews: card
+                    .preview_keys
+                    .iter()
+                    .map(|key| lookup.thumbnail_for(key, !library_keys.contains(key.as_str())))
+                    .collect(),
                 id: card.id,
                 name: card.name,
                 date: card.date,
@@ -872,6 +910,13 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
                 .add_to_set_choices()
                 .into_iter()
                 .map(|choice| SetChoice {
+                    // Opened from a search result, the rows are its hits: the library's keys tell
+                    // a set's other pieces from ones gone from the library.
+                    previews: choice
+                        .preview_keys
+                        .iter()
+                        .map(|key| lookup.thumbnail_for(key, !library_keys.contains(key.as_str())))
+                        .collect(),
                     id: choice.id,
                     name: choice.name,
                     date: choice.date,
@@ -887,11 +932,52 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         }),
         pdf_open_error: model.pdf_launch_error().map(Into::into),
         import_available: model.favorites().is_empty() && model.sets().sets().is_empty(),
-        import_confirmation: extras.pending_import.map(|backup| ImportConfirmation {
+        import_confirmation: extras
+            .pending_import
+            .and_then(|file| import_confirmation(model, file)),
+    }
+}
+
+/// The confirmation for a read import file. A shared set waits until the library is up with its
+/// whole rows ([`shared_set_shown`]).
+fn import_confirmation(model: &UiModel, file: &ImportFile) -> Option<ImportConfirmation> {
+    match file {
+        ImportFile::Backup(backup) => Some(ImportConfirmation {
             sets: count(backup.sets.len()),
             replaced: plan_import(model.sets(), backup).replaced,
+            shared: None,
         }),
+        ImportFile::Set(shared) => {
+            if !shared_set_shown(model) {
+                return None;
+            }
+            let matched = crate::share::match_pieces(shared, model.search_rows());
+            let existing = model.sets().get(&shared.set.id);
+            Some(ImportConfirmation {
+                sets: 1,
+                replaced: existing.map(|set| set.name.clone()).into_iter().collect(),
+                shared: Some(SharedSetReview {
+                    name: shared.set.name.clone(),
+                    matched: count(matched.matched),
+                    unmatched: matched
+                        .unmatched
+                        .into_iter()
+                        .map(|piece| UnmatchedPiece {
+                            number: piece.number,
+                            title: piece.title,
+                        })
+                        .collect(),
+                    exists: existing.is_some(),
+                }),
+            })
+        }
     }
+}
+
+/// A shared set's review can show: the screen is past Loading and Setup (D12), and the rows are
+/// the whole library rather than a search's hits, which it is matched against.
+pub(super) fn shared_set_shown(model: &UiModel) -> bool {
+    !matches!(screen(model), Screen::Loading | Screen::Setup { .. }) && !model.rows_filtered()
 }
 
 /// The storage state decides the setup screens, as in 0.3.0; the controller decides the
@@ -922,6 +1008,8 @@ fn screen(model: &UiModel) -> Screen {
 struct RowLookup<'a> {
     model: &'a UiModel,
     favorites: HashSet<&'a str>,
+    /// Score note texts by content key.
+    score_notes: HashMap<&'a str, &'a str>,
     thumbnails: HashSet<String>,
 }
 
@@ -934,6 +1022,12 @@ impl<'a> RowLookup<'a> {
                 .iter()
                 .map(|piece| piece.key.as_str())
                 .collect(),
+            score_notes: model
+                .score_notes()
+                .items()
+                .iter()
+                .map(|note| (note.key.as_str(), note.text.as_str()))
+                .collect(),
             thumbnails: model
                 .thumbnail_cache()
                 .map(ThumbnailCache::rendered_keys)
@@ -941,18 +1035,26 @@ impl<'a> RowLookup<'a> {
         }
     }
 
+    /// The rendered thumbnail's path for the piece with content `key`.
+    fn thumbnail_for(&self, key: &str, missing: bool) -> Option<String> {
+        if missing || !self.thumbnails.contains(key) {
+            // A missing piece has no PDF, so a thumbnail left from its old content is stale.
+            return None;
+        }
+        self.model
+            .thumbnail_cache()
+            .and_then(|cache| cache.path_for(key))
+            .map(|path| path.to_string_lossy().into_owned())
+    }
+
     fn row(&self, row: SearchRow) -> Row {
         let model = self.model;
-        let thumbnail = if row.missing || !self.thumbnails.contains(&row.note_key) {
-            // A missing piece has no PDF, so a thumbnail left from its old content is stale.
-            None
-        } else {
-            model
-                .thumbnail_cache()
-                .and_then(|cache| cache.path_for(&row.note_key))
-                .map(|path| path.to_string_lossy().into_owned())
-        };
+        let thumbnail = self.thumbnail_for(&row.note_key, row.missing);
         Row {
+            score_note: self
+                .score_notes
+                .get(row.note_key.as_str())
+                .map(|text| (*text).to_owned()),
             selection_id: browse::row_id(&row).to_owned(),
             favorite: self.favorites.contains(row.note_key.as_str()),
             snippet: row.text_snippet.as_deref().map(|snippet| {
@@ -975,6 +1077,7 @@ impl<'a> RowLookup<'a> {
             item_id: row.item_id,
             position: row.position.map(count),
             missing: row.missing,
+            set_note: row.set_note,
         }
     }
 }

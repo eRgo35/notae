@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.components.ClaimBack
 import androidx.compose.animation.Crossfade
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.components.AnimatedPresence
@@ -37,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,12 +63,25 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.c2yz.notae.R
+import com.c2yz.notae.nav.screenBackground
+import com.c2yz.notae.nav.screenBar
+import com.c2yz.notae.nav.screenFade
+import com.c2yz.notae.nav.screenContent
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.PdfOpenError
@@ -87,12 +102,28 @@ import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.details.detailsKeyAction
 import com.c2yz.notae.ui.sets.SetActionsSheet
+import com.c2yz.notae.ui.sets.ShareSetButton
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.sets.SetsPane
 import com.c2yz.notae.ui.sets.setSubtitle
 import com.c2yz.notae.ui.theme.NotaeTheme
 
-private const val SET_PREFIX = "set:"
+internal const val SET_PREFIX = "set:"
+
+internal const val SIDE_PANEL_TAG = "side-panel"
+
+/** The side panel's slide in or out: a little under a screen's, as the panel crosses less of the window. */
+internal const val PANEL_MILLIS = 250
+
+/** Each half of the chips' fade through as the side panel hides or shows: the old row out, then the new one in. */
+internal const val CHIPS_FADE_MILLIS = 150
+
+internal const val CHIPS_TAG = "chips"
+
+private val SIDE_PANEL_WIDTH = 288.dp
+
+/** The side panel and the gap after it: how far the rest moves when the panel shows or hides. */
+private val PANEL_SPAN = SIDE_PANEL_WIDTH + 16.dp
 
 /**
  * 0.3.0's `LibraryScreen` on a tablet: the side panel (or the chips when it is hidden or the pane is under 840 dp), the large
@@ -119,19 +150,26 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     val note = { id: String? -> id?.let { entries.firstOrNull { it is SetEntry.Note && it.itemId == id } as SetEntry.Note? } }
     val menuNote = note(noteMenuFor)
     val editNote = note(noteEditFor)
-    val sheetOpen = menuRow != null || menuSet != null || menuNote != null || editNote != null
+    // A piece's set note editor, by item id.
+    var setNoteFor by remember { mutableStateOf<String?>(null) }
+    val setNoteRow = setNoteFor?.let { id -> snapshot.rows.firstOrNull { it.itemId == id } }
+    val sheetOpen = menuRow != null || menuSet != null || menuNote != null || editNote != null || setNoteRow != null
     val closeSheets = {
         menuFor = null
         setMenuFor = null
         noteMenuFor = null
         noteEditFor = null
+        setNoteFor = null
     }
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    // A core dialog drawn over the sheet (a set file arriving, say) takes Back first.
+    val sheetTakesBack = sheetOpen && !overlayOpen(snapshot)
     NavigationBackHandler(
         state = backState,
-        isBackEnabled = sheetOpen,
+        isBackEnabled = sheetTakesBack,
         onBackCompleted = closeSheets,
     )
+    ClaimBack(sheetTakesBack)
     val reordering = inSet && snapshot.reordering
     // The keys work as soon as the library shows, as 0.3.0 focuses its shortcuts, and again once a sheet,
     // dialog or picker closes. While one is open, 0.3.0 ignored them (Escape closes a ⋮ sheet).
@@ -152,7 +190,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     BoxWithConstraints(
         modifier
             .fillMaxSize()
-            .background(c.background)
+            .screenBackground(c.background)
             .onPreviewKeyEvent { event ->
                 val escape = event.type == KeyEventType.KeyDown && event.key == Key.Escape
                 when {
@@ -197,13 +235,52 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 inSet,
                 content,
             )
-            WidthClass.EXPANDED -> Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight())
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = collapsingGaps(12.dp)) {
+            WidthClass.EXPANDED -> Box(Modifier.fillMaxSize().clipToBounds().padding(16.dp)) {
+                // The side panel slides in from the start, or out to it, and the rest moves with it. The rest takes its
+                // new width at once and is only moved, so its grid changes its columns once, not at every step.
+                val panel = updateTransition(sidebar, label = "side panel")
+                val shown by panel.animateFloat({ tween(PANEL_MILLIS, easing = NotaeMotion.emphasized) }, label = "side panel shown") {
+                    if (it) 1f else 0f
+                }
+                // The chips fade through, linear in time like a screen's bars: going, they fade out over the first half
+                // and their room goes after; coming, their room is taken at once, as the rest takes its new place, and
+                // they fade in over the second half.
+                val chipsTime = panel.animateFloat({ tween(2 * CHIPS_FADE_MILLIS, easing = LinearEasing) }, label = "chips") {
+                    if (it) 0f else 1f
+                }
+                val chipsGoing by remember { derivedStateOf { chipsTime.value > 0.5f } }
+                val toEnd = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
+                if (panel.currentState || panel.targetState) {
+                    SidePanel(
+                        snapshot,
+                        onAction,
+                        Modifier
+                            .width(SIDE_PANEL_WIDTH)
+                            .fillMaxHeight()
+                            .graphicsLayer { translationX = (shown - 1f) * PANEL_SPAN.toPx() * toEnd }
+                            .testTag(SIDE_PANEL_TAG)
+                            .screenBar("sidePanel"),
+                    )
+                }
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(start = if (sidebar) PANEL_SPAN else 0.dp)
+                        .graphicsLayer { translationX = (shown - if (sidebar) 1f else 0f) * PANEL_SPAN.toPx() * toEnd },
+                    verticalArrangement = collapsingGaps(12.dp),
+                ) {
+                    // Each bar on its own, so the column keeps its children (its gaps count them).
                     Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
-                    if (!sidebar) Chips(snapshot, onAction)
-                    OperationBanner(snapshot.banner, onAction)
-                    PdfError(snapshot.pdfOpenError)
+                    // Only while there are chips: the column's gaps take room for each of its children.
+                    if (!sidebar || chipsGoing) {
+                        Box(Modifier.screenBar("chips")) {
+                            Box(Modifier.testTag(CHIPS_TAG).graphicsLayer { alpha = ((chipsTime.value - 0.5f) * 2f).coerceIn(0f, 1f) }) {
+                                Chips(snapshot, onAction)
+                            }
+                        }
+                    }
+                    OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
+                    PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
                     content()
                 }
             }
@@ -216,6 +293,22 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                     onAction = {
                         menuFor = null
                         onAction(it)
+                    },
+                    onEditSetNote = {
+                        menuFor = null
+                        setNoteFor = row.itemId
+                    },
+                )
+            }
+            AnimatedOverlay(setNoteRow) { row ->
+                NoteEditor(
+                    stringResource(R.string.set_note_in, (snapshot.title as? SectionTitle.Set)?.name.orEmpty()),
+                    row.setNote.orEmpty(),
+                    onCancel = { setNoteFor = null },
+                    allowBlank = true,
+                    onSave = { text ->
+                        setNoteFor = null
+                        row.itemId?.let { onAction(Action.SaveSetNote(it, text)) }
                     },
                 )
             }
@@ -235,7 +328,8 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             }
             AnimatedOverlay(editNote) { note ->
                 NoteEditor(
-                    note,
+                    stringResource(R.string.note_edit),
+                    note.text,
                     onCancel = { noteEditFor = null },
                     onSave = {
                         noteEditFor = null
@@ -279,12 +373,14 @@ private fun Header(
                 stringResource(if (sidebar) R.string.library_hide_sidebar else R.string.library_show_sidebar),
                 painterResource(if (sidebar) R.drawable.ic_panel_left_close else R.drawable.ic_panel_left_open),
                 { onAction(Action.SetSidebarCollapsed(portrait = portrait, collapsed = sidebar)) },
+                Modifier.screenBar("sidebarToggle"),
             )
         }
         if (inSet) {
-            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) })
+            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) }, Modifier.screenBar("setBack"))
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // The title changes with the section, so it fades through; the controls that stay put do not move.
+        Column(Modifier.weight(1f).screenFade(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 sectionTitle(snapshot.title),
                 Modifier.semantics { heading() },
@@ -301,37 +397,40 @@ private fun Header(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) })
+            IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) }, Modifier.screenBar("search"))
             // Reorder mode always shows the list; the saved choice comes back with Done.
             if (!reordering) {
                 IconButton(
                     stringResource(if (list) R.string.library_grid_view else R.string.library_list_view),
                     painterResource(if (list) R.drawable.ic_layout_grid else R.drawable.ic_layout_list),
                     { onAction(Action.SetLibraryView(if (list) LibraryView.GRID else LibraryView.LIST)) },
+                    Modifier.screenBar("view"),
                 )
             }
             if (snapshot.sectionKey == "sets") {
-                PillButton(stringResource(R.string.library_new_set), { onAction(Action.NewSet) }, icon = painterResource(R.drawable.ic_add), primary = true)
+                PillButton(stringResource(R.string.library_new_set), { onAction(Action.NewSet) }, Modifier.screenBar("newSet"), icon = painterResource(R.drawable.ic_add), primary = true)
             }
             if (reordering) {
-                PillButton(stringResource(R.string.picker_done), { onAction(Action.ReorderFinished) }, icon = painterResource(R.drawable.ic_check), primary = true)
+                PillButton(stringResource(R.string.picker_done), { onAction(Action.ReorderFinished) }, Modifier.screenBar("done"), icon = painterResource(R.drawable.ic_check), primary = true)
             } else if (inSet) {
                 // Under 840 dp (portrait, or the pane beside the details) the labelled icon leaves room for the set's name.
                 if (expanded) {
-                    PillButton(stringResource(R.string.set_reorder), { onAction(Action.ReorderStarted) }, icon = painterResource(R.drawable.ic_reorder))
+                    PillButton(stringResource(R.string.set_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"), icon = painterResource(R.drawable.ic_reorder))
                 } else {
-                    IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) })
+                    IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"))
                 }
-                PillButton(stringResource(R.string.set_add), { onAction(Action.OpenAddPicker) }, icon = painterResource(R.drawable.ic_add), primary = true)
+                Box(Modifier.screenBar("share")) { ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction) }
+                PillButton(stringResource(R.string.set_add), { onAction(Action.OpenAddPicker) }, Modifier.screenBar("add"), icon = painterResource(R.drawable.ic_add), primary = true)
             }
             if (!sidebar) {
-                IconButton(stringResource(R.string.screen_settings), painterResource(R.drawable.ic_settings), { onAction(Action.OpenSettings) })
+                IconButton(stringResource(R.string.screen_settings), painterResource(R.drawable.ic_settings), { onAction(Action.OpenSettings) }, Modifier.screenBar("settings"))
             }
             // Scan is always right-most, so it never moves between screens.
             IconButton(
                 stringResource(R.string.library_scan),
                 painterResource(R.drawable.ic_scan),
                 { onAction(Action.Rescan) },
+                Modifier.screenBar("scan"),
                 enabled = snapshot.rescanEnabled,
             )
         }
@@ -423,7 +522,8 @@ private fun ColumnScope.Content(
         else -> ContentMode.GRID
     }
     // Grid and list, reorder mode and an emptied section fade into each other instead of swapping in one frame.
-    Crossfade(mode, Modifier.weight(1f).fillMaxWidth(), NotaeMotion.short(), label = "library content") { shown ->
+    // The part of the library that slides when the section or the screen changes.
+    Crossfade(mode, Modifier.weight(1f).fillMaxWidth().screenContent(NotaeTheme.colors.background), NotaeMotion.short(), label = "library content") { shown ->
         when (shown) {
             ContentMode.EMPTY -> EmptyState(snapshot, onAction, area)
             ContentMode.SETS -> SetsPane(snapshot.setCards, list, { onAction(Action.OpenSet(it.id)) }, onSetMore, area)
@@ -506,11 +606,12 @@ internal fun subtitleText(subtitle: Subtitle): String = when (subtitle) {
 
 /** The PDF launch error under the banner, opening and closing in place as the banner does. */
 @Composable
-internal fun PdfError(error: PdfOpenError?) {
+internal fun PdfError(error: PdfOpenError?, modifier: Modifier = Modifier) {
     AnimatedPresence(
         error,
         expandVertically(NotaeMotion.medium()) + fadeIn(NotaeMotion.medium()),
         shrinkVertically(NotaeMotion.medium()) + fadeOut(NotaeMotion.short()),
+        modifier,
     ) { Text(pdfErrorText(it), color = NotaeTheme.colors.error, fontSize = 15.sp) }
 }
 

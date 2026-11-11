@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -32,6 +34,41 @@ val LocalBackProgress = compositionLocalOf<() -> Float> { { 0f } }
 /** The back gesture's progress on [state], 0 when no gesture is under way. */
 fun backProgress(state: NavigationEventState<*>): () -> Float = {
     (state.transitionState as? NavigationEventTransitionState.InProgress)?.latestEvent?.progress ?: 0f
+}
+
+/**
+ * Whether a screen is closing something of its own on Back (a ⋮ sheet, a note editor), for the shell's own back handler
+ * to stand aside meanwhile ([ClaimBack]): Back closes the innermost thing first, whichever handler registered last.
+ */
+class BackClaims {
+    private val claims = mutableStateListOf<Any>()
+
+    /** Whether any screen claims Back now. */
+    val any: Boolean get() = claims.isNotEmpty()
+
+    internal fun add(claim: Any) {
+        claims += claim
+    }
+
+    internal fun remove(claim: Any) {
+        claims -= claim
+    }
+}
+
+/** The shell's [BackClaims]; none outside the shell (a screen alone in a test). */
+val LocalBackClaims = staticCompositionLocalOf<BackClaims?> { null }
+
+/** Claims Back for this screen's own handler while [claimed], so the shell's handler leaves Back to it ([BackClaims]). */
+@Composable
+fun ClaimBack(claimed: Boolean) {
+    val claims = LocalBackClaims.current ?: return
+    if (claimed) {
+        DisposableEffect(claims) {
+            val claim = Any()
+            claims.add(claim)
+            onDispose { claims.remove(claim) }
+        }
+    }
 }
 
 /**

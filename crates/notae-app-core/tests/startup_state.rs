@@ -37,7 +37,10 @@ fn saved_root_stays_neutral_until_first_rows_arrive() {
     );
 
     model
-        .apply_operation_event(OperationEvent::SearchRows(Vec::new()))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: Vec::new(),
+        })
         .expect("empty initial rows are valid");
     assert_eq!(model.startup_presentation(), StartupPresentation::Ready);
 }

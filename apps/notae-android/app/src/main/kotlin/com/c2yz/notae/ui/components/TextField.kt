@@ -31,14 +31,16 @@ import com.c2yz.notae.ui.theme.NotaeTheme
 /**
  * 0.3.0's `TextField`: one line on the field colour, 52 high, 16 radius, 16 dp side padding, 16 sp text, the muted
  * [placeholder] while empty, and a 2 dp accent border while focused. The placeholder is also its accessible name.
- * With [multiLine] it starts 52 high and grows with its text, up to [MAX_LINES] lines, then scrolls.
+ * With [multiLine] it starts 52 high, or [minLines] lines tall, and grows with its text up to [MAX_LINES] lines (twice
+ * [minLines] when that is more), then scrolls. Without [multiLine] the field is one line and [minLines] does not apply.
  */
 @Composable
-fun TextField(value: String, onValueChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, multiLine: Boolean = false) {
+fun TextField(value: String, onValueChange: (String) -> Unit, placeholder: String, modifier: Modifier = Modifier, multiLine: Boolean = false, minLines: Int = 1) {
     val c = NotaeTheme.colors
     val shape = RoundedCornerShape(16.dp)
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
+    val lines = if (multiLine) minLines.coerceAtLeast(1) else 1
     BasicTextField(
         value,
         onValueChange,
@@ -50,12 +52,15 @@ fun TextField(value: String, onValueChange: (String) -> Unit, placeholder: Strin
             .then(if (focused) Modifier.border(BorderStroke(2.dp, c.accent), shape) else Modifier)
             .semantics { contentDescription = placeholder },
         singleLine = !multiLine,
-        maxLines = if (multiLine) MAX_LINES else 1,
+        minLines = lines,
+        maxLines = if (multiLine) maxOf(MAX_LINES, 2 * lines) else 1,
         textStyle = TextStyle(color = c.foreground, fontSize = 16.sp),
         cursorBrush = SolidColor(c.accent),
         interactionSource = source,
         decorationBox = { inner ->
-            Box(Modifier.padding(horizontal = 16.dp, vertical = if (multiLine) 16.dp else 0.dp), contentAlignment = Alignment.CenterStart) {
+            // A field several lines tall starts its text, and the placeholder, at the top.
+            val alignment = if (lines > 1) Alignment.TopStart else Alignment.CenterStart
+            Box(Modifier.padding(horizontal = 16.dp, vertical = if (multiLine) 16.dp else 0.dp), contentAlignment = alignment) {
                 if (value.isEmpty()) {
                     Text(placeholder, color = c.muted, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

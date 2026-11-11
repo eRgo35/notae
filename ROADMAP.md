@@ -5,20 +5,15 @@ Notae has one maintainer. Work is tracked in
 [milestones](https://github.com/eRgo35/notae/milestones); this page is the
 short version.
 
-## Released: 0.6.1
+## Released: 0.7.0
 
 0.5.0 replaced the Rust UI with a Jetpack Compose app over a UniFFI Rust core
-(application id `com.c2yz.notae`, Android only). 0.6.0 added phone layouts and
-0.6.1 added motion. See [`CHANGELOG.md`](CHANGELOG.md).
+(application id `com.c2yz.notae`, Android only). 0.6.0 added phone layouts,
+0.6.1 added motion, and 0.7.0 slides between screens, shows sets as a stack of
+score previews, adds score notes and set notes, and shares a set. See
+[`CHANGELOG.md`](CHANGELOG.md).
 
-## Next: 0.7.0
-
-[Milestone v0.7.0](https://github.com/eRgo35/notae/milestone/6), from testing
-0.6.1 on the tablet ([#45](https://github.com/eRgo35/notae/issues/45)):
-sliding motion instead of fades, set artwork as a stack of score previews,
-sharing a set with others, and notes on scores.
-
-## Then: 0.8.0
+## Next: 0.8.0
 
 [Milestone v0.8.0](https://github.com/eRgo35/notae/milestone/7). Notae's own
 PDF viewer, the new default (the system's default app stays an option in

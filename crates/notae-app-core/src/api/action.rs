@@ -95,6 +95,13 @@ pub enum Action {
         /// The score's content key.
         note_key: String,
     },
+    /// The details screen's "Save note": stores the score note; blank text clears it.
+    SaveScoreNote {
+        /// The score's content key.
+        note_key: String,
+        /// The note field.
+        text: String,
+    },
     /// A tap on a score, or "Open score": asks Kotlin to open the PDF
     /// ([`Effect::OpenPdf`](super::Effect::OpenPdf)).
     OpenPdf {
@@ -116,8 +123,12 @@ pub enum Action {
     /// Kotlin for a file ([`Effect::PickImportFile`](super::Effect::PickImportFile)).
     ImportRequested,
     /// The import confirmation's "Import": adds the file's sets, replaces those with the same
-    /// id and merges its favorites.
+    /// id and merges its favorites. For a shared set, "Import" or "Replace": adds it, or replaces
+    /// the set with its id.
     ImportConfirmed,
+    /// A shared set review's "Keep both": adds the set beside the one with its id, under a new id
+    /// and the name `<name> (2)`.
+    ImportKeepBoth,
     /// The import confirmation's "Cancel": nothing changes.
     ImportCancelled,
     /// "New set": opens the empty set dialog.
@@ -138,7 +149,7 @@ pub enum Action {
         name: String,
         /// The ISO `YYYY-MM-DD` date, or `None` for no date.
         date: Option<String>,
-        /// The notes field, or `None` for no notes.
+        /// The description field, or `None` for no description.
         notes: Option<String>,
     },
     /// The set dialog's Cancel.
@@ -219,5 +230,21 @@ pub enum Action {
         item_id: String,
         /// The note field.
         text: String,
+    },
+    /// The piece's "Save set note": stores the set note on one piece of the open set; blank
+    /// text clears it.
+    SaveSetNote {
+        /// The piece's set item id.
+        item_id: String,
+        /// The note field.
+        text: String,
+    },
+    /// "Share" on a set: hands Kotlin the set file and text list to send
+    /// ([`Effect::ShareSet`](super::Effect::ShareSet)). An unknown set does nothing.
+    ShareSet {
+        /// The set's id.
+        set_id: String,
+        /// Whether the set notes go with it.
+        with_notes: bool,
     },
 }

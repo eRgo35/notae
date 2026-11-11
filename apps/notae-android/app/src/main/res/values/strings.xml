@@ -213,6 +213,9 @@
     <string name="set_actions_dialog">Set actions dialog</string>
     <string name="set_edit">Edit set</string>
     <string name="set_delete">Delete set</string>
+    <string name="share_set">Share</string>
+    <string name="share_set_plain">Share set</string>
+    <string name="share_set_with_notes">Share set with notes</string>
     <string name="set_back">Back to sets</string>
     <string name="set_add">Add</string>
     <string name="set_reorder">Reorder</string>
@@ -229,7 +232,7 @@
     <string name="set_date">Date (optional)</string>
     <string name="set_date_hint">YYYY-MM-DD</string>
     <string name="set_clear_date">Clear date</string>
-    <string name="set_notes_label">Notes (optional)</string>
+    <string name="set_notes_label">Description (optional)</string>
     <string name="set_notes_hint">Occasion, time, cantor…</string>
     <string name="set_cancel">Cancel</string>
     <string name="set_save">Save set</string>
@@ -260,6 +263,13 @@
     <string name="note_save">Save note</string>
     <string name="note_label">Note: %1$s</string>
     <string name="note_actions_dialog">Note actions dialog</string>
+    <!-- Score notes and set notes (#47). -->
+    <string name="score_note">Score note</string>
+    <string name="set_note_in">Note for %1$s</string>
+    <string name="add_score_note">Add score note</string>
+    <string name="add_set_note">Add set note</string>
+    <string name="edit_set_note">Set note</string>
+    <string name="has_set_note">Has a set note</string>
     <!-- "Just opened" and import (Task 20): English from the favorites plan (Tasks 10 and 11) and backup.rs `BackupError`. -->
     <string name="just_opened">Just opened</string>
     <string name="score_label_just_opened">%1$s, Just opened</string>
@@ -276,4 +286,13 @@
     </plurals>
     <string name="import_replaced">These sets will be replaced: %1$s</string>
     <string name="import_confirm">Import</string>
+    <string name="shared_set_review_title">Import “%1$s”?</string>
+    <plurals name="shared_set_matched">
+        <item quantity="one">%1$d of %2$d score matched</item>
+        <item quantity="other">%1$d of %2$d scores matched</item>
+    </plurals>
+    <string name="shared_set_exists">You already have this set as “%1$s”.</string>
+    <string name="shared_set_unmatched">Not in your library</string>
+    <string name="replace">Replace</string>
+    <string name="keep_both">Keep both</string>
 </resources>

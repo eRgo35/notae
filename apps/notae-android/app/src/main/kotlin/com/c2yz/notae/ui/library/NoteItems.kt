@@ -159,19 +159,23 @@ internal fun NoteActionsSheet(note: SetEntry.Note, onDismiss: () -> Unit, onEdit
 }
 
 /**
- * Edit note: the note's text in a multi-line field (focused), Cancel and Save note, which stays disabled while the text
- * is blank (the core ignores a blank note). The text is this dialog's own state, set from the note once when it opens,
- * so a snapshot arriving while the owner types never resets it.
+ * A note's editor, for a text note ("Edit note"), a score note or a set note ([title]): the text in a field [NOTE_LINES]
+ * lines tall that grows with it (focused), Cancel and Save note. Save note stays disabled while the text is blank unless [allowBlank]: saving blank
+ * text clears a score or set note, while the core ignores a blank text note. The text is this dialog's own state, set
+ * from [initial] once when it opens, so a snapshot arriving while the owner types never resets it.
  */
 @Composable
-internal fun NoteEditor(note: SetEntry.Note, onCancel: () -> Unit, onSave: (String) -> Unit) {
+internal fun NoteEditor(title: String, initial: String, onCancel: () -> Unit, allowBlank: Boolean = false, onSave: (String) -> Unit) {
     val c = NotaeTheme.colors
-    var text by remember(note.itemId) { mutableStateOf(note.text) }
+    var text by remember { mutableStateOf(initial) }
     val field = remember { FocusRequester() }
-    LaunchedEffect(note.itemId) { field.requestFocus() }
-    NotaeDialog(stringResource(R.string.note_edit)) {
-        Text(stringResource(R.string.note_edit), color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-        TextField(text, { text = it }, stringResource(R.string.note_field), Modifier.focusRequester(field), multiLine = true)
-        DialogButtons(stringResource(R.string.set_cancel), onCancel, stringResource(R.string.note_save), { onSave(text) }, confirmEnabled = text.isNotBlank())
+    LaunchedEffect(Unit) { field.requestFocus() }
+    NotaeDialog(title) {
+        Text(title, color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+        TextField(text, { text = it }, stringResource(R.string.note_field), Modifier.focusRequester(field), multiLine = true, minLines = NOTE_LINES)
+        DialogButtons(stringResource(R.string.set_cancel), onCancel, stringResource(R.string.note_save), { onSave(text) }, confirmEnabled = allowBlank || text.isNotBlank())
     }
 }
+
+/** A note field (the note editor, the add picker's Text note) is this many lines tall before it grows, so it reads as a note and not as a title. */
+internal const val NOTE_LINES = 4

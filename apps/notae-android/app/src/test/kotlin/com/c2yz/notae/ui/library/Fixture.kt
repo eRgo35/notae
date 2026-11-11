@@ -75,6 +75,8 @@ object Fixture {
         missing = false,
         favorite = favorite,
         thumbnail = null,
+        scoreNote = null,
+        setNote = null,
     )
 
     /** All scores, in the grid, with the side panel open. */
@@ -102,10 +104,29 @@ object Fixture {
 
     /** The three sets, most recently edited first. */
     val setCards = listOf(
-        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today),
-        SetCard("empty", "Pusty zestaw", null, 0u, Edited.Today),
-        SetCard("friday", FRIDAY_NAME, "2026-04-03", 0u, Edited.Today),
+        // The fixture's scores have no thumbnails yet, so Palm Sunday's stack is three blank pages.
+        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, listOf(null, null, null)),
+        SetCard("empty", "Pusty zestaw", null, 0u, Edited.Today, emptyList()),
+        SetCard("friday", FRIDAY_NAME, "2026-04-03", 0u, Edited.Today, emptyList()),
     )
+
+    /**
+     * One set of each stack shape, drawn from up to three thumbnail [pages]: three scores, one score, two scores where
+     * the second has no thumbnail yet, notes only, and empty.
+     */
+    fun stackCards(pages: List<String?>): List<SetCard> = listOf(
+        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, pages.take(3)),
+        SetCard("wedding", "Ślub Anny i Piotra", "2026-06-20", 1u, Edited.Yesterday, pages.take(1)),
+        SetCard("advent", "Roraty", "2026-12-01", 2u, Edited.DaysAgo(3u), listOf(pages[1], null)),
+        SetCard("retreat", "Rekolekcje - teksty", null, 2u, Edited.DaysAgo(5u), emptyList()),
+        SetCard("empty", "Pusty zestaw", null, 0u, Edited.On("2026-02-14"), emptyList()),
+    )
+
+    /** The Sets section over [stackCards]. */
+    fun stackSets(pages: List<String>): Snapshot = sets().let { sets ->
+        val cards = stackCards(pages)
+        sets.copy(subtitle = Subtitle.Sets(cards.size.toUInt()), setCards = cards)
+    }
 
     /** Niedziela Palmowa's nine items: two repeats and a piece missing from the library. */
     val palmRows: List<Row> = listOf(
@@ -146,7 +167,15 @@ object Fixture {
         setEntries = palmRows.map { SetEntry.Piece(it) },
     )
 
-    const val PSALM = "Psalm responsoryjny: Wszystkie krańce ziemi ujrzały zbawienie Boga naszego"
+    const val KYRIE_SET_NOTE = "Kantor intonuje, schola odpowiada"
+
+    /** Inside Niedziela Palmowa, with a set note on Kyrie eleison (item 2). */
+    fun palmWithSetNote(): Snapshot = palmSunday().let { palm ->
+        val rows = palm.rows.map { if (it.itemId == "item-2") it.copy(setNote = KYRIE_SET_NOTE) else it }
+        palm.copy(rows = rows, setEntries = rows.map { SetEntry.Piece(it) })
+    }
+
+    const val PSALM ="Psalm responsoryjny: Wszystkie krańce ziemi ujrzały zbawienie Boga naszego"
     /** The psalm as its controls name it: the first 60 characters and an ellipsis. */
     const val PSALM_NAME = "Psalm responsoryjny: Wszystkie krańce ziemi ujrzały zbawieni…"
     const val HOMILY = "Homilia"

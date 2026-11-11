@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.components.ClaimBack
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.components.AnimatedPresence
 import androidx.compose.ui.unit.Velocity
@@ -83,6 +84,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
+import com.c2yz.notae.nav.screenBar
+import com.c2yz.notae.nav.screenFade
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.Snapshot
@@ -92,6 +95,7 @@ import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.toCount
+import com.c2yz.notae.ui.sets.ShareSetButton
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 /** The bottom navigation bar's height, which the floating button keeps clear of. */
@@ -125,31 +129,35 @@ internal fun CompactLibrary(
         val fraction = if (range == 0f) 1f else folded / range
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.weight(1f).fillMaxWidth().nestedScroll(collapse)) {
-                if (titleSpace > 0.dp) {
-                    LargeTitle(
-                        snapshot,
-                        inSet,
-                        reordering,
-                        Modifier
-                            .height(titleSpace - with(density) { folded.toDp() })
-                            .alpha((1f - fraction * 1.6f).coerceIn(0f, 1f)),
-                    )
+                Column {
+                    if (titleSpace > 0.dp) {
+                        LargeTitle(
+                            snapshot,
+                            inSet,
+                            reordering,
+                            Modifier
+                                .height(titleSpace - with(density) { folded.toDp() })
+                                .alpha((1f - fraction * 1.6f).coerceIn(0f, 1f)),
+                        )
+                    }
+                    Toolbar(snapshot, onAction, inSet, reordering, showTitle = fraction > 0.6f)
                 }
-                Toolbar(snapshot, onAction, inSet, reordering, showTitle = fraction > 0.6f)
                 Column(
                     Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
                     verticalArrangement = collapsingGaps(12.dp),
                 ) {
                     if (showsComposers(snapshot, inSet)) {
-                        ComposerChip(composerName(snapshot), { composerSheet = true })
+                        Box(Modifier.screenBar("composers")) { ComposerChip(composerName(snapshot), { composerSheet = true }) }
                     }
-                    OperationBanner(snapshot.banner, onAction)
-                    PdfError(snapshot.pdfOpenError)
+                    OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
+                    PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
                     content()
                     Spacer(Modifier.height(4.dp))
                 }
             }
-            if (reordering) DoneBar(onAction) else BottomNav(snapshot, onAction)
+            Box(Modifier.screenBar(if (reordering) "doneBar" else "bottomNav")) {
+                if (reordering) DoneBar(onAction) else BottomNav(snapshot, onAction)
+            }
         }
         val fab = when {
             snapshot.sectionKey == "sets" -> Triple(R.string.library_new_set, R.drawable.ic_add, Action.NewSet)
@@ -161,7 +169,7 @@ internal fun CompactLibrary(
             fab,
             scaleIn(NotaeMotion.medium(), initialScale = 0.8f) + fadeIn(NotaeMotion.medium()),
             scaleOut(NotaeMotion.short(), targetScale = 0.8f) + fadeOut(NotaeMotion.short()),
-            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp),
+            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp).screenBar("fab"),
         ) { (label, icon, action) ->
             PillButton(
                 stringResource(label),
@@ -174,6 +182,7 @@ internal fun CompactLibrary(
         // Back closes the sheet before it reaches the core, which would otherwise leave the app under it.
         val backState = rememberNavigationEventState(NavigationEventInfo.None)
         NavigationBackHandler(state = backState, isBackEnabled = composerSheet, onBackCompleted = { composerSheet = false })
+        ClaimBack(composerSheet)
         CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
             AnimatedOverlay(if (composerSheet) Unit else null) {
                 ComposerSheet(snapshot, { composerSheet = false }) {
@@ -199,22 +208,22 @@ internal fun MediumLibrary(
 ) {
     val c = NotaeTheme.colors
     Row(Modifier.fillMaxSize()) {
-        NavRail(snapshot, onAction, Modifier.width(88.dp).fillMaxHeight())
+        NavRail(snapshot, onAction, Modifier.width(88.dp).fillMaxHeight().screenBar("rail"))
         Column(
             Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = collapsingGaps(12.dp),
         ) {
             header()
             if (showsComposers(snapshot, inSet)) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).screenBar("composers"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip(stringResource(R.string.all_composers), snapshot.sectionKey == "all", { onAction(Action.SelectSection("all")) })
                     snapshot.composers.forEach { composer ->
                         Chip(composer.name, composer.key == snapshot.sectionKey, { onAction(Action.SelectSection(composer.key)) })
                     }
                 }
             }
-            OperationBanner(snapshot.banner, onAction)
-            PdfError(snapshot.pdfOpenError)
+            OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
+            PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
             content()
         }
     }
@@ -273,7 +282,7 @@ private class TitleCollapse(
 @Composable
 private fun LargeTitle(snapshot: Snapshot, inSet: Boolean, reordering: Boolean, modifier: Modifier) {
     val c = NotaeTheme.colors
-    Box(modifier.fillMaxWidth().clipToBounds().padding(start = 24.dp, end = 24.dp, bottom = 12.dp), Alignment.BottomStart) {
+    Box(modifier.fillMaxWidth().clipToBounds().padding(start = 24.dp, end = 24.dp, bottom = 12.dp).screenFade(), Alignment.BottomStart) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 sectionTitle(snapshot.title),
@@ -300,9 +309,9 @@ private fun Toolbar(snapshot: Snapshot, onAction: (Action) -> Unit, inSet: Boole
     val c = NotaeTheme.colors
     Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (inSet) {
-            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) })
+            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) }, Modifier.screenBar("setBack"))
         }
-        Box(Modifier.weight(1f).padding(start = if (inSet) 4.dp else 16.dp)) {
+        Box(Modifier.weight(1f).padding(start = if (inSet) 4.dp else 16.dp).screenFade()) {
             // Qualified: the toolbar Row's scope would otherwise pick its own overload.
             androidx.compose.animation.AnimatedVisibility(showTitle, enter = fadeIn(NotaeMotion.short()), exit = fadeOut(NotaeMotion.short())) {
                 Text(
@@ -316,11 +325,12 @@ private fun Toolbar(snapshot: Snapshot, onAction: (Action) -> Unit, inSet: Boole
                 )
             }
         }
-        IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) })
+        IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) }, Modifier.screenBar("search"))
         if (inSet && !reordering) {
-            IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) })
+            IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"))
+            Box(Modifier.screenBar("share")) { ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction) }
         }
-        OverflowMenu(snapshot, onAction, reordering)
+        Box(Modifier.screenBar("more")) { OverflowMenu(snapshot, onAction, reordering) }
     }
 }
 
@@ -355,8 +365,9 @@ private fun OverflowMenu(snapshot: Snapshot, onAction: (Action) -> Unit, reorder
     }
 }
 
+/** A row of the toolbar's drop-down menus: a 24 dp icon and a 16 sp label, at least 52 dp tall. */
 @Composable
-private fun MenuItem(label: String, icon: Painter, onClick: () -> Unit, enabled: Boolean = true) {
+internal fun MenuItem(label: String, icon: Painter, onClick: () -> Unit, enabled: Boolean = true) {
     val c = NotaeTheme.colors
     DropdownMenuItem(
         text = { Text(label, fontSize = 16.sp) },

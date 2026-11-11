@@ -8,7 +8,7 @@ import androidx.compose.animation.core.tween
 
 /**
  * The app's motion, on 0.3.0's durations: [short] for state changes (a colour, a fade), [medium] for things that move
- * (a screen, a sheet, a pane). Compose scales both by the system's animator duration scale.
+ * (a sheet, a pane), [long] for a screen. Compose scales both by the system's animator duration scale.
  */
 object NotaeMotion {
     /** Material's emphasized decelerate: quick out of the gate, a long settle, as One UI's moving surfaces. */
@@ -17,4 +17,7 @@ object NotaeMotion {
     fun <T> short(): FiniteAnimationSpec<T> = tween(Tokens.motionShortMillis, easing = FastOutSlowInEasing)
 
     fun <T> medium(): FiniteAnimationSpec<T> = tween(Tokens.motionMediumMillis, easing = emphasized)
+
+    /** A whole screen sliding across the window. */
+    fun <T> long(): FiniteAnimationSpec<T> = tween(Tokens.motionLongMillis, easing = emphasized)
 }

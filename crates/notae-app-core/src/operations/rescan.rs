@@ -243,7 +243,8 @@ fn run_worker(
                 scope = next_scope;
                 match project_rows(&local, &query, scope) {
                     Ok(rows) => {
-                        send(&events, OperationEvent::SearchRows(rows));
+                        let query = query.clone();
+                        send(&events, OperationEvent::SearchRows { query, rows });
                         send_indexed_count(&local, &events);
                     }
                     Err(error) => send(
@@ -280,7 +281,8 @@ fn run_worker(
                 match MetadataEditor::new(&local).save(metadata) {
                     Ok(()) => match project_rows(&local, &query, scope) {
                         Ok(rows) => {
-                            send(&events, OperationEvent::MetadataSaved { rows });
+                            let query = query.clone();
+                            send(&events, OperationEvent::MetadataSaved { query, rows });
                             send_indexed_count(&local, &events);
                         }
                         Err(error) => send(
@@ -325,13 +327,13 @@ fn run_rescan(
         Ok(files) => (files, catalog.take_rejected_paths()),
         Err(error) => {
             cancellation.store(CANCEL_CLOSED, Ordering::Release);
+            busy.store(false, Ordering::Release);
             send(
                 events,
                 OperationEvent::Failed {
                     failure: (&error).into(),
                 },
             );
-            busy.store(false, Ordering::Release);
             return;
         }
     };
@@ -343,13 +345,13 @@ fn run_rescan(
         Ok(plan) => plan,
         Err(error) => {
             cancellation.store(CANCEL_CLOSED, Ordering::Release);
+            busy.store(false, Ordering::Release);
             send(
                 events,
                 OperationEvent::Failed {
                     failure: (&error).into(),
                 },
             );
-            busy.store(false, Ordering::Release);
             return;
         }
     };
@@ -373,17 +375,18 @@ fn run_rescan(
         .is_err()
     {
         if !stop_if_cancelled(cancellation, events, busy) {
+            busy.store(false, Ordering::Release);
             send(
                 events,
                 OperationEvent::Failed {
                     failure: Failure::CancellationStateClosed,
                 },
             );
-            busy.store(false, Ordering::Release);
         }
         return;
     }
-    match Reconciler::apply(plan, local) {
+    // `busy` clears before the last event goes out, so a scan requested on seeing it is accepted.
+    let last = match Reconciler::apply(plan, local) {
         Ok(report) => {
             if !files.is_empty() {
                 send(
@@ -452,24 +455,23 @@ fn run_rescan(
                     // Publish the whole-library count before `Completed`, which must stay the last
                     // event of a successful rescan.
                     send_indexed_count(local, events);
-                    send(events, OperationEvent::Completed { summary, rows });
+                    OperationEvent::Completed {
+                        summary,
+                        query: query.to_owned(),
+                        rows,
+                    }
                 }
-                Err(error) => send(
-                    events,
-                    OperationEvent::Failed {
-                        failure: (&error).into(),
-                    },
-                ),
+                Err(error) => OperationEvent::Failed {
+                    failure: (&error).into(),
+                },
             }
         }
-        Err(error) => send(
-            events,
-            OperationEvent::Failed {
-                failure: (&error).into(),
-            },
-        ),
-    }
+        Err(error) => OperationEvent::Failed {
+            failure: (&error).into(),
+        },
+    };
     busy.store(false, Ordering::Release);
+    send(events, last);
 }
 
 fn stop_if_cancelled(
@@ -481,8 +483,8 @@ fn stop_if_cancelled(
         return false;
     }
     cancellation.store(CANCEL_CLOSED, Ordering::Release);
-    send(events, OperationEvent::Canceled);
     busy.store(false, Ordering::Release);
+    send(events, OperationEvent::Canceled);
     true
 }
 
