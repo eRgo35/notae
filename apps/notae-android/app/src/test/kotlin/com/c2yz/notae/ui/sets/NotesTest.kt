@@ -12,7 +12,12 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -249,9 +254,6 @@ class NotesTest {
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Note").performTextInput(", verses 1-6")
         compose.onNodeWithContentDescription("Note").assertTextEquals("Psalm 24, verses 1-6")
-        compose.onNodeWithContentDescription("Note").performTextReplacement(" ")
-        compose.onNodeWithText("Save note").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Note").performTextReplacement("Psalm 24")
         compose.onNodeWithText("Save note").performClick()
         compose.onNodeWithText("Save note").assertDoesNotExist()
 
@@ -269,8 +271,45 @@ class NotesTest {
         compose.onNodeWithText("Save note").assertDoesNotExist()
 
         assertEquals(
-            listOf(Action.EditNote("note-1", "Psalm 24"), Action.OpenSearch, Action.RemoveSetItem("note-2")),
+            listOf(Action.EditNote("note-1", "Psalm 24, verses 1-6"), Action.OpenSearch, Action.RemoveSetItem("note-2")),
             actions,
         )
+    }
+
+    @Test
+    fun setRowWithSetNoteHasMarker() {
+        val noted = Fixture.palmWithSetNote()
+        show(noted)
+
+        // Only Kyrie eleison carries the marker, in the grid and in the list, read with the piece's name.
+        compose.onAllNodes(hasContentDescription("Has a set note")).assertCountEquals(1)
+        compose.onNode(hasContentDescription("2. Kyrie eleison") and hasContentDescription("Has a set note")).assertIsDisplayed()
+        shown = noted.copy(layout = noted.layout.copy(libraryView = LibraryView.LIST))
+        compose.waitForIdle()
+        compose.onAllNodes(hasContentDescription("Has a set note")).assertCountEquals(1)
+        compose.onNode(hasContentDescription("2. Kyrie eleison") and hasContentDescription("Has a set note")).assertIsDisplayed()
+    }
+
+    @Test
+    fun setNoteFromRowSheet() {
+        val noted = Fixture.palmWithSetNote().let { it.copy(layout = it.layout.copy(libraryView = LibraryView.LIST)) }
+        show(noted)
+
+        compose.onNodeWithContentDescription("More actions for Kyrie eleison").performClick()
+        compose.onNodeWithText("Set note").performClick()
+        compose.onNodeWithText("Note for Niedziela Palmowa").assertIsDisplayed()
+        compose.assertAllClickablesLabelled()
+        compose.onNodeWithContentDescription("Note").assertTextEquals(Fixture.KYRIE_SET_NOTE).performTextReplacement("Kantor zaczyna")
+        compose.onNodeWithText("Save note").performClick()
+        compose.onNodeWithText("Save note").assertDoesNotExist()
+
+        // A piece without a set note starts empty.
+        compose.onNodeWithContentDescription("More actions for Magnificat").performClick()
+        compose.onNodeWithText("Set note").performClick()
+        compose.onNodeWithContentDescription("Note").assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+        compose.onNodeWithText("Save note").assertDoesNotExist()
+
+        assertEquals(listOf<Action>(Action.SaveSetNote("item-2", "Kantor zaczyna")), actions)
     }
 }

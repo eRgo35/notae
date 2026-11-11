@@ -260,6 +260,13 @@
     <string name="note_save">Save note</string>
     <string name="note_label">Note: %1$s</string>
     <string name="note_actions_dialog">Note actions dialog</string>
+    <!-- Score notes and set notes (#47). -->
+    <string name="score_note">Score note</string>
+    <string name="set_note_in">Note for %1$s</string>
+    <string name="add_score_note">Add score note</string>
+    <string name="add_set_note">Add set note</string>
+    <string name="edit_set_note">Set note</string>
+    <string name="has_set_note">Has a set note</string>
     <!-- "Just opened" and import (Task 20): English from the favorites plan (Tasks 10 and 11) and backup.rs `BackupError`. -->
     <string name="just_opened">Just opened</string>
     <string name="score_label_just_opened">%1$s, Just opened</string>

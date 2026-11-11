@@ -68,7 +68,8 @@ class SetsScreenshotTest {
 
     private val sets = Fixture.sets()
     private val setsList = sets.withView(LibraryView.LIST)
-    private val palm = Fixture.palmSunday()
+    // Kyrie eleison has a set note, so the set shows its marker.
+    private val palm = Fixture.palmWithSetNote()
     private val palmList = palm.withView(LibraryView.LIST)
     private val empty = palm.copy(
         sectionKey = "set:empty",

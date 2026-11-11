@@ -119,12 +119,16 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     val note = { id: String? -> id?.let { entries.firstOrNull { it is SetEntry.Note && it.itemId == id } as SetEntry.Note? } }
     val menuNote = note(noteMenuFor)
     val editNote = note(noteEditFor)
-    val sheetOpen = menuRow != null || menuSet != null || menuNote != null || editNote != null
+    // A piece's set note editor, by item id.
+    var setNoteFor by remember { mutableStateOf<String?>(null) }
+    val setNoteRow = setNoteFor?.let { id -> snapshot.rows.firstOrNull { it.itemId == id } }
+    val sheetOpen = menuRow != null || menuSet != null || menuNote != null || editNote != null || setNoteRow != null
     val closeSheets = {
         menuFor = null
         setMenuFor = null
         noteMenuFor = null
         noteEditFor = null
+        setNoteFor = null
     }
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(
@@ -217,6 +221,21 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                         menuFor = null
                         onAction(it)
                     },
+                    onEditSetNote = {
+                        menuFor = null
+                        setNoteFor = row.itemId
+                    },
+                )
+            }
+            AnimatedOverlay(setNoteRow) { row ->
+                NoteEditor(
+                    stringResource(R.string.set_note_in, (snapshot.title as? SectionTitle.Set)?.name.orEmpty()),
+                    row.setNote.orEmpty(),
+                    onCancel = { setNoteFor = null },
+                    onSave = { text ->
+                        setNoteFor = null
+                        row.itemId?.let { onAction(Action.SaveSetNote(it, text)) }
+                    },
                 )
             }
             AnimatedOverlay(menuNote) { note ->
@@ -235,7 +254,8 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             }
             AnimatedOverlay(editNote) { note ->
                 NoteEditor(
-                    note,
+                    stringResource(R.string.note_edit),
+                    note.text,
                     onCancel = { noteEditFor = null },
                     onSave = {
                         noteEditFor = null

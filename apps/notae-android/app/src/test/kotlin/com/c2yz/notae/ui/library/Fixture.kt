@@ -148,7 +148,15 @@ object Fixture {
         setEntries = palmRows.map { SetEntry.Piece(it) },
     )
 
-    const val PSALM = "Psalm responsoryjny: Wszystkie krańce ziemi ujrzały zbawienie Boga naszego"
+    const val KYRIE_SET_NOTE = "Kantor intonuje, schola odpowiada"
+
+    /** Inside Niedziela Palmowa, with a set note on Kyrie eleison (item 2). */
+    fun palmWithSetNote(): Snapshot = palmSunday().let { palm ->
+        val rows = palm.rows.map { if (it.itemId == "item-2") it.copy(setNote = KYRIE_SET_NOTE) else it }
+        palm.copy(rows = rows, setEntries = rows.map { SetEntry.Piece(it) })
+    }
+
+    const val PSALM ="Psalm responsoryjny: Wszystkie krańce ziemi ujrzały zbawienie Boga naszego"
     /** The psalm as its controls name it: the first 60 characters and an ellipsis. */
     const val PSALM_NAME = "Psalm responsoryjny: Wszystkie krańce ziemi ujrzały zbawieni…"
     const val HOMILY = "Homilia"
