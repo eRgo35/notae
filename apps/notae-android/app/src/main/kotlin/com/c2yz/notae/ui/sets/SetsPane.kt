@@ -129,7 +129,7 @@ private fun SetFolderCard(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.accentSoft)) {
-                ScoreStack(card.previews, Modifier.fillMaxSize().padding(vertical = 14.dp))
+                ScoreStack(card.previews, card.count == 0u, Modifier.fillMaxSize().padding(vertical = 14.dp))
                 Box(
                     Modifier.align(Alignment.BottomStart).padding(12.dp).height(28.dp).clip(RoundedCornerShape(14.dp)).background(c.card).padding(horizontal = 12.dp),
                     contentAlignment = Alignment.Center,
@@ -168,7 +168,7 @@ private fun SetRow(card: SetCard, onOpen: () -> Unit, onMore: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(if (compact) 12.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MiniStack(card.previews, if (compact) 44.dp else 52.dp)
+        MiniStack(card.previews, card.count == 0u, if (compact) 44.dp else 52.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(card.name, Modifier.clearAndSetSemantics { }, color = c.foreground, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(setDetail(card.date, card.count), color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -218,7 +218,7 @@ internal fun SetActionsSheet(card: SetCard, onDismiss: () -> Unit, onAction: (Ac
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MiniStack(card.previews, 44.dp)
+            MiniStack(card.previews, card.count == 0u, 44.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(card.name, color = c.foreground, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(setDetail(card.date, card.count), color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
