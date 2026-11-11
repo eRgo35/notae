@@ -1,5 +1,8 @@
 package com.c2yz.notae.ui.details
 
+import com.c2yz.notae.nav.screenBackground
+import com.c2yz.notae.nav.screenChrome
+import com.c2yz.notae.nav.screenContent
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.graphics.graphicsLayer
@@ -170,7 +173,7 @@ private fun WideDetails(
     Column(
         Modifier
             .fillMaxSize()
-            .background(c.background)
+            .screenBackground(c.background)
             .padding(16.dp)
             .onPreviewKeyEvent { event -> detailsKeyAction(event, selection)?.also(onAction) != null }
             .focusRequester(keys)
@@ -178,10 +181,11 @@ private fun WideDetails(
         verticalArrangement = collapsingGaps(12.dp),
     ) {
         if (!besideList) {
-            OperationBanner(snapshot.banner, onAction)
-            PdfError(snapshot.pdfOpenError)
+            OperationBanner(snapshot.banner, onAction, Modifier.screenChrome())
+            PdfError(snapshot.pdfOpenError, Modifier.screenChrome())
         }
-        NotaeCard(Modifier.weight(1f).fillMaxWidth()) {
+        // The card, its header with it, is the details' content: it slides as the pane beside a list does.
+        NotaeCard(Modifier.weight(1f).fillMaxWidth().screenContent(c.background)) {
             Column(Modifier.fillMaxSize().padding(8.dp)) {
                 Header(selection, onAction)
                 Stepping(selection, Modifier.weight(1f)) { shown, scroll -> Body(shown.row, scroll, onAction, notes) }
@@ -202,26 +206,26 @@ private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (
     Column(
         modifier
             .fillMaxSize()
-            .background(c.background)
+            .screenBackground(c.background)
             .onPreviewKeyEvent { event -> detailsKeyAction(event, selection)?.also(onAction) != null }
             .focusable(),
     ) {
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp).screenChrome(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(stringResource(R.string.details_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.ClearSelection) })
             Position(selection, Modifier.weight(1f))
             FavoriteButton(row, onAction)
         }
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = collapsingGaps(12.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp).screenChrome(), verticalArrangement = collapsingGaps(12.dp)) {
             OperationBanner(snapshot.banner, onAction)
             PdfError(snapshot.pdfOpenError)
         }
-        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().screenContent(c.background)) {
             val preview = maxOf(120.dp, minOf(220.dp, maxWidth * 0.55f, maxHeight * 0.4f / 1.3f))
             Stepping(selection, Modifier.fillMaxSize()) { shown, scroll -> CompactBody(shown.row, scroll, preview, onAction, notes) }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider).screenChrome())
         Row(
-            Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 12.dp),
+            Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 12.dp).screenChrome(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

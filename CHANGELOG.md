@@ -40,9 +40,11 @@ adds notes on scores and sets, and lets you share a set. See
 ### Changed
 
 - **Switching sections slides** in the order of the rail or bottom bar. Deeper
-  screens slide in and out at full width without fading. Setup and loading
-  still fade. This corrects 0.6.1, where section changes faded through and
-  deeper screens faded as they slid.
+  screens slide in and out without fading. Only the content moves: the rail or
+  bottom bar and the top bars stay where they are (a screen's own top bar fades
+  in place of the one it replaces), and beside the list on a wide tablet only
+  the details pane slides. Setup and loading still fade. This corrects 0.6.1,
+  where section changes faded through and deeper screens faded as they slid.
 - The set's **Notes** field is now called **Description**; **Text note** rows
   are unchanged.
 - **Export sets** now includes score notes (export format v2). Exports from

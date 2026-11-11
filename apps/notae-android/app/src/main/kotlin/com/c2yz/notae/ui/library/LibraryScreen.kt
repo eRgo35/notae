@@ -67,6 +67,9 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.c2yz.notae.R
+import com.c2yz.notae.nav.screenBackground
+import com.c2yz.notae.nav.screenChrome
+import com.c2yz.notae.nav.screenContent
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.PdfOpenError
@@ -157,7 +160,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     BoxWithConstraints(
         modifier
             .fillMaxSize()
-            .background(c.background)
+            .screenBackground(c.background)
             .onPreviewKeyEvent { event ->
                 val escape = event.type == KeyEventType.KeyDown && event.key == Key.Escape
                 when {
@@ -203,12 +206,13 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 content,
             )
             WidthClass.EXPANDED -> Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight())
+                if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight().screenChrome())
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = collapsingGaps(12.dp)) {
-                    Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
-                    if (!sidebar) Chips(snapshot, onAction)
-                    OperationBanner(snapshot.banner, onAction)
-                    PdfError(snapshot.pdfOpenError)
+                    // Each bar on its own, so the column keeps its children (its gaps count them).
+                    Box(Modifier.screenChrome()) { Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering) }
+                    if (!sidebar) Box(Modifier.screenChrome()) { Chips(snapshot, onAction) }
+                    OperationBanner(snapshot.banner, onAction, Modifier.screenChrome())
+                    PdfError(snapshot.pdfOpenError, Modifier.screenChrome())
                     content()
                 }
             }
@@ -446,7 +450,8 @@ private fun ColumnScope.Content(
         else -> ContentMode.GRID
     }
     // Grid and list, reorder mode and an emptied section fade into each other instead of swapping in one frame.
-    Crossfade(mode, Modifier.weight(1f).fillMaxWidth(), NotaeMotion.short(), label = "library content") { shown ->
+    // The part of the library that slides when the section or the screen changes.
+    Crossfade(mode, Modifier.weight(1f).fillMaxWidth().screenContent(NotaeTheme.colors.background), NotaeMotion.short(), label = "library content") { shown ->
         when (shown) {
             ContentMode.EMPTY -> EmptyState(snapshot, onAction, area)
             ContentMode.SETS -> SetsPane(snapshot.setCards, list, { onAction(Action.OpenSet(it.id)) }, onSetMore, area)
@@ -529,11 +534,12 @@ internal fun subtitleText(subtitle: Subtitle): String = when (subtitle) {
 
 /** The PDF launch error under the banner, opening and closing in place as the banner does. */
 @Composable
-internal fun PdfError(error: PdfOpenError?) {
+internal fun PdfError(error: PdfOpenError?, modifier: Modifier = Modifier) {
     AnimatedPresence(
         error,
         expandVertically(NotaeMotion.medium()) + fadeIn(NotaeMotion.medium()),
         shrinkVertically(NotaeMotion.medium()) + fadeOut(NotaeMotion.short()),
+        modifier,
     ) { Text(pdfErrorText(it), color = NotaeTheme.colors.error, fontSize = 15.sp) }
 }
 

@@ -83,6 +83,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
+import com.c2yz.notae.nav.screenChrome
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.Snapshot
@@ -126,31 +127,35 @@ internal fun CompactLibrary(
         val fraction = if (range == 0f) 1f else folded / range
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.weight(1f).fillMaxWidth().nestedScroll(collapse)) {
-                if (titleSpace > 0.dp) {
-                    LargeTitle(
-                        snapshot,
-                        inSet,
-                        reordering,
-                        Modifier
-                            .height(titleSpace - with(density) { folded.toDp() })
-                            .alpha((1f - fraction * 1.6f).coerceIn(0f, 1f)),
-                    )
+                Column(Modifier.screenChrome()) {
+                    if (titleSpace > 0.dp) {
+                        LargeTitle(
+                            snapshot,
+                            inSet,
+                            reordering,
+                            Modifier
+                                .height(titleSpace - with(density) { folded.toDp() })
+                                .alpha((1f - fraction * 1.6f).coerceIn(0f, 1f)),
+                        )
+                    }
+                    Toolbar(snapshot, onAction, inSet, reordering, showTitle = fraction > 0.6f)
                 }
-                Toolbar(snapshot, onAction, inSet, reordering, showTitle = fraction > 0.6f)
                 Column(
                     Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
                     verticalArrangement = collapsingGaps(12.dp),
                 ) {
                     if (showsComposers(snapshot, inSet)) {
-                        ComposerChip(composerName(snapshot), { composerSheet = true })
+                        Box(Modifier.screenChrome()) { ComposerChip(composerName(snapshot), { composerSheet = true }) }
                     }
-                    OperationBanner(snapshot.banner, onAction)
-                    PdfError(snapshot.pdfOpenError)
+                    OperationBanner(snapshot.banner, onAction, Modifier.screenChrome())
+                    PdfError(snapshot.pdfOpenError, Modifier.screenChrome())
                     content()
                     Spacer(Modifier.height(4.dp))
                 }
             }
-            if (reordering) DoneBar(onAction) else BottomNav(snapshot, onAction)
+            Box(Modifier.screenChrome()) {
+                if (reordering) DoneBar(onAction) else BottomNav(snapshot, onAction)
+            }
         }
         val fab = when {
             snapshot.sectionKey == "sets" -> Triple(R.string.library_new_set, R.drawable.ic_add, Action.NewSet)
@@ -162,7 +167,7 @@ internal fun CompactLibrary(
             fab,
             scaleIn(NotaeMotion.medium(), initialScale = 0.8f) + fadeIn(NotaeMotion.medium()),
             scaleOut(NotaeMotion.short(), targetScale = 0.8f) + fadeOut(NotaeMotion.short()),
-            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp),
+            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp).screenChrome(),
         ) { (label, icon, action) ->
             PillButton(
                 stringResource(label),
@@ -200,22 +205,22 @@ internal fun MediumLibrary(
 ) {
     val c = NotaeTheme.colors
     Row(Modifier.fillMaxSize()) {
-        NavRail(snapshot, onAction, Modifier.width(88.dp).fillMaxHeight())
+        NavRail(snapshot, onAction, Modifier.width(88.dp).fillMaxHeight().screenChrome())
         Column(
             Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = collapsingGaps(12.dp),
         ) {
-            header()
+            Box(Modifier.screenChrome()) { header() }
             if (showsComposers(snapshot, inSet)) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).screenChrome(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip(stringResource(R.string.all_composers), snapshot.sectionKey == "all", { onAction(Action.SelectSection("all")) })
                     snapshot.composers.forEach { composer ->
                         Chip(composer.name, composer.key == snapshot.sectionKey, { onAction(Action.SelectSection(composer.key)) })
                     }
                 }
             }
-            OperationBanner(snapshot.banner, onAction)
-            PdfError(snapshot.pdfOpenError)
+            OperationBanner(snapshot.banner, onAction, Modifier.screenChrome())
+            PdfError(snapshot.pdfOpenError, Modifier.screenChrome())
             content()
         }
     }

@@ -5,14 +5,14 @@ import com.c2yz.notae.ui.components.LocalBackProgress
 import com.c2yz.notae.ui.components.AnimatedOverlay
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -33,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
@@ -104,7 +105,7 @@ fun NotaeNavDisplay(
             transitionSpec = { motion.forward(initialState, targetState) },
             popTransitionSpec = { motion.back(initialState, targetState) },
             predictivePopTransitionSpec = { motion.predictiveBack(initialState, targetState) },
-            entryProvider = { key -> entryFor(key, shown) },
+            entryProvider = { key -> entryFor(key, shown, motion) },
         )
         // Snapshot fields, not navigation entries: drawn over whichever screen opened it, and gone when it closes.
         CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
@@ -135,37 +136,43 @@ internal fun Modifier.shellFrame(): Modifier =
 private const val DETAILS_CONTENT_KEY = "details"
 
 /**
- * How screens change, toward the end of the line (flipped in a right-to-left language): a deeper screen slides in
- * over the one it covers, full width and without a fade, while the screen underneath stays still; Back and the back
- * gesture reverse that (the gesture shrinks the screen it leaves). Switching sections ([lateral]) slides both
- * sections together in the rail's [order]; Setup and Loading fade through.
+ * How screens change, toward the end of the line (flipped in a right-to-left language): only content moves, and the
+ * bars stay where they are. Navigation 3 holds both screens still while each moves its own parts ([ScreenFrame]): a
+ * deeper screen's content slides in over the content it covers, which stays still, and Back reverses that (the gesture
+ * shrinks the content it leaves); switching sections ([lateral]) slides both contents together in the rail's [order].
+ * A screen's bars (rail, top bar, bottom bar) fade in place over the other's, so bars both screens share do not move.
+ * Setup and Loading fade through as whole screens.
  */
-private class ScreenMotion(private val rtl: Boolean, private val order: State<List<String>>) {
-    /** The screen underneath stays visible and still while the new one covers it (`KeepUntilTransitionsFinished` is internal): a fade to full opacity for as long as the slide. */
-    private val stayUntilCovered: ExitTransition = fadeOut(NotaeMotion.long(), targetAlpha = 1f)
+internal class ScreenMotion(rtl: Boolean, private val order: State<List<String>>) {
+    /** The change now running, set as Navigation 3 starts it and read as the screens draw it. */
+    var change: Change = Change.Fade
+        private set
 
-    private fun toEnd(): (Int) -> Int = if (rtl) { w -> -w } else { w -> w }
+    /** The end of the line: 1 to the right, -1 to the left. */
+    val end: Float = if (rtl) -1f else 1f
 
-    private fun toStart(): (Int) -> Int = if (rtl) { w -> w } else { w -> -w }
+    private fun start(change: Change, popping: Boolean = false): ContentTransform {
+        this.change = change
+        if (change == Change.Fade) return fadeThrough()
+        // The screen Back takes away stays on top while its content leaves.
+        return ContentTransform(EnterTransition.None, ExitTransition.None, targetContentZIndex = if (popping) -1f else 0f)
+    }
 
-    private fun slide(lateral: Lateral): ContentTransform =
-        when (lateral) {
-            Lateral.Fade -> fadeThrough()
-            Lateral.Forward -> slideInHorizontally(NotaeMotion.long(), toEnd()) togetherWith slideOutHorizontally(NotaeMotion.long(), toStart())
-            Lateral.Backward -> slideInHorizontally(NotaeMotion.long(), toStart()) togetherWith slideOutHorizontally(NotaeMotion.long(), toEnd())
+    private fun lateralChange(from: Scene<NavKey>, to: Scene<NavKey>): Change? =
+        when (lateral(from, to, order.value)) {
+            Lateral.Fade -> Change.Fade
+            Lateral.Forward -> Change.Forward
+            Lateral.Backward -> Change.Backward
+            null -> null
         }
 
-    fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        lateral(from, to, order.value)?.let(::slide)
-            ?: (slideInHorizontally(NotaeMotion.long(), toEnd()) togetherWith stayUntilCovered)
+    fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform = start(lateralChange(from, to) ?: Change.Push)
 
     fun back(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        lateral(from, to, order.value)?.let(::slide)
-            ?: ContentTransform(EnterTransition.None, slideOutHorizontally(NotaeMotion.long(), toEnd()), targetContentZIndex = -1f)
+        lateralChange(from, to)?.let { start(it) } ?: start(Change.Pop, popping = true)
 
     fun predictiveBack(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        lateral(from, to, order.value)?.let(::slide)
-            ?: ContentTransform(EnterTransition.None, scaleOut(NotaeMotion.long(), targetScale = 0.9f), targetContentZIndex = -1f)
+        lateralChange(from, to)?.let { start(it) } ?: start(Change.PredictivePop, popping = true)
 
     private fun fadeThrough(): ContentTransform =
         fadeIn(tween(Tokens.motionMediumMillis, delayMillis = FADE_OUT_MILLIS)) togetherWith fadeOut(tween(FADE_OUT_MILLIS))
@@ -230,7 +237,7 @@ private fun shownFor(key: NavKey, shown: State<Shown>): Shown {
 /** Not state: a new value always comes with a recomposition. */
 private class Held(var value: Shown)
 
-private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when (key) {
+private fun entryFor(key: NavKey, shown: State<Shown>, motion: ScreenMotion): NavEntry<NavKey> = when (key) {
     Route.Loading -> placeholder(key, R.string.screen_loading)
     Route.Setup -> NavEntry(key) {
         val (snapshot, onAction) = shownFor(key, shown)
@@ -246,21 +253,21 @@ private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when 
         if (key is Route.Library) put(SectionKey, key.section)
     }) {
         val (snapshot, onAction) = shownFor(key, shown)
-        LibraryScreen(snapshot, onAction)
+        ScreenFrame(motion) { LibraryScreen(snapshot, onAction) }
     }
     // One content key for every score: previous and next (and another score chosen in the list beside it) swap the
     // content in place, and the details slide between the scores themselves.
     is Route.Details -> NavEntry(key, contentKey = DETAILS_CONTENT_KEY, metadata = metadata { put(DetailPane, true) }) {
         val it = shownFor(key, shown)
-        DetailsScreen(it.snapshot, it.onAction, besideList = it.besideList)
+        ScreenFrame(motion) { DetailsScreen(it.snapshot, it.onAction, besideList = it.besideList) }
     }
     Route.Search -> NavEntry(key) {
         val it = shownFor(key, shown)
-        SearchScreen(it.snapshot, it.onAction, it.voiceAvailable)
+        ScreenFrame(motion) { SearchScreen(it.snapshot, it.onAction, it.voiceAvailable) }
     }
     Route.Settings -> NavEntry(key) {
         val (snapshot, onAction) = shownFor(key, shown)
-        SettingsScreen(snapshot, onAction, ABOUT)
+        ScreenFrame(motion) { SettingsScreen(snapshot, onAction, ABOUT) }
     }
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)
@@ -313,17 +320,27 @@ private class ListDetailScene(
     override val entries: List<NavEntry<NavKey>> = listOfNotNull(list, detail)
     override val content: @Composable () -> Unit = {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            // Not animated: a grid re-flowing its columns at each step of a moving width loses its place.
-            val listWidth = if (detail == null) maxWidth else minOf(LIST_PANE_WIDTH, maxWidth * LIST_SHARE)
+            // Only the detail pane moves: it slides in from the end of the line, full width, as a deeper screen's
+            // content does, and Back slides it out again; another score chosen keeps the pane where it is.
+            val pane = updateTransition(detail != null, label = "detail pane")
+            val open = pane.currentState || pane.targetState
+            // The details last shown, which the pane keeps drawing while it slides away.
+            val last = remember { LastDetail() }
+            if (detail != null) last.entry = detail
+            val end = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
+            // Not animated: a grid re-flowing its columns at each step of a moving width loses its place. The list
+            // narrows as the pane starts to open and widens once it has closed.
+            val listWidth = if (!open) maxWidth else minOf(LIST_PANE_WIDTH, maxWidth * LIST_SHARE)
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.width(listWidth).fillMaxHeight()) { list.Content() }
-                if (detail != null) {
-                    Box(Modifier.weight(1f).fillMaxHeight()) {
-                        // A new state each time the pane opens; another score keeps the pane and does not replay this.
-                        val opening = remember { MutableTransitionState(false).apply { targetState = true } }
-                        // Qualified: the Row's scope would otherwise pick its own overload.
-                        androidx.compose.animation.AnimatedVisibility(visibleState = opening, enter = slideInHorizontally(NotaeMotion.medium()) { it / 4 } + fadeIn(NotaeMotion.medium())) {
-                            detail.Content()
+                if (open) {
+                    Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+                        pane.AnimatedVisibility(
+                            visible = { it },
+                            enter = slideInHorizontally(NotaeMotion.long()) { it * end },
+                            exit = slideOutHorizontally(NotaeMotion.long()) { it * end },
+                        ) {
+                            last.entry?.Content()
                         }
                     }
                 }
@@ -336,3 +353,6 @@ private class ListDetailScene(
         const val LIST_SHARE = 720f / 1280f
     }
 }
+
+/** Not state: a new detail always comes with a recomposition. */
+private class LastDetail(var entry: NavEntry<NavKey>? = null)

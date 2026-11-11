@@ -1,5 +1,8 @@
 package com.c2yz.notae.ui.settings
 
+import com.c2yz.notae.nav.screenBackground
+import com.c2yz.notae.nav.screenChrome
+import com.c2yz.notae.nav.screenContent
 import android.content.res.Resources
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.theme.NotaeMotion
@@ -106,7 +109,7 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
     BoxWithConstraints(
         modifier
             .fillMaxSize()
-            .background(c.background)
+            .screenBackground(c.background)
             .onPreviewKeyEvent { event ->
                 val action = when {
                     event.isCtrlK() -> Action.OpenSearch
@@ -121,12 +124,12 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
     ) {
         val narrow = maxWidth < 420.dp
         Column(Modifier.fillMaxSize().padding(start = 16.dp, top = 16.dp, end = 16.dp), verticalArrangement = collapsingGaps(12.dp)) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.screenChrome(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(stringResource(R.string.details_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseSettings) })
                 Text(stringResource(R.string.screen_settings), color = c.foreground, fontSize = if (narrow) 26.sp else 32.sp, fontWeight = FontWeight.SemiBold)
             }
-            OperationBanner(snapshot.banner, onAction)
-            Box(Modifier.weight(1f).fillMaxWidth()) {
+            OperationBanner(snapshot.banner, onAction, Modifier.screenChrome())
+            Box(Modifier.weight(1f).fillMaxWidth().screenContent(c.background)) {
                 val state = rememberLazyListState()
                 LazyColumn(
                     Modifier.fillMaxSize(),
