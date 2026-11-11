@@ -46,10 +46,10 @@ pub use snapshot::{
     ImportConfirmation, ImportError, ImportStatus, LayoutPrefs, MetadataDraft, Origin,
     PdfOpenError, PositionOf, Row, ScanSummary, Screen, SearchBox, SearchScope, SectionEntry,
     SectionTitle, Selection, SetCard, SetChoice, SetDialog, SetEntry, SettingsInfo, SetupError,
-    SetupScreen, Snapshot, Snippet, StatusMessage, Subtitle,
+    SetupScreen, SharedSetReview, Snapshot, Snippet, StatusMessage, Subtitle, UnmatchedPiece,
 };
 
-use crate::backup::{Backup, BackupError, ImportFile};
+use crate::backup::{BackupError, ImportFile};
 use crate::operations::events::OperationEvent;
 use crate::operations::rescan::OperationController;
 use crate::platform::{PlatformCatalog, PlatformLibrary};
@@ -225,23 +225,16 @@ impl NotaeCore {
         self.shared.listener.on_snapshot(snapshot);
     }
 
-    /// The file chosen after [`Effect::PickImportFile`] was read. An export file waits for
-    /// the confirmation ([`Snapshot::import_confirmation`]); any other file is reported in
-    /// [`SettingsInfo::import_status`].
+    /// The file chosen after [`Effect::PickImportFile`] was read. An export file or a shared set
+    /// waits for the confirmation ([`Snapshot::import_confirmation`]), a shared set until the
+    /// library is up; any other file is reported in [`SettingsInfo::import_status`].
     pub fn import_file_read(&self, text: String) {
         let snapshot = {
             let mut state = self.shared.lock();
             match crate::backup::parse_import(&text) {
-                Ok(ImportFile::Backup(backup)) => {
+                Ok(file) => {
                     state.import_status = None;
-                    state.pending_import = Some(backup);
-                }
-                // Task 10 reviews and adds a shared set.
-                Ok(ImportFile::Set(_)) => {
-                    state.pending_import = None;
-                    state.import_status = Some(ImportStatus::Failed {
-                        error: ImportError::NotNotae,
-                    });
+                    state.pending_import = Some(file);
                 }
                 Err(error) => {
                     state.pending_import = None;
@@ -466,8 +459,8 @@ struct CoreState {
     export: Option<ExportStatus>,
     /// The content key of the PDF Kotlin was asked to open.
     opening_pdf: Option<String>,
-    /// A read export file waiting for the import confirmation.
-    pending_import: Option<Backup>,
+    /// A read export or shared set file waiting for the import confirmation.
+    pending_import: Option<ImportFile>,
     /// The outcome of the last import.
     import_status: Option<ImportStatus>,
 }
@@ -676,9 +669,21 @@ impl CoreState {
                 self.import_status = None;
                 return vec![Effect::PickImportFile];
             }
-            Action::ImportConfirmed => {
-                if let Some(backup) = self.pending_import.take() {
+            Action::ImportConfirmed => match self.pending_import.take() {
+                Some(ImportFile::Backup(backup)) => {
                     model.import_backup(backup);
+                    self.import_status = Some(ImportStatus::Imported);
+                }
+                Some(ImportFile::Set(shared)) => {
+                    model.import_shared_set(&shared, false);
+                    self.import_status = Some(ImportStatus::Imported);
+                }
+                None => {}
+            },
+            Action::ImportKeepBoth => {
+                if let Some(ImportFile::Set(shared)) = &self.pending_import {
+                    model.import_shared_set(shared, true);
+                    self.pending_import = None;
                     self.import_status = Some(ImportStatus::Imported);
                 }
             }
@@ -785,8 +790,15 @@ impl CoreState {
 
     /// Closes the innermost thing open; `false` when nothing is.
     fn back(&mut self) -> bool {
-        // The import confirmation can be open over the setup screen, before any library.
-        if self.pending_import.take().is_some() {
+        // The import confirmation can be open over the setup screen, before any library; a
+        // shared set waiting for the library is not shown, so Back leaves it.
+        let shown = match &self.pending_import {
+            Some(ImportFile::Backup(_)) => true,
+            Some(ImportFile::Set(_)) => snapshot::shows_library(&self.model),
+            None => false,
+        };
+        if shown {
+            self.pending_import = None;
             return true;
         }
         let model = &mut self.model;

@@ -76,7 +76,7 @@ class ImportTest {
 
     @Test
     fun a_file_that_replaces_nothing_only_asks() {
-        show(settings.copy(importConfirmation = ImportConfirmation(sets = 1u, replaced = emptyList())))
+        show(settings.copy(importConfirmation = ImportConfirmation(sets = 1u, replaced = emptyList(), shared = null)))
 
         compose.onNodeWithText("Import 1 set?").assertIsDisplayed()
         compose.onNodeWithText("These sets will be replaced", substring = true).assertDoesNotExist()
@@ -107,7 +107,7 @@ class ImportTest {
 
     @Test
     fun the_confirmation_also_shows_over_the_setup_screen() {
-        show(Fixture.base.copy(importConfirmation = ImportConfirmation(sets = 2u, replaced = emptyList())))
+        show(Fixture.base.copy(importConfirmation = ImportConfirmation(sets = 2u, replaced = emptyList(), shared = null)))
 
         compose.onNodeWithText("Import 2 sets?").assertIsDisplayed()
     }
@@ -173,11 +173,11 @@ class ImportTest {
             settings = Fixture.base.settings.copy(libraryName = "NotaeRef", indexedCount = 20u),
         )
         val confirming = settings.copy(
-            importConfirmation = ImportConfirmation(sets = 3u, replaced = listOf("Niedziela Palmowa", "Pusty zestaw")),
+            importConfirmation = ImportConfirmation(sets = 3u, replaced = listOf("Niedziela Palmowa", "Pusty zestaw"), shared = null),
         )
         val setupConfirming = Fixture.base.copy(
             screen = Screen.Setup(SetupScreen.Unconfigured),
-            importConfirmation = ImportConfirmation(sets = 3u, replaced = emptyList()),
+            importConfirmation = ImportConfirmation(sets = 3u, replaced = emptyList(), shared = null),
         )
 
         fun Snapshot.withImport(status: ImportStatus) = copy(settings = settings.copy(importStatus = status))

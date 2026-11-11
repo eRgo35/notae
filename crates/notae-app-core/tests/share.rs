@@ -3,8 +3,12 @@
 use notae_app_core::backup::{BackupError, ImportFile, export_json, parse_import};
 use notae_app_core::favorites::{Favorites, PieceRef};
 use notae_app_core::score_notes::ScoreNotes;
+use notae_app_core::sets::{ItemKind, Set};
 use notae_app_core::sets::{SetFields, SetStore};
-use notae_app_core::share::{share_file_name, share_json, share_text};
+use notae_app_core::share::{
+    MatchedSet, SharedSet, keep_both, match_pieces, share_file_name, share_json, share_text,
+};
+use notae_app_core::ui::browse::{SetEntry, set_entries};
 use notae_app_core::ui::search::SearchRow;
 
 fn key(c: char) -> String {
@@ -133,4 +137,173 @@ fn parse_export_tells_backup_from_shared_set() {
 fn share_file_name_sanitises() {
     assert_eq!(share_file_name("A/B: Mass"), "A_B_ Mass.notae-set");
     assert_eq!(share_file_name("  "), "set.notae-set");
+}
+
+/// The sender's "Mass": Gloria (123, `a`, `Gloria.pdf`) and Sanctus (7, `b`, `mass/Sanctus.pdf`), as received.
+fn received_mass() -> SharedSet {
+    let mut store = SetStore::default();
+    let id = store.create(
+        SetFields {
+            name: "Mass".to_owned(),
+            date: None,
+            notes: None,
+        },
+        1,
+    );
+    store.add_piece(&id, piece('a', "Gloria.pdf"), 2);
+    store.add_piece(&id, piece('b', "mass/Sanctus.pdf"), 3);
+    let sender = vec![
+        row('a', Some("123"), "Gloria", None),
+        row('b', Some("7"), "Sanctus", None),
+    ];
+    let json = share_json(store.get(&id).expect("set"), &sender, false);
+    let Ok(ImportFile::Set(shared)) = parse_import(&json) else {
+        panic!("a shared set");
+    };
+    shared
+}
+
+/// A recipient's library row with its own key, path, number and title.
+fn library_row(c: char, path: &str, number: Option<&str>, title: &str) -> SearchRow {
+    SearchRow {
+        relative_path: path.to_owned(),
+        ..row(c, number, title, None)
+    }
+}
+
+/// The `(key, path)` of each piece item, in set order.
+fn pieces_of(set: &Set) -> Vec<(String, String)> {
+    set.items
+        .iter()
+        .filter_map(|item| match &item.kind {
+            ItemKind::Piece(piece) => Some((piece.key.clone(), piece.path.clone())),
+            ItemKind::Note { .. } => None,
+        })
+        .collect()
+}
+
+#[test]
+fn matches_identical_files_by_key() {
+    let shared = received_mass();
+    let rows = vec![
+        library_row('a', "moved/Gloria.pdf", None, "Other"),
+        library_row('b', "Sanctus.pdf", Some("7"), "Sanctus"),
+    ];
+
+    let MatchedSet {
+        set,
+        matched,
+        unmatched,
+    } = match_pieces(&shared, &rows);
+
+    assert_eq!(matched, 2);
+    assert!(unmatched.is_empty());
+    assert_eq!(
+        pieces_of(&set),
+        vec![
+            (key('a'), "moved/Gloria.pdf".to_owned()),
+            (key('b'), "Sanctus.pdf".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn matches_renamed_files_by_path_then_number_and_title() {
+    let shared = received_mass();
+    let rows = vec![
+        // Same number and title as Gloria, but Gloria's path below wins.
+        library_row('e', "other/Gloria.pdf", Some("123"), "Gloria"),
+        library_row('c', "Gloria.pdf", None, "Gloria (new edition)"),
+        library_row('d', "renamed/Sanctus 2.pdf", Some("7"), "  SANCTUS "),
+    ];
+
+    let matched = match_pieces(&shared, &rows);
+
+    assert_eq!(matched.matched, 2);
+    assert_eq!(
+        pieces_of(&matched.set),
+        vec![
+            (key('c'), "Gloria.pdf".to_owned()),
+            (key('d'), "renamed/Sanctus 2.pdf".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn same_number_and_title_different_file_matches() {
+    let shared = received_mass();
+    let rows = vec![
+        // Without a number a title alone never matches.
+        library_row('c', "Gloria.v2.pdf", None, "Gloria"),
+        library_row('d', "s.pdf", Some("7"), "sanctus"),
+        library_row('e', "g.pdf", Some("124"), "Gloria"),
+    ];
+
+    let matched = match_pieces(&shared, &rows);
+
+    assert_eq!(matched.matched, 1);
+    assert_eq!(pieces_of(&matched.set)[1], (key('d'), "s.pdf".to_owned()));
+    assert_eq!(
+        pieces_of(&matched.set)[0],
+        (key('a'), "Gloria.pdf".to_owned())
+    );
+    assert_eq!(matched.unmatched.len(), 1);
+    assert_eq!(matched.unmatched[0].title, "Gloria");
+    assert_eq!(matched.unmatched[0].number.as_deref(), Some("123"));
+}
+
+#[test]
+fn unmatched_pieces_stay_as_placeholders() {
+    let shared = received_mass();
+    let rows = vec![library_row('b', "mass/Sanctus.pdf", Some("7"), "Sanctus")];
+
+    let matched = match_pieces(&shared, &rows);
+
+    assert_eq!(matched.matched, 1);
+    assert_eq!(
+        matched
+            .unmatched
+            .iter()
+            .map(|piece| (piece.number.as_deref(), piece.title.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(Some("123"), "Gloria")]
+    );
+    assert_eq!(matched.set.items.len(), 2, "the unmatched piece is kept");
+    assert_eq!(
+        pieces_of(&matched.set)[0],
+        (key('a'), "Gloria.pdf".to_owned()),
+        "the sender's key and path"
+    );
+    let entries = set_entries(&rows, &matched.set);
+    let SetEntry::Piece(gloria) = &entries[0] else {
+        panic!("a piece row");
+    };
+    assert!(gloria.missing);
+    assert_eq!(gloria.title, "Gloria");
+    let SetEntry::Piece(sanctus) = &entries[1] else {
+        panic!("a piece row");
+    };
+    assert!(!sanctus.missing);
+}
+
+#[test]
+fn keep_both_names_and_ids() {
+    let shared = received_mass();
+    let mut store = SetStore::default();
+    store.put(shared.set.clone());
+    let mut second = shared.set.clone();
+    second.id = "other".to_owned();
+    second.name = "Mass (2)".to_owned();
+    store.put(second);
+
+    let copy = keep_both(shared.set.clone(), &store);
+
+    assert_eq!(copy.name, "Mass (3)");
+    assert_ne!(copy.id, shared.set.id);
+    assert!(store.get(&copy.id).is_none());
+    assert_eq!(copy.items.len(), shared.set.items.len());
+    let mut ids: Vec<&str> = copy.items.iter().map(|item| item.id.as_str()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), copy.items.len(), "item ids stay unique");
 }

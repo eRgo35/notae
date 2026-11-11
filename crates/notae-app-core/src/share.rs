@@ -9,7 +9,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use crate::backup::{APP, BackupError, SCHEMA_VERSION};
-use crate::sets::{ItemKind, Set};
+use crate::sets::{ItemKind, Set, SetStore, new_id};
 use crate::ui::search::SearchRow;
 
 /// What the sender's library knew about a shared score, for matching it in the recipient's library.
@@ -30,6 +30,75 @@ pub struct SharedSet {
     pub set: Set,
     /// Per piece item (by item id), what the sender knew about the score.
     pub pieces: HashMap<String, SharedPiece>,
+}
+
+/// A shared set with its pieces matched against the recipient's library.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MatchedSet {
+    /// The set; a matched piece holds the library row's key and path, an unmatched one the sender's.
+    pub set: Set,
+    /// How many pieces matched a library row.
+    pub matched: usize,
+    /// What the sender knew about each unmatched piece, in set order.
+    pub unmatched: Vec<SharedPiece>,
+}
+
+/// Matches each piece of `shared` to a library row: by key, else by path, else by number and title (title
+/// ignoring case and surrounding space; both sides need a number). A match takes the row's key and path; an
+/// unmatched piece keeps the sender's, so it shows as missing until a later relink.
+#[must_use]
+pub fn match_pieces(shared: &SharedSet, rows: &[SearchRow]) -> MatchedSet {
+    let mut set = shared.set.clone();
+    let mut matched = 0;
+    let mut unmatched = Vec::new();
+    for item in &mut set.items {
+        let ItemKind::Piece(piece) = &mut item.kind else {
+            continue;
+        };
+        let info = shared.pieces.get(&item.id);
+        let same_number_and_title = |row: &&SearchRow| {
+            info.is_some_and(|info| {
+                info.number.is_some()
+                    && row.id == info.number
+                    && row.title.trim().to_lowercase() == info.title.trim().to_lowercase()
+            })
+        };
+        let found = rows
+            .iter()
+            .find(|row| row.note_key == piece.key)
+            .or_else(|| rows.iter().find(|row| row.relative_path == piece.path))
+            .or_else(|| rows.iter().find(same_number_and_title));
+        match found {
+            Some(row) => {
+                piece.key.clone_from(&row.note_key);
+                piece.path.clone_from(&row.relative_path);
+                matched += 1;
+            }
+            None => unmatched.push(
+                info.cloned()
+                    .unwrap_or_else(|| piece_info(&[], &piece.key, &piece.path)),
+            ),
+        }
+    }
+    MatchedSet {
+        set,
+        matched,
+        unmatched,
+    }
+}
+
+/// `set` as an addition beside the set with its id: a new id, and the name "<name> (2)", "(3)", … — the first
+/// that no set in `store` has.
+#[must_use]
+pub fn keep_both(mut set: Set, store: &SetStore) -> Set {
+    set.id = new_id(&set.id);
+    let taken = |name: &str| store.sets().iter().any(|other| other.name == name);
+    let name = (2..)
+        .map(|n| format!("{} ({n})", set.name))
+        .find(|name| !taken(name))
+        .unwrap_or_default();
+    set.name = name;
+    set
 }
 
 /// The title shown for a score: the library's, or the stored path's file stem when the library lacks it.

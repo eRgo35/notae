@@ -14,7 +14,8 @@ use fake_platform::{FakePlatform, entry, readable};
 use notae_app_core::SetStore;
 use notae_app_core::api::{
     Action, CoreListener, Effect, ExportStatus, ImportConfirmation, ImportError, ImportStatus,
-    NotaeCore, Screen, SetEntry, SetupError, SetupScreen, Snapshot, StatusMessage, Subtitle,
+    NotaeCore, Screen, SetEntry, SetupError, SetupScreen, SharedSetReview, Snapshot, StatusMessage,
+    Subtitle, UnmatchedPiece,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
 use notae_app_core::score_notes::ScoreNotes;
@@ -1307,6 +1308,7 @@ fn import_cancel_changes_nothing() {
         Some(ImportConfirmation {
             sets: 1,
             replaced: vec!["Evening Mass".to_owned()],
+            shared: None,
         })
     );
     harness.core.dispatch(Action::ImportCancelled);
@@ -1408,7 +1410,8 @@ fn import_of_a_wrong_file_says_why_and_back_closes_the_confirmation() {
         asking.import_confirmation,
         Some(ImportConfirmation {
             sets: 0,
-            replaced: Vec::new()
+            replaced: Vec::new(),
+            shared: None,
         })
     );
     assert_eq!(asking.settings.import_status, None);
@@ -1491,4 +1494,115 @@ fn share_set_returns_the_file_and_text_and_ignores_unknown_sets() {
     assert!(json.contains(r#""kind":"set""#), "{json}");
     assert!(text.starts_with("Mass\n1. "), "{text}");
     assert!(text.contains("Ave Maria"), "{text}");
+}
+
+/// A shared set file: "Ave Maria" under another key but the library's path, then "Lost" (9), which no library
+/// holds.
+fn shared_set_file(id: &str, name: &str) -> String {
+    let (other, lost) = ("f".repeat(64), "e".repeat(64));
+    format!(
+        r#"{{"schema_version":2,"app":"notae","kind":"set","set":{{"id":"{id}","name":"{name}","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{other}","path":"Ave Maria.pdf","title":"Ave Maria"}},{{"id":"i2","kind":"piece","key":"{lost}","path":"Lost.pdf","number":"9","title":"Lost"}}]}}}}"#
+    )
+}
+
+fn review(name: &str, exists: bool) -> SharedSetReview {
+    SharedSetReview {
+        name: name.to_owned(),
+        matched: 1,
+        unmatched: vec![UnmatchedPiece {
+            number: Some("9".to_owned()),
+            title: "Lost".to_owned(),
+        }],
+        exists,
+    }
+}
+
+#[test]
+fn shared_set_waits_for_the_library() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    assert!(matches!(
+        harness.core.snapshot().screen,
+        Screen::Setup { .. }
+    ));
+
+    harness.core.import_file_read(shared_set_file("s1", "Mass"));
+    let waiting = harness.core.snapshot();
+    assert_eq!(waiting.import_confirmation, None);
+    assert_eq!(waiting.settings.import_status, None);
+    assert!(!harness.core.back(), "Back does not drop the waiting set");
+
+    open_and_scan(&harness);
+    assert_eq!(
+        harness.core.snapshot().import_confirmation,
+        Some(ImportConfirmation {
+            sets: 1,
+            replaced: Vec::new(),
+            shared: Some(review("Mass", false)),
+        })
+    );
+}
+
+#[test]
+fn shared_set_replace_and_keep_both() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    let ave = library
+        .rows
+        .iter()
+        .find(|row| row.title == "Ave Maria")
+        .expect("Ave Maria")
+        .note_key
+        .clone();
+    set_with_first_piece(&harness, &library);
+    let set_id = harness.core.snapshot().set_cards[0].id.clone();
+    let file = shared_set_file(&set_id, "Choir Mass");
+
+    harness.core.import_file_read(file.clone());
+    assert_eq!(
+        harness.core.snapshot().import_confirmation,
+        Some(ImportConfirmation {
+            sets: 1,
+            replaced: vec!["Mass".to_owned()],
+            shared: Some(review("Choir Mass", true)),
+        })
+    );
+    harness.core.dispatch(Action::ImportConfirmed);
+    let replaced = harness.core.snapshot();
+    assert_eq!(replaced.import_confirmation, None);
+    assert_eq!(
+        replaced.settings.import_status,
+        Some(ImportStatus::Imported)
+    );
+    assert_eq!(replaced.set_cards.len(), 1);
+    assert_eq!(replaced.set_cards[0].name, "Choir Mass");
+    let saved = SetStore::load(&dir.path().join("sets.json"));
+    let set = saved.get(&set_id).expect("the replaced set is saved");
+    let notae_app_core::sets::ItemKind::Piece(first) = &set.items[0].kind else {
+        panic!("a piece");
+    };
+    assert_eq!(first.key, ave, "the matched piece takes the library's key");
+    let notae_app_core::sets::ItemKind::Piece(lost) = &set.items[1].kind else {
+        panic!("a piece");
+    };
+    assert_eq!(
+        lost.path, "Lost.pdf",
+        "the unmatched piece is a placeholder"
+    );
+
+    harness.core.import_file_read(file);
+    harness.core.dispatch(Action::ImportKeepBoth);
+    let both = harness.core.snapshot();
+    assert_eq!(both.import_confirmation, None);
+    let mut names: Vec<&str> = both
+        .set_cards
+        .iter()
+        .map(|card| card.name.as_str())
+        .collect();
+    names.sort_unstable();
+    assert_eq!(names, vec!["Choir Mass", "Choir Mass (2)"]);
+    let saved = SetStore::load(&dir.path().join("sets.json"));
+    assert_eq!(saved.sets().len(), 2);
+    assert_ne!(saved.sets()[0].id, saved.sets()[1].id);
 }

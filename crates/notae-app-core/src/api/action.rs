@@ -123,8 +123,12 @@ pub enum Action {
     /// Kotlin for a file ([`Effect::PickImportFile`](super::Effect::PickImportFile)).
     ImportRequested,
     /// The import confirmation's "Import": adds the file's sets, replaces those with the same
-    /// id and merges its favorites.
+    /// id and merges its favorites. For a shared set, "Import" or "Replace": adds it, or replaces
+    /// the set with its id.
     ImportConfirmed,
+    /// A shared set review's "Keep both": adds the set beside the one with its id, under a new id
+    /// and the name "<name> (2)".
+    ImportKeepBoth,
     /// The import confirmation's "Cancel": nothing changes.
     ImportCancelled,
     /// "New set": opens the empty set dialog.

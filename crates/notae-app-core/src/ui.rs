@@ -438,6 +438,21 @@ impl UiModel {
         self.relink_saved_pieces();
     }
 
+    /// Adds a shared set with its pieces matched against the library now, then saves and relinks.
+    /// With `keep_both` it goes beside the set with its id ([`crate::share::keep_both`]); otherwise
+    /// it replaces that set.
+    pub fn import_shared_set(&mut self, shared: &crate::share::SharedSet, keep_both: bool) {
+        let set = crate::share::match_pieces(shared, &self.search_rows).set;
+        let set = if keep_both {
+            crate::share::keep_both(set, &self.sets)
+        } else {
+            set
+        };
+        self.sets.put(set);
+        self.save_sets();
+        self.relink_saved_pieces();
+    }
+
     /// Remembers `item_id` as the open set's item last opened ("Just opened") and saves the
     /// set; its edited time does not change. Outside a set nothing happens.
     pub fn mark_set_item_opened(&mut self, item_id: &str) {
