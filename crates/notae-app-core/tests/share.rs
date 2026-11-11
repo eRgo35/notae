@@ -540,3 +540,21 @@ fn a_placeholder_keeps_the_senders_number_and_title_in_the_sets_file() {
     let loaded = SetStore::from_json(&json);
     assert_eq!(loaded.sets()[0].items, matched.set.items);
 }
+
+#[test]
+fn a_piece_number_or_title_that_is_not_text_reads_as_absent() {
+    let key = key('a');
+    let json = format!(
+        r#"{{"schema_version":2,"app":"notae","kind":"set","set":{{"id":"s","name":"Mass","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{key}","path":"Gloria.pdf","number":123,"title":{{"x":1}}}}]}}}}"#
+    );
+
+    let Ok(ImportFile::Set(shared)) = parse_import(&json) else {
+        panic!("a shared set");
+    };
+
+    let item = &shared.set.items[0];
+    assert_eq!(
+        (item.number.as_deref(), item.title.as_deref()),
+        (None, None)
+    );
+}

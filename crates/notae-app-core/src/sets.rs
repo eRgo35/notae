@@ -46,11 +46,29 @@ pub struct SetItem {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub set_note: Option<String>,
     /// The number the sender of a shared set gave a piece the library lacks, shown until it is relinked.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "text_or_none",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub number: Option<String>,
     /// The title the sender of a shared set gave a piece the library lacks, shown until it is relinked.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "text_or_none",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub title: Option<String>,
+}
+
+/// A text value, or `None` for anything else: a stray number or title must not fail the whole file.
+fn text_or_none<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    Ok(match serde_json::Value::deserialize(deserializer)? {
+        serde_json::Value::String(text) => Some(text),
+        _ => None,
+    })
 }
 
 /// A singing set.
