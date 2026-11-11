@@ -3,10 +3,10 @@
 #![forbid(unsafe_code)]
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 use crate::favorites::PieceRef;
-use crate::sets::{ItemKind, Set, SetStore};
+use crate::sets::{ItemKind, Set, SetItem, SetStore};
+use crate::share::file_stem;
 use crate::text::{Edited, PositionOf, RowStatus, SectionTitle, SetSubtitle};
 use crate::ui::search::SearchRow;
 
@@ -222,7 +222,7 @@ pub fn set_entries(rows: &[SearchRow], set: &Set) -> Vec<SetEntry> {
                     .iter()
                     .find(|row| row.note_key == piece.key)
                     .cloned()
-                    .unwrap_or_else(|| missing_row(piece));
+                    .unwrap_or_else(|| missing_row(piece, item));
                 row.item_id = Some(item.id.clone());
                 row.position = Some(position);
                 row.set_note.clone_from(&item.set_note);
@@ -237,15 +237,12 @@ pub fn set_entries(rows: &[SearchRow], set: &Set) -> Vec<SetEntry> {
         .collect()
 }
 
-/// The stand-in for a piece whose PDF is not in the library, titled by its stored file name.
-fn missing_row(piece: &PieceRef) -> SearchRow {
-    let title = Path::new(&piece.path)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or(&piece.path);
+/// The stand-in for a piece whose PDF is not in the library: the number and title a shared set gave it, else titled
+/// by its stored file name.
+fn missing_row(piece: &PieceRef, item: &SetItem) -> SearchRow {
     SearchRow {
-        id: None,
-        title: title.to_owned(),
+        id: item.number.clone(),
+        title: item.title.clone().unwrap_or_else(|| file_stem(&piece.path)),
         composer_or_artist: None,
         tags: Vec::new(),
         status: RowStatus::MissingFromLibrary,

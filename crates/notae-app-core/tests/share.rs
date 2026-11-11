@@ -395,3 +395,148 @@ fn replace_pairs_repeated_pieces_in_order() {
 
     assert_eq!(set_notes(&incoming), [Some("first"), Some("second")]);
 }
+
+/// The sender's "Hymns": Missing Hymn (999, `f`, `elsewhere/missing.pdf`), which the recipient lacks, and Sanctus (7,
+/// `b`, `mass/Sanctus.pdf`), which the recipient has, matched against the recipient's library.
+fn received_hymns() -> MatchedSet {
+    let mut store = SetStore::default();
+    let id = store.create(
+        SetFields {
+            name: "Hymns".to_owned(),
+            date: None,
+            notes: None,
+        },
+        1,
+    );
+    store.add_piece(&id, piece('f', "elsewhere/missing.pdf"), 2);
+    store.add_piece(&id, piece('b', "mass/Sanctus.pdf"), 3);
+    let sender = vec![
+        library_row('f', "elsewhere/missing.pdf", Some("999"), "Missing Hymn"),
+        row('b', Some("7"), "Sanctus", None),
+    ];
+    let json = share_json(store.get(&id).expect("set"), &sender, false);
+    let Ok(ImportFile::Set(shared)) = parse_import(&json) else {
+        panic!("a shared set");
+    };
+    match_pieces(&shared, &recipient())
+}
+
+/// The recipient's library: Sanctus under another number and title, and no Missing Hymn.
+fn recipient() -> Vec<SearchRow> {
+    vec![library_row(
+        'b',
+        "mass/Sanctus.pdf",
+        Some("8"),
+        "Sanctus (choir)",
+    )]
+}
+
+#[test]
+fn an_unmatched_piece_keeps_the_senders_number_and_title() {
+    let matched = received_hymns();
+
+    let stored: Vec<_> = matched
+        .set
+        .items
+        .iter()
+        .map(|item| (item.number.as_deref(), item.title.as_deref()))
+        .collect();
+    assert_eq!(
+        stored,
+        vec![(Some("999"), Some("Missing Hymn")), (None, None)],
+        "only the piece the library lacks keeps what the sender called it"
+    );
+
+    let entries = set_entries(&recipient(), &matched.set);
+    let SetEntry::Piece(hymn) = &entries[0] else {
+        panic!("a piece row");
+    };
+    assert!(hymn.missing);
+    assert_eq!(
+        (hymn.id.as_deref(), hymn.title.as_str()),
+        (Some("999"), "Missing Hymn")
+    );
+    let SetEntry::Piece(sanctus) = &entries[1] else {
+        panic!("a piece row");
+    };
+    assert_eq!(
+        (sanctus.id.as_deref(), sanctus.title.as_str()),
+        (Some("8"), "Sanctus (choir)"),
+        "a matched piece shows the library row"
+    );
+}
+
+#[test]
+fn a_placeholder_keeps_the_senders_number_and_title_when_shared_on() {
+    let matched = received_hymns();
+
+    let text = share_text(&matched.set, &recipient(), false);
+    assert!(text.contains("1. 999 – Missing Hymn"), "{text}");
+
+    let json = share_json(&matched.set, &recipient(), false);
+    let Ok(ImportFile::Set(again)) = parse_import(&json) else {
+        panic!("a shared set");
+    };
+    let rematched = match_pieces(&again, &[]);
+    assert_eq!(
+        rematched
+            .unmatched
+            .iter()
+            .map(|piece| (piece.number.as_deref(), piece.title.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (Some("999"), "Missing Hymn"),
+            (Some("8"), "Sanctus (choir)")
+        ]
+    );
+    assert_eq!(
+        (
+            rematched.set.items[0].number.as_deref(),
+            rematched.set.items[0].title.as_deref()
+        ),
+        (Some("999"), Some("Missing Hymn"))
+    );
+}
+
+#[test]
+fn a_relinked_placeholder_shows_the_library_row() {
+    let matched = received_hymns();
+    let mut rows = recipient();
+    rows.push(library_row(
+        'f',
+        "elsewhere/missing.pdf",
+        Some("12"),
+        "Hymn found",
+    ));
+
+    let entries = set_entries(&rows, &matched.set);
+    let SetEntry::Piece(hymn) = &entries[0] else {
+        panic!("a piece row");
+    };
+    assert!(!hymn.missing);
+    assert_eq!(
+        (hymn.id.as_deref(), hymn.title.as_str()),
+        (Some("12"), "Hymn found")
+    );
+    assert!(share_text(&matched.set, &rows, false).contains("1. 12 – Hymn found"));
+}
+
+#[test]
+fn a_placeholder_keeps_the_senders_number_and_title_in_the_sets_file() {
+    let matched = received_hymns();
+    let mut store = SetStore::default();
+    store.put(matched.set.clone());
+
+    let json = store.to_json();
+    assert!(
+        json.contains(r#""number":"999","title":"Missing Hymn""#),
+        "{json}"
+    );
+    assert_eq!(
+        json.matches(r#""title""#).count(),
+        1,
+        "omitted when absent: {json}"
+    );
+    let loaded = SetStore::from_json(&json);
+    assert_eq!(loaded.sets()[0].items, matched.set.items);
+}

@@ -307,6 +307,24 @@ fn invalid_piece_keys_are_dropped_on_load() {
 }
 
 #[test]
+fn a_sets_file_without_placeholder_names_loads() {
+    // Before 0.7.0 a piece item held only its key and path; a note never holds a number or title.
+    let key = "a".repeat(64);
+    let json = format!(
+        r#"{{"schema_version":2,"sets":[{{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{key}","path":"a.pdf"}},{{"id":"i2","kind":"note","text":"keep","number":"1","title":"t"}}]}}]}}"#
+    );
+    let store = SetStore::from_json(&json);
+    let items = &store.sets()[0].items;
+    assert_eq!(item_ids(&store, "s"), ["i1", "i2"]);
+    assert!(
+        items
+            .iter()
+            .all(|item| item.number.is_none() && item.title.is_none())
+    );
+    assert!(!store.to_json().contains("title"), "omitted when absent");
+}
+
+#[test]
 fn repeated_item_ids_keep_the_first_on_load() {
     // The app keys its lists by item id, so a repeat would crash every launch.
     let key = "a".repeat(64);

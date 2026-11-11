@@ -45,6 +45,12 @@ pub struct SetItem {
     /// The set note: a note on this one occurrence of a score. Only piece items hold one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub set_note: Option<String>,
+    /// The number the sender of a shared set gave a piece the library lacks, shown until it is relinked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub number: Option<String>,
+    /// The title the sender of a shared set gave a piece the library lacks, shown until it is relinked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 /// A singing set.
@@ -73,6 +79,8 @@ impl Set {
         for item in &mut self.items {
             if matches!(item.kind, ItemKind::Note { .. }) {
                 item.set_note = None;
+                item.number = None;
+                item.title = None;
             }
         }
         let mut ids = HashSet::new();
@@ -386,6 +394,8 @@ impl SetStore {
             id: id.clone(),
             kind,
             set_note: None,
+            number: None,
+            title: None,
         });
         set.modified = now;
         Some(id)

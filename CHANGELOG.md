@@ -28,10 +28,11 @@ adds notes on scores and sets, and lets you share a set. See
   notes are never sent.
 - **Receive a shared set:** opening the file in Notae (Open with, Share to, or
   **Import sets** in Settings) shows a review first: how many scores matched
-  and which did not. Scores that did not match stay in the set as placeholders.
-  Matching by number and title happens once, at import; afterwards a
+  and which did not. Scores that did not match stay in the set as placeholders
+  showing the sender's number and title, and keep them when you share the set
+  on. Matching by number and title happens once, at import; afterwards a
   placeholder links up only when a scan finds the same file (the same content
-  or the same path). If the set already exists, the review names it; choose
+  or the same path), and then shows your library's number and title. If the set already exists, the review names it; choose
   **Replace**, which keeps your set notes where the file has none, or
   **Keep both**.
 - **Set artwork is a stack of the set's first score previews**, in A4

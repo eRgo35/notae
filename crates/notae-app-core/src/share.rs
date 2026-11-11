@@ -9,7 +9,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use crate::backup::{APP, BackupError, SCHEMA_VERSION};
-use crate::sets::{ItemKind, Set, SetStore, new_id};
+use crate::sets::{ItemKind, Set, SetItem, SetStore, new_id};
 use crate::ui::search::SearchRow;
 
 /// What the sender's library knew about a shared score, for matching it in the recipient's library.
@@ -45,17 +45,18 @@ pub struct MatchedSet {
 
 /// Matches each piece of `shared` to a library row: by key, else by path, else by number and title (title
 /// ignoring case and surrounding space; both sides need a number). A match takes the row's key and path; an
-/// unmatched piece keeps the sender's, so it shows as missing until a later relink.
+/// unmatched piece keeps the sender's key, path, number and title, so it shows as the sender's piece, missing, until
+/// a later relink.
 #[must_use]
 pub fn match_pieces(shared: &SharedSet, rows: &[SearchRow]) -> MatchedSet {
     let mut set = shared.set.clone();
     let mut matched = 0;
     let mut unmatched = Vec::new();
     for item in &mut set.items {
+        let info = shared.pieces.get(&item.id);
         let ItemKind::Piece(piece) = &mut item.kind else {
             continue;
         };
-        let info = shared.pieces.get(&item.id);
         let same_number_and_title = |row: &&SearchRow| {
             info.is_some_and(|info| {
                 info.number.is_some()
@@ -72,12 +73,17 @@ pub fn match_pieces(shared: &SharedSet, rows: &[SearchRow]) -> MatchedSet {
             Some(row) => {
                 piece.key.clone_from(&row.note_key);
                 piece.path.clone_from(&row.relative_path);
+                item.number = None;
+                item.title = None;
                 matched += 1;
             }
-            None => unmatched.push(
-                info.cloned()
-                    .unwrap_or_else(|| piece_info(&[], &piece.key, &piece.path)),
-            ),
+            None => {
+                if let Some(info) = info {
+                    item.number.clone_from(&info.number);
+                    item.title = Some(info.title.clone());
+                }
+                unmatched.push(info.cloned().unwrap_or_else(|| piece_info(&[], item)));
+            }
         }
     }
     MatchedSet {
@@ -135,24 +141,37 @@ pub fn keep_set_notes(set: &mut Set, local: &Set) {
     }
 }
 
-/// The title shown for a score: the library's, or the stored path's file stem when the library lacks it.
-fn piece_info(rows: &[SearchRow], key: &str, path: &str) -> SharedPiece {
-    match rows.iter().find(|row| row.note_key == key) {
+/// What is shown for a piece item: the library row's number, title and composer, or, when the library lacks it,
+/// the number and title a shared set gave it, else its stored path's file stem.
+fn piece_info(rows: &[SearchRow], item: &SetItem) -> SharedPiece {
+    let ItemKind::Piece(piece) = &item.kind else {
+        return SharedPiece {
+            number: None,
+            title: String::new(),
+            composer: None,
+        };
+    };
+    match rows.iter().find(|row| row.note_key == piece.key) {
         Some(row) => SharedPiece {
             number: row.id.clone(),
             title: row.title.clone(),
             composer: row.composer_or_artist.clone(),
         },
         None => SharedPiece {
-            number: None,
-            title: Path::new(path)
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .unwrap_or(path)
-                .to_owned(),
+            number: item.number.clone(),
+            title: item.title.clone().unwrap_or_else(|| file_stem(&piece.path)),
             composer: None,
         },
     }
+}
+
+/// A stored path's file name without its extension, or the whole path when it has none.
+pub(crate) fn file_stem(path: &str) -> String {
+    Path::new(path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or(path)
+        .to_owned()
 }
 
 /// The shared set file text: `{"schema_version":2,"app":"notae","kind":"set","set":{…}}`. Each piece carries its
@@ -170,10 +189,11 @@ pub fn share_json(set: &Set, rows: &[SearchRow], with_notes: bool) -> String {
     let mut value = serde_json::to_value(&shared).unwrap_or(Value::Null);
     if let Some(items) = value.get_mut("items").and_then(Value::as_array_mut) {
         for (out, item) in items.iter_mut().zip(&set.items) {
-            let (ItemKind::Piece(piece), Some(out)) = (&item.kind, out.as_object_mut()) else {
+            let (ItemKind::Piece(_), Some(out)) = (&item.kind, out.as_object_mut()) else {
                 continue;
             };
-            let info = piece_info(rows, &piece.key, &piece.path);
+            let info = piece_info(rows, item);
+            out.remove("number");
             if let Some(number) = info.number {
                 out.insert("number".to_owned(), Value::String(number));
             }
@@ -198,9 +218,9 @@ pub fn share_text(set: &Set, rows: &[SearchRow], with_notes: bool) -> String {
     let mut position = 0;
     for item in &set.items {
         match &item.kind {
-            ItemKind::Piece(piece) => {
+            ItemKind::Piece(_) => {
                 position += 1;
-                let info = piece_info(rows, &piece.key, &piece.path);
+                let info = piece_info(rows, item);
                 let _ = write!(out, "\n{position}. ");
                 if let Some(number) = &info.number {
                     let _ = write!(out, "{number} – ");
