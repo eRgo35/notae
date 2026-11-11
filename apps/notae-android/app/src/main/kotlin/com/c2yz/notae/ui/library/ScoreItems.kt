@@ -335,13 +335,13 @@ private fun Modifier.scoreClick(row: ScoreRowData, source: MutableInteractionSou
 }
 
 /**
- * "number · composer" (either alone when the other is missing), or "Missing from library" in the error colour; in the
+ * "number · composer" (either alone when the other is missing), or "number · Missing from library" in the error colour; in the
  * accent-soft text colour on a selected item, as 0.3.0's.
  */
 @Composable
 internal fun ScoreSubtitle(row: ScoreRowData, size: Int, missingInError: Boolean = true, selected: Boolean = false) {
     val c = NotaeTheme.colors
-    val text = if (row.missing) stringResource(R.string.score_missing) else listOfNotNull(row.number, row.composer).joinToString(" · ")
+    val text = listOfNotNull(row.number, if (row.missing) stringResource(R.string.score_missing) else row.composer).joinToString(" · ")
     Text(
         text,
         color = when {

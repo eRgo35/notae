@@ -305,10 +305,11 @@ class LibraryScreenTest {
     @Test
     fun a_missing_piece_offers_its_set_note_and_removal() {
         val piece = Fixture.library().rows.first()
-            .copy(itemId = "item-8", position = 8u, missing = true, selectionId = "item-8", setNote = "Bring the copy")
+            .copy(number = "999", itemId = "item-8", position = 8u, missing = true, selectionId = "item-8", setNote = "Bring the copy")
         show(Fixture.library().copy(sectionKey = "set:0123", rows = listOf(piece), setEntries = listOf(SetEntry.Piece(piece))))
 
-        compose.onNodeWithText("Missing from library").assertIsDisplayed()
+        // The sender's number stays on a placeholder.
+        compose.onNodeWithText("999 · Missing from library").assertIsDisplayed()
         compose.onNodeWithContentDescription("More actions for Agnus Dei").performClick()
         compose.onNodeWithText("Open score").assertDoesNotExist()
         compose.onNodeWithText("Set note").performClick()
