@@ -365,6 +365,23 @@ class DetailsScreenTest {
         assertEquals(listOf<Action>(Action.SaveSetNote("item-b", "Kantor zaczyna")), actions)
     }
 
+    @Test
+    fun blankTextClearsAScoreNoteOrASetNote() {
+        // D7: Save stays enabled with blank or whitespace-only text, and saving it clears the note.
+        val set = inSet(1)
+        val row = set.selection!!.row.copy(scoreNote = "Fermata dłużej", setNote = "Kantor zaczyna")
+        show(set.copy(selection = set.selection!!.copy(row = row)))
+
+        compose.onNodeWithText("Fermata dłużej").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Note").performTextReplacement("   ")
+        compose.onNodeWithText("Save note").assertIsEnabled().performClick()
+        compose.onNodeWithText("Kantor zaczyna").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Note").performTextReplacement("")
+        compose.onNodeWithText("Save note").assertIsEnabled().performClick()
+
+        assertEquals(listOf(Action.SaveScoreNote(row.noteKey, "   "), Action.SaveSetNote("item-b", "")), actions)
+    }
+
     private fun scrollOffset(): Float =
         compose.onNodeWithTag(DETAILS_BODY_TAG).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
