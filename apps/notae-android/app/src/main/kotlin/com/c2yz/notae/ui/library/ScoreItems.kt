@@ -3,6 +3,14 @@ package com.c2yz.notae.ui.library
 import androidx.compose.animation.Crossfade
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.AnimationVector
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.TwoWayConverter
+import androidx.compose.animation.core.VectorizedFiniteAnimationSpec
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -57,6 +66,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
@@ -69,6 +79,7 @@ import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.Scrollbar
 import com.c2yz.notae.ui.theme.NotaeTheme
 import kotlin.math.floor
+import kotlin.math.roundToInt
 
 internal const val GRID_TAG = "library-grid"
 internal const val LIST_TAG = "library-list"
@@ -100,26 +111,26 @@ internal fun ScoreGrid(
             val gap = if (narrow) 12.dp else 16.dp
             val inner = maxWidth - inset * 2
             val columns = floor((inner + gap) / ((if (narrow) 140.dp else 176.dp) + gap)).toInt().coerceAtLeast(1)
-            val cellWidth = (inner - gap * (columns - 1)) / columns
-            val cellHeight = cellWidth * 1.3f + 64.dp
+            val placement = remember { GridPlacement() }
             val state = rememberLazyGridState()
             LazyVerticalGrid(
                 GridCells.Fixed(columns),
-                Modifier.testTag(GRID_TAG).fillMaxSize().padding(horizontal = inset),
+                Modifier.testTag(GRID_TAG).fillMaxSize().padding(horizontal = inset).then(placement.measuring),
                 state = state,
                 contentPadding = PaddingValues(top = inset, bottom = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(gap),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
                 items(entries, key = { it.key() }) { entry ->
-                    // Items glide to their new places, and fade in or out, when the section's scores change.
-                    Box(Modifier.animateItem()) {
+                    // Items glide to their new places, and fade in or out, when the section's scores change; when the
+                    // grid's width changes they snap to their new columns.
+                    Box(Modifier.animateItem(placementSpec = placement.spec)) {
                         when (entry) {
                             is SetEntry.Piece -> {
                                 val row = entry.row
-                                ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.height(cellHeight), selected = row.selectionId == selectedId)
+                                ScoreCard(row, { onOpen(row) }, { onMore(row) }, Modifier.cellHeight(1.3f, 64.dp), selected = row.selectionId == selectedId)
                             }
-                            is SetEntry.Note -> NoteCard(entry, { onNoteMore(entry) }, Modifier.height(cellHeight))
+                            is SetEntry.Note -> NoteCard(entry, { onNoteMore(entry) }, Modifier.cellHeight(1.3f, 64.dp))
                         }
                     }
                 }
@@ -127,6 +138,50 @@ internal fun ScoreGrid(
             GridScrollbar(state, Modifier.align(Alignment.TopEnd).padding(top = 20.dp))
         }
     }
+}
+
+/**
+ * A grid card's height: [ratio] times its cell's width plus [extra], taken as the card is measured, so it changes in the
+ * same frame as the grid's columns rather than a composition later.
+ */
+internal fun Modifier.cellHeight(ratio: Float, extra: Dp): Modifier = layout { measurable, constraints ->
+    val height = (constraints.maxWidth * ratio + extra.roundToPx()).roundToInt()
+    val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+    layout(placeable.width, height) { placeable.place(0, 0) }
+}
+
+/**
+ * How a grid's items move to new places: they glide (`animateItem`'s own spring) when the items change, and snap when
+ * the grid lays out at another width, as gliding across a change of columns sends every card flying over the others.
+ * Decided as each move starts: the items' composition comes too late to choose. The moves a change of width starts begin
+ * a frame or two after it, whatever the grid measures meanwhile, so the snap holds until they have begun.
+ */
+internal class GridPlacement {
+    private var width = -1
+    private var reflowing = false
+    private var snapped = false
+
+    /** Goes on the grid, to note each width it is measured at. */
+    val measuring: Modifier = Modifier.layout { measurable, constraints ->
+        if (width >= 0 && constraints.maxWidth != width) {
+            reflowing = true
+            snapped = false
+        } else if (snapped) {
+            reflowing = false
+        }
+        width = constraints.maxWidth
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+
+    val spec: FiniteAnimationSpec<IntOffset> = object : FiniteAnimationSpec<IntOffset> {
+        override fun <V : AnimationVector> vectorize(converter: TwoWayConverter<IntOffset, V>): VectorizedFiniteAnimationSpec<V> {
+            if (reflowing) snapped = true
+            return (if (reflowing) snap() else glide).vectorize(converter)
+        }
+    }
+
+    private val glide = spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = IntOffset.VisibilityThreshold)
 }
 
 /** 0.3.0's list layout: 80 dp rows in a card with an 8 dp inset; a set's notes are tinted rows. Keyed as [ScoreGrid]. */

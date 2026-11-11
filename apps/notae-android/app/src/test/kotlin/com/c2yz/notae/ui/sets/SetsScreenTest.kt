@@ -21,6 +21,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onChildAt
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -53,9 +54,11 @@ import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.LibraryScreen
+import com.c2yz.notae.ui.library.near
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -297,6 +300,38 @@ class SetsScreenTest {
     }
 
     @Test
+    fun sets_snap_to_their_places_when_the_columns_change() {
+        var width by mutableStateOf(720.dp)
+        compose.setContent {
+            NotaeTheme { SetsPane(Fixture.stackCards(listOf(null, null, null)), list = false, {}, {}, Modifier.width(width).height(1600.dp)) }
+        }
+        // The fourth set moves from the second row to the first as the pane widens from three columns to five.
+        val fourth = compose.onNodeWithContentDescription("More actions for Rekolekcje - teksty", useUnmergedTree = true)
+        val narrow = fourth.getBoundsInRoot()
+        compose.mainClock.autoAdvance = false
+        width = 1180.dp
+        // Frame by frame from when the pane takes its new width.
+        val pane = compose.onRoot(useUnmergedTree = true).onChildAt(0)
+        repeat(FRAMES) {
+            if (pane.getBoundsInRoot().right > 1000.dp) return@repeat
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val frames = List(FRAMES) {
+            fourth.getBoundsInRoot().also {
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+            }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        val wide = fourth.getBoundsInRoot()
+        assertTrue("the columns change: $narrow, $wide", wide.top < narrow.top - 50.dp)
+        // For the frame the grid takes its new width the card is still where it was; from the next it is in its new place.
+        assertTrue("the set is in its place from the frame after the new columns: $narrow, $frames, $wide", frames.drop(1).all { near(it, wide) })
+    }
+
+    @Test
     fun set_header_shows_subtitle_notes_and_actions() {
         show(Fixture.palmSunday())
 
@@ -459,3 +494,6 @@ internal object NoListener : CoreListener {
 
     override fun onEffect(effect: Effect) = Unit
 }
+
+/** Frames to watch a grid take new columns over. */
+private const val FRAMES = 4
