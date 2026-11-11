@@ -39,7 +39,7 @@ internal enum class Change {
     /** A deeper screen comes in over the one below. */
     Push,
 
-    /** Back: the screen on top goes, uncovering the one below. */
+    /** Back, the push in reverse: the screen on top leaves to the end, and the one below comes back from the start. */
     Pop,
 
     /** The back gesture, following the finger: Back's slide, so a gesture started mid-change carries on from there. */
@@ -53,6 +53,9 @@ internal enum class Change {
 
     /** Setup and Loading: the whole screens fade through, and the parts do nothing. */
     Fade,
+
+    /** Search opening, or closing: it fades in dropping a little from the top, or out rising, and the parts do nothing. */
+    Drop,
 }
 
 /** The bars of the screens on show, by key, so a screen knows which of its bars the other screen has too. */
@@ -94,7 +97,7 @@ internal class ScreenPart(
     fun start(change: Change, entering: Boolean) {
         val from = if (run != null) away else when (change) {
             Change.Push, Change.Forward -> if (entering) 1f else 0f
-            Change.Backward -> if (entering) -1f else 0f
+            Change.Pop, Change.PredictivePop, Change.Backward -> if (entering) -1f else 0f
             else -> 0f
         }
         val to = when {
@@ -108,6 +111,9 @@ internal class ScreenPart(
     }
 
     private val change: Change get() = run?.change ?: Change.Fade
+
+    /** Whether the whole screens change instead of their parts. */
+    private val whole: Boolean get() = change == Change.Fade || change == Change.Drop
 
     /** How far this screen's own slide has gone, 0 to 1, from where it was when its change started. */
     private fun slid(run: Run): Float {
@@ -125,10 +131,10 @@ internal class ScreenPart(
      * carries on.
      */
     val barsShown: Boolean
-        get() = change == Change.Fade || if (run?.entering != false) time() >= HALF else time() > HALF
+        get() = whole || if (run?.entering != false) time() >= HALF else time() > HALF
 
     /** A bar of this screen alone, or text that changes: fades out over the first half going, in over the second half coming. */
-    val fadeAlpha: Float get() = if (change == Change.Fade) 1f else ((time() - HALF) / HALF).coerceIn(0f, 1f)
+    val fadeAlpha: Float get() = if (whole) 1f else ((time() - HALF) / HALF).coerceIn(0f, 1f)
 }
 
 /** A screen's change: where its slide was when it started, and its content's offsets, as a share of its width, then and at its end. */

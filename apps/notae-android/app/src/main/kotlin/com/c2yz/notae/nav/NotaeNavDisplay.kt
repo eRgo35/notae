@@ -14,7 +14,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -33,6 +35,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
@@ -95,7 +98,8 @@ fun NotaeNavDisplay(
         val shown = rememberUpdatedState(Shown(snapshot, onAction, voiceAvailable, besideList, backStack))
         val order = rememberUpdatedState(snapshot.sections.map { it.key } + snapshot.composers.map { it.key })
         val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-        val motion = remember(rtl) { ScreenMotion(rtl, order) }
+        val dropPixels = with(LocalDensity.current) { DROP.roundToPx() }
+        val motion = remember(rtl, dropPixels) { ScreenMotion(rtl, order, dropPixels) }
         NavDisplay(
             backStack = backStack,
             modifier = Modifier.fillMaxSize(),
@@ -136,13 +140,20 @@ private const val DETAILS_CONTENT_KEY = "details"
 
 /**
  * How screens change, toward the end of the line (flipped in a right-to-left language): only content moves. Navigation 3
- * holds both screens still while each moves its own parts ([ScreenFrame]): a deeper screen's content slides in over the
- * content it covers, which stays still, and Back and the back gesture reverse that; switching sections ([lateral])
+ * holds both screens still while each moves its own parts ([ScreenFrame]): a deeper screen's content slides in from the
+ * end over the content it covers, which stays still, and Back and the back gesture run it in reverse with both contents
+ * moving, the screen's leaving to the end and the one below coming back from the start; switching sections ([lateral])
  * slides both contents together in the rail's [order]. The content slides for the whole change; the bars fade through
  * in place, the going screen's out over the first half and the coming one's in over the second, and a bar both screens
- * have stays put ([screenBar]). Setup and Loading fade through as whole screens.
+ * have stays put ([screenBar]). Search fades in over the screen it opens from, dropping a little from the top, and out
+ * rising; Setup and Loading fade through as whole screens.
  */
-internal class ScreenMotion(rtl: Boolean, private val order: State<List<String>>) {
+internal class ScreenMotion(
+    rtl: Boolean,
+    private val order: State<List<String>>,
+    /** [DROP] in pixels. */
+    private val dropPixels: Int,
+) {
     /** The change starting, set as Navigation 3 starts it; each screen records it as its own ([ScreenPart.start]). */
     var change: Change = Change.Fade
         private set
@@ -156,6 +167,7 @@ internal class ScreenMotion(rtl: Boolean, private val order: State<List<String>>
     private fun start(change: Change, popping: Boolean = false): ContentTransform {
         this.change = change
         if (change == Change.Fade) return fadeThrough()
+        if (change == Change.Drop) return if (popping) rise() else drop()
         // The screen Back takes away stays on top while its content leaves.
         return ContentTransform(EnterTransition.None, ExitTransition.None, targetContentZIndex = if (popping) -1f else 0f)
     }
@@ -168,19 +180,43 @@ internal class ScreenMotion(rtl: Boolean, private val order: State<List<String>>
             null -> null
         }
 
-    fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform = start(lateralChange(from, to) ?: Change.Push)
+    fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
+        start(lateralChange(from, to) ?: if (isSearch(to)) Change.Drop else Change.Push)
 
     fun back(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        lateralChange(from, to)?.let { start(it) } ?: start(Change.Pop, popping = true)
+        lateralChange(from, to)?.let { start(it) } ?: start(if (isSearch(from)) Change.Drop else Change.Pop, popping = true)
 
     fun predictiveBack(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        lateralChange(from, to)?.let { start(it) } ?: start(Change.PredictivePop, popping = true)
+        lateralChange(from, to)?.let { start(it) } ?: start(if (isSearch(from)) Change.Drop else Change.PredictivePop, popping = true)
+
+    private fun isSearch(scene: Scene<NavKey>): Boolean = scene.entries.lastOrNull()?.metadata?.contains(SearchPage) == true
+
+    /** Search coming in: it fades in dropping [DROP] from the top, over the screen it opens from, which stays. */
+    private fun drop(): ContentTransform = ContentTransform(
+        fadeIn(tween(DROP_MILLIS, easing = NotaeMotion.emphasized)) +
+            slideInVertically(tween(DROP_MILLIS, easing = NotaeMotion.emphasized)) { -dropPixels },
+        ExitTransition.None,
+    )
+
+    /** Search going: it fades out rising [DROP], over the screen it goes back to, which is already in place. */
+    private fun rise(): ContentTransform = ContentTransform(
+        EnterTransition.None,
+        fadeOut(tween(DROP_MILLIS, easing = NotaeMotion.emphasized)) +
+            slideOutVertically(tween(DROP_MILLIS, easing = NotaeMotion.emphasized)) { -dropPixels },
+        targetContentZIndex = -1f,
+    )
 
     private fun fadeThrough(): ContentTransform =
         fadeIn(tween(Tokens.motionMediumMillis, delayMillis = FADE_OUT_MILLIS)) togetherWith fadeOut(tween(FADE_OUT_MILLIS))
 }
 
 private const val FADE_OUT_MILLIS = 90
+
+/** Search's fade: about the 200 ms of a small surface. */
+internal const val DROP_MILLIS = 200
+
+/** How far Search drops in, and rises out. */
+internal val DROP = 20.dp
 
 /** How a change of the stack's root moves: [Fade] through (Setup, Loading), or a section [Forward] or [Backward] in the rail. */
 internal enum class Lateral { Fade, Forward, Backward }
@@ -263,7 +299,7 @@ private fun entryFor(key: NavKey, shown: State<Shown>, motion: ScreenMotion): Na
         val it = shownFor(key, shown)
         ScreenFrame(motion) { DetailsScreen(it.snapshot, it.onAction, besideList = it.besideList) }
     }
-    Route.Search -> NavEntry(key) {
+    Route.Search -> NavEntry(key, metadata = metadata { put(SearchPage, true) }) {
         val it = shownFor(key, shown)
         ScreenFrame(motion) { SearchScreen(it.snapshot, it.onAction, it.voiceAvailable) }
     }
@@ -288,6 +324,9 @@ private fun isListRoute(key: NavKey?): Boolean = key is Route.Library || key is 
 private data object ListPane : NavMetadataKey<Boolean>
 
 private data object DetailPane : NavMetadataKey<Boolean>
+
+/** The search page, which drops in and rises out instead of sliding ([ScreenMotion]). */
+private data object SearchPage : NavMetadataKey<Boolean>
 
 /**
  * Library (or a set) and Details side by side on a wide window, as the details pane the app had beside the library

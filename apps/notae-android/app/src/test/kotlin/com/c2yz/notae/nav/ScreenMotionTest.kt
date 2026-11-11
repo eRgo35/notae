@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.view.drawToBitmap
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -175,6 +176,7 @@ class ScreenMotionTest {
     fun portrait_settings_slide_in_and_back_beside_a_still_rail_and_top_bar() {
         show(Fixture.library())
         val railAtRest = bounds(favorites)
+        val gridAtRest = bounds(grid).single()
 
         halfway(Fixture.library().copy(screen = Screen.Settings))
         val railMiddle = bounds(favorites)
@@ -190,16 +192,57 @@ class ScreenMotionTest {
         assertStill(settingsTitle, titleAtRest, titleMiddle)
         assertTrue("Settings' content comes in from the end: $folderAtRest <- $folderMiddle", folderMiddle.left > folderAtRest.left + 100f)
 
-        // Back reverses it: the content leaves to the end, the top bar stays.
+        // Back runs it in reverse: Settings' content leaves to the end and the library's comes back from the start, and
+        // the top bar stays.
         halfway(Fixture.library())
         val titleBack = bounds(settingsTitle)
         val folderBack = bounds(libraryFolder).single()
         val railBack = bounds(favorites)
+        val gridBack = bounds(grid).single()
         finish()
+        assertTrue("the library comes back from the start: $gridAtRest <- $gridBack", gridBack.right < gridAtRest.right - 100f)
         assertStill(settingsTitle, titleAtRest, titleBack)
         assertStill(favorites, railAtRest, railBack)
         assertTrue("Settings' content leaves to the end: $folderAtRest -> $folderBack", folderBack.left > folderAtRest.left + 100f)
         assertTrue("Settings are gone", bounds(libraryFolder).isEmpty())
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun back_from_a_set_runs_the_push_in_reverse() {
+        show(Fixture.palmSunday())
+        val piecesAtRest = bounds(grid).single()
+
+        halfway(Fixture.sets())
+        // The set's pieces leave to the end while the sets come back from the start, both moving.
+        val leaving = bounds(grid).filter { it.left > piecesAtRest.left + 100f }
+        val cardMiddle = bounds(palmCard).single()
+        finish()
+        val cardAtRest = bounds(palmCard).single()
+        assertTrue("the set's pieces leave to the end: $piecesAtRest -> ${bounds(grid)}", leaving.isNotEmpty())
+        assertTrue("the sets come back from the start: $cardAtRest <- $cardMiddle", cardMiddle.left < cardAtRest.left - 100f)
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun search_drops_in_and_rises_out_without_sliding() {
+        show(Fixture.library())
+        val field = hasSetTextAction()
+        val search = Fixture.library().copy(screen = Screen.Search)
+
+        steps(DROP_STEPS, search)
+        val dropping = bounds(field).single()
+        finish()
+        val atRest = bounds(field).single()
+        assertEquals("Search does not slide sideways", atRest.left, dropping.left)
+        assertTrue("Search drops in from above: $atRest <- $dropping", dropping.top < atRest.top - 1f && dropping.top > atRest.top - 41f)
+
+        steps(DROP_STEPS, Fixture.library())
+        val rising = bounds(field).single()
+        finish()
+        assertEquals("Search does not slide sideways", atRest.left, rising.left)
+        assertTrue("Search rises out: $atRest -> $rising", rising.top < atRest.top - 1f)
+        assertTrue("Search is gone", bounds(field).isEmpty())
     }
 
     @Test
@@ -389,6 +432,9 @@ class ScreenMotionTest {
         const val FAINT = 0.15f
         const val PART_STEPS = 60
         const val TURN_FRAMES = 10
+
+        /** About 80 ms into Search's 200 ms. */
+        const val DROP_STEPS = 2
 
         /** Most of the side panel's 250 ms, a frame at a time. */
         const val PANEL_FRAMES = 12

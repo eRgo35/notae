@@ -42,13 +42,17 @@ adds notes on scores and sets, and lets you share a set. See
 ### Changed
 
 - **Switching sections slides** in the order of the rail or bottom bar. Deeper
-  screens slide in and out without fading, and the back gesture slides the
-  screen away under the finger. Only the content moves: the rail or bottom bar
-  and the top bars stay where they are. What differs between the two screens'
-  bars fades through in halves, the old fading out over the first 150 ms and
-  the new fading in over the next 150 ms, never both at once. Beside the list
-  on a wide tablet only the details pane slides, over a list already in its
-  new width. Setup and loading still fade. This corrects 0.6.1,
+  screens slide in from the end without fading. Back, the arrow and the back
+  gesture (under the finger) run that in reverse: the screen leaves to the end
+  and the one below comes back from the start. Search instead fades in,
+  dropping a little from the top, and fades out rising. Only the content
+  moves: the rail or bottom bar and the top bars stay where they are. What
+  differs between the two screens' bars fades through in halves, the old
+  fading out over the first 150 ms and the new fading in over the next 150 ms,
+  never both at once. Beside the list on a wide tablet only the details pane
+  slides, over a list already in its new width. The tablet's side panel
+  slides in and out, and the library moves with it at its new width, so the
+  grid changes its columns once. Setup and loading still fade. This corrects 0.6.1,
   where section changes faded through and deeper screens faded as they slid.
 - **Back from another section** (Sets, Favorites, Recent, a composer) returns
   to All scores first; Back on All scores leaves the app as before.
