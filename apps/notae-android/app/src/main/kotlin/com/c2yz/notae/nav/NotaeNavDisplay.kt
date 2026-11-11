@@ -6,6 +6,8 @@ import com.c2yz.notae.ui.components.AnimatedOverlay
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.annotation.StringRes
 import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -31,7 +33,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
@@ -40,6 +41,7 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.NavMetadataKey
 import androidx.navigation3.runtime.contains
+import androidx.navigation3.runtime.get
 import androidx.navigation3.runtime.metadata
 import androidx.navigation3.scene.Scene
 import androidx.navigation3.scene.SceneStrategy
@@ -91,9 +93,9 @@ fun NotaeNavDisplay(
         // Navigation 3 remembers the entries until the back stack changes, so they read the newest snapshot from
         // here instead of keeping the one they were built with (a banner, a star or new rows change no key).
         val shown = rememberUpdatedState(Shown(snapshot, onAction, voiceAvailable, besideList, backStack))
-        // Toward the end of the line: right in a left-to-right language.
-        val shift = with(LocalDensity.current) { Tokens.motionShift.roundToPx() } * if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
-        val motion = remember(shift) { ScreenMotion(shift) }
+        val order = rememberUpdatedState(snapshot.sections.map { it.key } + snapshot.composers.map { it.key })
+        val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+        val motion = remember(rtl) { ScreenMotion(rtl, order) }
         NavDisplay(
             backStack = backStack,
             modifier = Modifier.fillMaxSize(),
@@ -133,35 +135,37 @@ internal fun Modifier.shellFrame(): Modifier =
 private const val DETAILS_CONTENT_KEY = "details"
 
 /**
- * How screens change, by [shift] px toward the end of the line: a deeper screen slides in from the end and fades in
- * over the one it covers, and Back reverses that; the back gesture shrinks the screen it leaves. Switching sections
- * ([isLateral]) is not deeper navigation, so it only fades through.
+ * How screens change, toward the end of the line (flipped in a right-to-left language): a deeper screen slides in
+ * over the one it covers, full width and without a fade, while the screen underneath stays still; Back and the back
+ * gesture reverse that (the gesture shrinks the screen it leaves). Switching sections ([lateral]) slides both
+ * sections together in the rail's [order]; Setup and Loading fade through.
  */
-private class ScreenMotion(private val shift: Int) {
-    fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        if (isLateral(from, to)) {
-            fadeThrough()
-        } else {
-            (slideInHorizontally(NotaeMotion.medium()) { shift } + fadeIn(NotaeMotion.medium())) togetherWith fadeOut(NotaeMotion.short())
+private class ScreenMotion(private val rtl: Boolean, private val order: State<List<String>>) {
+    /** The screen underneath stays visible and still while the new one covers it (`KeepUntilTransitionsFinished` is internal): a fade to full opacity for as long as the slide. */
+    private val stayUntilCovered: ExitTransition = fadeOut(NotaeMotion.long(), targetAlpha = 1f)
+
+    private fun toEnd(): (Int) -> Int = if (rtl) { w -> -w } else { w -> w }
+
+    private fun toStart(): (Int) -> Int = if (rtl) { w -> w } else { w -> -w }
+
+    private fun slide(lateral: Lateral): ContentTransform =
+        when (lateral) {
+            Lateral.Fade -> fadeThrough()
+            Lateral.Forward -> slideInHorizontally(NotaeMotion.long(), toEnd()) togetherWith slideOutHorizontally(NotaeMotion.long(), toStart())
+            Lateral.Backward -> slideInHorizontally(NotaeMotion.long(), toStart()) togetherWith slideOutHorizontally(NotaeMotion.long(), toEnd())
         }
+
+    fun forward(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
+        lateral(from, to, order.value)?.let(::slide)
+            ?: (slideInHorizontally(NotaeMotion.long(), toEnd()) togetherWith stayUntilCovered)
 
     fun back(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        if (isLateral(from, to)) {
-            fadeThrough()
-        } else {
-            ContentTransform(
-                fadeIn(NotaeMotion.medium()),
-                slideOutHorizontally(NotaeMotion.medium()) { shift } + fadeOut(NotaeMotion.medium()),
-                targetContentZIndex = -1f,
-            )
-        }
+        lateral(from, to, order.value)?.let(::slide)
+            ?: ContentTransform(EnterTransition.None, slideOutHorizontally(NotaeMotion.long(), toEnd()), targetContentZIndex = -1f)
 
     fun predictiveBack(from: Scene<NavKey>, to: Scene<NavKey>): ContentTransform =
-        if (isLateral(from, to)) {
-            fadeThrough()
-        } else {
-            ContentTransform(fadeIn(NotaeMotion.medium()), scaleOut(NotaeMotion.medium(), targetScale = 0.9f) + fadeOut(NotaeMotion.medium()), targetContentZIndex = -1f)
-        }
+        lateral(from, to, order.value)?.let(::slide)
+            ?: ContentTransform(EnterTransition.None, scaleOut(NotaeMotion.long(), targetScale = 0.9f), targetContentZIndex = -1f)
 
     private fun fadeThrough(): ContentTransform =
         fadeIn(tween(Tokens.motionMediumMillis, delayMillis = FADE_OUT_MILLIS)) togetherWith fadeOut(tween(FADE_OUT_MILLIS))
@@ -169,13 +173,29 @@ private class ScreenMotion(private val shift: Int) {
 
 private const val FADE_OUT_MILLIS = 90
 
-/**
- * A change of the stack's root (a section switch, Setup to the library, the first screen after Loading) moves sideways;
- * one that keeps the root opens or closes a screen above it.
- */
-internal fun isLateral(from: Scene<*>, to: Scene<*>): Boolean = rootKey(from) != rootKey(to)
+/** How a change of the stack's root moves: [Fade] through (Setup, Loading), or a section [Forward] or [Backward] in the rail. */
+internal enum class Lateral { Fade, Forward, Backward }
 
-private fun rootKey(scene: Scene<*>): Any? = (scene.previousEntries.firstOrNull() ?: scene.entries.firstOrNull())?.contentKey
+/**
+ * A change of the stack's root (a section switch, Setup to the library, the first screen after Loading) moves sideways,
+ * or `null` when the root is kept and a screen opens or closes above it. Sections are ordered by [order], and one
+ * missing from it counts as past the end.
+ */
+internal fun lateral(from: Scene<*>, to: Scene<*>, order: List<String>): Lateral? {
+    val a = rootEntry(from)
+    val b = rootEntry(to)
+    if (a?.contentKey == b?.contentKey) return null
+    val sectionA = a?.metadata?.get(SectionKey)
+    val sectionB = b?.metadata?.get(SectionKey)
+    if (sectionA == null || sectionB == null) return Lateral.Fade
+    fun index(section: String) = order.indexOf(section).let { if (it < 0) order.size else it }
+    return if (index(sectionB) > index(sectionA)) Lateral.Forward else Lateral.Backward
+}
+
+private fun rootEntry(scene: Scene<*>): NavEntry<*>? = scene.previousEntries.firstOrNull() ?: scene.entries.firstOrNull()
+
+/** The library section a [Route.Library] entry shows, which orders the sections for [lateral]. */
+internal data object SectionKey : NavMetadataKey<String>
 
 /** R37: the M3 expanded width, which a 1280×800 tablet reaches in landscape and not in portrait. */
 private val TWO_PANE_MIN_WIDTH = 840.dp
@@ -221,7 +241,10 @@ private fun entryFor(key: NavKey, shown: State<Shown>): NavEntry<NavKey> = when 
     }
     // The set view is the library screen inside the set (0.3.0 drew it in the same chrome).
     // ListPane comes from isListRoute, which also decides besideList, so the scene and the details agree.
-    is Route.Library, is Route.Set -> NavEntry(key, metadata = metadata { if (isListRoute(key)) put(ListPane, true) }) {
+    is Route.Library, is Route.Set -> NavEntry(key, metadata = metadata {
+        if (isListRoute(key)) put(ListPane, true)
+        if (key is Route.Library) put(SectionKey, key.section)
+    }) {
         val (snapshot, onAction) = shownFor(key, shown)
         LibraryScreen(snapshot, onAction)
     }
