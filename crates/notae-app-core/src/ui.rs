@@ -1190,7 +1190,13 @@ impl UiModel {
                     picker.rows = Some(rows);
                 }
             }
-            OperationEvent::IndexedCount(count) => self.indexed_count = count,
+            OperationEvent::IndexedCount(count) => {
+                // A count changes no rows, and may follow a search's hits after Search closed,
+                // before the whole library's rows return: checking the selection against those
+                // hits would close the details.
+                self.indexed_count = count;
+                return Ok(());
+            }
             OperationEvent::MetadataLoaded(metadata) => {
                 self.metadata_error = None;
                 self.metadata_editor = Some(metadata);

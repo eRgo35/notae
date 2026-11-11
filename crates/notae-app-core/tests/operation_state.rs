@@ -990,3 +990,60 @@ fn worker_and_search_failures_reach_the_banner_as_typed_kinds() {
         }
     );
 }
+
+#[test]
+fn a_count_after_search_closes_keeps_the_selection_until_the_library_rows_return() {
+    use notae_app_core::state::UiEvent;
+    use notae_app_core::ui::UiModel;
+    use notae_app_core::ui::search::SearchRow;
+
+    let row = |c: char, title: &str| SearchRow {
+        id: None,
+        title: title.to_owned(),
+        composer_or_artist: None,
+        tags: Vec::new(),
+        status: notae_app_core::text::RowStatus::Ready,
+        note_key: c.to_string().repeat(64),
+        relative_path: format!("{title}.pdf"),
+        text_pending: false,
+        title_origin: notae_domain::MetadataOrigin::Unset,
+        composer_origin: notae_domain::MetadataOrigin::Unset,
+        text_snippet: None,
+        item_id: None,
+        position: None,
+        missing: false,
+        set_note: None,
+    };
+    let (ave, barka) = (row('a', "Ave Maria"), row('b', "Barka"));
+    let mut model = UiModel::new();
+    model
+        .dispatch(UiEvent::PickLibraryRoot {
+            root: std::path::PathBuf::from("/library"),
+        })
+        .expect("library");
+    let rows = |query: &str, rows: Vec<SearchRow>| OperationEvent::SearchRows {
+        query: query.to_owned(),
+        rows,
+    };
+    model
+        .apply_operation_event(rows("", vec![ave.clone(), barka.clone()]))
+        .expect("rows");
+    model.select_note(Some(barka.note_key.clone()));
+    model.dispatch(UiEvent::OpenSearch).expect("search opens");
+    model
+        .apply_operation_event(rows("Ave", vec![ave.clone()]))
+        .expect("hits");
+
+    // The search's count arrives after Search closed, before the whole library's rows.
+    model.dispatch(UiEvent::CloseSearch).expect("search closes");
+    model
+        .apply_operation_event(OperationEvent::IndexedCount(2))
+        .expect("count");
+    model
+        .apply_operation_event(rows("", vec![ave, barka]))
+        .expect("rows");
+    assert_eq!(
+        model.selected_row().map(|row| row.title).as_deref(),
+        Some("Barka")
+    );
+}
