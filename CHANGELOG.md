@@ -20,7 +20,8 @@ adds notes on scores and sets, and lets you share a set. See
 - **Score notes and set notes.** A score note is written on a score and shown
   wherever it opens in the details. A set note belongs to one occurrence of a
   score in a set and is shown in the details when the score is opened from
-  that set; rows with a set note are marked.
+  that set; rows with a set note are marked. The note editor is four lines
+  tall and grows with the text; saving it blank clears the note.
 - **Share a set** with the toolbar icon in the set or **Share** in the set's
   ⋮ menu: **Share set** or **Share set with notes** sends a `.notae-set` file
   and a readable list through Android's share sheet. PDFs and personal score
@@ -45,6 +46,8 @@ adds notes on scores and sets, and lets you share a set. See
   in place of the one it replaces), and beside the list on a wide tablet only
   the details pane slides. Setup and loading still fade. This corrects 0.6.1,
   where section changes faded through and deeper screens faded as they slid.
+- **Back from another section** (Sets, Favorites, Recent, a composer) returns
+  to All scores first; Back on All scores leaves the app as before.
 - The set's **Notes** field is now called **Description**; **Text note** rows
   are unchanged.
 - **Export sets** now includes score notes (export format v2). Exports from
