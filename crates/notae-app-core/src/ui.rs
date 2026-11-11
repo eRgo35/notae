@@ -440,9 +440,10 @@ impl UiModel {
 
     /// Adds a shared set with its pieces matched against the library now, then saves and relinks.
     /// With `keep_both` it goes beside the set with its id ([`crate::share::keep_both`]); otherwise
-    /// it replaces that set.
+    /// it replaces that set. Its edited time is now, so it sorts first among the sets.
     pub fn import_shared_set(&mut self, shared: &crate::share::SharedSet, keep_both: bool) {
-        let set = crate::share::match_pieces(shared, &self.search_rows).set;
+        let mut set = crate::share::match_pieces(shared, &self.search_rows).set;
+        set.modified = unix_now();
         let set = if keep_both {
             crate::share::keep_both(set, &self.sets)
         } else {

@@ -1558,6 +1558,10 @@ fn shared_set_replace_and_keep_both() {
     set_with_first_piece(&harness, &library);
     let set_id = harness.core.snapshot().set_cards[0].id.clone();
     let file = shared_set_file(&set_id, "Choir Mass");
+    let before_import = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after 1970")
+        .as_secs();
 
     harness.core.import_file_read(file.clone());
     assert_eq!(
@@ -1590,6 +1594,10 @@ fn shared_set_replace_and_keep_both() {
         lost.path, "Lost.pdf",
         "the unmatched piece is a placeholder"
     );
+    assert!(
+        set.modified >= before_import,
+        "a received set is edited now, not at the sender's time (1)"
+    );
 
     harness.core.import_file_read(file);
     harness.core.dispatch(Action::ImportKeepBoth);
@@ -1605,4 +1613,5 @@ fn shared_set_replace_and_keep_both() {
     let saved = SetStore::load(&dir.path().join("sets.json"));
     assert_eq!(saved.sets().len(), 2);
     assert_ne!(saved.sets()[0].id, saved.sets()[1].id);
+    assert!(saved.sets().iter().all(|set| set.modified >= before_import));
 }
