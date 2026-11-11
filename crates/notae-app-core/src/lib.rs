@@ -22,6 +22,7 @@ pub mod pdf_intent;
 pub mod pdf_pages;
 pub mod platform;
 pub mod recent;
+pub mod score_notes;
 pub mod sets;
 pub mod state;
 pub mod storage;

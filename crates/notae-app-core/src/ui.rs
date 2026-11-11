@@ -21,6 +21,7 @@ use crate::favorites::{Favorites, PieceRef};
 use crate::operations::events::{OperationEvent, RescanSummary};
 use crate::pdf_intent::ViewerError;
 use crate::recent::RecentScores;
+use crate::score_notes::ScoreNotes;
 use crate::sets::{ItemKind, SetFieldError, SetFields, SetStore};
 use crate::state::{
     AppController, AppState, EventError, OperationState, RescanPhase, Transition, UiEvent,
@@ -128,6 +129,8 @@ pub struct UiModel {
     recent_path: Option<PathBuf>,
     favorites: Favorites,
     favorites_path: Option<PathBuf>,
+    score_notes: ScoreNotes,
+    score_notes_path: Option<PathBuf>,
     sets: SetStore,
     sets_path: Option<PathBuf>,
     /// The set whose deletion waits for the user's confirmation.
@@ -173,6 +176,8 @@ impl UiModel {
             recent_path: None,
             favorites: Favorites::default(),
             favorites_path: None,
+            score_notes: ScoreNotes::default(),
+            score_notes_path: None,
             sets: SetStore::empty(),
             sets_path: None,
             pending_delete_set: None,
@@ -337,6 +342,46 @@ impl UiModel {
             self.favorites.save(path)?;
         }
         Ok(now)
+    }
+
+    /// Loads the score notes from, and later saves them to, `path`.
+    pub fn set_score_notes_path(&mut self, path: PathBuf) {
+        self.score_notes = ScoreNotes::load(&path);
+        self.score_notes_path = Some(path);
+    }
+
+    /// The score note of the score with `key`.
+    #[must_use]
+    pub fn score_note(&self, key: &str) -> Option<&str> {
+        self.score_notes.get(key)
+    }
+
+    /// Stores the score note of the score with `key`; blank text clears it. A key that is not
+    /// in the library changes nothing.
+    pub fn set_score_note(&mut self, key: &str, text: &str) {
+        let Some(path) = self
+            .search_rows
+            .iter()
+            .find(|row| row.note_key == key)
+            .map(|row| row.relative_path.clone())
+        else {
+            return;
+        };
+        let piece = PieceRef {
+            key: key.to_owned(),
+            path,
+        };
+        if self.score_notes.set(piece, text) {
+            self.save_score_notes();
+        }
+    }
+
+    fn save_score_notes(&self) {
+        if let Some(path) = &self.score_notes_path
+            && let Err(error) = self.score_notes.save(path)
+        {
+            eprintln!("notae: cannot save score notes: {error}");
+        }
     }
 
     /// Whether the score with `key` is starred.
@@ -796,6 +841,9 @@ impl UiModel {
             && let Err(error) = self.favorites.save(path)
         {
             eprintln!("notae: cannot save favorites: {error}");
+        }
+        if self.score_notes.relink(&library) {
+            self.save_score_notes();
         }
         if self.sets.relink(&library) {
             self.save_sets();

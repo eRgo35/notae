@@ -95,6 +95,13 @@ pub enum Action {
         /// The score's content key.
         note_key: String,
     },
+    /// The details screen's "Save note": stores the score note; blank text clears it.
+    SaveScoreNote {
+        /// The score's content key.
+        note_key: String,
+        /// The note field.
+        text: String,
+    },
     /// A tap on a score, or "Open score": asks Kotlin to open the PDF
     /// ([`Effect::OpenPdf`](super::Effect::OpenPdf)).
     OpenPdf {

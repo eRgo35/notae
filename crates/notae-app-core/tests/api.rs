@@ -17,6 +17,7 @@ use notae_app_core::api::{
     NotaeCore, Screen, SetEntry, SetupError, SetupScreen, Snapshot, StatusMessage, Subtitle,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
+use notae_app_core::score_notes::ScoreNotes;
 use notae_app_core::text::{Failure, RowStatus};
 
 const ROOT: &str = "content://tree/scores";
@@ -1173,6 +1174,30 @@ fn import_is_offered_only_without_favorites_and_sets() {
     });
 
     assert!(!harness.core.snapshot().import_available);
+}
+
+#[test]
+fn score_note_survives_rescan_and_rename() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria"]);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    let library = open_and_scan(&harness);
+    let key = library.rows[0].note_key.clone();
+    harness.core.dispatch(Action::SaveScoreNote {
+        note_key: key.clone(),
+        text: "  slow start ".to_owned(),
+    });
+    let file = dir.path().join("score-notes.json");
+    assert_eq!(ScoreNotes::load(&file).get(&key), Some("slow start"));
+
+    harness.core.dispatch(Action::AcknowledgeOperation);
+    platform.set_entries(Ok(vec![readable("Renamed.pdf", b"Ave Maria")]));
+    harness.core.dispatch(Action::Rescan);
+    let rescanned = harness.listener.wait_for("the second scan", is_finished);
+    assert_eq!(rescanned.rows[0].relative_path, "Renamed.pdf");
+
+    let notes = ScoreNotes::load(&file);
+    assert_eq!(notes.get(&key), Some("slow start"));
 }
 
 #[test]

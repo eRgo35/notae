@@ -22,7 +22,7 @@
 //!
 //! # Data directory
 //!
-//! `recent.txt`, `ui-prefs.txt`, `favorites.json`, `sets.json`, `index.sqlite`, `thumbnails/`,
+//! `recent.txt`, `ui-prefs.txt`, `favorites.json`, `score-notes.json`, `sets.json`, `index.sqlite`, `thumbnails/`,
 //! and `library-root.json`, the open folder, so a new core over the same directory reopens it.
 
 mod action;
@@ -104,6 +104,7 @@ impl NotaeCore {
         let mut model = UiModel::new();
         model.set_recent_path(data_dir.join("recent.txt"));
         model.set_favorites_path(data_dir.join("favorites.json"));
+        model.set_score_notes_path(data_dir.join("score-notes.json"));
         // Before the UI preferences, which reopen a saved set only if it still exists.
         model.set_sets_path(data_dir.join("sets.json"));
         model.set_ui_prefs_path(data_dir.join("ui-prefs.txt"));
@@ -617,6 +618,7 @@ impl CoreState {
                     eprintln!("notae: cannot save favorites: {error}");
                 }
             }
+            Action::SaveScoreNote { note_key, text } => model.set_score_note(&note_key, &text),
             Action::OpenPdf {
                 relative_path,
                 note_key,
