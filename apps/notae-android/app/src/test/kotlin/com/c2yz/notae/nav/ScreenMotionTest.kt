@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.Color
 import androidx.core.view.drawToBitmap
 import androidx.compose.ui.test.SemanticsMatcher
@@ -21,6 +22,7 @@ import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.ui.details.DETAILS_BODY_TAG
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.GRID_TAG
+import com.c2yz.notae.ui.library.SIDE_PANEL_TAG
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
@@ -84,6 +86,9 @@ class ScreenMotionTest {
     private fun bounds(matcher: SemanticsMatcher): List<Rect> =
         compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
 
+    /** The one [matcher] node's laid-out size, however much of it shows. */
+    private fun size(matcher: SemanticsMatcher): IntSize = compose.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().single().size
+
     /** Every [matcher] node in the middle of the change sits where one sits at rest, before or after it. */
     private fun assertStill(matcher: SemanticsMatcher, rest: List<Rect>, middle: List<Rect>) {
         assertTrue("$matcher shows in the middle of the change", middle.isNotEmpty())
@@ -104,6 +109,7 @@ class ScreenMotionTest {
 
     private val search = hasContentDescription("Search")
     private val favorites = hasText("Favorites")
+    private val sidePanel = hasTestTag(SIDE_PANEL_TAG)
     private val sets = hasText("Sets")
     private val grid = hasTestTag(GRID_TAG)
     private val palmCard = hasContentDescription("More actions for Niedziela Palmowa")
@@ -140,19 +146,26 @@ class ScreenMotionTest {
 
         halfway(selecting(ave))
         val gridMiddle = bounds(grid).single()
+        val gridSizeMiddle = size(grid)
         val backMiddle = bounds(detailsBack).single()
         finish()
         val gridOpen = bounds(grid).single()
         val backOpen = bounds(detailsBack).single()
-        assertEquals("the list does not move while the pane opens", gridOpen, gridMiddle)
+        // The list takes its narrow width as the pane starts to open, and moves to the start with the side panel hiding.
+        assertEquals("the list is at its new width while the pane opens", size(grid), gridSizeMiddle)
+        assertTrue("the list moves to the start with the side panel: $gridOpen <- $gridMiddle", gridMiddle.left > gridOpen.left + 100f)
+        assertEquals("the list stays at its height", gridOpen.top, gridMiddle.top)
         assertTrue("the pane comes in from the end: $backOpen <- $backMiddle", backMiddle.left > backOpen.left + 100f)
 
         halfway(Fixture.library())
         val gridClosing = bounds(grid).single()
+        val gridSizeClosing = size(grid)
         val backClosing = bounds(detailsBack).single()
         finish()
-        // The list takes its full width as the pane starts to close, under the pane sliding away, and keeps it.
-        assertEquals("the list does not move while the pane closes", bounds(grid).single(), gridClosing)
+        // The list takes its full width as the pane starts to close, under the pane sliding away, and moves to the end
+        // with the side panel coming back.
+        assertEquals("the list is at its new width while the pane closes", size(grid), gridSizeClosing)
+        assertTrue("the list moves to the end with the side panel: ${bounds(grid)} <- $gridClosing", gridClosing.left < bounds(grid).single().left - 100f)
         assertTrue("the pane leaves to the end: $backOpen -> $backClosing", backClosing.left > backOpen.left + 100f)
         assertTrue("the pane is gone", bounds(detailsBack).isEmpty())
     }
@@ -190,7 +203,38 @@ class ScreenMotionTest {
     }
 
     @Test
-    @Config(qualifiers = "w800dp-h1280dp-xhdpi")
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun the_side_panel_slides_and_the_grid_changes_its_columns_once() {
+        val shown = Fixture.library()
+        val hidden = shown.copy(layout = shown.layout.copy(sidebarCollapsedLandscape = true))
+        show(shown)
+        for (to in listOf(hidden, shown)) {
+            val panelFrom = bounds(sidePanel)
+            val before = size(grid)
+            compose.mainClock.autoAdvance = false
+            snapshot = to
+            val sizes = mutableListOf<IntSize>()
+            val panel = mutableListOf<Rect>()
+            repeat(PANEL_FRAMES) {
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+                sizes += size(grid)
+                panel += bounds(sidePanel)
+            }
+            finish()
+            val panelTo = bounds(sidePanel)
+            // The grid takes its new width, and so its new columns, on the first frame of the change, and keeps it while it
+            // moves.
+            assertEquals("the grid's width changes once: $sizes", listOf(size(grid)), sizes.dropWhile { it == before }.distinct())
+            // The panel is on its way between showing and gone, at the start of the line.
+            val restEnd = (panelFrom + panelTo).single().right
+            val middle = panel.filter { it.width > 0f }.map { it.right }
+            assertTrue("the panel slides at the start: $restEnd, $middle", middle.any { it < restEnd - 50f && it > 50f })
+        }
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
     fun portrait_rail_stays_while_a_set_opens() {
         show(Fixture.sets())
         val railAtRest = bounds(favorites) + bounds(sets)
@@ -345,6 +389,9 @@ class ScreenMotionTest {
         const val FAINT = 0.15f
         const val PART_STEPS = 60
         const val TURN_FRAMES = 10
+
+        /** Most of the side panel's 250 ms, a frame at a time. */
+        const val PANEL_FRAMES = 12
 
         /** Pixels: what a 16 ms frame moves the content at the start of a slide, well below a jump to where it began. */
         const val TURN_JUMP = 150f

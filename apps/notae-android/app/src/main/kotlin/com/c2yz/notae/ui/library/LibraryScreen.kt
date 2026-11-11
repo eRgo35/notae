@@ -61,6 +61,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigationevent.NavigationEventInfo
@@ -98,6 +106,16 @@ import com.c2yz.notae.ui.sets.setSubtitle
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 internal const val SET_PREFIX = "set:"
+
+internal const val SIDE_PANEL_TAG = "side-panel"
+
+/** The side panel's slide in or out: a little under a screen's, as the panel crosses less of the window. */
+internal const val PANEL_MILLIS = 250
+
+private val SIDE_PANEL_WIDTH = 288.dp
+
+/** The side panel and the gap after it: how far the rest moves when the panel shows or hides. */
+private val PANEL_SPAN = SIDE_PANEL_WIDTH + 16.dp
 
 /**
  * 0.3.0's `LibraryScreen` on a tablet: the side panel (or the chips when it is hidden or the pane is under 840 dp), the large
@@ -206,9 +224,33 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 inSet,
                 content,
             )
-            WidthClass.EXPANDED -> Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight().screenBar("sidePanel"))
-                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = collapsingGaps(12.dp)) {
+            WidthClass.EXPANDED -> Box(Modifier.fillMaxSize().clipToBounds().padding(16.dp)) {
+                // The side panel slides in from the start, or out to it, and the rest moves with it. The rest takes its
+                // new width at once and is only moved, so its grid changes its columns once, not at every step.
+                val panel = updateTransition(sidebar, label = "side panel")
+                val shown by panel.animateFloat({ tween(PANEL_MILLIS, easing = NotaeMotion.emphasized) }, label = "side panel shown") {
+                    if (it) 1f else 0f
+                }
+                val toEnd = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
+                if (panel.currentState || panel.targetState) {
+                    SidePanel(
+                        snapshot,
+                        onAction,
+                        Modifier
+                            .width(SIDE_PANEL_WIDTH)
+                            .fillMaxHeight()
+                            .graphicsLayer { translationX = (shown - 1f) * PANEL_SPAN.toPx() * toEnd }
+                            .testTag(SIDE_PANEL_TAG)
+                            .screenBar("sidePanel"),
+                    )
+                }
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(start = if (sidebar) PANEL_SPAN else 0.dp)
+                        .graphicsLayer { translationX = (shown - if (sidebar) 1f else 0f) * PANEL_SPAN.toPx() * toEnd },
+                    verticalArrangement = collapsingGaps(12.dp),
+                ) {
                     // Each bar on its own, so the column keeps its children (its gaps count them).
                     Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
                     if (!sidebar) Box(Modifier.screenBar("chips")) { Chips(snapshot, onAction) }
