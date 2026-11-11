@@ -2,6 +2,8 @@ package com.c2yz.notae.nav
 
 import com.c2yz.notae.ui.components.backProgress
 import com.c2yz.notae.ui.components.LocalBackProgress
+import com.c2yz.notae.ui.components.BackClaims
+import com.c2yz.notae.ui.components.LocalBackClaims
 import com.c2yz.notae.ui.components.AnimatedOverlay
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.annotation.StringRes
@@ -30,7 +32,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
@@ -88,6 +89,7 @@ fun NotaeNavDisplay(
 ) {
     val backStack = backStackFor(snapshot)
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    val claims = remember { BackClaims() }
     BoxWithConstraints(modifier.shellFrame()) {
         // R37: two panes from 840 dp (a tablet in landscape), Details alone below that (portrait).
         val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH
@@ -101,15 +103,32 @@ fun NotaeNavDisplay(
         val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
         val dropPixels = with(LocalDensity.current) { DROP.roundToPx() }
         val motion = remember(rtl, dropPixels) { ScreenMotion(rtl, order, dropPixels) }
-        NavDisplay(
-            backStack = backStack,
-            modifier = Modifier.fillMaxSize(),
-            onBack = onBack,
-            sceneStrategies = listOf(strategy),
-            transitionSpec = { motion.forward(initialState, targetState) },
-            popTransitionSpec = { motion.back(initialState, targetState) },
-            predictivePopTransitionSpec = { motion.predictiveBack(initialState, targetState) },
-            entryProvider = { key -> entryFor(key, shown, motion) },
+        // A screen claims Back while it has something of its own to close (a ⋮ sheet, a note editor).
+        CompositionLocalProvider(LocalBackClaims provides claims) {
+            NavDisplay(
+                backStack = backStack,
+                modifier = Modifier.fillMaxSize(),
+                onBack = onBack,
+                sceneStrategies = listOf(strategy),
+                transitionSpec = { motion.forward(initialState, targetState) },
+                popTransitionSpec = { motion.back(initialState, targetState) },
+                predictivePopTransitionSpec = { motion.predictiveBack(initialState, targetState) },
+                entryProvider = { key -> entryFor(key, shown, motion) },
+            )
+        }
+        // Composed right after NavDisplay, in the same composition, so it registers after NavDisplay's own handler and
+        // wins while enabled, also after the activity is recreated: a dialog or sheet of the snapshot closes before any
+        // screen, without the predictive animation of the screen below, and on a single screen (where NavDisplay handles
+        // nothing) the core still decides whether the activity ends. It stands aside while a screen claims Back for
+        // something of its own, which then closes first whatever the order the handlers registered in.
+        NavigationBackHandler(
+            state = backState,
+            // Reorder mode is not an entry: Back ends it without previewing the list of sets below the set. Search closes
+            // here too: Navigation 3 draws the screen below over it when Back starts and ends at once (the Back key with
+            // 3-button navigation on Android 16 starts a back gesture), so Search would vanish instead of rising out.
+            isBackEnabled = !claims.any &&
+                (backStack.size == 1 || overlayOpen(snapshot) || snapshot.reordering || snapshot.screen is Screen.Search),
+            onBackCompleted = onBack,
         )
         // Snapshot fields, not navigation entries: drawn over whichever screen opened it, and gone when it closes.
         CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
@@ -117,20 +136,6 @@ fun NotaeNavDisplay(
             SetOverlays(snapshot, onAction)
             AnimatedOverlay(snapshot.importConfirmation) { ImportConfirmationDialog(it, onAction) }
         }
-    }
-    // Registered after NavDisplay's own handler, so it wins while enabled: a dialog or sheet closes
-    // before any screen, without the predictive animation of the screen below, and on a single
-    // screen (where NavDisplay handles nothing) the core still decides whether the activity ends.
-    // NavDisplay registers its handler again when the stack changes, so this one does too, after it.
-    key(backStack) {
-        NavigationBackHandler(
-            state = backState,
-            // Reorder mode is not an entry: Back ends it without previewing the list of sets below the set. Search closes here
-            // too: Navigation 3 draws the screen below over it when Back starts and ends at once (the Back key with 3-button
-            // navigation on Android 16 starts a back gesture), so Search would vanish instead of rising out.
-            isBackEnabled = backStack.size == 1 || overlayOpen(snapshot) || snapshot.reordering || snapshot.screen is Screen.Search,
-            onBackCompleted = onBack,
-        )
     }
 }
 

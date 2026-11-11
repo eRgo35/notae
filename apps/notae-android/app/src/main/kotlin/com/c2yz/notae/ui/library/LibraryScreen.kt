@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.components.ClaimBack
 import androidx.compose.animation.Crossfade
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.components.AnimatedPresence
@@ -166,6 +167,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         isBackEnabled = sheetOpen,
         onBackCompleted = closeSheets,
     )
+    ClaimBack(sheetOpen)
     val reordering = inSet && snapshot.reordering
     // The keys work as soon as the library shows, as 0.3.0 focuses its shortcuts, and again once a sheet,
     // dialog or picker closes. While one is open, 0.3.0 ignored them (Escape closes a ⋮ sheet).

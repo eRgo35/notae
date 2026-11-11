@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.details
 
+import com.c2yz.notae.ui.components.ClaimBack
 import com.c2yz.notae.nav.screenBackground
 import com.c2yz.notae.nav.screenBar
 import com.c2yz.notae.nav.screenFade
@@ -133,6 +134,7 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     LaunchedEffect(overlay, editing) { if (!overlay && editing == null) keys.requestFocus() }
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(state = backState, isBackEnabled = editing != null, onBackCompleted = { editing = null })
+    ClaimBack(editing != null)
     val notes = NotesProps(setName) { editing = it }
     Box(modifier) {
         if (!besideList && windowWidthClass() == WidthClass.COMPACT) {

@@ -307,6 +307,26 @@ class ScreenMotionTest {
         assertTrue("Search is gone", bounds(field).isEmpty())
     }
 
+    /** As after the activity is recreated: Search is on the stack from the first frame, with no change of stack since. */
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun the_back_key_closes_search_shown_from_the_first_frame_rising_over_the_library() {
+        show(Fixture.library().copy(screen = Screen.Search))
+        val field = hasSetTextAction()
+        val atRest = bounds(field).single()
+        afterBack = Fixture.library()
+
+        pressBack(DROP_STEPS)
+        val rising = bounds(field)
+        val risingFrame = compose.activity.window.decorView.drawToBitmap()
+        finish()
+        val library = compose.activity.window.decorView.drawToBitmap()
+        assertTrue("Search still shows partway: $rising", rising.size == 1)
+        assertTrue("Search rises out: $atRest -> $rising", rising.single().top < atRest.top - 1f)
+        val drawn = differing(risingFrame, library, rising.single())
+        assertTrue("Search draws over the library as it rises: $drawn", drawn > 100)
+    }
+
     @Test
     @Config(qualifiers = "w1280dp-h800dp-xhdpi")
     fun the_back_key_closes_a_set_in_reverse() {

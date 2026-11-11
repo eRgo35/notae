@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.library
 
+import com.c2yz.notae.ui.components.ClaimBack
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.components.AnimatedPresence
 import androidx.compose.ui.unit.Velocity
@@ -181,6 +182,7 @@ internal fun CompactLibrary(
         // Back closes the sheet before it reaches the core, which would otherwise leave the app under it.
         val backState = rememberNavigationEventState(NavigationEventInfo.None)
         NavigationBackHandler(state = backState, isBackEnabled = composerSheet, onBackCompleted = { composerSheet = false })
+        ClaimBack(composerSheet)
         CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
             AnimatedOverlay(if (composerSheet) Unit else null) {
                 ComposerSheet(snapshot, { composerSheet = false }) {
