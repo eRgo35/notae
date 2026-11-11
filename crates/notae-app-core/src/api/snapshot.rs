@@ -669,6 +669,8 @@ pub struct SetChoice {
     pub count: u32,
     /// The set holds the score.
     pub checked: bool,
+    /// Thumbnail paths of the set's first pieces, as on its card; `None` is a blank page.
+    pub previews: Vec<Option<String>>,
 }
 
 /// The add picker over the open set.
@@ -884,6 +886,11 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
                 .add_to_set_choices()
                 .into_iter()
                 .map(|choice| SetChoice {
+                    previews: choice
+                        .preview_keys
+                        .iter()
+                        .map(|key| lookup.thumbnail_for(key, !library_keys.contains(key.as_str())))
+                        .collect(),
                     id: choice.id,
                     name: choice.name,
                     date: choice.date,

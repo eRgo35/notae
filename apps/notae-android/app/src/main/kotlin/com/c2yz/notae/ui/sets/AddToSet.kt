@@ -94,7 +94,7 @@ internal fun AddToSetSheet(sheet: AddToSetSheet, onAction: (Action) -> Unit) {
     }
 }
 
-/** 0.3.0's `SetChoiceRow`: a 64 dp checkbox row with the folder, name, "date · N items" and the tick. */
+/** 0.3.0's `SetChoiceRow`: a 64 dp checkbox row with the [MiniStack], name, "date · N items" and the tick. */
 @Composable
 private fun SetChoiceRow(choice: SetChoice, onToggle: () -> Unit) {
     val c = NotaeTheme.colors
@@ -114,7 +114,7 @@ private fun SetChoiceRow(choice: SetChoice, onToggle: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        FolderTile(40.dp, 12.dp, 24.dp)
+        MiniStack(choice.previews, 40.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(choice.name, color = c.foreground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(setDetail(choice.date, choice.count), color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

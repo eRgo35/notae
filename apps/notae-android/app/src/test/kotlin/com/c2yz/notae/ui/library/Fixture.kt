@@ -102,10 +102,29 @@ object Fixture {
 
     /** The three sets, most recently edited first. */
     val setCards = listOf(
-        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, emptyList()),
+        // The fixture's scores have no thumbnails yet, so Palm Sunday's stack is three blank pages.
+        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, listOf(null, null, null)),
         SetCard("empty", "Pusty zestaw", null, 0u, Edited.Today, emptyList()),
         SetCard("friday", FRIDAY_NAME, "2026-04-03", 0u, Edited.Today, emptyList()),
     )
+
+    /**
+     * One set of each stack shape, drawn from up to three thumbnail [pages]: three scores, one score, two scores where
+     * the second has no thumbnail yet, notes only, and empty.
+     */
+    fun stackCards(pages: List<String?>): List<SetCard> = listOf(
+        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, pages.take(3)),
+        SetCard("wedding", "Ślub Anny i Piotra", "2026-06-20", 1u, Edited.Yesterday, pages.take(1)),
+        SetCard("advent", "Roraty", "2026-12-01", 2u, Edited.DaysAgo(3u), listOf(pages[1], null)),
+        SetCard("retreat", "Rekolekcje - teksty", null, 2u, Edited.DaysAgo(5u), emptyList()),
+        SetCard("empty", "Pusty zestaw", null, 0u, Edited.On("2026-02-14"), emptyList()),
+    )
+
+    /** The Sets section over [stackCards]. */
+    fun stackSets(pages: List<String>): Snapshot = sets().let { sets ->
+        val cards = stackCards(pages)
+        sets.copy(subtitle = Subtitle.Sets(cards.size.toUInt()), setCards = cards)
+    }
 
     /** Niedziela Palmowa's nine items: two repeats and a piece missing from the library. */
     val palmRows: List<Row> = listOf(

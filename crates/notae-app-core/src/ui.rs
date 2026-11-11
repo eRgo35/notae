@@ -72,6 +72,8 @@ pub struct SetChoice {
     pub count: usize,
     /// Whether the set holds the piece the checklist is open for.
     pub checked: bool,
+    /// Content keys of the set's first pieces, as on its card.
+    pub preview_keys: Vec<String>,
 }
 
 /// Where [`UiModel::move_set_item`] moves an item.
@@ -502,6 +504,7 @@ impl UiModel {
                 date: card.date.clone(),
                 count: card.count,
                 checked: containing.iter().any(|id| card.id == id.as_str()),
+                preview_keys: card.preview_keys.clone(),
             })
             .collect()
     }
