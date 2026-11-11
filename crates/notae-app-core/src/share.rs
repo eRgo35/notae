@@ -221,8 +221,8 @@ pub fn share_text(set: &Set, rows: &[SearchRow], with_notes: bool) -> String {
     out
 }
 
-/// `<name>.notae-set`, with `/\:*?"<>|` and control characters in the name replaced by `_`; `set.notae-set` when the
-/// name is blank after that.
+/// `<name>.notae-set`, with `/\:*?"<>|` and control characters in the name replaced by `_` and the name cut to its
+/// first 100 characters; `set.notae-set` when the name is blank after that.
 #[must_use]
 pub fn share_file_name(name: &str) -> String {
     let clean: String = name
@@ -235,7 +235,8 @@ pub fn share_file_name(name: &str) -> String {
             }
         })
         .collect();
-    let clean = clean.trim();
+    let clean: String = clean.trim().chars().take(100).collect();
+    let clean = clean.trim_end();
     if clean.is_empty() {
         "set.notae-set".to_owned()
     } else {

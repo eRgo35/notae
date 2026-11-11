@@ -140,6 +140,17 @@ fn share_file_name_sanitises() {
     assert_eq!(share_file_name("  "), "set.notae-set");
 }
 
+#[test]
+fn share_file_name_caps_the_name_at_100_characters() {
+    let long = format!("{}{}", "a".repeat(99), "żółw".repeat(10));
+    assert_eq!(
+        share_file_name(&long),
+        format!("{}ż.notae-set", "a".repeat(99))
+    );
+    let exact = "ł".repeat(100);
+    assert_eq!(share_file_name(&exact), format!("{exact}.notae-set"));
+}
+
 /// The sender's "Mass": Gloria (123, `a`, `Gloria.pdf`) and Sanctus (7, `b`, `mass/Sanctus.pdf`), as received.
 fn received_mass() -> SharedSet {
     let mut store = SetStore::default();

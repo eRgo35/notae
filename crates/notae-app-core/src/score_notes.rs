@@ -3,7 +3,6 @@
 
 #![forbid(unsafe_code)]
 
-use std::collections::HashSet;
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -141,7 +140,8 @@ impl ScoreNotes {
 
     /// Points each note whose key is not in `library` at the entry with the same path.
     /// `library` holds `(key, path)` pairs. A note that ends up with a key already listed
-    /// earlier is dropped. Returns whether anything changed.
+    /// earlier joins that note's text after a blank line (once, when the texts are the same).
+    /// Returns whether anything changed.
     pub fn relink(&mut self, library: &[(String, String)]) -> bool {
         let mut changed = false;
         for note in &mut self.notes {
@@ -155,8 +155,17 @@ impl ScoreNotes {
             }
         }
         let before = self.notes.len();
-        let mut seen = HashSet::new();
-        self.notes.retain(|note| seen.insert(note.key.clone()));
+        let mut kept: Vec<ScoreNote> = Vec::with_capacity(before);
+        for note in self.notes.drain(..) {
+            match kept.iter_mut().find(|kept| kept.key == note.key) {
+                Some(kept) if kept.text != note.text => {
+                    kept.text = format!("{}\n\n{}", kept.text, note.text);
+                }
+                Some(_) => {}
+                None => kept.push(note),
+            }
+        }
+        self.notes = kept;
         changed || self.notes.len() != before
     }
 }

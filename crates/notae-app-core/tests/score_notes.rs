@@ -56,6 +56,25 @@ fn score_note_relinks_by_path() {
 }
 
 #[test]
+fn notes_relinked_onto_one_key_keep_both_texts() {
+    let mut notes = ScoreNotes::default();
+    notes.set(piece('b', "new.pdf"), "breathe");
+    notes.set(piece('a', "new.pdf"), "slowly");
+    notes.set(piece('c', "copy.pdf"), "same");
+    notes.set(piece('d', "copy.pdf"), "same");
+
+    // `a` and `d` left the library; their paths now hold `b` and `c`.
+    assert!(notes.relink(&[
+        (key('b'), "new.pdf".to_owned()),
+        (key('c'), "copy.pdf".to_owned()),
+    ]));
+
+    assert_eq!(notes.get(&key('b')), Some("breathe\n\nslowly"));
+    assert_eq!(notes.get(&key('c')), Some("same"), "a repeated text once");
+    assert_eq!(notes.items().len(), 2);
+}
+
+#[test]
 fn merge_replaces_same_key() {
     let mut notes = ScoreNotes::default();
     notes.set(piece('a', "a.pdf"), "old");
