@@ -5,6 +5,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.core.view.drawToBitmap
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
@@ -13,6 +15,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onRoot
 import com.c2yz.notae.core.PositionOf
 import com.c2yz.notae.core.Screen
+import com.c2yz.notae.core.SectionTitle
 import com.c2yz.notae.core.Selection
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.ui.details.DETAILS_BODY_TAG
@@ -54,6 +57,16 @@ class ScreenMotionTest {
         snapshot = next
         // In steps, each one composing and laying out: the change starts on the frame after the one that composes it.
         repeat(HALFWAY_STEPS) {
+            compose.mainClock.advanceTimeBy(STEP_MILLIS)
+            compose.waitForIdle()
+        }
+    }
+
+    /** Sends [next] and lets the clock run [steps] steps of [STEP_MILLIS], each composing and laying out. */
+    private fun steps(steps: Int, next: Snapshot? = null) {
+        compose.mainClock.autoAdvance = false
+        if (next != null) snapshot = next
+        repeat(steps) {
             compose.mainClock.advanceTimeBy(STEP_MILLIS)
             compose.waitForIdle()
         }
@@ -222,7 +235,119 @@ class ScreenMotionTest {
         assertTrue("the body comes in from the end: $bodyAtRest <- $bodyMiddle", bodyMiddle.left > bodyAtRest.left + 100f)
     }
 
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun a_bar_only_the_coming_screen_has_shows_only_in_the_second_half() {
+        show(Fixture.library())
+        val newSet = hasText("New set")
+
+        // About 70 ms in: the going screen's bars show, and Sets' New set pill not yet.
+        steps(2, Fixture.sets())
+        val pill = bounds(newSet).single()
+        val early = blueness(pill)
+        // About 250 ms in: the pill fading in, part of the way.
+        steps(5)
+        val late = blueness(pill)
+        finish()
+        val atRest = blueness(pill)
+        assertTrue("New set does not show in the first half of the change: $early", early < FAINT)
+        assertTrue("New set fades in over the second half: $early, $late, $atRest", late > FAINT && late < atRest - FAINT)
+    }
+
+    /** How blue the bluest pixel inside [area] is (the New set pill's accent, opaque or fading): blue less red, 0 to 1. */
+    private fun blueness(area: Rect): Float {
+        // Drawn on the spot: a capture that waits for the next frame would wait for the paused clock.
+        val pixels = compose.activity.window.decorView.drawToBitmap()
+        var bluest = 0f
+        for (x in area.left.toInt() until area.right.toInt()) {
+            for (y in area.top.toInt() until area.bottom.toInt()) {
+                val c = Color(pixels.getPixel(x, y))
+                bluest = maxOf(bluest, c.blue - c.red)
+            }
+        }
+        return bluest
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun a_section_switch_interrupted_midway_carries_on_from_where_it_was() {
+        show(Fixture.library())
+        val gridAtRest = bounds(grid).single()
+        val recent = Fixture.library().copy(sectionKey = "recent", title = SectionTitle.Recent, rows = emptyList())
+
+        steps(3, Fixture.sets())
+        val gridBefore = bounds(grid).maxOf { it.right }
+        val cardBefore = bounds(palmCard).single()
+        // Recent, earlier in the rail than Sets, comes in from the start, and Sets turns back toward the end.
+        snapshot = recent
+        val cards = mutableListOf(cardBefore.left)
+        repeat(TURN_FRAMES) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+            bounds(palmCard).singleOrNull()?.takeIf { it.width > 0f }?.let { cards += it.left }
+        }
+        val emptyMiddle = bounds(hasText("No recent scores")).single()
+        finish()
+        val emptyAtRest = bounds(hasText("No recent scores")).single()
+
+        assertTrue("All scores was leaving to the start: $gridAtRest -> $gridBefore", gridBefore < gridAtRest.right - 100f)
+        // Sets comes on in until the new change starts, then turns where it is, without a jump, and only goes on to the end.
+        val turn = cards.indexOf(cards.min())
+        assertTrue("Sets comes on in until it turns: $cards", cards.take(turn + 1).zipWithNext().all { (a, b) -> b <= a })
+        assertTrue("Sets then goes only toward the end: $cards", cards.drop(turn).zipWithNext().all { (a, b) -> b >= a })
+        assertTrue("Sets turns where it is: $cards", cards[turn + 1] - cards[turn] < TURN_JUMP)
+        assertTrue("Sets goes on to the end: $cards", cards.last() > cardBefore.left + 100f)
+        assertTrue("Recent comes in from the start: $emptyAtRest <- $emptyMiddle", emptyMiddle.left < emptyAtRest.left - 100f)
+    }
+
+    @Test
+    fun the_going_and_coming_screens_bars_never_show_together() {
+        listOf(Change.Push, Change.Pop, Change.PredictivePop, Change.Forward, Change.Backward).forEach { change ->
+            var progress = 0f
+            val bars = SharedBars()
+            val going = ScreenPart({ 1f - progress }, { 1f - progress }, end = 1f, bars)
+            val coming = ScreenPart({ progress }, { progress }, end = 1f, bars)
+            going.start(change, entering = false)
+            coming.start(change, entering = true)
+            for (step in 0..PART_STEPS) {
+                progress = step / PART_STEPS.toFloat()
+                assertTrue("$change at $progress: exactly one screen's bars show", going.barsShown != coming.barsShown)
+                assertTrue("$change at $progress: one fade at a time", going.fadeAlpha == 0f || coming.fadeAlpha == 0f)
+                if (progress < 0.5f) assertEquals("$change at $progress: the going screen's", true, going.barsShown)
+            }
+            assertEquals("$change: the coming screen's bars end opaque", 1f, coming.fadeAlpha)
+            assertEquals("$change: the going screen's bars end gone", 0f, going.fadeAlpha)
+        }
+    }
+
+    @Test
+    fun a_screen_turned_back_midway_slides_on_from_where_it_was() {
+        var slide = 0f
+        val sets = ScreenPart({ slide }, { slide }, end = 1f, SharedBars())
+        sets.start(Change.Forward, entering = true)
+        slide = 0.4f
+        val turned = sets.away
+        assertTrue("Sets is on its way in from the end: $turned", turned in 0.01f..0.99f)
+
+        sets.start(Change.Backward, entering = false)
+        assertEquals("Sets carries on from where it was", turned, sets.away, 0.0001f)
+        var last = turned
+        while (slide > 0f) {
+            slide = maxOf(0f, slide - 0.05f)
+            assertTrue("Sets moves only toward the end: $last -> ${sets.away}", sets.away >= last)
+            last = sets.away
+        }
+        assertEquals("Sets ends past the end", 1f, sets.away, 0.0001f)
+    }
+
     private companion object {
+        /** Blueness the bars' grey ink and background stay under, and a fade part of the way stays clear of. */
+        const val FAINT = 0.15f
+        const val PART_STEPS = 60
+        const val TURN_FRAMES = 10
+
+        /** Pixels: what a 16 ms frame moves the content at the start of a slide, well below a jump to where it began. */
+        const val TURN_JUMP = 150f
         /** About 100 ms into the 300 ms change, before the emphasized curve has settled the content. */
         const val HALFWAY_STEPS = 3
         const val STEP_MILLIS = 40L

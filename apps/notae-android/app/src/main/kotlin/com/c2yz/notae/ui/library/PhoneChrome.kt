@@ -83,7 +83,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
-import com.c2yz.notae.nav.screenChrome
+import com.c2yz.notae.nav.screenBar
+import com.c2yz.notae.nav.screenFade
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.Snapshot
@@ -127,7 +128,7 @@ internal fun CompactLibrary(
         val fraction = if (range == 0f) 1f else folded / range
         Column(Modifier.fillMaxSize()) {
             Column(Modifier.weight(1f).fillMaxWidth().nestedScroll(collapse)) {
-                Column(Modifier.screenChrome()) {
+                Column {
                     if (titleSpace > 0.dp) {
                         LargeTitle(
                             snapshot,
@@ -145,15 +146,15 @@ internal fun CompactLibrary(
                     verticalArrangement = collapsingGaps(12.dp),
                 ) {
                     if (showsComposers(snapshot, inSet)) {
-                        Box(Modifier.screenChrome()) { ComposerChip(composerName(snapshot), { composerSheet = true }) }
+                        Box(Modifier.screenBar("composers")) { ComposerChip(composerName(snapshot), { composerSheet = true }) }
                     }
-                    OperationBanner(snapshot.banner, onAction, Modifier.screenChrome())
-                    PdfError(snapshot.pdfOpenError, Modifier.screenChrome())
+                    OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
+                    PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
                     content()
                     Spacer(Modifier.height(4.dp))
                 }
             }
-            Box(Modifier.screenChrome()) {
+            Box(Modifier.screenBar(if (reordering) "doneBar" else "bottomNav")) {
                 if (reordering) DoneBar(onAction) else BottomNav(snapshot, onAction)
             }
         }
@@ -167,7 +168,7 @@ internal fun CompactLibrary(
             fab,
             scaleIn(NotaeMotion.medium(), initialScale = 0.8f) + fadeIn(NotaeMotion.medium()),
             scaleOut(NotaeMotion.short(), targetScale = 0.8f) + fadeOut(NotaeMotion.short()),
-            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp).screenChrome(),
+            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = BOTTOM_BAR + 16.dp).screenBar("fab"),
         ) { (label, icon, action) ->
             PillButton(
                 stringResource(label),
@@ -205,22 +206,22 @@ internal fun MediumLibrary(
 ) {
     val c = NotaeTheme.colors
     Row(Modifier.fillMaxSize()) {
-        NavRail(snapshot, onAction, Modifier.width(88.dp).fillMaxHeight().screenChrome())
+        NavRail(snapshot, onAction, Modifier.width(88.dp).fillMaxHeight().screenBar("rail"))
         Column(
             Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = collapsingGaps(12.dp),
         ) {
-            Box(Modifier.screenChrome()) { header() }
+            header()
             if (showsComposers(snapshot, inSet)) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).screenChrome(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).screenBar("composers"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip(stringResource(R.string.all_composers), snapshot.sectionKey == "all", { onAction(Action.SelectSection("all")) })
                     snapshot.composers.forEach { composer ->
                         Chip(composer.name, composer.key == snapshot.sectionKey, { onAction(Action.SelectSection(composer.key)) })
                     }
                 }
             }
-            OperationBanner(snapshot.banner, onAction, Modifier.screenChrome())
-            PdfError(snapshot.pdfOpenError, Modifier.screenChrome())
+            OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
+            PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
             content()
         }
     }
@@ -279,7 +280,7 @@ private class TitleCollapse(
 @Composable
 private fun LargeTitle(snapshot: Snapshot, inSet: Boolean, reordering: Boolean, modifier: Modifier) {
     val c = NotaeTheme.colors
-    Box(modifier.fillMaxWidth().clipToBounds().padding(start = 24.dp, end = 24.dp, bottom = 12.dp), Alignment.BottomStart) {
+    Box(modifier.fillMaxWidth().clipToBounds().padding(start = 24.dp, end = 24.dp, bottom = 12.dp).screenFade(), Alignment.BottomStart) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 sectionTitle(snapshot.title),
@@ -306,9 +307,9 @@ private fun Toolbar(snapshot: Snapshot, onAction: (Action) -> Unit, inSet: Boole
     val c = NotaeTheme.colors
     Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (inSet) {
-            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) })
+            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) }, Modifier.screenBar("setBack"))
         }
-        Box(Modifier.weight(1f).padding(start = if (inSet) 4.dp else 16.dp)) {
+        Box(Modifier.weight(1f).padding(start = if (inSet) 4.dp else 16.dp).screenFade()) {
             // Qualified: the toolbar Row's scope would otherwise pick its own overload.
             androidx.compose.animation.AnimatedVisibility(showTitle, enter = fadeIn(NotaeMotion.short()), exit = fadeOut(NotaeMotion.short())) {
                 Text(
@@ -322,12 +323,12 @@ private fun Toolbar(snapshot: Snapshot, onAction: (Action) -> Unit, inSet: Boole
                 )
             }
         }
-        IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) })
+        IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) }, Modifier.screenBar("search"))
         if (inSet && !reordering) {
-            IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) })
-            ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction)
+            IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"))
+            Box(Modifier.screenBar("share")) { ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction) }
         }
-        OverflowMenu(snapshot, onAction, reordering)
+        Box(Modifier.screenBar("more")) { OverflowMenu(snapshot, onAction, reordering) }
     }
 }
 

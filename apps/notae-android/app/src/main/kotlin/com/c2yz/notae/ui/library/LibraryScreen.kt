@@ -68,7 +68,8 @@ import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.c2yz.notae.R
 import com.c2yz.notae.nav.screenBackground
-import com.c2yz.notae.nav.screenChrome
+import com.c2yz.notae.nav.screenBar
+import com.c2yz.notae.nav.screenFade
 import com.c2yz.notae.nav.screenContent
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
@@ -206,13 +207,13 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 content,
             )
             WidthClass.EXPANDED -> Row(Modifier.fillMaxSize().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight().screenChrome())
+                if (sidebar) SidePanel(snapshot, onAction, Modifier.width(288.dp).fillMaxHeight().screenBar("sidePanel"))
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = collapsingGaps(12.dp)) {
                     // Each bar on its own, so the column keeps its children (its gaps count them).
-                    Box(Modifier.screenChrome()) { Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering) }
-                    if (!sidebar) Box(Modifier.screenChrome()) { Chips(snapshot, onAction) }
-                    OperationBanner(snapshot.banner, onAction, Modifier.screenChrome())
-                    PdfError(snapshot.pdfOpenError, Modifier.screenChrome())
+                    Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
+                    if (!sidebar) Box(Modifier.screenBar("chips")) { Chips(snapshot, onAction) }
+                    OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
+                    PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
                     content()
                 }
             }
@@ -305,12 +306,14 @@ private fun Header(
                 stringResource(if (sidebar) R.string.library_hide_sidebar else R.string.library_show_sidebar),
                 painterResource(if (sidebar) R.drawable.ic_panel_left_close else R.drawable.ic_panel_left_open),
                 { onAction(Action.SetSidebarCollapsed(portrait = portrait, collapsed = sidebar)) },
+                Modifier.screenBar("sidebarToggle"),
             )
         }
         if (inSet) {
-            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) })
+            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) }, Modifier.screenBar("setBack"))
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // The title changes with the section, so it fades through; the controls that stay put do not move.
+        Column(Modifier.weight(1f).screenFade(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 sectionTitle(snapshot.title),
                 Modifier.semantics { heading() },
@@ -327,38 +330,40 @@ private fun Header(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) })
+            IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) }, Modifier.screenBar("search"))
             // Reorder mode always shows the list; the saved choice comes back with Done.
             if (!reordering) {
                 IconButton(
                     stringResource(if (list) R.string.library_grid_view else R.string.library_list_view),
                     painterResource(if (list) R.drawable.ic_layout_grid else R.drawable.ic_layout_list),
                     { onAction(Action.SetLibraryView(if (list) LibraryView.GRID else LibraryView.LIST)) },
+                    Modifier.screenBar("view"),
                 )
             }
             if (snapshot.sectionKey == "sets") {
-                PillButton(stringResource(R.string.library_new_set), { onAction(Action.NewSet) }, icon = painterResource(R.drawable.ic_add), primary = true)
+                PillButton(stringResource(R.string.library_new_set), { onAction(Action.NewSet) }, Modifier.screenBar("newSet"), icon = painterResource(R.drawable.ic_add), primary = true)
             }
             if (reordering) {
-                PillButton(stringResource(R.string.picker_done), { onAction(Action.ReorderFinished) }, icon = painterResource(R.drawable.ic_check), primary = true)
+                PillButton(stringResource(R.string.picker_done), { onAction(Action.ReorderFinished) }, Modifier.screenBar("done"), icon = painterResource(R.drawable.ic_check), primary = true)
             } else if (inSet) {
                 // Under 840 dp (portrait, or the pane beside the details) the labelled icon leaves room for the set's name.
                 if (expanded) {
-                    PillButton(stringResource(R.string.set_reorder), { onAction(Action.ReorderStarted) }, icon = painterResource(R.drawable.ic_reorder))
+                    PillButton(stringResource(R.string.set_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"), icon = painterResource(R.drawable.ic_reorder))
                 } else {
-                    IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) })
+                    IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"))
                 }
-                ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction)
-                PillButton(stringResource(R.string.set_add), { onAction(Action.OpenAddPicker) }, icon = painterResource(R.drawable.ic_add), primary = true)
+                Box(Modifier.screenBar("share")) { ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction) }
+                PillButton(stringResource(R.string.set_add), { onAction(Action.OpenAddPicker) }, Modifier.screenBar("add"), icon = painterResource(R.drawable.ic_add), primary = true)
             }
             if (!sidebar) {
-                IconButton(stringResource(R.string.screen_settings), painterResource(R.drawable.ic_settings), { onAction(Action.OpenSettings) })
+                IconButton(stringResource(R.string.screen_settings), painterResource(R.drawable.ic_settings), { onAction(Action.OpenSettings) }, Modifier.screenBar("settings"))
             }
             // Scan is always right-most, so it never moves between screens.
             IconButton(
                 stringResource(R.string.library_scan),
                 painterResource(R.drawable.ic_scan),
                 { onAction(Action.Rescan) },
+                Modifier.screenBar("scan"),
                 enabled = snapshot.rescanEnabled,
             )
         }

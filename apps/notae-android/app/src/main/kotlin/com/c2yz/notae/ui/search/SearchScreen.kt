@@ -1,7 +1,8 @@
 package com.c2yz.notae.ui.search
 
 import com.c2yz.notae.nav.screenBackground
-import com.c2yz.notae.nav.screenChrome
+import com.c2yz.notae.nav.screenBar
+import com.c2yz.notae.nav.screenFade
 import com.c2yz.notae.nav.screenContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.BorderStroke
@@ -106,7 +107,7 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
             Modifier.fillMaxSize().padding(start = side, top = side, end = side, bottom = 16.dp),
             verticalArrangement = collapsingGaps(16.dp),
         ) {
-            Row(Modifier.screenChrome(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.screenFade(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(stringResource(R.string.details_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseSearch) })
                 SearchField(
                     snapshot.search.query,
@@ -119,9 +120,9 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
                     IconButton(stringResource(R.string.search_voice), painterResource(R.drawable.ic_mic), { onAction(Action.VoiceSearch) })
                 }
             }
-            OperationBanner(snapshot.banner, onAction, Modifier.screenChrome())
+            OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
             // On a phone the chips start at the edge, under Back, instead of lining up with the field.
-            ScopeChips(snapshot.search.scope, onAction, indent = if (compact) 0.dp else 56.dp, Modifier.screenChrome())
+            ScopeChips(snapshot.search.scope, onAction, indent = if (compact) 0.dp else 56.dp, Modifier.screenFade())
             Results(snapshot, onAction)
         }
     }

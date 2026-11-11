@@ -135,20 +135,23 @@ internal fun Modifier.shellFrame(): Modifier =
 private const val DETAILS_CONTENT_KEY = "details"
 
 /**
- * How screens change, toward the end of the line (flipped in a right-to-left language): only content moves, and the
- * bars stay where they are. Navigation 3 holds both screens still while each moves its own parts ([ScreenFrame]): a
- * deeper screen's content slides in over the content it covers, which stays still, and Back reverses that (the gesture
- * shrinks the content it leaves); switching sections ([lateral]) slides both contents together in the rail's [order].
- * A screen's bars (rail, top bar, bottom bar) fade in place over the other's, so bars both screens share do not move.
- * Setup and Loading fade through as whole screens.
+ * How screens change, toward the end of the line (flipped in a right-to-left language): only content moves. Navigation 3
+ * holds both screens still while each moves its own parts ([ScreenFrame]): a deeper screen's content slides in over the
+ * content it covers, which stays still, and Back and the back gesture reverse that; switching sections ([lateral])
+ * slides both contents together in the rail's [order]. The content slides for the whole change; the bars fade through
+ * in place, the going screen's out over the first half and the coming one's in over the second, and a bar both screens
+ * have stays put ([screenBar]). Setup and Loading fade through as whole screens.
  */
 internal class ScreenMotion(rtl: Boolean, private val order: State<List<String>>) {
-    /** The change now running, set as Navigation 3 starts it and read as the screens draw it. */
+    /** The change starting, set as Navigation 3 starts it; each screen records it as its own ([ScreenPart.start]). */
     var change: Change = Change.Fade
         private set
 
     /** The end of the line: 1 to the right, -1 to the left. */
     val end: Float = if (rtl) -1f else 1f
+
+    /** The bars of the screens on show, by key ([screenBar]). */
+    val bars = SharedBars()
 
     private fun start(change: Change, popping: Boolean = false): ContentTransform {
         this.change = change
