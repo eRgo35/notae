@@ -291,4 +291,14 @@
     </plurals>
     <string name="import_replaced">Te zestawy zostaną zastąpione: %1$s</string>
     <string name="import_confirm">Importuj</string>
+    <string name="shared_set_review_title">Zaimportować „%1$s”?</string>
+    <plurals name="shared_set_matched">
+        <item quantity="one">Dopasowano %1$d z %2$d utworu</item>
+        <item quantity="few">Dopasowano %1$d z %2$d utworów</item>
+        <item quantity="many">Dopasowano %1$d z %2$d utworów</item>
+        <item quantity="other">Dopasowano %1$d z %2$d utworów</item>
+    </plurals>
+    <string name="shared_set_unmatched">Brak w bibliotece</string>
+    <string name="replace">Zastąp</string>
+    <string name="keep_both">Zachowaj oba</string>
 </resources>

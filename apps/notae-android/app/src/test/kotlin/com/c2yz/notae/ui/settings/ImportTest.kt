@@ -22,7 +22,9 @@ import com.c2yz.notae.core.ImportError
 import com.c2yz.notae.core.ImportStatus
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.SetupScreen
+import com.c2yz.notae.core.SharedSetReview
 import com.c2yz.notae.core.Snapshot
+import com.c2yz.notae.core.UnmatchedPiece
 import com.c2yz.notae.nav.NotaeNavDisplay
 import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
@@ -139,6 +141,31 @@ class ImportTest {
         compose.onNodeWithText("Could not import sets: this is not a Notae sets file").assertIsDisplayed()
     }
 
+    @Test
+    fun sharedSetReviewListsUnmatched() {
+        show(reviewing(exists = true))
+
+        compose.onNodeWithText("Import “Choir Mass”?").assertIsDisplayed()
+        compose.onNodeWithText("2 of 4 scores matched").assertIsDisplayed()
+        compose.onNodeWithText("Not in your library").assertIsDisplayed()
+        compose.onNodeWithText("117").assertIsDisplayed()
+        compose.onNodeWithText("Ojcze nasz").assertIsDisplayed()
+        compose.onNodeWithText("Ave verum").assertIsDisplayed()
+        compose.onNodeWithText("Import").assertDoesNotExist()
+        compose.onNodeWithText("Replace").performClick()
+        compose.onNodeWithText("Keep both").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(listOf(Action.ImportConfirmed, Action.ImportKeepBoth, Action.ImportCancelled), actions)
+
+        actions.clear()
+        shown = reviewing(exists = false)
+        compose.waitForIdle()
+        compose.onNodeWithText("Replace").assertDoesNotExist()
+        compose.onNodeWithText("Keep both").assertDoesNotExist()
+        compose.onNodeWithText("Import").performClick()
+        assertEquals(listOf<Action>(Action.ImportConfirmed), actions)
+    }
+
     // Screenshots (app/src/test/screenshots). No reference: 0.3.0 had no import.
 
     /** The screen and the confirmation as the shell draws them, with a fixed About (the shell's shows the build hash). */
@@ -167,6 +194,10 @@ class ImportTest {
 
     @Test fun shot_setup_confirm_dark() = shot(setupConfirming, "setup-import-confirm", dark = true)
 
+    @Test fun shot_shared_set_review_light() = shot(reviewing(exists = true), "shared-set-review", dark = false)
+
+    @Test fun shot_shared_set_review_dark() = shot(reviewing(exists = true), "shared-set-review", dark = true)
+
     private companion object {
         val settings: Snapshot = Fixture.library().copy(
             screen = Screen.Settings,
@@ -178,6 +209,20 @@ class ImportTest {
         val setupConfirming = Fixture.base.copy(
             screen = Screen.Setup(SetupScreen.Unconfigured),
             importConfirmation = ImportConfirmation(sets = 3u, replaced = emptyList(), shared = null),
+        )
+
+        /** "Choir Mass": 2 of its 4 scores in the library; one missing piece has a number, one does not. */
+        fun reviewing(exists: Boolean) = settings.copy(
+            importConfirmation = ImportConfirmation(
+                sets = 1u,
+                replaced = if (exists) listOf("Choir Mass") else emptyList(),
+                shared = SharedSetReview(
+                    name = "Choir Mass",
+                    matched = 2u,
+                    unmatched = listOf(UnmatchedPiece(number = "117", title = "Ojcze nasz"), UnmatchedPiece(number = null, title = "Ave verum")),
+                    exists = exists,
+                ),
+            ),
         )
 
         fun Snapshot.withImport(status: ImportStatus) = copy(settings = settings.copy(importStatus = status))

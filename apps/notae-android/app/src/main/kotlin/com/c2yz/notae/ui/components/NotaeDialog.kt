@@ -216,8 +216,8 @@ private fun cardExit(fromBottom: Boolean): ExitTransition =
     if (fromBottom) slideOutVertically(NotaeMotion.short()) { it } else fadeOut(NotaeMotion.short()) + scaleOut(NotaeMotion.short(), targetScale = 0.92f)
 
 /**
- * One UI's dialog buttons: two text buttons sharing the card's width, split by a short divider. [confirm] is in the
- * accent colour, or the error colour when [destructive].
+ * One UI's dialog buttons: two text buttons sharing the card's width, split by a short divider, or three with a
+ * [middle] one between them. [confirm] is in the accent colour, or the error colour when [destructive].
  */
 @Composable
 fun DialogButtons(
@@ -228,11 +228,17 @@ fun DialogButtons(
     modifier: Modifier = Modifier,
     destructive: Boolean = false,
     confirmEnabled: Boolean = true,
+    middle: String? = null,
+    onMiddle: () -> Unit = {},
 ) {
     val c = NotaeTheme.colors
     Row(modifier.fillMaxWidth().height(56.dp), verticalAlignment = Alignment.CenterVertically) {
         DialogTextButton(dismiss, onDismiss, c.accentText, Modifier.weight(1f))
         Box(Modifier.size(1.dp, 20.dp).background(c.divider))
+        if (middle != null) {
+            DialogTextButton(middle, onMiddle, c.accentText, Modifier.weight(1f))
+            Box(Modifier.size(1.dp, 20.dp).background(c.divider))
+        }
         DialogTextButton(confirm, onConfirm, if (destructive) c.error else c.accentText, Modifier.weight(1f), enabled = confirmEnabled)
     }
 }
