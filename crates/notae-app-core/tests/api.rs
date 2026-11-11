@@ -315,9 +315,27 @@ fn back_closes_innermost_first() {
 fn back_from_another_section_returns_to_the_library_first() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
-    open_and_scan(&harness);
+    let library = open_and_scan(&harness);
+    // A composer, so the library has a composer section.
+    let note_key = library.rows[0].note_key.clone();
+    harness.core.dispatch(Action::EditMetadata {
+        note_key: note_key.clone(),
+    });
+    harness.core.dispatch(Action::SaveMetadata {
+        note_key,
+        number: String::new(),
+        title: library.rows[0].title.clone(),
+        composer: "Schubert".to_owned(),
+        tags: String::new(),
+    });
+    let composed = harness
+        .listener
+        .wait_for("the composer section", |snapshot| {
+            !snapshot.composers.is_empty()
+        });
+    let composer = composed.composers[0].key.clone();
 
-    for key in ["recent", "favorites", "sets"] {
+    for key in ["recent", "favorites", "sets", composer.as_str()] {
         harness.core.dispatch(Action::SelectSection {
             key: key.to_owned(),
         });
