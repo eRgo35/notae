@@ -773,11 +773,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         _ => None,
     };
     let set_cards = browse::set_cards(model.sets(), crate::ui::unix_now());
-    let library_keys: HashSet<&str> = model
-        .search_rows()
-        .iter()
-        .map(|row| row.note_key.as_str())
-        .collect();
+    let library_keys = model.library_keys();
     let subtitle = if let Some(set) = open_set {
         let subtitle = browse::set_subtitle(set);
         Subtitle::Set {
@@ -914,16 +910,12 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
                 .add_to_set_choices()
                 .into_iter()
                 .map(|choice| SetChoice {
-                    // Opened from a search result, the rows are its hits: a set's other pieces are
-                    // not missing for being outside them.
+                    // Opened from a search result, the rows are its hits: the library's keys tell
+                    // a set's other pieces from ones gone from the library.
                     previews: choice
                         .preview_keys
                         .iter()
-                        .map(|key| {
-                            let missing =
-                                !model.rows_filtered() && !library_keys.contains(key.as_str());
-                            lookup.thumbnail_for(key, missing)
-                        })
+                        .map(|key| lookup.thumbnail_for(key, !library_keys.contains(key.as_str())))
                         .collect(),
                     id: choice.id,
                     name: choice.name,

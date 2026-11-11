@@ -430,7 +430,10 @@ fn a_score_deleted_during_search_is_unselected_when_search_closes() {
     });
     harness.core.dispatch(Action::OpenSearch);
     search_for(&harness, "Ave", &["Ave Maria"]);
-    platform.set_entries(Ok(vec![readable("Ave Maria.pdf", b"Ave Maria")]));
+    platform.set_entries(Ok(vec![
+        readable("Ave Maria.pdf", b"Ave Maria"),
+        readable("Credo.pdf", b"Credo"),
+    ]));
     harness.core.dispatch(Action::AcknowledgeOperation);
     assert!(
         !is_finished(&harness.core.snapshot()),
@@ -984,6 +987,50 @@ fn set_choice_previews_match_the_set_card() {
         sheet.choices[0].previews,
         [Some(path.to_string_lossy().into_owned()), None]
     );
+}
+
+#[test]
+fn set_choice_previews_during_a_search_show_a_piece_gone_from_the_library_as_missing() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria", "Barka", "Credo"]);
+    let harness = start(dir.path(), Arc::clone(&platform));
+    let library = open_and_scan(&harness);
+    assert_eq!(titles(&library), ["Ave Maria", "Barka", "Credo"]);
+    set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::ToggleAddPickerPiece {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    harness.core.dispatch(Action::CloseAddPicker);
+
+    // Barka leaves the library; a thumbnail of it is still in the cache.
+    platform.set_entries(Ok(vec![
+        readable("Ave Maria.pdf", b"Ave Maria"),
+        readable("Credo.pdf", b"Credo"),
+    ]));
+    harness.core.dispatch(Action::AcknowledgeOperation);
+    harness.core.dispatch(Action::Rescan);
+    harness
+        .listener
+        .wait_for("the scan without Barka", is_finished);
+    let thumbnail = |row: &Snapshot, index: usize| {
+        let path = dir
+            .path()
+            .join("thumbnails")
+            .join(format!("{}.png", row.rows[index].note_key));
+        std::fs::create_dir_all(path.parent().expect("thumbnail directory")).expect("directory");
+        std::fs::write(&path, b"png").expect("thumbnail");
+        path.to_string_lossy().into_owned()
+    };
+    let (ave, _) = (thumbnail(&library, 0), thumbnail(&library, 1));
+
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Ave", &["Ave Maria"]);
+    harness.core.dispatch(Action::AddToSet {
+        note_key: library.rows[0].note_key.clone(),
+    });
+    let sheet = harness.core.snapshot().add_to_set.expect("checklist");
+    assert_eq!(sheet.choices[0].previews, [Some(ave), None]);
 }
 
 /// Runs `calls` on another thread and fails, instead of hanging, if it does not return soon.

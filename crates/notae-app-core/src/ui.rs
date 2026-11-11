@@ -123,6 +123,9 @@ pub struct UiModel {
     search_rows: Vec<SearchRow>,
     /// The rows are a search's hits, not the whole library: the worker's query is not blank.
     rows_filtered: bool,
+    /// Content keys known to be in the library: the whole library's latest rows, and the hits of
+    /// searches since.
+    library_keys: HashSet<String>,
     indexed_count: usize,
     latest_rescan: Option<RescanSummary>,
     metadata_editor: Option<EditableMetadata>,
@@ -171,6 +174,7 @@ impl UiModel {
             ready_root: None,
             search_rows: Vec::new(),
             rows_filtered: false,
+            library_keys: HashSet::new(),
             indexed_count: 0,
             latest_rescan: None,
             metadata_editor: None,
@@ -300,8 +304,7 @@ impl UiModel {
     /// Production rows arrive through [`Self::apply_operation_event`]; tests use this method
     /// to set up a library directly.
     pub fn set_search_rows(&mut self, rows: Vec<SearchRow>) {
-        self.search_rows = rows;
-        self.relink_saved_pieces();
+        self.take_rows("", rows);
         self.forget_missing_selection();
         self.forget_missing_composer();
     }
@@ -318,6 +321,25 @@ impl UiModel {
     #[must_use]
     pub fn rows_filtered(&self) -> bool {
         self.rows_filtered
+    }
+
+    /// Content keys known to be in the library, also while [`UiModel::search_rows`] are a
+    /// search's hits: the whole library's latest rows, and the hits since.
+    #[must_use]
+    pub fn library_keys(&self) -> &HashSet<String> {
+        &self.library_keys
+    }
+
+    /// Takes rows the worker projected with `query` and re-links saved pieces to them.
+    fn take_rows(&mut self, query: &str, rows: Vec<SearchRow>) {
+        self.rows_filtered = !query.trim().is_empty();
+        if !self.rows_filtered {
+            self.library_keys.clear();
+        }
+        self.library_keys
+            .extend(rows.iter().map(|row| row.note_key.clone()));
+        self.search_rows = rows;
+        self.relink_saved_pieces();
     }
 
     /// Loads the recent list from, and later saves it to, `path`.
@@ -1176,17 +1198,13 @@ impl UiModel {
                 rows,
             } => {
                 self.latest_rescan = Some(summary);
-                self.search_rows = rows;
-                self.rows_filtered = !query.trim().is_empty();
-                self.relink_saved_pieces();
+                self.take_rows(&query, rows);
                 self.startup_presentation = StartupPresentation::Ready;
                 self.controller.complete_operation(summary);
             }
             OperationEvent::SearchRows { query, rows } => {
                 self.startup_presentation = StartupPresentation::Ready;
-                self.search_rows = rows;
-                self.rows_filtered = !query.trim().is_empty();
-                self.relink_saved_pieces();
+                self.take_rows(&query, rows);
             }
             OperationEvent::PickerRows { query, rows } => {
                 // Rows for an older query, or a closed picker, are stale.
@@ -1208,9 +1226,7 @@ impl UiModel {
                 self.metadata_editor = Some(metadata);
             }
             OperationEvent::MetadataSaved { query, rows } => {
-                self.search_rows = rows;
-                self.rows_filtered = !query.trim().is_empty();
-                self.relink_saved_pieces();
+                self.take_rows(&query, rows);
                 self.close_metadata_editor();
             }
             OperationEvent::MetadataFailed { failure } => {
