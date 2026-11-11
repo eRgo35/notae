@@ -127,7 +127,7 @@ pub enum Action {
     /// the set with its id.
     ImportConfirmed,
     /// A shared set review's "Keep both": adds the set beside the one with its id, under a new id
-    /// and the name "<name> (2)".
+    /// and the name `<name> (2)`.
     ImportKeepBoth,
     /// The import confirmation's "Cancel": nothing changes.
     ImportCancelled,

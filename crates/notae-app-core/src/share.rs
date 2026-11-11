@@ -87,7 +87,7 @@ pub fn match_pieces(shared: &SharedSet, rows: &[SearchRow]) -> MatchedSet {
     }
 }
 
-/// `set` as an addition beside the set with its id: a new id, and the name "<name> (2)", "(3)", … — the first
+/// `set` as an addition beside the set with its id: a new id, and the name `<name> (2)`, "(3)", … — the first
 /// that no set in `store` has.
 #[must_use]
 pub fn keep_both(mut set: Set, store: &SetStore) -> Set {
