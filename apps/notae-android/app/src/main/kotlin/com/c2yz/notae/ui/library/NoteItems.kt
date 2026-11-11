@@ -159,8 +159,8 @@ internal fun NoteActionsSheet(note: SetEntry.Note, onDismiss: () -> Unit, onEdit
 }
 
 /**
- * A note's editor, for a text note ("Edit note"), a score note or a set note ([title]): the text in a multi-line field
- * (focused), Cancel and Save note. Save note stays disabled while the text is blank unless [allowBlank]: saving blank
+ * A note's editor, for a text note ("Edit note"), a score note or a set note ([title]): the text in a field [NOTE_LINES]
+ * lines tall that grows with it (focused), Cancel and Save note. Save note stays disabled while the text is blank unless [allowBlank]: saving blank
  * text clears a score or set note, while the core ignores a blank text note. The text is this dialog's own state, set
  * from [initial] once when it opens, so a snapshot arriving while the owner types never resets it.
  */
@@ -172,7 +172,10 @@ internal fun NoteEditor(title: String, initial: String, onCancel: () -> Unit, al
     LaunchedEffect(Unit) { field.requestFocus() }
     NotaeDialog(title) {
         Text(title, color = c.foreground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
-        TextField(text, { text = it }, stringResource(R.string.note_field), Modifier.focusRequester(field), multiLine = true)
+        TextField(text, { text = it }, stringResource(R.string.note_field), Modifier.focusRequester(field), multiLine = true, minLines = NOTE_LINES)
         DialogButtons(stringResource(R.string.set_cancel), onCancel, stringResource(R.string.note_save), { onSave(text) }, confirmEnabled = allowBlank || text.isNotBlank())
     }
 }
+
+/** The note editor's field is this many lines tall before it grows, so it reads as a note and not as a title. */
+private const val NOTE_LINES = 4

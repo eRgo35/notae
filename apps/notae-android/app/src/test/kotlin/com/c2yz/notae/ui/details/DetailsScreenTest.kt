@@ -382,6 +382,19 @@ class DetailsScreenTest {
         assertEquals(listOf(Action.SaveScoreNote(row.noteKey, "   "), Action.SaveSetNote("item-b", "")), actions)
     }
 
+    @Test
+    fun theNoteFieldShowsFourLinesAndGrows() {
+        show(aveMariaDetails())
+        compose.onNodeWithText("Add score note").performScrollTo().performClick()
+
+        val field = compose.onNodeWithContentDescription("Note")
+        val empty = field.getBoundsInRoot().let { it.bottom - it.top }
+        assertTrue("four lines of 16 sp text and the padding: $empty", empty >= 100.dp)
+        field.performTextInput("1\n2\n3\n4\n5\n6")
+        val longer = field.getBoundsInRoot().let { it.bottom - it.top }
+        assertTrue("grows past four lines: $empty -> $longer", longer > empty + 30.dp)
+    }
+
     private fun scrollOffset(): Float =
         compose.onNodeWithTag(DETAILS_BODY_TAG).fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
 
