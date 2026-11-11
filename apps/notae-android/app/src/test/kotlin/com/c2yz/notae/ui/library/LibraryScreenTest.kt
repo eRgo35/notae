@@ -79,6 +79,44 @@ class LibraryScreenTest {
     }
 
     @Test
+    fun gliding_scores_snap_to_their_places_when_the_columns_change() {
+        var width by mutableStateOf(720.dp)
+        var rows by mutableStateOf(Fixture.rows)
+        compose.setContent {
+            NotaeTheme { ScoreGrid(rows.map { SetEntry.Piece(it) }, {}, {}, {}, Modifier.width(width).height(1600.dp)) }
+        }
+        val fourth = compose.onNodeWithContentDescription("More actions for ${Fixture.rows[3].title}", useUnmergedTree = true)
+        val before = fourth.getBoundsInRoot()
+        // A score taken out sets the others gliding, as a search narrowing the scores does; the details then open a
+        // pane beside the grid, or close it, while they are on their way.
+        compose.mainClock.autoAdvance = false
+        rows = Fixture.rows.drop(1)
+        repeat(GLIDE_FRAMES) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val gliding = fourth.getBoundsInRoot()
+        assertTrue("the score is on its way: $before, $gliding", !near(gliding, before))
+        width = 1000.dp
+        val grid = compose.onNodeWithTag(GRID_TAG)
+        repeat(SNAP_FRAMES) {
+            if (grid.getBoundsInRoot().right == 1000.dp) return@repeat
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val frames = List(SNAP_FRAMES) {
+            fourth.getBoundsInRoot().also {
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+            }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        val after = fourth.getBoundsInRoot()
+        assertTrue("the score is in its place from the new columns on: $gliding, $frames, $after", frames.all { near(it, after) })
+    }
+
+    @Test
     fun scores_snap_to_their_places_when_the_columns_change() {
         var width by mutableStateOf(720.dp)
         var rows by mutableStateOf(Fixture.rows)
@@ -422,6 +460,9 @@ class LibraryScreenTest {
 
 /** Frames to watch a grid take new columns over. */
 private const val SNAP_FRAMES = 4
+
+/** Frames into a glide: well on the way, far from done. */
+internal const val GLIDE_FRAMES = 6
 
 /** The same place, give or take a pixel's rounding. */
 internal fun near(a: DpRect, b: DpRect): Boolean =

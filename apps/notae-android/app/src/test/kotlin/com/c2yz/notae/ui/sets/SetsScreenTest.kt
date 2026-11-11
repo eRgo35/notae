@@ -54,6 +54,7 @@ import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.LibraryScreen
+import com.c2yz.notae.ui.library.GLIDE_FRAMES
 import com.c2yz.notae.ui.library.near
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.After
@@ -297,6 +298,43 @@ class SetsScreenTest {
             val page = compose.onAllNodesWithTag(STACK_FRONT_TAG, useUnmergedTree = true)[0].getBoundsInRoot()
             assertEquals("page aspect at $pane dp", 1.41f, (page.bottom - page.top) / (page.right - page.left), 0.02f)
         }
+    }
+
+    @Test
+    fun gliding_sets_snap_to_their_places_when_the_columns_change() {
+        var width by mutableStateOf(720.dp)
+        var cards by mutableStateOf(Fixture.stackCards(listOf(null, null, null)))
+        compose.setContent {
+            NotaeTheme { SetsPane(cards, list = false, {}, {}, Modifier.width(width).height(1600.dp)) }
+        }
+        val fourth = compose.onNodeWithContentDescription("More actions for Rekolekcje - teksty", useUnmergedTree = true)
+        val before = fourth.getBoundsInRoot()
+        // A set deleted sets the others gliding; the window then widens while they are on their way.
+        compose.mainClock.autoAdvance = false
+        cards = cards.drop(1)
+        repeat(GLIDE_FRAMES) {
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val gliding = fourth.getBoundsInRoot()
+        assertTrue("the set is on its way: $before, $gliding", !near(gliding, before))
+        width = 1180.dp
+        val pane = compose.onRoot(useUnmergedTree = true).onChildAt(0)
+        repeat(FRAMES) {
+            if (pane.getBoundsInRoot().right > 1000.dp) return@repeat
+            compose.mainClock.advanceTimeByFrame()
+            compose.waitForIdle()
+        }
+        val frames = List(FRAMES) {
+            fourth.getBoundsInRoot().also {
+                compose.mainClock.advanceTimeByFrame()
+                compose.waitForIdle()
+            }
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        val after = fourth.getBoundsInRoot()
+        assertTrue("the set is in its place from the new columns on: $gliding, $frames, $after", frames.all { near(it, after) })
     }
 
     @Test

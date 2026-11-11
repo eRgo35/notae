@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,7 +68,6 @@ import com.c2yz.notae.ui.components.SheetAction
 import com.c2yz.notae.ui.components.WidthClass
 import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.components.windowWidthClass
-import com.c2yz.notae.ui.library.GridPlacement
 import com.c2yz.notae.ui.library.GridScrollbar
 import com.c2yz.notae.ui.library.ListScrollbar
 import com.c2yz.notae.ui.library.cellHeight
@@ -95,18 +95,20 @@ internal fun SetsPane(cards: List<SetCard>, list: Boolean, onOpen: (SetCard) -> 
                 val gap = if (narrow) 12.dp else 16.dp
                 val inner = maxWidth - inset * 2
                 val columns = floor((inner + gap) / ((if (narrow) 140.dp else 200.dp) + gap)).toInt().coerceAtLeast(1)
-                val placement = remember { GridPlacement() }
                 val state = rememberLazyGridState()
-                LazyVerticalGrid(
-                    GridCells.Fixed(columns),
-                    Modifier.fillMaxSize().padding(horizontal = inset).then(placement.measuring),
-                    state = state,
-                    contentPadding = PaddingValues(top = inset, bottom = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(gap),
-                    verticalArrangement = Arrangement.spacedBy(24.dp),
-                ) {
-                    items(cards, key = { it.id }) { card ->
-                        SetFolderCard(card, { onOpen(card) }, { onMore(card) }, Modifier.animateItem(placementSpec = placement.spec).cellHeight(0.85f, 88.dp))
+                // As the score grid: other columns lay the grid out afresh, so its cards snap to their new places.
+                key(columns, narrow) {
+                    LazyVerticalGrid(
+                        GridCells.Fixed(columns),
+                        Modifier.fillMaxSize().padding(horizontal = inset),
+                        state = state,
+                        contentPadding = PaddingValues(top = inset, bottom = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                    ) {
+                        items(cards, key = { it.id }) { card ->
+                            SetFolderCard(card, { onOpen(card) }, { onMore(card) }, Modifier.animateItem().cellHeight(0.85f, 88.dp))
+                        }
                     }
                 }
                 GridScrollbar(state, Modifier.align(Alignment.TopEnd).padding(top = 20.dp))
