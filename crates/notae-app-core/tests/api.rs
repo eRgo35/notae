@@ -298,14 +298,34 @@ fn back_closes_innermost_first() {
     assert!(harness.core.back(), "leaves the set for the list of sets");
     assert_eq!(harness.core.snapshot().section_key, "sets");
 
+    assert!(harness.core.back(), "returns from Sets to the library");
+    assert_eq!(harness.core.snapshot().section_key, "all");
+
     assert!(
         !harness.core.back(),
         "the library itself has nothing to close"
     );
-    assert_eq!(harness.core.snapshot().section_key, "sets", "unchanged");
+    assert_eq!(harness.core.snapshot().section_key, "all", "unchanged");
     // Every back that closed something told Kotlin.
     let received = harness.listener.snapshot_count();
     assert!(received >= 8, "{received} snapshots");
+}
+
+#[test]
+fn back_from_another_section_returns_to_the_library_first() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    open_and_scan(&harness);
+
+    for key in ["recent", "favorites", "sets"] {
+        harness.core.dispatch(Action::SelectSection {
+            key: key.to_owned(),
+        });
+        assert_eq!(harness.core.snapshot().section_key, key);
+        assert!(harness.core.back(), "Back leaves {key}");
+        assert_eq!(harness.core.snapshot().section_key, "all", "from {key}");
+        assert!(!harness.core.back(), "the library sends the app away");
+    }
 }
 
 #[test]

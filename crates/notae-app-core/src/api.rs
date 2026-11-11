@@ -177,8 +177,9 @@ impl NotaeCore {
     }
 
     /// Closes the innermost thing open: a sheet, a dialog, the details, search or settings,
-    /// then reorder mode, then an open set (back to the list of sets). Returns `false` when nothing is left, so
-    /// Kotlin lets the system finish the activity.
+    /// then reorder mode, then an open set (back to the list of sets), then any section other
+    /// than All (back to the library). Returns `false` when nothing is left, so Kotlin lets the
+    /// system finish the activity.
     pub fn back(&self) -> bool {
         let snapshot = {
             let mut state = self.shared.lock();
@@ -871,6 +872,9 @@ impl CoreState {
             model.reorder_finished();
         } else if matches!(model.section(), LibrarySection::Set(_)) {
             log_prefs(model.select_section(LibrarySection::Sets));
+        // Every other section returns to the library before the app goes to the background.
+        } else if !matches!(model.section(), LibrarySection::All) {
+            log_prefs(model.select_section(LibrarySection::All));
         } else {
             return false;
         }
