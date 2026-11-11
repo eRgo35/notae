@@ -206,6 +206,7 @@ fn worker_progress_and_completion_are_reflected_in_ui_state_and_rows() {
     }];
     model
         .apply_operation_event(OperationEvent::Completed {
+            query: String::new(),
             summary: RescanSummary {
                 added: 1,
                 ..RescanSummary::default()
@@ -299,6 +300,7 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
     };
     model
         .apply_operation_event(OperationEvent::Completed {
+            query: String::new(),
             summary,
             rows: vec![pending_row],
         })
@@ -527,7 +529,7 @@ fn worker_loads_edits_and_returns_the_updated_library_row() {
         })
         .expect("submit edited metadata");
     let rows = match next_event(&controller) {
-        OperationEvent::MetadataSaved { rows } => rows,
+        OperationEvent::MetadataSaved { rows, .. } => rows,
         other => panic!("unexpected save event: {other:?}"),
     };
     assert_eq!(rows.len(), 1);
@@ -575,6 +577,7 @@ fn metadata_events_keep_errors_visible_and_close_after_success() {
 
     model
         .apply_operation_event(OperationEvent::MetadataSaved {
+            query: String::new(),
             rows: vec![SearchRow {
                 id: Some("14".to_owned()),
                 title: "Edited Leaves".to_owned(),
@@ -880,6 +883,7 @@ fn successful_result_clears_itself_but_failures_do_not() {
     let mut model = scanning_model();
     model
         .apply_operation_event(OperationEvent::Completed {
+            query: String::new(),
             summary: RescanSummary::default(),
             rows: vec![],
         })
@@ -919,6 +923,7 @@ fn rows_without_text_are_counted_but_never_make_the_banner_busy() {
     let mut model = scanning_model();
     model
         .apply_operation_event(OperationEvent::Completed {
+            query: String::new(),
             summary: Default::default(),
             rows: vec![],
         })
@@ -1046,4 +1051,85 @@ fn a_count_after_search_closes_keeps_the_selection_until_the_library_rows_return
         model.selected_row().map(|row| row.title).as_deref(),
         Some("Barka")
     );
+}
+
+#[test]
+fn whole_library_rows_from_a_scan_or_an_edit_end_a_failed_search_s_filtering() {
+    use notae_app_core::operations::events::RescanSummary;
+    use notae_app_core::state::UiEvent;
+    use notae_app_core::text::Failure;
+    use notae_app_core::ui::UiModel;
+    use notae_app_core::ui::search::SearchRow;
+
+    let row = |c: char, title: &str| SearchRow {
+        id: None,
+        title: title.to_owned(),
+        composer_or_artist: None,
+        tags: Vec::new(),
+        status: notae_app_core::text::RowStatus::Ready,
+        note_key: c.to_string().repeat(64),
+        relative_path: format!("{title}.pdf"),
+        text_pending: false,
+        title_origin: notae_domain::MetadataOrigin::Unset,
+        composer_origin: notae_domain::MetadataOrigin::Unset,
+        text_snippet: None,
+        item_id: None,
+        position: None,
+        missing: false,
+        set_note: None,
+    };
+    let (ave, barka) = (row('a', "Ave Maria"), row('b', "Barka"));
+    let mut model = UiModel::new();
+    model
+        .dispatch(UiEvent::PickLibraryRoot {
+            root: std::path::PathBuf::from("/library"),
+        })
+        .expect("library");
+    model.dispatch(UiEvent::OpenSearch).expect("search opens");
+    model
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: "Ave".to_owned(),
+            rows: vec![ave.clone()],
+        })
+        .expect("hits");
+    assert!(model.rows_filtered());
+
+    // The blank search after Search closes fails: the rows are still the hits.
+    model.dispatch(UiEvent::CloseSearch).expect("search closes");
+    model
+        .apply_operation_event(OperationEvent::Failed {
+            failure: Failure::WorkerStopped,
+        })
+        .expect("failed search");
+    assert!(model.rows_filtered());
+
+    // A later scan's rows are projected with the blank query the failed search left behind.
+    model
+        .dispatch(UiEvent::AcknowledgeOperation)
+        .expect("failure dismissed");
+    model.dispatch(UiEvent::RequestRescan).expect("rescan");
+    model
+        .apply_operation_event(OperationEvent::Completed {
+            summary: RescanSummary::default(),
+            query: String::new(),
+            rows: vec![ave.clone(), barka.clone()],
+        })
+        .expect("scan");
+    assert!(!model.rows_filtered());
+
+    // An edit's rows carry their query the same way, filtered or not.
+    model
+        .apply_operation_event(OperationEvent::MetadataSaved {
+            query: "Ave".to_owned(),
+            rows: vec![ave.clone()],
+        })
+        .expect("edit during a search");
+    assert!(model.rows_filtered());
+    model
+        .apply_operation_event(OperationEvent::MetadataSaved {
+            query: " ".to_owned(),
+            rows: vec![ave, barka],
+        })
+        .expect("edit");
+    assert!(!model.rows_filtered());
 }

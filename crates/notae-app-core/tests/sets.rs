@@ -45,6 +45,7 @@ fn kyrie_row(c: char) -> SearchRow {
 /// The worker's rescan result carrying `rows`.
 fn completed(rows: Vec<SearchRow>) -> OperationEvent {
     OperationEvent::Completed {
+        query: String::new(),
         summary: RescanSummary::default(),
         rows,
     }

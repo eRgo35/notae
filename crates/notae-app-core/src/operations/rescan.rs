@@ -281,7 +281,8 @@ fn run_worker(
                 match MetadataEditor::new(&local).save(metadata) {
                     Ok(()) => match project_rows(&local, &query, scope) {
                         Ok(rows) => {
-                            send(&events, OperationEvent::MetadataSaved { rows });
+                            let query = query.clone();
+                            send(&events, OperationEvent::MetadataSaved { query, rows });
                             send_indexed_count(&local, &events);
                         }
                         Err(error) => send(
@@ -454,7 +455,11 @@ fn run_rescan(
                     // Publish the whole-library count before `Completed`, which must stay the last
                     // event of a successful rescan.
                     send_indexed_count(local, events);
-                    OperationEvent::Completed { summary, rows }
+                    OperationEvent::Completed {
+                        summary,
+                        query: query.to_owned(),
+                        rows,
+                    }
                 }
                 Err(error) => OperationEvent::Failed {
                     failure: (&error).into(),

@@ -1169,9 +1169,14 @@ impl UiModel {
             }
             OperationEvent::FileSucceeded { .. } | OperationEvent::FileFailed { .. } => {}
             OperationEvent::Canceled => self.controller.cancel_operation()?,
-            OperationEvent::Completed { summary, rows } => {
+            OperationEvent::Completed {
+                summary,
+                query,
+                rows,
+            } => {
                 self.latest_rescan = Some(summary);
                 self.search_rows = rows;
+                self.rows_filtered = !query.trim().is_empty();
                 self.relink_saved_pieces();
                 self.startup_presentation = StartupPresentation::Ready;
                 self.controller.complete_operation(summary);
@@ -1201,8 +1206,9 @@ impl UiModel {
                 self.metadata_error = None;
                 self.metadata_editor = Some(metadata);
             }
-            OperationEvent::MetadataSaved { rows } => {
+            OperationEvent::MetadataSaved { query, rows } => {
                 self.search_rows = rows;
+                self.rows_filtered = !query.trim().is_empty();
                 self.relink_saved_pieces();
                 self.close_metadata_editor();
             }
