@@ -207,15 +207,7 @@ internal fun ScoreCard(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit
         ) {
             PagePreview(row.thumbnail, Modifier.weight(1f).fillMaxWidth())
             Column(Modifier.padding(start = 4.dp, end = 44.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    row.title,
-                    Modifier.clearAndSetSemantics { },
-                    color = if (highlighted) c.onAccentSoft else c.foreground,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                ScoreTitle(row, highlighted)
                 ScoreSubtitle(row, 14, selected = highlighted)
             }
         }
@@ -256,15 +248,7 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
         row.position?.let { PositionBadge(it) }
         PagePreview(row.thumbnail, Modifier.size(44.dp, 58.dp), radius = 6.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(
-                row.title,
-                Modifier.clearAndSetSemantics { },
-                color = if (highlighted) c.onAccentSoft else c.foreground,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            ScoreTitle(row, highlighted)
             ScoreSubtitle(row, 14, selected = highlighted)
             if (row.tags.isNotEmpty()) {
                 Text(row.tags.joinToString(", "), color = if (highlighted) c.onAccentSoft else c.muted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -275,6 +259,34 @@ internal fun ScoreRow(row: ScoreRowData, onOpen: () -> Unit, onMore: () -> Unit,
         if (row.justOpened && !compact) JustOpenedChip()
         if (row.favorite) FavoriteBadge()
         MoreActions(row.title, onMore)
+    }
+}
+
+/**
+ * The card or row's title (the item's own label reads it), followed inside a set by a small note glyph when the piece has
+ * a set note; TalkBack reads that as "Has a set note" after the item's name.
+ */
+@Composable
+private fun ScoreTitle(row: ScoreRowData, highlighted: Boolean) {
+    val c = NotaeTheme.colors
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            row.title,
+            Modifier.weight(1f, fill = false).clearAndSetSemantics { },
+            color = if (highlighted) c.onAccentSoft else c.foreground,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!row.setNote.isNullOrBlank()) {
+            Icon(
+                painterResource(R.drawable.ic_note),
+                stringResource(R.string.has_set_note),
+                Modifier.size(16.dp),
+                tint = if (highlighted) c.onAccentSoft else c.accentText,
+            )
+        }
     }
 }
 

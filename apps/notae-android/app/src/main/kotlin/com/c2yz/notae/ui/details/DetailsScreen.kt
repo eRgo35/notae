@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
+import com.c2yz.notae.core.SectionTitle
 import com.c2yz.notae.core.Origin
 import com.c2yz.notae.core.Row as ScoreRowData
 import com.c2yz.notae.core.RowStatus
@@ -85,6 +86,18 @@ import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.library.PagePreview
+import com.c2yz.notae.ui.library.NoteEditor
+import com.c2yz.notae.ui.components.AnimatedOverlay
+import com.c2yz.notae.ui.components.LocalBackProgress
+import com.c2yz.notae.ui.components.backProgress
+import com.c2yz.notae.ui.sets.closeOnEscape
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.Role
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.c2yz.notae.ui.library.isCtrlK
 import com.c2yz.notae.ui.library.PdfError
 import com.c2yz.notae.ui.sets.overlayOpen
@@ -99,22 +112,63 @@ internal const val DETAILS_BODY_TAG = "details-body"
  * beside the headline and the info card when the card is at least 720 dp wide; under that, it stacks them centred.
  * Neighbours and the position are the core's ([Selection]): each is a selection id, so every copy of a repeated piece
  * in a set is its own step. The screen takes focus, so Left and Right move to them and Escape goes back without a tap
- * first.
+ * first. Under the info card the notes card shows the score note and, inside a set, the set note; each opens its
+ * [NoteEditor] over the screen, which Back and Escape close first.
  */
 @Composable
 fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier = Modifier, besideList: Boolean = false) {
     val selection = snapshot.selection ?: return
-    val c = NotaeTheme.colors
+    val row = selection.row
+    // Inside a set the details show its set note too, labelled with the set's name.
+    val setName = (snapshot.title as? SectionTitle.Set)?.name?.takeIf { row.itemId != null }
+    // The note being edited, the screen's own state as the library's ⋮ sheets are; it closes when the score changes.
+    var editing by remember(row.selectionId) { mutableStateOf<NoteKind?>(null) }
     // 0.3.0 focused its shortcut scope when the details open and when a dialog closes, so the keys work at once.
     val keys = remember { FocusRequester() }
     val overlay = overlayOpen(snapshot)
-    LaunchedEffect(overlay) { if (!overlay) keys.requestFocus() }
-    if (!besideList && windowWidthClass() == WidthClass.COMPACT) {
-        CompactDetails(snapshot, selection, onAction, modifier.focusRequester(keys))
-        return
+    LaunchedEffect(overlay, editing) { if (!overlay && editing == null) keys.requestFocus() }
+    val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(state = backState, isBackEnabled = editing != null, onBackCompleted = { editing = null })
+    val notes = NotesProps(setName) { editing = it }
+    Box(modifier) {
+        if (!besideList && windowWidthClass() == WidthClass.COMPACT) {
+            CompactDetails(snapshot, selection, onAction, notes, Modifier.focusRequester(keys))
+        } else {
+            WideDetails(snapshot, selection, onAction, notes, besideList, keys)
+        }
+        CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
+            AnimatedOverlay(editing) { kind ->
+                val close = { editing = null }
+                Box(Modifier.closeOnEscape(close)) {
+                    when (kind) {
+                        NoteKind.SCORE -> NoteEditor(stringResource(R.string.score_note), row.scoreNote.orEmpty(), close, allowBlank = true) { text ->
+                            close()
+                            onAction(Action.SaveScoreNote(row.noteKey, text))
+                        }
+                        NoteKind.SET -> NoteEditor(stringResource(R.string.set_note_in, setName.orEmpty()), row.setNote.orEmpty(), close, allowBlank = true) { text ->
+                            close()
+                            row.itemId?.let { onAction(Action.SaveSetNote(it, text)) }
+                        }
+                    }
+                }
+            }
+        }
     }
+}
+
+/** The details on a tablet, alone or beside a list: the banner and PDF error when alone, then the header and body in a card. */
+@Composable
+private fun WideDetails(
+    snapshot: Snapshot,
+    selection: Selection,
+    onAction: (Action) -> Unit,
+    notes: NotesProps,
+    besideList: Boolean,
+    keys: FocusRequester,
+) {
+    val c = NotaeTheme.colors
     Column(
-        modifier
+        Modifier
             .fillMaxSize()
             .background(c.background)
             .padding(16.dp)
@@ -130,7 +184,7 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
         NotaeCard(Modifier.weight(1f).fillMaxWidth()) {
             Column(Modifier.fillMaxSize().padding(8.dp)) {
                 Header(selection, onAction)
-                Stepping(selection, Modifier.weight(1f)) { shown, scroll -> Body(shown.row, scroll, onAction) }
+                Stepping(selection, Modifier.weight(1f)) { shown, scroll -> Body(shown.row, scroll, onAction, notes) }
             }
         }
     }
@@ -142,7 +196,7 @@ fun DetailsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
  * with Previous, Open score and Next, where the thumb is.
  */
 @Composable
-private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (Action) -> Unit, modifier: Modifier) {
+private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (Action) -> Unit, notes: NotesProps, modifier: Modifier) {
     val c = NotaeTheme.colors
     val row = selection.row
     Column(
@@ -163,7 +217,7 @@ private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
             val preview = maxOf(120.dp, minOf(220.dp, maxWidth * 0.55f, maxHeight * 0.4f / 1.3f))
-            Stepping(selection, Modifier.fillMaxSize()) { shown, scroll -> CompactBody(shown.row, scroll, preview, onAction) }
+            Stepping(selection, Modifier.fillMaxSize()) { shown, scroll -> CompactBody(shown.row, scroll, preview, onAction, notes) }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
         Row(
@@ -214,9 +268,9 @@ private fun Stepping(selection: Selection, modifier: Modifier, content: @Composa
     }
 }
 
-/** The phone's scrolling body: the page, the headline, Edit details and Add to set, and the info. */
+/** The phone's scrolling body: the page, the headline, Edit details and Add to set, the info and the notes. */
 @Composable
-private fun CompactBody(row: ScoreRowData, scroll: ScrollState, preview: Dp, onAction: (Action) -> Unit) {
+private fun CompactBody(row: ScoreRowData, scroll: ScrollState, preview: Dp, onAction: (Action) -> Unit, notes: NotesProps) {
     val c = NotaeTheme.colors
     Column(
         Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
@@ -247,6 +301,7 @@ private fun CompactBody(row: ScoreRowData, scroll: ScrollState, preview: Dp, onA
             )
         }
         InfoCard(row, stretch = false, stacked = true, background = c.card)
+        NotesCard(row, notes, background = c.card)
     }
 }
 
@@ -330,7 +385,7 @@ private fun Header(selection: Selection, onAction: (Action) -> Unit) {
 
 /** The scrolling body; its layout follows the card's own width, as 0.3.0's `wide` does. */
 @Composable
-private fun Body(row: ScoreRowData, scroll: ScrollState, onAction: (Action) -> Unit) {
+private fun Body(row: ScoreRowData, scroll: ScrollState, onAction: (Action) -> Unit, notes: NotesProps) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // The card's size: this box plus the card's 8 dp padding, and the 48 dp header above it.
         val cardWidth = maxWidth + 16.dp
@@ -357,6 +412,7 @@ private fun Body(row: ScoreRowData, scroll: ScrollState, onAction: (Action) -> U
                     ) {
                         Headline(row, centered = false, onAction)
                         InfoCard(row, stretch = true, Modifier.weight(1f))
+                        NotesCard(row, notes)
                     }
                 }
             } else {
@@ -365,6 +421,7 @@ private fun Body(row: ScoreRowData, scroll: ScrollState, onAction: (Action) -> U
                     Headline(row, centered = true, onAction)
                     // Reading width, as beside the page.
                     InfoCard(row, stretch = false, Modifier.widthIn(max = 640.dp))
+                    NotesCard(row, notes, Modifier.widthIn(max = 640.dp))
                 }
             }
         }
@@ -422,6 +479,47 @@ private fun InfoCard(
     }
 }
 
+/** Which note the details' editor is open on. */
+private enum class NoteKind { SCORE, SET }
+
+/** What the notes card needs beyond the row: the open set's name (inside a set) and how to open a note's editor. */
+private class NotesProps(val setName: String?, val onEdit: (NoteKind) -> Unit)
+
+/**
+ * The score's notes under the info card: the score note, then, inside a set, the set note labelled with the set's
+ * name. Each shows its text, or "Add …" when empty; a tap opens its editor.
+ */
+@Composable
+private fun NotesCard(row: ScoreRowData, notes: NotesProps, modifier: Modifier = Modifier, background: Color = NotaeTheme.colors.well) {
+    Column(modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(background).padding(vertical = 4.dp)) {
+        NoteBlock(stringResource(R.string.score_note), row.scoreNote, stringResource(R.string.add_score_note)) { notes.onEdit(NoteKind.SCORE) }
+        notes.setName?.let { name ->
+            Divider(Modifier.padding(horizontal = 20.dp))
+            NoteBlock(stringResource(R.string.set_note_in, name), row.setNote, stringResource(R.string.add_set_note)) { notes.onEdit(NoteKind.SET) }
+        }
+    }
+}
+
+/** One note in [NotesCard]: its label, then its text or the accent "Add …" line; the whole block is the button. */
+@Composable
+private fun NoteBlock(label: String, text: String?, add: String, onClick: () -> Unit) {
+    val c = NotaeTheme.colors
+    Column(
+        Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(label, color = c.muted, fontSize = 13.sp)
+        if (text.isNullOrBlank()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(painterResource(R.drawable.ic_add), null, Modifier.size(20.dp), tint = c.accentText)
+                Text(add, color = c.accentText, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            }
+        } else {
+            Text(text, color = c.foreground, fontSize = 16.sp)
+        }
+    }
+}
+
 @Composable
 private fun InfoRow(label: String, value: String, note: String?, modifier: Modifier, stacked: Boolean) {
     val c = NotaeTheme.colors
@@ -448,8 +546,8 @@ private fun InfoRow(label: String, value: String, note: String?, modifier: Modif
 }
 
 @Composable
-private fun Divider() {
-    Box(Modifier.fillMaxWidth().height(1.dp).background(NotaeTheme.colors.divider))
+private fun Divider(modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().height(1.dp).background(NotaeTheme.colors.divider))
 }
 
 /** Where a value came from (texts.rs `origin`); nothing when unknown. */

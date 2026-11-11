@@ -202,6 +202,7 @@ fn worker_progress_and_completion_are_reflected_in_ui_state_and_rows() {
         item_id: None,
         position: None,
         missing: false,
+        set_note: None,
     }];
     model
         .apply_operation_event(OperationEvent::Completed {
@@ -246,6 +247,7 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         item_id: None,
         position: None,
         missing: false,
+        set_note: None,
     };
     model
         .apply_operation_event(OperationEvent::SearchRows(vec![pending_row.clone()]))
@@ -585,6 +587,7 @@ fn metadata_events_keep_errors_visible_and_close_after_success() {
                 item_id: None,
                 position: None,
                 missing: false,
+                set_note: None,
             }],
         })
         .expect("apply saved row projection");

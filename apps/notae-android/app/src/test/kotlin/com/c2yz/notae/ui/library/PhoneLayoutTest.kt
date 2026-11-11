@@ -33,6 +33,7 @@ import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
 import com.c2yz.notae.ui.details.DetailsScreen
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.captureScreenRoboImage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -142,10 +143,12 @@ class PhoneLayoutTest {
         compose.waitForIdle()
         compose.onNodeWithText("Add").performClick()
         compose.onNodeWithContentDescription("Reorder").performClick()
+        compose.onNodeWithContentDescription("Share").performClick()
+        compose.onNodeWithText("Share set with notes").performClick()
         compose.onNodeWithContentDescription("Back to sets").performClick()
 
         assertEquals(
-            listOf(Action.NewSet, Action.OpenAddPicker, Action.ReorderStarted, Action.SelectSection("sets")),
+            listOf(Action.NewSet, Action.OpenAddPicker, Action.ReorderStarted, Action.ShareSet("palm", true), Action.SelectSection("sets")),
             actions,
         )
     }
@@ -215,6 +218,20 @@ class PhoneLayoutTest {
     @Test fun shot_set_list_light() = shot("set-list", Fixture.justOpened().withView(LibraryView.LIST), dark = false)
 
     @Test fun shot_set_reorder_light() = shot("set-reorder", Fixture.palmSunday().copy(reordering = true), dark = false)
+
+    @Test fun shot_set_share_light() = shareShot(dark = false)
+
+    @Test fun shot_set_share_dark() = shareShot(dark = true)
+
+    /** The open set's Share menu, captured with its own window. */
+    private fun shareShot(dark: Boolean) {
+        this.dark = dark
+        shown = Fixture.palmSunday()
+        compose.setContent { NotaeTheme(dark = this.dark) { shown?.let { LibraryScreen(it, { action -> actions += action }) } } }
+        compose.onNodeWithContentDescription("Share").performClick()
+        compose.waitForIdle()
+        captureScreenRoboImage("src/test/screenshots/phone-set-share-${if (dark) "dark" else "light"}.png")
+    }
 
     @Test fun shot_details_light() = shot("details", details(), dark = false, details = true)
 

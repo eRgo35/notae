@@ -225,6 +225,7 @@ pub fn set_entries(rows: &[SearchRow], set: &Set) -> Vec<SetEntry> {
                     .unwrap_or_else(|| missing_row(piece));
                 row.item_id = Some(item.id.clone());
                 row.position = Some(position);
+                row.set_note.clone_from(&item.set_note);
                 SetEntry::Piece(row)
             }
             ItemKind::Note { text } => SetEntry::Note {
@@ -257,6 +258,7 @@ fn missing_row(piece: &PieceRef) -> SearchRow {
         item_id: None,
         position: None,
         missing: true,
+        set_note: None,
     }
 }
 

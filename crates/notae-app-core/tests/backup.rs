@@ -1,12 +1,21 @@
 //! The sets and favorites export file: building, parsing, planning and applying an import.
 
 use notae_app_core::backup::{
-    Backup, BackupError, ImportPlan, apply_import, export_json, parse_export, plan_import,
-    suggested_file_name,
+    Backup, BackupError, ImportFile, ImportPlan, apply_import, export_json, parse_import,
+    plan_import, suggested_file_name,
 };
 use notae_app_core::favorites::{Favorites, PieceRef};
+use notae_app_core::score_notes::ScoreNotes;
 use notae_app_core::sets::{SetFields, SetStore};
 use notae_app_core::ui::UiModel;
+
+/// Parses `text` as a backup; any other kind of import file is a failure.
+fn parse_backup(text: &str) -> Result<Backup, BackupError> {
+    match parse_import(text)? {
+        ImportFile::Backup(backup) => Ok(backup),
+        ImportFile::Set(_) => Err(BackupError::Invalid),
+    }
+}
 
 fn key(c: char) -> String {
     c.to_string().repeat(64)
@@ -41,7 +50,7 @@ fn parse_keeps_the_first_of_repeated_item_ids() {
     let text = format!(
         r#"{{"schema_version":1,"app":"notae","favorites":[],"sets":[{{"id":"s","name":"x","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"note","text":"first"}},{{"id":"i1","kind":"piece","key":"{key}","path":"a.pdf"}},{{"id":"i2","kind":"note","text":"second"}}]}}]}}"#
     );
-    let backup = parse_export(&text).expect("parses");
+    let backup = parse_backup(&text).expect("parses");
     let ids: Vec<&str> = backup.sets[0]
         .items
         .iter()
@@ -70,14 +79,14 @@ fn export_then_parse_round_trips() {
     sets.mark_opened(&first, &repeat);
     sets.create(fields("Zaduszki"), 200);
 
-    let text = export_json(&favorites, &sets);
+    let text = export_json(&favorites, &sets, &ScoreNotes::default());
     assert!(
-        text.starts_with(r#"{"schema_version":1,"app":"notae","favorites":["#),
+        text.starts_with(r#"{"schema_version":2,"app":"notae","favorites":["#),
         "{text}"
     );
     assert!(text.contains(r#""sets":["#), "{text}");
 
-    let backup = parse_export(&text).expect("our own export parses");
+    let backup = parse_backup(&text).expect("our own export parses");
     assert_eq!(backup.favorites, favorites);
     assert_eq!(backup.sets.as_slice(), sets.sets());
 }
@@ -90,7 +99,12 @@ fn plan_counts_new_and_names_replaced() {
     let mut theirs = SetStore::default();
     theirs.create(fields("Boże Narodzenie"), 200);
     theirs.create(fields("Wielkanoc"), 200);
-    let mut backup = parse_export(&export_json(&Favorites::default(), &theirs)).expect("parses");
+    let mut backup = parse_backup(&export_json(
+        &Favorites::default(),
+        &theirs,
+        &ScoreNotes::default(),
+    ))
+    .expect("parses");
     let mut copy = current.get(&kept).expect("set").clone();
     copy.name = "Zaduszki 2025".to_owned();
     backup.sets.push(copy);
@@ -113,16 +127,22 @@ fn apply_merges_favorites_without_duplicates() {
 
     let mut theirs = SetStore::default();
     let new = theirs.create(fields("Wielkanoc"), 200);
-    let mut backup = parse_export(&export_json(
+    let mut backup = parse_backup(&export_json(
         &favorites(&[piece('c', "c.pdf"), piece('a', "elsewhere.pdf")]),
         &theirs,
+        &ScoreNotes::default(),
     ))
     .expect("parses");
     let mut copy = sets.get(&replaced).expect("set").clone();
     copy.name = "Zaduszki 2025".to_owned();
     backup.sets.push(copy);
 
-    apply_import(&mut mine, &mut sets, backup.clone());
+    apply_import(
+        &mut mine,
+        &mut sets,
+        &mut ScoreNotes::default(),
+        backup.clone(),
+    );
     assert_eq!(
         mine.items(),
         [
@@ -138,7 +158,7 @@ fn apply_merges_favorites_without_duplicates() {
 
     // Importing the same file again changes nothing.
     let (before_favorites, before_sets) = (mine.clone(), sets.clone());
-    apply_import(&mut mine, &mut sets, backup);
+    apply_import(&mut mine, &mut sets, &mut ScoreNotes::default(), backup);
     assert_eq!(mine, before_favorites);
     assert_eq!(sets, before_sets);
 }
@@ -154,7 +174,7 @@ fn rejects_other_json_and_future_versions() {
             BackupError::NotNotae,
         ),
         (
-            r#"{"schema_version":2,"app":"notae","favorites":[],"sets":[]}"#,
+            r#"{"schema_version":3,"app":"notae","favorites":[],"sets":[]}"#,
             BackupError::UnsupportedVersion,
         ),
         (
@@ -167,15 +187,16 @@ fn rejects_other_json_and_future_versions() {
         ),
     ];
     for (text, error) in other {
-        assert_eq!(parse_export(text), Err(error), "{text}");
+        assert_eq!(parse_backup(text), Err(error), "{text}");
     }
     let favorites_file = favorites(&[piece('a', "a.pdf")]).to_json();
-    assert_eq!(parse_export(&favorites_file), Err(BackupError::NotNotae));
+    assert_eq!(parse_backup(&favorites_file), Err(BackupError::NotNotae));
     assert_eq!(
-        parse_export(r#"{"schema_version":1,"app":"notae","favorites":[],"sets":[]}"#),
+        parse_backup(r#"{"schema_version":1,"app":"notae","favorites":[],"sets":[]}"#),
         Ok(Backup {
             favorites: Favorites::default(),
             sets: Vec::new(),
+            score_notes: ScoreNotes::default(),
         })
     );
 }
@@ -209,8 +230,52 @@ fn ui_model_exports_both_stores_with_the_suggested_name() {
 
     let (name, text) = model.export_sets(1_793_404_740);
     assert_eq!(name, "notae-sets-2026-10-30.json");
-    let backup = parse_export(&text).expect("parses");
+    let backup = parse_backup(&text).expect("parses");
     assert_eq!(backup.sets.as_slice(), store.sets());
     assert!(backup.favorites.items().is_empty());
     let _ = std::fs::remove_dir_all(dir);
+}
+
+fn notes_and_set_with_notes() -> (ScoreNotes, SetStore, String) {
+    let mut score_notes = ScoreNotes::default();
+    score_notes.set(piece('a', "Psalmy/005.pdf"), "Capo na 2");
+    let mut sets = SetStore::default();
+    let id = sets.create(fields("Zaduszki"), 100);
+    let item = sets
+        .add_piece(&id, piece('a', "Psalmy/005.pdf"), 101)
+        .expect("set exists");
+    assert!(sets.edit_set_note(&id, &item, "Wolniej", 102));
+    (score_notes, sets, id)
+}
+
+#[test]
+fn export_v2_round_trips_score_and_set_notes() {
+    let (score_notes, sets, _) = notes_and_set_with_notes();
+    let text = export_json(&Favorites::default(), &sets, &score_notes);
+    assert!(
+        text.starts_with(r#"{"schema_version":2,"app":"notae""#),
+        "{text}"
+    );
+    let backup = parse_backup(&text).expect("parses");
+    assert_eq!(backup.score_notes, score_notes);
+    assert_eq!(backup.sets.as_slice(), sets.sets());
+    assert_eq!(backup.sets[0].items[0].set_note.as_deref(), Some("Wolniej"));
+}
+
+#[test]
+fn v1_export_still_imports() {
+    let text = r#"{"schema_version":1,"app":"notae","favorites":[],"sets":[]}"#;
+    let backup = parse_backup(text).expect("v1 parses");
+    assert_eq!(backup.score_notes, ScoreNotes::default());
+}
+
+#[test]
+fn import_on_clean_install_restores_both_kinds() {
+    let (score_notes, sets, id) = notes_and_set_with_notes();
+    let text = export_json(&Favorites::default(), &sets, &score_notes);
+    let mut model = UiModel::new();
+    model.import_backup(parse_backup(&text).expect("parses"));
+    assert_eq!(model.score_note(&key('a')), Some("Capo na 2"));
+    let set = model.sets().get(&id).expect("set restored");
+    assert_eq!(set.items[0].set_note.as_deref(), Some("Wolniej"));
 }

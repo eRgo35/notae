@@ -22,7 +22,9 @@ import com.c2yz.notae.core.ImportError
 import com.c2yz.notae.core.ImportStatus
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.SetupScreen
+import com.c2yz.notae.core.SharedSetReview
 import com.c2yz.notae.core.Snapshot
+import com.c2yz.notae.core.UnmatchedPiece
 import com.c2yz.notae.nav.NotaeNavDisplay
 import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
@@ -76,7 +78,7 @@ class ImportTest {
 
     @Test
     fun a_file_that_replaces_nothing_only_asks() {
-        show(settings.copy(importConfirmation = ImportConfirmation(sets = 1u, replaced = emptyList())))
+        show(settings.copy(importConfirmation = ImportConfirmation(sets = 1u, replaced = emptyList(), shared = null)))
 
         compose.onNodeWithText("Import 1 set?").assertIsDisplayed()
         compose.onNodeWithText("These sets will be replaced", substring = true).assertDoesNotExist()
@@ -107,7 +109,7 @@ class ImportTest {
 
     @Test
     fun the_confirmation_also_shows_over_the_setup_screen() {
-        show(Fixture.base.copy(importConfirmation = ImportConfirmation(sets = 2u, replaced = emptyList())))
+        show(Fixture.base.copy(importConfirmation = ImportConfirmation(sets = 2u, replaced = emptyList(), shared = null)))
 
         compose.onNodeWithText("Import 2 sets?").assertIsDisplayed()
     }
@@ -139,11 +141,36 @@ class ImportTest {
         compose.onNodeWithText("Could not import sets: this is not a Notae sets file").assertIsDisplayed()
     }
 
+    @Test
+    fun sharedSetReviewListsUnmatched() {
+        show(reviewing(exists = true))
+
+        compose.onNodeWithText("Import “Choir Mass”?").assertIsDisplayed()
+        compose.onNodeWithText("2 of 4 scores matched").assertIsDisplayed()
+        compose.onNodeWithText("Not in your library").assertIsDisplayed()
+        compose.onNodeWithText("117").assertIsDisplayed()
+        compose.onNodeWithText("Ojcze nasz").assertIsDisplayed()
+        compose.onNodeWithText("Ave verum").assertIsDisplayed()
+        compose.onNodeWithText("Import").assertDoesNotExist()
+        compose.onNodeWithText("Replace").performClick()
+        compose.onNodeWithText("Keep both").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertEquals(listOf(Action.ImportConfirmed, Action.ImportKeepBoth, Action.ImportCancelled), actions)
+
+        actions.clear()
+        shown = reviewing(exists = false)
+        compose.waitForIdle()
+        compose.onNodeWithText("Replace").assertDoesNotExist()
+        compose.onNodeWithText("Keep both").assertDoesNotExist()
+        compose.onNodeWithText("Import").performClick()
+        assertEquals(listOf<Action>(Action.ImportConfirmed), actions)
+    }
+
     // Screenshots (app/src/test/screenshots). No reference: 0.3.0 had no import.
 
     /** The screen and the confirmation as the shell draws them, with a fixed About (the shell's shows the build hash). */
-    private fun shot(snapshot: Snapshot, name: String, dark: Boolean) {
-        RuntimeEnvironment.setQualifiers("+w1280dp-h800dp-xhdpi")
+    private fun shot(snapshot: Snapshot, name: String, dark: Boolean, qualifiers: String = "+w1280dp-h800dp-xhdpi") {
+        RuntimeEnvironment.setQualifiers(qualifiers)
         compose.setContent {
             NotaeTheme(dark = dark) {
                 Box {
@@ -156,28 +183,53 @@ class ImportTest {
             }
         }
         compose.waitForIdle()
-        compose.onRoot().captureRoboImage("src/test/screenshots/$name-landscape-${if (dark) "dark" else "light"}.png")
+        compose.onRoot().captureRoboImage("src/test/screenshots/$name-${if (dark) "dark" else "light"}.png")
     }
 
-    @Test fun shot_confirm_light() = shot(confirming, "import-confirm", dark = false)
+    @Test fun shot_confirm_light() = shot(confirming, "import-confirm-landscape", dark = false)
 
-    @Test fun shot_confirm_dark() = shot(confirming, "import-confirm", dark = true)
+    @Test fun shot_confirm_dark() = shot(confirming, "import-confirm-landscape", dark = true)
 
-    @Test fun shot_setup_confirm_light() = shot(setupConfirming, "setup-import-confirm", dark = false)
+    @Test fun shot_setup_confirm_light() = shot(setupConfirming, "setup-import-confirm-landscape", dark = false)
 
-    @Test fun shot_setup_confirm_dark() = shot(setupConfirming, "setup-import-confirm", dark = true)
+    @Test fun shot_setup_confirm_dark() = shot(setupConfirming, "setup-import-confirm-landscape", dark = true)
+
+    @Test fun shot_shared_set_review_light() = shot(reviewing(exists = true), "shared-set-review-landscape", dark = false)
+
+    @Test fun shot_shared_set_review_dark() = shot(reviewing(exists = true), "shared-set-review-landscape", dark = true)
+
+    /** A phone in Polish, the longest labels: the three buttons stack so each is whole. */
+    @Test fun shot_shared_set_review_phone_light() = shot(reviewing(exists = true), "shared-set-review-phone-pl", dark = false, qualifiers = PHONE_PL)
+
+    @Test fun shot_shared_set_review_phone_dark() = shot(reviewing(exists = true), "shared-set-review-phone-pl", dark = true, qualifiers = PHONE_PL)
 
     private companion object {
+        const val PHONE_PL = "+pl-w384dp-h832dp-xhdpi"
+
         val settings: Snapshot = Fixture.library().copy(
             screen = Screen.Settings,
             settings = Fixture.base.settings.copy(libraryName = "NotaeRef", indexedCount = 20u),
         )
         val confirming = settings.copy(
-            importConfirmation = ImportConfirmation(sets = 3u, replaced = listOf("Niedziela Palmowa", "Pusty zestaw")),
+            importConfirmation = ImportConfirmation(sets = 3u, replaced = listOf("Niedziela Palmowa", "Pusty zestaw"), shared = null),
         )
         val setupConfirming = Fixture.base.copy(
             screen = Screen.Setup(SetupScreen.Unconfigured),
-            importConfirmation = ImportConfirmation(sets = 3u, replaced = emptyList()),
+            importConfirmation = ImportConfirmation(sets = 3u, replaced = emptyList(), shared = null),
+        )
+
+        /** "Choir Mass": 2 of its 4 scores in the library; one missing piece has a number, one does not. */
+        fun reviewing(exists: Boolean) = settings.copy(
+            importConfirmation = ImportConfirmation(
+                sets = 1u,
+                replaced = if (exists) listOf("Choir Mass") else emptyList(),
+                shared = SharedSetReview(
+                    name = "Choir Mass",
+                    matched = 2u,
+                    unmatched = listOf(UnmatchedPiece(number = "117", title = "Ojcze nasz"), UnmatchedPiece(number = null, title = "Ave verum")),
+                    exists = exists,
+                ),
+            ),
         )
 
         fun Snapshot.withImport(status: ImportStatus) = copy(settings = settings.copy(importStatus = status))

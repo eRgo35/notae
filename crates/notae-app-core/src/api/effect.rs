@@ -39,4 +39,13 @@ pub enum Effect {
     /// Offer the open-file picker for an import; report the text with
     /// [`NotaeCore::import_file_read`](super::NotaeCore::import_file_read).
     PickImportFile,
+    /// Send a set through the share sheet: the file `file_name` with `json`, and `text` as the plain list.
+    ShareSet {
+        /// The file name, ending in `.notae-set`.
+        file_name: String,
+        /// The set file's contents.
+        json: String,
+        /// The set as a plain-text list.
+        text: String,
+    },
 }

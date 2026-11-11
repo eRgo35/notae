@@ -92,6 +92,7 @@ import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.toCount
+import com.c2yz.notae.ui.sets.ShareSetButton
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 /** The bottom navigation bar's height, which the floating button keeps clear of. */
@@ -319,6 +320,7 @@ private fun Toolbar(snapshot: Snapshot, onAction: (Action) -> Unit, inSet: Boole
         IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) })
         if (inSet && !reordering) {
             IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) })
+            ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction)
         }
         OverflowMenu(snapshot, onAction, reordering)
     }
@@ -355,8 +357,9 @@ private fun OverflowMenu(snapshot: Snapshot, onAction: (Action) -> Unit, reorder
     }
 }
 
+/** A row of the toolbar's drop-down menus: a 24 dp icon and a 16 sp label, at least 52 dp tall. */
 @Composable
-private fun MenuItem(label: String, icon: Painter, onClick: () -> Unit, enabled: Boolean = true) {
+internal fun MenuItem(label: String, icon: Painter, onClick: () -> Unit, enabled: Boolean = true) {
     val c = NotaeTheme.colors
     DropdownMenuItem(
         text = { Text(label, fontSize = 16.sp) },

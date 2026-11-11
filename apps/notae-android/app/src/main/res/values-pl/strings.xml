@@ -216,6 +216,9 @@
     <string name="set_actions_dialog">Okno działań dla zestawu</string>
     <string name="set_edit">Edytuj zestaw</string>
     <string name="set_delete">Usuń zestaw</string>
+    <string name="share_set">Udostępnij</string>
+    <string name="share_set_plain">Udostępnij zestaw</string>
+    <string name="share_set_with_notes">Udostępnij zestaw z notatkami</string>
     <string name="set_back">Wróć do zestawów</string>
     <string name="set_add">Dodaj</string>
     <string name="set_reorder">Zmień kolejność</string>
@@ -232,7 +235,7 @@
     <string name="set_date">Data (opcjonalnie)</string>
     <string name="set_date_hint">RRRR-MM-DD</string>
     <string name="set_clear_date">Wyczyść datę</string>
-    <string name="set_notes_label">Notatki (opcjonalnie)</string>
+    <string name="set_notes_label">Opis (opcjonalnie)</string>
     <string name="set_notes_hint">Uroczystość, godzina, kantor…</string>
     <string name="set_cancel">Anuluj</string>
     <string name="set_save">Zapisz zestaw</string>
@@ -263,6 +266,13 @@
     <string name="note_save">Zapisz notatkę</string>
     <string name="note_label">Notatka: %1$s</string>
     <string name="note_actions_dialog">Okno działań dla notatki</string>
+    <!-- Score notes and set notes (#47). -->
+    <string name="score_note">Notatka do utworu</string>
+    <string name="set_note_in">Notatka w zestawie „%1$s”</string>
+    <string name="add_score_note">Dodaj notatkę do utworu</string>
+    <string name="add_set_note">Dodaj notatkę w zestawie</string>
+    <string name="edit_set_note">Notatka w zestawie</string>
+    <string name="has_set_note">Ma notatkę w zestawie</string>
     <!-- "Just opened" and import (Task 20): "Ostatnio otwarte" from the favorites plan (Task 10); the rest written for Task 20. -->
     <string name="just_opened">Ostatnio otwarte</string>
     <string name="score_label_just_opened">%1$s, ostatnio otwarte</string>
@@ -281,4 +291,14 @@
     </plurals>
     <string name="import_replaced">Te zestawy zostaną zastąpione: %1$s</string>
     <string name="import_confirm">Importuj</string>
+    <string name="shared_set_review_title">Zaimportować „%1$s”?</string>
+    <plurals name="shared_set_matched">
+        <item quantity="one">Dopasowano %1$d z %2$d utworu</item>
+        <item quantity="few">Dopasowano %1$d z %2$d utworów</item>
+        <item quantity="many">Dopasowano %1$d z %2$d utworów</item>
+        <item quantity="other">Dopasowano %1$d z %2$d utworów</item>
+    </plurals>
+    <string name="shared_set_unmatched">Brak w bibliotece</string>
+    <string name="replace">Zastąp</string>
+    <string name="keep_both">Zachowaj oba</string>
 </resources>

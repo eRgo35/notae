@@ -36,6 +36,8 @@ pub struct SearchRow {
     pub position: Option<usize>,
     /// A set's piece whose PDF is no longer in the library.
     pub missing: bool,
+    /// The set note on this occurrence of the piece; `None` outside a set.
+    pub set_note: Option<String>,
 }
 
 impl SearchRow {
@@ -64,6 +66,7 @@ impl SearchRow {
             item_id: None,
             position: None,
             missing: false,
+            set_note: None,
         }
     }
 }

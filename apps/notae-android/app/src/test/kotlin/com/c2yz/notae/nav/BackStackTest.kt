@@ -71,6 +71,8 @@ class BackStackTest {
             missing = false,
             favorite = false,
             thumbnail = null,
+            scoreNote = null,
+            setNote = null,
         ),
         previous = null,
         next = null,

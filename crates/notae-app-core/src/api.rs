@@ -22,7 +22,7 @@
 //!
 //! # Data directory
 //!
-//! `recent.txt`, `ui-prefs.txt`, `favorites.json`, `sets.json`, `index.sqlite`, `thumbnails/`,
+//! `recent.txt`, `ui-prefs.txt`, `favorites.json`, `score-notes.json`, `sets.json`, `index.sqlite`, `thumbnails/`,
 //! and `library-root.json`, the open folder, so a new core over the same directory reopens it.
 
 mod action;
@@ -46,10 +46,10 @@ pub use snapshot::{
     ImportConfirmation, ImportError, ImportStatus, LayoutPrefs, MetadataDraft, Origin,
     PdfOpenError, PositionOf, Row, ScanSummary, Screen, SearchBox, SearchScope, SectionEntry,
     SectionTitle, Selection, SetCard, SetChoice, SetDialog, SetEntry, SettingsInfo, SetupError,
-    SetupScreen, Snapshot, Snippet, StatusMessage, Subtitle,
+    SetupScreen, SharedSetReview, Snapshot, Snippet, StatusMessage, Subtitle, UnmatchedPiece,
 };
 
-use crate::backup::{Backup, BackupError};
+use crate::backup::{BackupError, ImportFile};
 use crate::operations::events::OperationEvent;
 use crate::operations::rescan::OperationController;
 use crate::platform::{PlatformCatalog, PlatformLibrary};
@@ -104,6 +104,7 @@ impl NotaeCore {
         let mut model = UiModel::new();
         model.set_recent_path(data_dir.join("recent.txt"));
         model.set_favorites_path(data_dir.join("favorites.json"));
+        model.set_score_notes_path(data_dir.join("score-notes.json"));
         // Before the UI preferences, which reopen a saved set only if it still exists.
         model.set_sets_path(data_dir.join("sets.json"));
         model.set_ui_prefs_path(data_dir.join("ui-prefs.txt"));
@@ -224,16 +225,16 @@ impl NotaeCore {
         self.shared.listener.on_snapshot(snapshot);
     }
 
-    /// The file chosen after [`Effect::PickImportFile`] was read. An export file waits for
-    /// the confirmation ([`Snapshot::import_confirmation`]); any other file is reported in
-    /// [`SettingsInfo::import_status`].
+    /// The file chosen after [`Effect::PickImportFile`] was read. An export file or a shared set
+    /// waits for the confirmation ([`Snapshot::import_confirmation`]), a shared set until the
+    /// library is up; any other file is reported in [`SettingsInfo::import_status`].
     pub fn import_file_read(&self, text: String) {
         let snapshot = {
             let mut state = self.shared.lock();
-            match crate::backup::parse_export(&text) {
-                Ok(backup) => {
+            match crate::backup::parse_import(&text) {
+                Ok(file) => {
                     state.import_status = None;
-                    state.pending_import = Some(backup);
+                    state.pending_import = Some(file);
                 }
                 Err(error) => {
                     state.pending_import = None;
@@ -458,8 +459,8 @@ struct CoreState {
     export: Option<ExportStatus>,
     /// The content key of the PDF Kotlin was asked to open.
     opening_pdf: Option<String>,
-    /// A read export file waiting for the import confirmation.
-    pending_import: Option<Backup>,
+    /// A read export or shared set file waiting for the import confirmation.
+    pending_import: Option<ImportFile>,
     /// The outcome of the last import.
     import_status: Option<ImportStatus>,
 }
@@ -617,6 +618,7 @@ impl CoreState {
                     eprintln!("notae: cannot save favorites: {error}");
                 }
             }
+            Action::SaveScoreNote { note_key, text } => model.set_score_note(&note_key, &text),
             Action::OpenPdf {
                 relative_path,
                 note_key,
@@ -652,13 +654,36 @@ impl CoreState {
                     json,
                 }];
             }
+            Action::ShareSet { set_id, with_notes } => {
+                let Some(set) = model.sets().get(&set_id) else {
+                    return Vec::new();
+                };
+                let rows = model.search_rows();
+                return vec![Effect::ShareSet {
+                    file_name: crate::share::share_file_name(&set.name),
+                    json: crate::share::share_json(set, rows, with_notes),
+                    text: crate::share::share_text(set, rows, with_notes),
+                }];
+            }
             Action::ImportRequested => {
                 self.import_status = None;
                 return vec![Effect::PickImportFile];
             }
-            Action::ImportConfirmed => {
-                if let Some(backup) = self.pending_import.take() {
+            Action::ImportConfirmed => match self.pending_import.take() {
+                Some(ImportFile::Backup(backup)) => {
                     model.import_backup(backup);
+                    self.import_status = Some(ImportStatus::Imported);
+                }
+                Some(ImportFile::Set(shared)) => {
+                    model.import_shared_set(&shared, false);
+                    self.import_status = Some(ImportStatus::Imported);
+                }
+                None => {}
+            },
+            Action::ImportKeepBoth => {
+                if let Some(ImportFile::Set(shared)) = &self.pending_import {
+                    model.import_shared_set(shared, true);
+                    self.pending_import = None;
                     self.import_status = Some(ImportStatus::Imported);
                 }
             }
@@ -740,6 +765,7 @@ impl CoreState {
             }
             Action::AddNote { text } => model.add_note_requested(&text),
             Action::EditNote { item_id, text } => model.edit_note_requested(&item_id, &text),
+            Action::SaveSetNote { item_id, text } => model.save_set_note(&item_id, &text),
         }
         Vec::new()
     }
@@ -764,8 +790,15 @@ impl CoreState {
 
     /// Closes the innermost thing open; `false` when nothing is.
     fn back(&mut self) -> bool {
-        // The import confirmation can be open over the setup screen, before any library.
-        if self.pending_import.take().is_some() {
+        // The import confirmation can be open over the setup screen, before any library; a
+        // shared set waiting for the library is not shown, so Back leaves it.
+        let shown = match &self.pending_import {
+            Some(ImportFile::Backup(_)) => true,
+            Some(ImportFile::Set(_)) => snapshot::shows_library(&self.model),
+            None => false,
+        };
+        if shown {
+            self.pending_import = None;
             return true;
         }
         let model = &mut self.model;

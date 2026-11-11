@@ -1,9 +1,12 @@
 package com.c2yz.notae.platform
 
 import android.content.ActivityNotFoundException
+import android.content.ContentResolver
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -38,11 +41,7 @@ class ImportFilePicker(
 
     private fun read(uri: Uri) {
         activity.lifecycleScope.launch(Dispatchers.IO) {
-            val resolver = activity.contentResolver
-            readImport(
-                declaredLength = { resolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: UNKNOWN_LENGTH },
-                open = { resolver.openInputStream(uri) ?: throw FileNotFoundException("cannot read $uri") },
-            ).fold(onRead) { error -> onFailed(error.message ?: error.toString()) }
+            readImport(activity.contentResolver, uri).fold(onRead) { error -> onFailed(error.message ?: error.toString()) }
         }
     }
 
@@ -53,6 +52,27 @@ class ImportFilePicker(
 
 /** An export file is a few kilobytes; anything past this is not one, and reading it all could run Notae out of memory. */
 internal const val MAX_IMPORT_BYTES = 16 * 1024 * 1024
+
+/**
+ * The file a received intent carries: the data of a `VIEW` (Open with) or the [Intent.EXTRA_STREAM] of a `SEND` (Share
+ * to), when it is a `content:` URI; null for any other action or URI, and for an intent relaunched from Recents, whose
+ * file was read when it first came.
+ */
+internal fun importUri(intent: Intent): Uri? {
+    if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
+    val uri = when (intent.action) {
+        Intent.ACTION_VIEW -> intent.data
+        Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+        else -> null
+    }
+    return uri?.takeIf { it.scheme == ContentResolver.SCHEME_CONTENT }
+}
+
+/** [readImport] of the file at [uri], blocking: call it on [Dispatchers.IO]. */
+internal fun readImport(resolver: ContentResolver, uri: Uri): Result<String> = readImport(
+    declaredLength = { resolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: UNKNOWN_LENGTH },
+    open = { resolver.openInputStream(uri) ?: throw FileNotFoundException("cannot read $uri") },
+)
 
 /** What [android.content.res.AssetFileDescriptor.getLength] reports when the provider does not know the size. */
 private const val UNKNOWN_LENGTH = -1L

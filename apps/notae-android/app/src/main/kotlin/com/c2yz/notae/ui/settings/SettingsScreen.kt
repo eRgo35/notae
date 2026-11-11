@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.settings
 
+import android.content.res.Resources
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.animateColorAsState
@@ -20,14 +21,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,6 +51,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -64,6 +69,7 @@ import com.c2yz.notae.core.ImportConfirmation
 import com.c2yz.notae.core.ImportError
 import com.c2yz.notae.core.ImportStatus
 import com.c2yz.notae.core.SettingsInfo
+import com.c2yz.notae.core.SharedSetReview
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.platform.appLanguage
 import com.c2yz.notae.platform.setAppLanguage
@@ -240,23 +246,28 @@ private fun SetsCard(settings: SettingsInfo, onAction: (Action) -> Unit, modifie
 
 /** "Favorites and sets imported", or "Could not import sets: …" with why; shown in Settings and on the setup screen. */
 @Composable
-fun importStatusText(status: ImportStatus): String = when (status) {
-    ImportStatus.Imported -> stringResource(R.string.settings_imported)
-    is ImportStatus.Failed -> stringResource(
+fun importStatusText(status: ImportStatus): String = importStatusText(LocalResources.current, status)
+
+/** [importStatusText] outside composition: the toast for a file opened with or shared to Notae that fails. */
+fun importStatusText(resources: Resources, status: ImportStatus): String = when (status) {
+    ImportStatus.Imported -> resources.getString(R.string.settings_imported)
+    is ImportStatus.Failed -> resources.getString(
         R.string.settings_import_failed,
         when (val error = status.error) {
-            ImportError.NotNotae -> stringResource(R.string.import_error_not_notae)
-            ImportError.UnsupportedVersion -> stringResource(R.string.import_error_version)
-            ImportError.Invalid -> stringResource(R.string.import_error_invalid)
+            ImportError.NotNotae -> resources.getString(R.string.import_error_not_notae)
+            ImportError.UnsupportedVersion -> resources.getString(R.string.import_error_version)
+            ImportError.Invalid -> resources.getString(R.string.import_error_invalid)
             is ImportError.Unreadable -> error.detail
         },
     )
 }
 
 /**
- * The import confirmation, drawn by the shell over Settings or the setup screen: "Import N sets?", the current names of
- * the sets the file replaces (when it replaces any), then Cancel and Import. The dialog takes the focus when it opens,
- * so Escape cancels at once, as Back does through the core (buttons cannot hold focus in touch mode); Tab reaches Cancel.
+ * The import confirmation, drawn by the shell over Settings or the setup screen. For a backup: "Import N sets?", the
+ * current names of the sets the file replaces (when it replaces any), then Cancel and Import. For a shared set, the
+ * review: "Import “name”?", how many of its scores matched, the unmatched ones by number and title, then Cancel and
+ * Import, or Cancel, Replace and Keep both when a set with its id exists. The dialog takes the focus when it opens, so
+ * Escape cancels at once, as Back does through the core (buttons cannot hold focus in touch mode); Tab reaches Cancel.
  */
 @Composable
 fun ImportConfirmationDialog(confirmation: ImportConfirmation, onAction: (Action) -> Unit) {
@@ -264,6 +275,7 @@ fun ImportConfirmationDialog(confirmation: ImportConfirmation, onAction: (Action
     val keys = remember { FocusRequester() }
     LaunchedEffect(Unit) { keys.requestFocus() }
     val cancel = { onAction(Action.ImportCancelled) }
+    val shared = confirmation.shared
     ModalSurface(
         stringResource(R.string.import_dialog),
         onDismiss = null,
@@ -271,14 +283,59 @@ fun ImportConfirmationDialog(confirmation: ImportConfirmation, onAction: (Action
         cardWidth = 480.dp,
         modifier = Modifier.closeOnEscape(cancel).focusRequester(keys).focusable(),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            val sets = confirmation.sets.toInt()
-            Text(pluralStringResource(R.plurals.import_title, sets, sets), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-            if (confirmation.replaced.isNotEmpty()) {
-                Text(stringResource(R.string.import_replaced, confirmation.replaced.joinToString(", ")), color = c.muted, fontSize = 14.sp)
+        if (shared != null) {
+            SharedSetSummary(shared)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                val sets = confirmation.sets.toInt()
+                Text(pluralStringResource(R.plurals.import_title, sets, sets), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+                if (confirmation.replaced.isNotEmpty()) {
+                    Text(stringResource(R.string.import_replaced, confirmation.replaced.joinToString(", ")), color = c.muted, fontSize = 14.sp)
+                }
             }
         }
-        DialogButtons(stringResource(R.string.set_cancel), cancel, stringResource(R.string.import_confirm), { onAction(Action.ImportConfirmed) })
+        val confirm = { onAction(Action.ImportConfirmed) }
+        if (shared?.exists == true) {
+            DialogButtons(
+                stringResource(R.string.set_cancel),
+                cancel,
+                stringResource(R.string.keep_both),
+                { onAction(Action.ImportKeepBoth) },
+                middle = stringResource(R.string.replace),
+                onMiddle = confirm,
+            )
+        } else {
+            DialogButtons(stringResource(R.string.set_cancel), cancel, stringResource(R.string.import_confirm), confirm)
+        }
+    }
+}
+
+/** The shared-set review's text: the title, "N of M scores matched", and the unmatched pieces in a list that scrolls. */
+@Composable
+private fun SharedSetSummary(shared: SharedSetReview) {
+    val c = NotaeTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        val matched = shared.matched.toInt()
+        val total = matched + shared.unmatched.size
+        Text(stringResource(R.string.shared_set_review_title, shared.name), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        Text(pluralStringResource(R.plurals.shared_set_matched, total, matched, total), color = c.muted, fontSize = 14.sp)
+        if (shared.unmatched.isNotEmpty()) {
+            Text(
+                stringResource(R.string.shared_set_unmatched),
+                Modifier.padding(top = 10.dp),
+                color = c.foreground,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Column(Modifier.heightIn(max = 200.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                shared.unmatched.forEach { piece ->
+                    Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        piece.number?.let { Text(it, color = c.muted, fontSize = 15.sp) }
+                        Text(piece.title, Modifier.weight(1f), color = c.foreground, fontSize = 15.sp)
+                    }
+                }
+            }
+        }
     }
 }
 

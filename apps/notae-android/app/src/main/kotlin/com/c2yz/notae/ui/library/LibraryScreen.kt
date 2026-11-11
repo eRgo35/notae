@@ -87,12 +87,13 @@ import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.details.detailsKeyAction
 import com.c2yz.notae.ui.sets.SetActionsSheet
+import com.c2yz.notae.ui.sets.ShareSetButton
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.sets.SetsPane
 import com.c2yz.notae.ui.sets.setSubtitle
 import com.c2yz.notae.ui.theme.NotaeTheme
 
-private const val SET_PREFIX = "set:"
+internal const val SET_PREFIX = "set:"
 
 /**
  * 0.3.0's `LibraryScreen` on a tablet: the side panel (or the chips when it is hidden or the pane is under 840 dp), the large
@@ -119,12 +120,16 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     val note = { id: String? -> id?.let { entries.firstOrNull { it is SetEntry.Note && it.itemId == id } as SetEntry.Note? } }
     val menuNote = note(noteMenuFor)
     val editNote = note(noteEditFor)
-    val sheetOpen = menuRow != null || menuSet != null || menuNote != null || editNote != null
+    // A piece's set note editor, by item id.
+    var setNoteFor by remember { mutableStateOf<String?>(null) }
+    val setNoteRow = setNoteFor?.let { id -> snapshot.rows.firstOrNull { it.itemId == id } }
+    val sheetOpen = menuRow != null || menuSet != null || menuNote != null || editNote != null || setNoteRow != null
     val closeSheets = {
         menuFor = null
         setMenuFor = null
         noteMenuFor = null
         noteEditFor = null
+        setNoteFor = null
     }
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(
@@ -217,6 +222,22 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                         menuFor = null
                         onAction(it)
                     },
+                    onEditSetNote = {
+                        menuFor = null
+                        setNoteFor = row.itemId
+                    },
+                )
+            }
+            AnimatedOverlay(setNoteRow) { row ->
+                NoteEditor(
+                    stringResource(R.string.set_note_in, (snapshot.title as? SectionTitle.Set)?.name.orEmpty()),
+                    row.setNote.orEmpty(),
+                    onCancel = { setNoteFor = null },
+                    allowBlank = true,
+                    onSave = { text ->
+                        setNoteFor = null
+                        row.itemId?.let { onAction(Action.SaveSetNote(it, text)) }
+                    },
                 )
             }
             AnimatedOverlay(menuNote) { note ->
@@ -235,7 +256,8 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             }
             AnimatedOverlay(editNote) { note ->
                 NoteEditor(
-                    note,
+                    stringResource(R.string.note_edit),
+                    note.text,
                     onCancel = { noteEditFor = null },
                     onSave = {
                         noteEditFor = null
@@ -322,6 +344,7 @@ private fun Header(
                 } else {
                     IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) })
                 }
+                ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction)
                 PillButton(stringResource(R.string.set_add), { onAction(Action.OpenAddPicker) }, icon = painterResource(R.drawable.ic_add), primary = true)
             }
             if (!sidebar) {
