@@ -145,7 +145,7 @@ pub enum Action {
         name: String,
         /// The ISO `YYYY-MM-DD` date, or `None` for no date.
         date: Option<String>,
-        /// The notes field, or `None` for no notes.
+        /// The description field, or `None` for no description.
         notes: Option<String>,
     },
     /// The set dialog's Cancel.

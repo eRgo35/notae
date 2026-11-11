@@ -37,6 +37,7 @@ fn row(
         item_id: None,
         position: None,
         missing: false,
+        set_note: None,
     }
 }
 

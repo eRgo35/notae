@@ -274,6 +274,10 @@ pub struct Row {
     pub favorite: bool,
     /// The first-page PNG, once a scan has rendered it.
     pub thumbnail: Option<String>,
+    /// The score note, shown wherever the score is.
+    pub score_note: Option<String>,
+    /// The set note on this occurrence of the piece; `None` outside a set.
+    pub set_note: Option<String>,
 }
 
 /// Where a metadata value came from ([`notae_domain::MetadataOrigin`]).
@@ -613,7 +617,7 @@ pub struct SetDialog {
     pub name: String,
     /// ISO `YYYY-MM-DD`, or `None`.
     pub date: Option<String>,
-    /// The notes, or `None`.
+    /// The set description, or `None`.
     pub notes: Option<String>,
     /// Why the last save was rejected.
     pub error: Option<SetFieldError>,
@@ -953,6 +957,7 @@ impl<'a> RowLookup<'a> {
                 .map(|path| path.to_string_lossy().into_owned())
         };
         Row {
+            score_note: model.score_note(&row.note_key).map(str::to_owned),
             selection_id: browse::row_id(&row).to_owned(),
             favorite: self.favorites.contains(row.note_key.as_str()),
             snippet: row.text_snippet.as_deref().map(|snippet| {
@@ -975,6 +980,7 @@ impl<'a> RowLookup<'a> {
             item_id: row.item_id,
             position: row.position.map(count),
             missing: row.missing,
+            set_note: row.set_note,
         }
     }
 }

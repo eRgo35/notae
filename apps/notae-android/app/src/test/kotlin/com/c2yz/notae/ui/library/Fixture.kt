@@ -75,6 +75,8 @@ object Fixture {
         missing = false,
         favorite = favorite,
         thumbnail = null,
+        scoreNote = null,
+        setNote = null,
     )
 
     /** All scores, in the grid, with the side panel open. */

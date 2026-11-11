@@ -56,7 +56,7 @@ pub struct Set {
     pub name: String,
     /// ISO `YYYY-MM-DD`.
     pub date: Option<String>,
-    /// Free-text notes about the set.
+    /// The set description: free text about the whole set (stored under the JSON key `notes`).
     pub notes: Option<String>,
     /// Unix seconds of the last change to the set or its items.
     pub modified: u64,
@@ -93,7 +93,7 @@ pub struct SetFields {
     pub name: String,
     /// ISO `YYYY-MM-DD`.
     pub date: Option<String>,
-    /// Free-text notes about the set.
+    /// The set description.
     pub notes: Option<String>,
 }
 

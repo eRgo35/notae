@@ -229,7 +229,7 @@
     <string name="set_date">Date (optional)</string>
     <string name="set_date_hint">YYYY-MM-DD</string>
     <string name="set_clear_date">Clear date</string>
-    <string name="set_notes_label">Notes (optional)</string>
+    <string name="set_notes_label">Description (optional)</string>
     <string name="set_notes_hint">Occasion, time, cantor…</string>
     <string name="set_cancel">Cancel</string>
     <string name="set_save">Save set</string>

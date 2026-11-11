@@ -1419,3 +1419,38 @@ fn import_of_a_wrong_file_says_why_and_back_closes_the_confirmation() {
     assert_eq!(harness.core.snapshot().import_confirmation, None);
     assert!(!harness.core.back());
 }
+
+#[test]
+fn rows_carry_score_and_set_notes() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    let key = library.rows[0].note_key.clone();
+    let in_set = set_with_first_piece(&harness, &library);
+    let item_id = in_set.rows[0].item_id.clone().expect("a set row");
+    harness.core.dispatch(Action::SaveScoreNote {
+        note_key: key.clone(),
+        text: "Slowly".to_owned(),
+    });
+    harness.core.dispatch(Action::SaveSetNote {
+        item_id: item_id.clone(),
+        text: "Repeat twice".to_owned(),
+    });
+
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: item_id,
+    });
+    let row = harness.core.snapshot().selection.expect("details open").row;
+    assert_eq!(row.score_note.as_deref(), Some("Slowly"));
+    assert_eq!(row.set_note.as_deref(), Some("Repeat twice"));
+
+    harness.core.dispatch(Action::SelectSection {
+        key: "all".to_owned(),
+    });
+    harness
+        .core
+        .dispatch(Action::SelectScore { selection_id: key });
+    let row = harness.core.snapshot().selection.expect("details open").row;
+    assert_eq!(row.score_note.as_deref(), Some("Slowly"));
+    assert_eq!(row.set_note, None);
+}
