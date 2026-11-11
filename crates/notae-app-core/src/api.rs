@@ -742,6 +742,7 @@ impl CoreState {
             }
             Action::AddNote { text } => model.add_note_requested(&text),
             Action::EditNote { item_id, text } => model.edit_note_requested(&item_id, &text),
+            Action::SaveSetNote { item_id, text } => model.save_set_note(&item_id, &text),
         }
         Vec::new()
     }

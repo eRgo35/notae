@@ -17,7 +17,9 @@ use thiserror::Error;
 use crate::favorites::{PieceRef, write_atomically};
 use crate::recent::is_content_key;
 
-const SCHEMA_VERSION: u32 = 1;
+const SCHEMA_VERSION: u32 = 2;
+/// The oldest sets file that still loads; version 1 lacks only the set notes.
+const OLDEST_SCHEMA_VERSION: u32 = 1;
 
 /// What a set item is: a score or a free-text note.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,6 +42,9 @@ pub struct SetItem {
     /// What the item is.
     #[serde(flatten)]
     pub kind: ItemKind,
+    /// The set note: a note on this one occurrence of a score. Only piece items hold one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub set_note: Option<String>,
 }
 
 /// A singing set.
@@ -65,6 +70,11 @@ impl Set {
     /// Drops piece items whose content key is not valid, and items whose id an earlier item
     /// already has: the app keys its lists by item id, so a repeat would crash it.
     pub(crate) fn drop_invalid_items(&mut self) {
+        for item in &mut self.items {
+            if matches!(item.kind, ItemKind::Note { .. }) {
+                item.set_note = None;
+            }
+        }
         let mut ids = HashSet::new();
         self.items.retain(|item| {
             let valid = match &item.kind {
@@ -202,7 +212,7 @@ impl SetStore {
         let Ok(file) = serde_json::from_str::<SetsFile>(text) else {
             return Self::default();
         };
-        if file.schema_version != SCHEMA_VERSION {
+        if !(OLDEST_SCHEMA_VERSION..=SCHEMA_VERSION).contains(&file.schema_version) {
             return Self::default();
         }
         let mut ids = HashSet::new();
@@ -350,12 +360,32 @@ impl SetStore {
         true
     }
 
+    /// Sets or clears the set note on one piece item; blank text clears it. False if the set or
+    /// item does not exist, the item is a text note, or the note is unchanged.
+    pub fn edit_set_note(&mut self, set_id: &str, item_id: &str, text: &str, now: u64) -> bool {
+        let Some(set) = self.get_mut(set_id) else {
+            return false;
+        };
+        let Some(item) = set.items.iter_mut().find(|item| item.id == item_id) else {
+            return false;
+        };
+        let text = text.trim();
+        let new = (!text.is_empty()).then(|| text.to_owned());
+        if matches!(item.kind, ItemKind::Note { .. }) || item.set_note == new {
+            return false;
+        }
+        item.set_note = new;
+        set.modified = now;
+        true
+    }
+
     fn push_item(&mut self, set_id: &str, kind: ItemKind, seed: &str, now: u64) -> Option<String> {
         let set = self.get_mut(set_id)?;
         let id = new_id(seed);
         set.items.push(SetItem {
             id: id.clone(),
             kind,
+            set_note: None,
         });
         set.modified = now;
         Some(id)

@@ -227,4 +227,12 @@ pub enum Action {
         /// The note field.
         text: String,
     },
+    /// The piece's "Save set note": stores the set note on one piece of the open set; blank
+    /// text clears it.
+    SaveSetNote {
+        /// The piece's set item id.
+        item_id: String,
+        /// The note field.
+        text: String,
+    },
 }

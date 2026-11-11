@@ -668,6 +668,16 @@ impl UiModel {
         }
     }
 
+    /// Stores the set note on a piece of the open set; blank text clears it.
+    pub fn save_set_note(&mut self, item_id: &str, text: &str) {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return;
+        };
+        if self.sets.edit_set_note(set_id, item_id, text, unix_now()) {
+            self.save_sets();
+        }
+    }
+
     /// Opens the add picker over the open set.
     pub fn add_picker_opened(&mut self) {
         let LibrarySection::Set(set_id) = &self.section else {
