@@ -391,6 +391,12 @@ impl UiModel {
         self.score_notes.get(key)
     }
 
+    /// Every score note.
+    #[must_use]
+    pub fn score_notes(&self) -> &ScoreNotes {
+        &self.score_notes
+    }
+
     /// Stores the score note of the score with `key`; blank text clears it. A key that is not
     /// in the library changes nothing.
     pub fn set_score_note(&mut self, key: &str, text: &str) {

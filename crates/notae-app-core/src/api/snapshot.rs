@@ -6,7 +6,7 @@
 //! as they are. Nothing here is display text: Kotlin formats every title, count, date and status
 //! from these values.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::backup::{ImportFile, plan_import};
 use crate::sets::SetFieldError;
@@ -1008,6 +1008,8 @@ fn screen(model: &UiModel) -> Screen {
 struct RowLookup<'a> {
     model: &'a UiModel,
     favorites: HashSet<&'a str>,
+    /// Score note texts by content key.
+    score_notes: HashMap<&'a str, &'a str>,
     thumbnails: HashSet<String>,
 }
 
@@ -1019,6 +1021,12 @@ impl<'a> RowLookup<'a> {
                 .favorites()
                 .iter()
                 .map(|piece| piece.key.as_str())
+                .collect(),
+            score_notes: model
+                .score_notes()
+                .items()
+                .iter()
+                .map(|note| (note.key.as_str(), note.text.as_str()))
                 .collect(),
             thumbnails: model
                 .thumbnail_cache()
@@ -1043,7 +1051,10 @@ impl<'a> RowLookup<'a> {
         let model = self.model;
         let thumbnail = self.thumbnail_for(&row.note_key, row.missing);
         Row {
-            score_note: model.score_note(&row.note_key).map(str::to_owned),
+            score_note: self
+                .score_notes
+                .get(row.note_key.as_str())
+                .map(|text| (*text).to_owned()),
             selection_id: browse::row_id(&row).to_owned(),
             favorite: self.favorites.contains(row.note_key.as_str()),
             snippet: row.text_snippet.as_deref().map(|snippet| {
