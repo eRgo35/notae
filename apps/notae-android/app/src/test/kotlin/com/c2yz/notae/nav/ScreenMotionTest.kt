@@ -138,7 +138,8 @@ class ScreenMotionTest {
         val gridClosing = bounds(grid).single()
         val backClosing = bounds(detailsBack).single()
         finish()
-        assertEquals("the list does not move while the pane closes", gridOpen, gridClosing)
+        // The list takes its full width as the pane starts to close, under the pane sliding away, and keeps it.
+        assertEquals("the list does not move while the pane closes", bounds(grid).single(), gridClosing)
         assertTrue("the pane leaves to the end: $backOpen -> $backClosing", backClosing.left > backOpen.left + 100f)
         assertTrue("the pane is gone", bounds(detailsBack).isEmpty())
     }

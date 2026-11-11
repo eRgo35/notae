@@ -19,7 +19,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -323,18 +322,19 @@ private class ListDetailScene(
             // Only the detail pane moves: it slides in from the end of the line, full width, as a deeper screen's
             // content does, and Back slides it out again; another score chosen keeps the pane where it is.
             val pane = updateTransition(detail != null, label = "detail pane")
-            val open = pane.currentState || pane.targetState
             // The details last shown, which the pane keeps drawing while it slides away.
             val last = remember { LastDetail() }
             if (detail != null) last.entry = detail
             val end = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1 else 1
-            // Not animated: a grid re-flowing its columns at each step of a moving width loses its place. The list
-            // narrows as the pane starts to open and widens once it has closed.
-            val listWidth = if (!open) maxWidth else minOf(LIST_PANE_WIDTH, maxWidth * LIST_SHARE)
-            Row(Modifier.fillMaxSize()) {
+            // The list takes its layout for where the change goes as it starts, opening or closing, and the pane slides
+            // over it. Not animated: a grid re-flowing its columns at each step of a moving width loses its place.
+            val sideWidth = minOf(LIST_PANE_WIDTH, maxWidth * LIST_SHARE)
+            val listWidth = if (pane.targetState) sideWidth else maxWidth
+            val paneWidth = maxWidth - sideWidth
+            Box(Modifier.fillMaxSize()) {
                 Box(Modifier.width(listWidth).fillMaxHeight()) { list.Content() }
-                if (open) {
-                    Box(Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+                if (pane.currentState || pane.targetState) {
+                    Box(Modifier.align(Alignment.TopEnd).width(paneWidth).fillMaxHeight().clipToBounds()) {
                         pane.AnimatedVisibility(
                             visible = { it },
                             enter = slideInHorizontally(NotaeMotion.long()) { it * end },
