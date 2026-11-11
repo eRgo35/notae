@@ -243,7 +243,8 @@ fn run_worker(
                 scope = next_scope;
                 match project_rows(&local, &query, scope) {
                     Ok(rows) => {
-                        send(&events, OperationEvent::SearchRows(rows));
+                        let query = query.clone();
+                        send(&events, OperationEvent::SearchRows { query, rows });
                         send_indexed_count(&local, &events);
                     }
                     Err(error) => send(

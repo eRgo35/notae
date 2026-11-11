@@ -250,7 +250,10 @@ fn ui_status_projects_operation_scan_summary_and_pending_rows() {
         set_note: None,
     };
     model
-        .apply_operation_event(OperationEvent::SearchRows(vec![pending_row.clone()]))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: vec![pending_row.clone()],
+        })
         .expect("rows event");
     let status = model.status();
     assert_eq!(status.latest_rescan, None);
@@ -381,10 +384,10 @@ fn settings_indexed_count_comes_from_worker_whole_library_count_not_filtered_row
     let mut filtered_rows = None;
     for _ in 0..2 {
         match next_event(&controller) {
-            OperationEvent::SearchRows(rows) => {
+            OperationEvent::SearchRows { query, rows } => {
                 filtered_rows = Some(rows.len());
                 model
-                    .apply_operation_event(OperationEvent::SearchRows(rows))
+                    .apply_operation_event(OperationEvent::SearchRows { query, rows })
                     .expect("rows");
             }
             event @ OperationEvent::IndexedCount(_) => {

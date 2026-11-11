@@ -227,12 +227,18 @@ impl NotaeCore {
 
     /// The file chosen after [`Effect::PickImportFile`] was read. An export file or a shared set
     /// waits for the confirmation ([`Snapshot::import_confirmation`]), a shared set until the
-    /// library is up; any other file is reported in [`SettingsInfo::import_status`].
+    /// library is up with its whole rows: a shared set closes Search, so they come back. Any other
+    /// file is reported in [`SettingsInfo::import_status`].
     pub fn import_file_read(&self, text: String) {
         let snapshot = {
             let mut state = self.shared.lock();
             match crate::backup::parse_import(&text) {
                 Ok(file) => {
+                    if matches!(file, ImportFile::Set(_))
+                        && matches!(state.model.state().screen(), crate::state::Screen::Search)
+                    {
+                        state.close_search(None);
+                    }
                     state.import_status = None;
                     state.pending_import = Some(file);
                 }
@@ -655,7 +661,9 @@ impl CoreState {
                 }];
             }
             Action::ShareSet { set_id, with_notes } => {
-                let Some(set) = model.sets().get(&set_id) else {
+                // A search's hits lack the other pieces' numbers and titles; Search covers the
+                // set, so this is only the moment before the whole library's rows return.
+                let Some(set) = model.sets().get(&set_id).filter(|_| !model.rows_filtered()) else {
                     return Vec::new();
                 };
                 let rows = model.search_rows();
@@ -794,7 +802,7 @@ impl CoreState {
         // shared set waiting for the library is not shown, so Back leaves it.
         let shown = match &self.pending_import {
             Some(ImportFile::Backup(_)) => true,
-            Some(ImportFile::Set(_)) => snapshot::shows_library(&self.model),
+            Some(ImportFile::Set(_)) => snapshot::shared_set_shown(&self.model),
             None => false,
         };
         if shown {

@@ -914,10 +914,16 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
                 .add_to_set_choices()
                 .into_iter()
                 .map(|choice| SetChoice {
+                    // Opened from a search result, the rows are its hits: a set's other pieces are
+                    // not missing for being outside them.
                     previews: choice
                         .preview_keys
                         .iter()
-                        .map(|key| lookup.thumbnail_for(key, !library_keys.contains(key.as_str())))
+                        .map(|key| {
+                            let missing =
+                                !model.rows_filtered() && !library_keys.contains(key.as_str());
+                            lookup.thumbnail_for(key, missing)
+                        })
                         .collect(),
                     id: choice.id,
                     name: choice.name,
@@ -940,7 +946,8 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
     }
 }
 
-/// The confirmation for a read import file. A shared set waits until the library is up.
+/// The confirmation for a read import file. A shared set waits until the library is up with its
+/// whole rows ([`shared_set_shown`]).
 fn import_confirmation(model: &UiModel, file: &ImportFile) -> Option<ImportConfirmation> {
     match file {
         ImportFile::Backup(backup) => Some(ImportConfirmation {
@@ -949,7 +956,7 @@ fn import_confirmation(model: &UiModel, file: &ImportFile) -> Option<ImportConfi
             shared: None,
         }),
         ImportFile::Set(shared) => {
-            if !shows_library(model) {
+            if !shared_set_shown(model) {
                 return None;
             }
             let matched = crate::share::match_pieces(shared, model.search_rows());
@@ -975,9 +982,10 @@ fn import_confirmation(model: &UiModel, file: &ImportFile) -> Option<ImportConfi
     }
 }
 
-/// The screen is past Loading and Setup.
-pub(super) fn shows_library(model: &UiModel) -> bool {
-    !matches!(screen(model), Screen::Loading | Screen::Setup { .. })
+/// A shared set's review can show: the screen is past Loading and Setup (D12), and the rows are
+/// the whole library rather than a search's hits, which it is matched against.
+pub(super) fn shared_set_shown(model: &UiModel) -> bool {
+    !matches!(screen(model), Screen::Loading | Screen::Setup { .. }) && !model.rows_filtered()
 }
 
 /// The storage state decides the setup screens, as in 0.3.0; the controller decides the

@@ -121,6 +121,8 @@ pub struct UiModel {
     /// UI reads the root from here instead.
     ready_root: Option<LibraryRoot>,
     search_rows: Vec<SearchRow>,
+    /// The rows are a search's hits, not the whole library: the worker's query is not blank.
+    rows_filtered: bool,
     indexed_count: usize,
     latest_rescan: Option<RescanSummary>,
     metadata_editor: Option<EditableMetadata>,
@@ -168,6 +170,7 @@ impl UiModel {
             storage,
             ready_root: None,
             search_rows: Vec::new(),
+            rows_filtered: false,
             indexed_count: 0,
             latest_rescan: None,
             metadata_editor: None,
@@ -309,6 +312,14 @@ impl UiModel {
         &self.search_rows
     }
 
+    /// Whether [`UiModel::search_rows`] hold a search's hits instead of the whole library. This
+    /// follows the worker's replies, so it stays true after Search closes until the whole
+    /// library's rows come back.
+    #[must_use]
+    pub fn rows_filtered(&self) -> bool {
+        self.rows_filtered
+    }
+
     /// Loads the recent list from, and later saves it to, `path`.
     pub fn set_recent_path(&mut self, path: PathBuf) {
         self.recent = RecentScores::load(&path);
@@ -441,6 +452,7 @@ impl UiModel {
     }
 
     /// Adds a shared set with its pieces matched against the library now, then saves and relinks.
+    /// Call it while the rows are the whole library ([`UiModel::rows_filtered`] is false).
     /// With `keep_both` it goes beside the set with its id ([`crate::share::keep_both`]); otherwise
     /// it replaces that set. Its edited time is now, so it sorts first among the sets.
     pub fn import_shared_set(&mut self, shared: &crate::share::SharedSet, keep_both: bool) {
@@ -1160,9 +1172,10 @@ impl UiModel {
                 self.startup_presentation = StartupPresentation::Ready;
                 self.controller.complete_operation(summary);
             }
-            OperationEvent::SearchRows(rows) => {
+            OperationEvent::SearchRows { query, rows } => {
                 self.startup_presentation = StartupPresentation::Ready;
                 self.search_rows = rows;
+                self.rows_filtered = !query.trim().is_empty();
                 self.relink_saved_pieces();
             }
             OperationEvent::PickerRows { query, rows } => {

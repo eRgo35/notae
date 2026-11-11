@@ -53,8 +53,14 @@ pub enum OperationEvent {
     },
     /// Cancellation was observed before any plan updates were applied.
     Canceled,
-    /// A worker-side search completed.
-    SearchRows(Vec<SearchRow>),
+    /// A worker-side search completed. The rows of later events (`Completed`, `MetadataSaved`) are
+    /// projected with the same query until the next search.
+    SearchRows {
+        /// The query searched for; blank gives the whole library.
+        query: String,
+        /// The matching rows.
+        rows: Vec<SearchRow>,
+    },
     /// The add picker's search for `query` completed.
     PickerRows {
         /// The query the picker searched for.

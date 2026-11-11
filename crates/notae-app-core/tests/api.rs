@@ -971,6 +971,19 @@ fn set_choice_previews_match_the_set_card() {
         [Some(path.to_string_lossy().into_owned()), None]
     );
     assert_eq!(sheet.choices[0].previews, snapshot.set_cards[0].previews);
+
+    // From a search result, Ave Maria is outside the hits but still in the library.
+    harness.core.dispatch(Action::CloseAddToSet);
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Barka", &["Barka"]);
+    harness.core.dispatch(Action::AddToSet {
+        note_key: library.rows[1].note_key.clone(),
+    });
+    let sheet = harness.core.snapshot().add_to_set.expect("checklist");
+    assert_eq!(
+        sheet.choices[0].previews,
+        [Some(path.to_string_lossy().into_owned()), None]
+    );
 }
 
 /// Runs `calls` on another thread and fails, instead of hanging, if it does not return soon.
@@ -1533,7 +1546,7 @@ fn share_set_returns_the_file_and_text_and_ignores_unknown_sets() {
     );
 
     harness.core.dispatch(Action::ShareSet {
-        set_id,
+        set_id: set_id.clone(),
         with_notes: false,
     });
     let Some(Effect::ShareSet {
@@ -1548,6 +1561,16 @@ fn share_set_returns_the_file_and_text_and_ignores_unknown_sets() {
     assert!(json.contains(r#""kind":"set""#), "{json}");
     assert!(text.starts_with("Mass\n1. "), "{text}");
     assert!(text.contains("Ave Maria"), "{text}");
+
+    // A search's hits lack Ave Maria's title, so the set is not shared from them.
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Barka", &["Barka"]);
+    let shared = harness.listener.effects().len();
+    harness.core.dispatch(Action::ShareSet {
+        set_id,
+        with_notes: false,
+    });
+    assert_eq!(harness.listener.effects().len(), shared);
 }
 
 /// A shared set file: "Ave Maria" under another key but the library's path, then "Lost" (9), which no library
@@ -1668,4 +1691,49 @@ fn shared_set_replace_and_keep_both() {
     assert_eq!(saved.sets().len(), 2);
     assert_ne!(saved.sets()[0].id, saved.sets()[1].id);
     assert!(saved.sets().iter().all(|set| set.modified >= before_import));
+}
+
+#[test]
+fn shared_set_received_during_a_search_matches_the_whole_library() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = Arc::new(FakePlatform::default());
+    platform.set_entries(Ok(vec![
+        readable("Ave Maria.pdf", b"Ave Maria"),
+        readable("12 - Barka.pdf", b"Barka"),
+    ]));
+    let harness = start(dir.path(), platform);
+    let library = open_and_scan(&harness);
+    let barka = library
+        .rows
+        .iter()
+        .find(|row| row.title == "Barka")
+        .expect("Barka")
+        .note_key
+        .clone();
+    harness.core.dispatch(Action::OpenSearch);
+    search_for(&harness, "Ave", &["Ave Maria"]);
+
+    // Barka under another key and path: only its number and title can match it.
+    let other = "f".repeat(64);
+    harness.core.import_file_read(format!(
+        r#"{{"schema_version":2,"app":"notae","kind":"set","set":{{"id":"s1","name":"Mass","date":null,"notes":null,"modified":1,"last_opened_item":null,"items":[{{"id":"i1","kind":"piece","key":"{other}","path":"Old/Barka.pdf","number":"12","title":"Barka"}}]}}}}"#
+    ));
+    let review = harness.listener.wait_for("the review", |snapshot| {
+        snapshot.import_confirmation.is_some()
+    });
+    let screen = review.screen.clone();
+    let shared = review
+        .import_confirmation
+        .and_then(|confirmation| confirmation.shared)
+        .expect("a shared set review");
+    assert_eq!((shared.matched, shared.unmatched.len()), (1, 0));
+    assert_eq!(screen, Screen::Library, "the file closes Search");
+
+    harness.core.dispatch(Action::ImportConfirmed);
+    let saved = SetStore::load(&dir.path().join("sets.json"));
+    let set = saved.get("s1").expect("the imported set is saved");
+    let notae_app_core::sets::ItemKind::Piece(piece) = &set.items[0].kind else {
+        panic!("a piece");
+    };
+    assert_eq!(piece.key, barka, "matched by number and title");
 }

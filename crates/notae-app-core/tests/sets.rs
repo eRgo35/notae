@@ -434,7 +434,10 @@ fn rescan_with_new_key_at_same_path_rewrites_both_files() {
     model.set_favorites_path(favorites_path.clone());
     model.set_sets_path(sets_path.clone());
     model
-        .apply_operation_event(OperationEvent::SearchRows(vec![row('a')]))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: vec![row('a')],
+        })
         .unwrap();
     model.toggle_favorite(&"a".repeat(64)).unwrap();
     let id = model.create_set(fields("Mass")).unwrap();
@@ -462,7 +465,10 @@ fn rescan_with_new_key_at_same_path_rewrites_both_files() {
 
     // A search after another replacement re-links the same way.
     model
-        .apply_operation_event(OperationEvent::SearchRows(vec![row('c')]))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: vec![row('c')],
+        })
         .unwrap();
     assert_eq!(
         saved_keys(&favorites_path, &sets_path, &id),
@@ -486,7 +492,10 @@ fn future_version_sets_survive_favorite_changes_and_relink() {
     model.set_favorites_path(favorites_path.clone());
     model.set_sets_path(sets_path.clone());
     model
-        .apply_operation_event(OperationEvent::SearchRows(vec![kyrie_row('a')]))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: vec![kyrie_row('a')],
+        })
         .unwrap();
 
     // Starring is a change to favorites, so the corrupt favorites file may be replaced.
@@ -515,7 +524,10 @@ fn future_version_favorites_survive_set_changes_and_relink() {
     model.set_favorites_path(favorites_path.clone());
     model.set_sets_path(sets_path.clone());
     model
-        .apply_operation_event(OperationEvent::SearchRows(vec![kyrie_row('a')]))
+        .apply_operation_event(OperationEvent::SearchRows {
+            query: String::new(),
+            rows: vec![kyrie_row('a')],
+        })
         .unwrap();
 
     let id = model.create_set(fields("Mass")).unwrap();
