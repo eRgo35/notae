@@ -9,6 +9,12 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+### Added
+
+- **Privacy policy** in Settings, under About Notae, opens the published
+  [`PRIVACY.md`](PRIVACY.md) in your browser. Notae still has no network
+  access; the browser fetches the page.
+
 ## [0.7.0] - 2026-11-11
 
 Notae 0.7.0 slides instead of fading, shows each set as a stack of its scores,

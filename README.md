@@ -283,6 +283,8 @@ architecture are in the
   independently; Notae requests no microphone permission.
 - **Signed releases.** APKs are built from version tags and signed with a
   dedicated key whose fingerprint is published (see [Install](#install)).
+- **Privacy policy:** [`PRIVACY.md`](PRIVACY.md), also linked from
+  **Settings → About Notae → Privacy policy**.
 
 Found a vulnerability? Follow [`SECURITY.md`](SECURITY.md) and report it
 privately.
