@@ -7,7 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-notae-domain = { path = "../notae-domain", version = "0.7.0" }
+notae-domain = { path = "../notae-domain", version = "0.7.1" }
 rusqlite = { workspace = true }
 thiserror = { workspace = true }
 
