@@ -100,6 +100,8 @@ pub enum Screen {
     Search,
     /// The settings screen.
     Settings,
+    /// The open-source licenses, over Settings; Kotlin holds their text.
+    Licenses,
 }
 
 /// Why no library is open.
@@ -996,6 +998,7 @@ fn screen(model: &UiModel) -> Screen {
             return match model.state().screen() {
                 crate::state::Screen::Search => Screen::Search,
                 crate::state::Screen::Settings => Screen::Settings,
+                crate::state::Screen::Licenses => Screen::Licenses,
                 crate::state::Screen::Library | crate::state::Screen::Setup(_) => Screen::Library,
             };
         }

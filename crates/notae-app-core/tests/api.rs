@@ -1455,6 +1455,29 @@ fn privacy_policy_opens_the_published_policy_in_the_browser() {
 }
 
 #[test]
+fn licenses_open_over_settings_and_back_returns_to_settings() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    open_and_scan(&harness);
+
+    // Only Settings opens them.
+    harness.core.dispatch(Action::OpenLicenses);
+    assert_eq!(harness.core.snapshot().screen, Screen::Library);
+
+    harness.core.dispatch(Action::OpenSettings);
+    harness.core.dispatch(Action::OpenLicenses);
+    assert_eq!(harness.core.snapshot().screen, Screen::Licenses);
+    assert!(harness.core.back(), "closes the licenses");
+    assert_eq!(harness.core.snapshot().screen, Screen::Settings);
+
+    harness.core.dispatch(Action::OpenLicenses);
+    harness.core.dispatch(Action::CloseLicenses);
+    assert_eq!(harness.core.snapshot().screen, Screen::Settings);
+    assert!(harness.core.back(), "closes settings");
+    assert_eq!(harness.core.snapshot().screen, Screen::Library);
+}
+
+#[test]
 fn import_cancel_changes_nothing() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));

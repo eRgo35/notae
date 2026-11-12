@@ -40,6 +40,10 @@ class BackStackTest {
             listOf(Route.Library("sets"), Route.Set("0123456789abcdef"), Route.Settings),
             backStackFor(base.copy(screen = Screen.Settings, sectionKey = "set:0123456789abcdef")),
         )
+        assertEquals(
+            listOf(Route.Library("all"), Route.Settings, Route.Licenses),
+            backStackFor(base.copy(screen = Screen.Licenses, sectionKey = "all")),
+        )
         // Search and settings close before the details (NotaeCore.back, ruling R45), so they sit above them.
         assertEquals(
             listOf(Route.Library("all"), Route.Details("score"), Route.Search),

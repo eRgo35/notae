@@ -95,7 +95,7 @@ data class AboutInfo(val version: String, val build: String)
 
 /**
  * 0.3.0's `SettingsScreen`: back and "Settings", the operation banner, then a scrolling column (at most 720 dp,
- * centred) of cards: Library folder with Change, Library maintenance, About Notae ([about]) with Privacy policy, Language and Sets and
+ * centred) of cards: Library folder with Change, Library maintenance, About Notae ([about]) with Privacy policy and Open-source licenses, Language and Sets and
  * favorites with Export sets and its outcome. The language is Android's per-app language (AppCompat), not the core's.
  * The screen has the keys as soon as it shows, and again when the import confirmation closes: Escape closes it, Ctrl K
  * asks for search, as 0.3.0's root shortcuts do.
@@ -206,7 +206,10 @@ private fun AboutCard(about: AboutInfo, onAction: (Action) -> Unit, modifier: Mo
         FactRow(stringResource(R.string.settings_license), stringResource(R.string.settings_license_name))
         FactRow(stringResource(R.string.settings_repository), stringResource(R.string.settings_repository_url))
         Text(stringResource(R.string.settings_local_note), color = NotaeTheme.colors.muted, fontSize = 14.sp)
-        PillButton(stringResource(R.string.settings_privacy_policy), { onAction(Action.OpenPrivacyPolicy) }, tonal = true)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PillButton(stringResource(R.string.settings_privacy_policy), { onAction(Action.OpenPrivacyPolicy) }, tonal = true)
+            PillButton(stringResource(R.string.settings_licenses), { onAction(Action.OpenLicenses) }, tonal = true)
+        }
     }
 }
 

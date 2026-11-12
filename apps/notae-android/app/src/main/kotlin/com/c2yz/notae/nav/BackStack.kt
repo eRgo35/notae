@@ -24,6 +24,9 @@ sealed interface Route : NavKey {
     data object Search : Route
 
     data object Settings : Route
+
+    /** The open-source licenses, above Settings. */
+    data object Licenses : Route
 }
 
 private const val SET_PREFIX = "set:"
@@ -36,7 +39,7 @@ fun backStackFor(snapshot: Snapshot): List<NavKey> {
     val section = when (snapshot.screen) {
         Screen.Loading -> return listOf(Route.Loading)
         is Screen.Setup -> return listOf(Route.Setup)
-        Screen.Library, Screen.Search, Screen.Settings -> snapshot.sectionKey
+        Screen.Library, Screen.Search, Screen.Settings, Screen.Licenses -> snapshot.sectionKey
     }
     val stack = mutableListOf<NavKey>()
     if (section.startsWith(SET_PREFIX)) {
@@ -49,6 +52,7 @@ fun backStackFor(snapshot: Snapshot): List<NavKey> {
     when (snapshot.screen) {
         Screen.Search -> stack += Route.Search
         Screen.Settings -> stack += Route.Settings
+        Screen.Licenses -> stack += listOf(Route.Settings, Route.Licenses)
         else -> Unit
     }
     return stack

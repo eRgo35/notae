@@ -44,6 +44,10 @@ pub enum UiEvent {
     /// The user closed the settings screen, returning to whatever screen
     /// was below it (the library in normal flow).
     CloseSettings,
+    /// The user opened the open-source licenses from Settings.
+    OpenLicenses,
+    /// The user closed the open-source licenses, returning to Settings.
+    CloseLicenses,
     /// The user opened the search screen (search icon or Ctrl K).
     OpenSearch,
     /// The user left the search screen; the query and scope reset.
@@ -100,6 +104,8 @@ pub enum Screen {
     Library,
     /// The settings screen.
     Settings,
+    /// The open-source licenses, over Settings.
+    Licenses,
     /// The search screen over the configured library.
     Search,
 }
@@ -342,6 +348,20 @@ impl AppController {
                     return Err(EventError::SettingsUnavailable);
                 }
                 self.state.screen = Screen::Library;
+                Ok(Transition::NoOp)
+            }
+            UiEvent::OpenLicenses => {
+                if !matches!(&self.state.screen, Screen::Settings) {
+                    return Err(EventError::SettingsUnavailable);
+                }
+                self.state.screen = Screen::Licenses;
+                Ok(Transition::NoOp)
+            }
+            UiEvent::CloseLicenses => {
+                if !matches!(&self.state.screen, Screen::Licenses) {
+                    return Err(EventError::SettingsUnavailable);
+                }
+                self.state.screen = Screen::Settings;
                 Ok(Transition::NoOp)
             }
             UiEvent::OpenSearch => {

@@ -689,6 +689,8 @@ impl CoreState {
                 self.import_status = None;
             }
             Action::CloseSettings => report(model.dispatch(UiEvent::CloseSettings)),
+            Action::OpenLicenses => report(model.dispatch(UiEvent::OpenLicenses)),
+            Action::CloseLicenses => report(model.dispatch(UiEvent::CloseLicenses)),
             Action::ExportSets => {
                 self.export = None;
                 let (suggested_name, json) = model.export_sets(crate::ui::unix_now());
@@ -869,9 +871,12 @@ impl CoreState {
             model.close_metadata_editor();
         } else if model.add_picker_open() {
             model.add_picker_closed();
-        // Search and Settings are drawn over the details, so they close before them (ruling R45).
+        // Search and Settings (with the licenses over it) are drawn over the details, so they close
+        // before them (ruling R45).
         } else if matches!(model.state().screen(), crate::state::Screen::Search) {
             self.close_search(None);
+        } else if matches!(model.state().screen(), crate::state::Screen::Licenses) {
+            report(model.dispatch(UiEvent::CloseLicenses));
         } else if matches!(model.state().screen(), crate::state::Screen::Settings) {
             report(model.dispatch(UiEvent::CloseSettings));
         } else if model.selected_row().is_some() {

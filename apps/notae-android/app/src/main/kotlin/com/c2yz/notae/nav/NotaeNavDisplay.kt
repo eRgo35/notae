@@ -66,6 +66,7 @@ import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.search.SearchScreen
 import com.c2yz.notae.ui.settings.AboutInfo
 import com.c2yz.notae.ui.settings.ImportConfirmationDialog
+import com.c2yz.notae.ui.settings.LicensesScreen
 import com.c2yz.notae.ui.sets.SetOverlays
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.settings.SettingsScreen
@@ -327,6 +328,10 @@ private fun entryFor(key: NavKey, shown: State<Shown>, motion: ScreenMotion): Na
     Route.Settings -> NavEntry(key) {
         val (snapshot, onAction) = shownFor(key, shown)
         ScreenFrame(motion) { SettingsScreen(snapshot, onAction, ABOUT) }
+    }
+    Route.Licenses -> NavEntry(key) {
+        val (_, onAction) = shownFor(key, shown)
+        ScreenFrame(motion) { LicensesScreen(onAction) }
     }
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)

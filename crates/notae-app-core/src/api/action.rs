@@ -119,6 +119,10 @@ pub enum Action {
     /// "Export sets": hands Kotlin the file to save
     /// ([`Effect::WriteExport`](super::Effect::WriteExport)).
     ExportSets,
+    /// "Open-source licenses" in Settings.
+    OpenLicenses,
+    /// The licenses screen's back arrow: returns to Settings.
+    CloseLicenses,
     /// "Privacy policy" in Settings: asks Kotlin to open the policy in the browser
     /// ([`Effect::OpenUrl`](super::Effect::OpenUrl) with [`PRIVACY_POLICY_URL`](super::PRIVACY_POLICY_URL)).
     OpenPrivacyPolicy,
