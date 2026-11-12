@@ -28,6 +28,12 @@ pub enum Effect {
     /// Launch the speech recognizer; the phrase comes back as
     /// [`Action::SearchChanged`](super::Action::SearchChanged).
     StartVoiceSearch,
+    /// Open a web page in the browser, which fetches it: Notae itself has no network access.
+    /// Nothing is reported back.
+    OpenUrl {
+        /// The page's address.
+        url: String,
+    },
     /// Offer the save-file picker for an export; report the outcome with
     /// [`NotaeCore::file_written`](super::NotaeCore::file_written).
     WriteExport {

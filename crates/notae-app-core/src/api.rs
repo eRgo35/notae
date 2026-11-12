@@ -75,6 +75,9 @@ const ROOT_FILE: &str = "library-root.json";
 /// The file that keeps a shared set waiting for the confirmation.
 const PENDING_SET_FILE: &str = "pending-set.json";
 
+/// Where the privacy policy (`PRIVACY.md`) is published, for Settings' "Privacy policy".
+pub const PRIVACY_POLICY_URL: &str = "https://github.com/eRgo35/notae/blob/main/PRIVACY.md";
+
 /// What the core tells Kotlin. Both methods may be called on any thread.
 #[uniffi::export(with_foreign)]
 pub trait CoreListener: Send + Sync {
@@ -705,6 +708,11 @@ impl CoreState {
                     file_name: crate::share::share_file_name(&set.name),
                     json: crate::share::share_json(set, rows, with_notes),
                     text: crate::share::share_text(set, rows, with_notes),
+                }];
+            }
+            Action::OpenPrivacyPolicy => {
+                return vec![Effect::OpenUrl {
+                    url: PRIVACY_POLICY_URL.to_owned(),
                 }];
             }
             Action::ImportRequested => {

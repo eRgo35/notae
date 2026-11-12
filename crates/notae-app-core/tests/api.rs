@@ -1437,6 +1437,24 @@ fn export_then_change(harness: &Harness, library: &Snapshot) -> String {
 }
 
 #[test]
+fn privacy_policy_opens_the_published_policy_in_the_browser() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    open_and_scan(&harness);
+
+    harness.core.dispatch(Action::OpenSettings);
+    harness.core.dispatch(Action::OpenPrivacyPolicy);
+
+    assert_eq!(
+        harness.listener.effects().last(),
+        Some(&Effect::OpenUrl {
+            url: "https://github.com/eRgo35/notae/blob/main/PRIVACY.md".to_owned(),
+        })
+    );
+    assert!(matches!(harness.core.snapshot().screen, Screen::Settings));
+}
+
+#[test]
 fn import_cancel_changes_nothing() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));

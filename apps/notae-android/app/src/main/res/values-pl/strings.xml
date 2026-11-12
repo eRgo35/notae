@@ -183,6 +183,8 @@
     <string name="settings_license">Licencja</string>
     <string name="settings_repository">Repozytorium</string>
     <string name="settings_local_note">Twoja biblioteka zostaje na tym urządzeniu. Notae nie wysyła danych przez sieć.</string>
+    <string name="settings_privacy_policy">Polityka prywatności</string>
+    <string name="settings_no_browser">Żadna aplikacja nie może otworzyć linku</string>
     <string name="settings_language">Język</string>
     <string name="settings_language_system">Język systemu</string>
     <string name="settings_sets">Zestawy i ulubione</string>

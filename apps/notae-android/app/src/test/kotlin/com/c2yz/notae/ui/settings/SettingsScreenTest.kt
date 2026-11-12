@@ -178,6 +178,15 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun privacy_policy_dispatches_its_action() {
+        show(settings())
+
+        compose.onNodeWithText("Privacy policy").performScrollTo().performClick()
+
+        assertEquals(listOf<Action>(Action.OpenPrivacyPolicy), actions)
+    }
+
+    @Test
     fun ctrl_k_and_escape_work_without_a_click() {
         show(settings())
 
