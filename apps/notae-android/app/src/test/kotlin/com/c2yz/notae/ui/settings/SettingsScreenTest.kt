@@ -178,6 +178,24 @@ class SettingsScreenTest {
     }
 
     @Test
+    fun privacy_policy_dispatches_its_action() {
+        show(settings())
+
+        compose.onNodeWithText("Privacy policy").performScrollTo().performClick()
+
+        assertEquals(listOf<Action>(Action.OpenPrivacyPolicy), actions)
+    }
+
+    @Test
+    fun open_source_licenses_dispatches_its_action() {
+        show(settings())
+
+        compose.onNodeWithText("Open-source licenses").performScrollTo().performClick()
+
+        assertEquals(listOf<Action>(Action.OpenLicenses), actions)
+    }
+
+    @Test
     fun ctrl_k_and_escape_work_without_a_click() {
         show(settings())
 

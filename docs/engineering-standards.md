@@ -8,10 +8,10 @@ Use Rust 1.98.1 from `rust-toolchain.toml`, including `rustfmt` and `clippy`. Th
 
 ```sh
 scripts/check.sh        # fast: the first four gates below
-scripts/check.sh full   # all eight, including the Gradle gates of the Android app
+scripts/check.sh full   # all nine, including the Gradle gates of the Android app
 ```
 
-`full` first checks that `cargo-deny`, `cargo-llvm-cov`, `cargo-ndk` and the Android SDK are installed and names the install command for anything missing. Run `fast` while working and `full` before merging. The gates, in order:
+`full` first checks that `cargo-deny`, `cargo-llvm-cov`, `cargo-ndk`, `cargo-about` and the Android SDK are installed and names the install command for anything missing. Run `fast` while working and `full` before merging. The gates, in order:
 
 ```sh
 cargo fmt --check
@@ -21,14 +21,26 @@ cargo test --workspace
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo deny check
 cargo llvm-cov --workspace --summary-only --fail-under-lines 84
+licenses  # the third-party license notices are current (below)
 apps/notae-android/gradlew -p apps/notae-android lint testDebugUnitTest verifyRoborazziDebug assembleRelease
 ```
 
 An opt-in pre-push hook runs `fast`: enable it per clone with `git config core.hooksPath scripts/hooks` and skip it once with `git push --no-verify`. No hook is mandatory.
 
-Install the pinned tools with `cargo install --locked --version 0.20.2 cargo-deny`, `cargo install --locked --version 0.9.1 cargo-llvm-cov` and `cargo install --locked --version 4.1.2 cargo-ndk`. `cargo deny` reports existing transitive duplicate versions as warnings and ignores only the unmaintained-crate advisories with no safe upgrade, each with its reason; see `deny.toml`.
+Install the pinned tools with `cargo install --locked --version 0.20.2 cargo-deny`, `cargo install --locked --version 0.9.1 cargo-llvm-cov`, `cargo install --locked --version 4.1.2 cargo-ndk` and `cargo install --locked --version 0.9.3 --features cli cargo-about`. `cargo deny` reports existing transitive duplicate versions as warnings and ignores only the unmaintained-crate advisories with no safe upgrade, each with its reason; see `deny.toml`.
 
 The measured workspace line-coverage baseline was 85.48% (89.72% in 0.5.0); the enforced floor is 84%. Test targets may use `unwrap`/`expect` for fixtures and assertions. Workspace libraries and binaries are checked separately with both Clippy lints denied; narrowly justified lock/invariant checks are documented at their callsites.
+
+## Third-party license notices
+
+Settings → About Notae → Open-source licenses shows `apps/notae-android/app/src/main/assets/third_party_licenses.txt`: Notae's MIT license, the license texts of the Rust crates in the Android library with each crate's repository (the source of the MPL-2.0 UniFFI crates), SQLite's public-domain notice, and the Android libraries under Apache-2.0 with its text. cargo-about writes the Rust part from `Cargo.lock` for `aarch64-linux-android` without default features, as the Gradle build compiles it, leaving out build and dev dependencies and Notae's own crates (`publish = false`); it cannot leave out proc-macro crates, so those are listed too. The accepted licenses in `about.toml` are those of `deny.toml`. The rest of the file is kept by hand in the template `about.hbs`: add a runtime Android library there when it is added to `app/build.gradle.kts`. After a dependency change, regenerate the file from the repository root:
+
+```sh
+cargo about generate -c about.toml -m crates/notae-app-core/Cargo.toml --no-default-features \
+  --locked --offline --fail about.hbs -o apps/notae-android/app/src/main/assets/third_party_licenses.txt
+```
+
+The `licenses` gate of `scripts/check.sh full` and CI's Rust job run the same command into a temporary file (after `cargo fetch --locked`, so `--offline` finds every crate) and fail when it differs from the committed file.
 
 ## Android gates
 
@@ -45,8 +57,8 @@ CI also checks that the release APK is 16 KB-aligned (`zipalign -c -P 16` and ev
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `ci.yml` | push to `main`, pull requests, manual, and called by `release.yml`; push and PR runs skip changes to only Markdown or `docs/` | Two jobs with `contents: read`. **Rust gates**: the first seven gates above. **Gradle gates**: the Gradle command above, then the 16 KB check; it uploads the Roborazzi diffs when a gate fails. Superseded branch/PR runs are cancelled; `main` runs are not. The Rust job frees preinstalled runner directories and sets `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=0`; the Cargo registry and git sources are cached (keyed on `Cargo.lock`), `target/` is not. |
-| `release.yml` | push of a `v*` tag | Checks the tag (`vX.Y.Z`, equal to the workspace version, on `main`, with release notes) and the signing secrets, runs `ci.yml` on the tag, builds the signed APK and AAB, verifies them against the pinned certificate and publishes the GitHub Release with the APK. See [`android-release.md`](android-release.md). |
+| `ci.yml` | push to `main`, pull requests, manual, and called by `release.yml`; push and PR runs skip changes to only Markdown or `docs/` | Two jobs with `contents: read`. **Rust gates**: the first eight gates above. **Gradle gates**: the Gradle command above, then the 16 KB check; it uploads the Roborazzi diffs when a gate fails. Superseded branch/PR runs are cancelled; `main` runs are not. The Rust job frees preinstalled runner directories and sets `CARGO_INCREMENTAL=0` and `CARGO_PROFILE_DEV_DEBUG=0`; the Cargo registry and git sources are cached (keyed on `Cargo.lock`), `target/` is not. |
+| `release.yml` | push of a `v*` tag | Checks the tag (`vX.Y.Z`, equal to the workspace version, on `main`, with release notes) and the signing secrets, runs `ci.yml` on the tag, builds the AAB signed with the upload key, checks it against the pinned upload certificate, keeps it as a workflow artifact and creates a draft GitHub Release without an APK; `scripts/attach-play-apk.sh` later attaches the APK Google Play signed and publishes the draft. See [`android-release.md`](android-release.md). |
 | `audit.yml` | weekly, manual | `cargo deny check advisories` so new RustSec entries surface without code changes; never blocks a release. |
 | `dependabot.yml` | weekly | Grouped Cargo and GitHub Actions update PRs, merged by hand. |
 

@@ -4,6 +4,7 @@ description = "UI-toolkit-free app logic for Notae: state machine, stores, brows
 edition.workspace = true
 version.workspace = true
 license.workspace = true
+publish.workspace = true
 
 # `lib` for the Rust tests, `cdylib` for the Kotlin app, which loads it through
 # UniFFI's generated bindings.
@@ -22,8 +23,8 @@ default = ["bindgen-cli"]
 bindgen-cli = ["uniffi/cli"]
 
 [dependencies]
-notae-domain = { path = "../notae-domain", version = "0.7.0" }
-notae-index = { path = "../notae-index", version = "0.7.0" }
+notae-domain = { path = "../notae-domain", version = "0.7.1" }
+notae-index = { path = "../notae-index", version = "0.7.1" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.11"

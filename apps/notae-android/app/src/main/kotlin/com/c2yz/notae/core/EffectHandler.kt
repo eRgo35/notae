@@ -15,6 +15,7 @@ import com.c2yz.notae.platform.ImportFilePicker
 import com.c2yz.notae.platform.PdfOpener
 import com.c2yz.notae.platform.SetSharer
 import com.c2yz.notae.platform.VoiceSearch
+import com.c2yz.notae.platform.openUrl
 import com.c2yz.notae.platform.pdfOpenFailure
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +25,7 @@ import java.io.FileNotFoundException
 
 /**
  * Carries out the core's [Effect]s for [activity] and reports each outcome back through [model].
- * Pickers, the viewer and the share sheet start on the main thread; file and folder walks run on [Dispatchers.IO].
+ * Pickers, the viewer, the browser and the share sheet start on the main thread; file and folder walks run on [Dispatchers.IO].
  * Create it in `onCreate`: its activity-result launchers must be registered before the activity
  * is started. It handles effects while the activity is started; the rest wait in the view model.
  */
@@ -76,6 +77,7 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
                 model.pendingExport = effect.json
                 exportFile.launch(effect.suggestedName)
             }
+            is Effect.OpenUrl -> openUrl(activity, effect.url)
             Effect.PickImportFile -> importPicker.launch()
             is Effect.ShareSet -> shareSet(effect.fileName, effect.json, effect.text)
         }

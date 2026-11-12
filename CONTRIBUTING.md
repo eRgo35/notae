@@ -37,6 +37,7 @@ Notae is an Android app; the host tests and the Android build run on Linux, whic
    cargo install --locked --version 0.20.2 cargo-deny
    cargo install --locked --version 0.9.1 cargo-llvm-cov
    cargo install --locked --version 4.1.2 cargo-ndk
+   cargo install --locked --version 0.9.3 --features cli cargo-about
    ```
 
 3. For the Android app, install a JDK (21 or newer), the Android SDK
@@ -74,13 +75,13 @@ directory, and stops at the first failure:
 
 ```sh
 scripts/check.sh        # fast: fmt, both Clippy passes, tests
-scripts/check.sh full   # fast plus rustdoc, cargo deny, coverage
-                        # and the Gradle gates (lint, unit and
+scripts/check.sh full   # fast plus rustdoc, cargo deny, coverage,
+                        # the license notices and the Gradle gates (lint, unit and
                         # screenshot tests, Roborazzi verify, release build)
 ```
 
 Run `fast` while working and `full` before merging. `full` checks first that
-`cargo-deny`, `cargo-llvm-cov`, `cargo-ndk` and the Android SDK are installed.
+`cargo-deny`, `cargo-llvm-cov`, `cargo-ndk`, `cargo-about` and the Android SDK are installed.
 GitHub CI runs all of these gates and a 16 KB page-alignment check of the
 release APK, and skips changes that touch only Markdown or
 `docs/`.

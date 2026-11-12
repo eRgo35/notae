@@ -182,6 +182,10 @@
     <string name="settings_repository">Repository</string>
     <string name="settings_repository_url" translatable="false">https://github.com/eRgo35/notae</string>
     <string name="settings_local_note">Your library stays on this device. Notae does not send data over the network.</string>
+    <string name="settings_privacy_policy">Privacy policy</string>
+    <string name="settings_no_browser">No app can open the link</string>
+    <string name="settings_licenses">Open-source licenses</string>
+    <string name="licenses_back">Back to settings</string>
     <string name="settings_language">Language</string>
     <string name="settings_language_system">System default</string>
     <!-- Language names stay in their own language so anyone can find theirs. -->

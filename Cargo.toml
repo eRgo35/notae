@@ -11,8 +11,9 @@ members = [
 
 [workspace.package]
 edition = "2024"
-version = "0.7.0"
+version = "0.7.1"
 license = "MIT"
+publish = false
 
 [workspace.dependencies]
 rusqlite = { version = "0.41", features = ["bundled"] }
