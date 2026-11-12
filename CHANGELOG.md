@@ -15,6 +15,11 @@ The hand-written release notes for each version live in
   ([`PRIVACY.md`](PRIVACY.md), published at <https://notae.c2yz.com/privacy/>)
   in your browser. Notae still has no network access; the browser fetches the
   page.
+- **Open-source licenses** in Settings, under About Notae, shows Notae's
+  license and the licenses of the Rust crates and Android libraries it
+  includes, with where to get the source of the MPL-2.0 crates. The notices
+  are generated with cargo-about and checked against `Cargo.lock` by
+  `scripts/check.sh full` and CI.
 
 ## [0.7.0] - 2026-11-11
 
