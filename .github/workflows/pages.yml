@@ -1,0 +1,49 @@
+# Publishes the project site (https://notae.c2yz.com): README.md as the home page and PRIVACY.md at /privacy/.
+# Only those two files and the README's images are published; links to other repository files point at GitHub.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: [README.md, PRIVACY.md, docs/images/**, .github/workflows/pages.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Assemble the site
+        run: |
+          mkdir -p site/privacy site/docs
+          cp -r docs/images site/docs/images
+          # Relative links (CHANGELOG.md, docs/...) would 404 on the site: point them at the repository.
+          link='s#\]\((?!https?:|\#|mailto:)([^)]+)\)#](https://github.com/eRgo35/notae/blob/main/$1)#g'
+          perl -pe "$link" README.md > site/index.md
+          perl -pe "$link" PRIVACY.md > site/privacy/index.md
+          printf 'title: Notae\n' > site/_config.yml
+      - uses: actions/configure-pages@v5
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./site
+          destination: ./_site
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
