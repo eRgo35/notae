@@ -5,7 +5,7 @@
 **Browse and search your sheet-music PDFs on an Android phone or tablet. No
 cloud, no account, no network access.**
 
-<sub>Version 0.7.0 · Android phone and tablet (arm64) · one maintainer ·
+<sub>Version 0.7.1 · Android phone and tablet (arm64) · one maintainer ·
 <a href="ROADMAP.md">roadmap</a></sub>
 
 [![CI](https://github.com/eRgo35/notae/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eRgo35/notae/actions/workflows/ci.yml)
@@ -129,19 +129,29 @@ Notae never syncs or uploads anything. There is no on-device OCR yet;
 > [changelog](CHANGELOG.md)). Please report anything odd.
 
 Notae ships one Android artifact: a signed **arm64** APK for Android phones
-and tablets with Android 8.0 (API 26) or newer, attached to each GitHub Release. The
-release workflow builds, signs and verifies it from the release tag.
+and tablets with Android 8.0 (API 26) or newer, attached to each GitHub Release.
+Notae is also coming to Google Play. Since 0.7.1 the GitHub APK is the one
+Google Play signs, so both are the same app and update each other.
+
+> [!IMPORTANT]
+> 0.7.1 changed the signing key. Installed 0.7.0 or earlier from GitHub?
+> Android will not update it with 0.7.1, so once: use **Export sets** in
+> Settings, uninstall Notae, install 0.7.1, then tap **Import from a previous
+> Notae** on the first screen and pick the exported file. Uninstalling deletes
+> the folder access, the index and details you edited in the app, never your
+> PDFs (see [`docs/android-release.md`](docs/android-release.md)).
 
 1. Download `notae-<version>-arm64.apk` and its `.sha256` from the
    [latest release](https://github.com/eRgo35/notae/releases/latest).
 2. Verify it. The checksum only catches a corrupted download; the signature
-   check is what proves the APK came from the Notae release key.
+   check is what proves the APK is signed with Notae's Google Play app signing
+   key.
 
    ```sh
-   V=0.7.0
+   V=0.7.1
    sha256sum -c "notae-$V-arm64.apk.sha256"
    apksigner verify --print-certs "notae-$V-arm64.apk" \
-     | grep -i 'SHA-256 digest: be27cd781766c5c28a9db106c07b051ceee4e0003105964595e2a848f371f601'
+     | grep -i 'SHA-256 digest: c9297028914232bdda2bcb41bfac9f34071c08664fbebd1c571b9b39bd66d3e8'
    ```
 
    `apksigner` ships with the Android SDK build tools. The `grep` must print
@@ -151,7 +161,7 @@ release workflow builds, signs and verifies it from the release tag.
    `.github/workflows/release.yml`:
 
    ```text
-   BE:27:CD:78:17:66:C5:C2:8A:9D:B1:06:C0:7B:05:1C:EE:E4:E0:00:31:05:96:45:95:E2:A8:48:F3:71:F6:01
+   C9:29:70:28:91:42:32:BD:DA:2B:CB:41:BF:AC:9F:34:07:1C:08:66:4F:BE:BD:1C:57:1B:9B:39:BD:66:D3:E8
    ```
 
 3. Copy the APK to the tablet and open it (allow installs from your file
@@ -162,7 +172,8 @@ release workflow builds, signs and verifies it from the release tag.
 > Installed a self-built (debug) APK before? **Uninstall it first.** Android
 > will not update an app signed with a different key, and uninstalling deletes
 > Notae's local data (folder access, index, metadata edits) but never your
-> PDFs. Releases all use one key, so later upgrades work in place.
+> PDFs. Releases from 0.7.1 on all use one key, so later upgrades work in
+> place.
 
 ## Quick start
 

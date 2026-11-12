@@ -5,12 +5,13 @@ Notae has one maintainer. Work is tracked in
 [milestones](https://github.com/eRgo35/notae/milestones); this page is the
 short version.
 
-## Released: 0.7.0
+## Released: 0.7.1
 
 0.5.0 replaced the Rust UI with a Jetpack Compose app over a UniFFI Rust core
 (application id `com.c2yz.notae`, Android only). 0.6.0 added phone layouts,
 0.6.1 added motion, and 0.7.0 slides between screens, shows sets as a stack of
-score previews, adds score notes and set notes, and shares a set. See
+score previews, adds score notes and set notes, and shares a set. 0.7.1 adds the
+privacy policy and the open-source licenses and prepares Notae for Google Play. See
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Next: 0.8.0

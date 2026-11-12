@@ -9,6 +9,12 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-12
+
+Notae 0.7.1 links the privacy policy, lists the open-source licenses and
+prepares Notae for Google Play, which changes the signing key. See
+[`docs/release-notes/v0.7.1.md`](docs/release-notes/v0.7.1.md).
+
 ### Added
 
 - **Privacy policy** in Settings, under About Notae, opens the privacy policy
@@ -20,6 +26,21 @@ The hand-written release notes for each version live in
   includes, with where to get the source of the MPL-2.0 crates. The notices
   are generated with cargo-about and checked against `Cargo.lock` by
   `scripts/check.sh full` and CI.
+
+### Changed
+
+- **New signing key.** Notae uses Google Play App Signing: from 0.7.1 the APK
+  on the GitHub Release is the universal APK Google Play signs with its app
+  signing key (certificate SHA-256
+  `C9:29:70:28:91:42:32:BD:DA:2B:CB:41:BF:AC:9F:34:07:1C:08:66:4F:BE:BD:1C:57:1B:9B:39:BD:66:D3:E8`),
+  so GitHub and Play installs are the same app. The key that signed the
+  GitHub APKs up to 0.7.0 is now the upload key. A GitHub install of 0.7.0 or
+  earlier does not update in place: use **Export sets**, uninstall, install
+  0.7.1 and import the file with **Import from a previous Notae**.
+- The release workflow builds only the AAB, checks it against the upload
+  certificate and creates a draft GitHub Release; `scripts/attach-play-apk.sh`
+  verifies the APK downloaded from Play Console, attaches it and publishes the
+  release ([`docs/android-release.md`](docs/android-release.md)).
 
 ## [0.7.0] - 2026-11-11
 
@@ -471,7 +492,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/eRgo35/notae/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/eRgo35/notae/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/eRgo35/notae/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/eRgo35/notae/compare/v0.5.0...v0.6.0
