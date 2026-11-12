@@ -2,7 +2,7 @@
 
 Effective date: 12 November 2026
 
-This is the privacy policy of Notae, a score library app for Android developed by Michał Czyż as an open-source project (https://github.com/eRgo35/notae).
+This is the privacy policy of Notae, a score library app for Android developed by Michał Czyż as an open-source project (<https://github.com/eRgo35/notae>).
 
 ## Summary
 
@@ -67,4 +67,4 @@ Changes to this policy are published in this file with a new effective date. The
 
 ## Contact
 
-Questions about this policy: email mike@c2yz.com, or open an issue at https://github.com/eRgo35/notae/issues (issues are public).
+Questions about this policy: email <mike@c2yz.com>, or open an issue at <https://github.com/eRgo35/notae/issues> (issues are public).
