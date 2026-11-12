@@ -76,7 +76,7 @@ const ROOT_FILE: &str = "library-root.json";
 const PENDING_SET_FILE: &str = "pending-set.json";
 
 /// Where the privacy policy (`PRIVACY.md`) is published, for Settings' "Privacy policy".
-pub const PRIVACY_POLICY_URL: &str = "https://github.com/eRgo35/notae/blob/main/PRIVACY.md";
+pub const PRIVACY_POLICY_URL: &str = "https://notae.c2yz.com/privacy/";
 
 /// What the core tells Kotlin. Both methods may be called on any thread.
 #[uniffi::export(with_foreign)]

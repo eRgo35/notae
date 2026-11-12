@@ -1448,7 +1448,7 @@ fn privacy_policy_opens_the_published_policy_in_the_browser() {
     assert_eq!(
         harness.listener.effects().last(),
         Some(&Effect::OpenUrl {
-            url: "https://github.com/eRgo35/notae/blob/main/PRIVACY.md".to_owned(),
+            url: "https://notae.c2yz.com/privacy/".to_owned(),
         })
     );
     assert!(matches!(harness.core.snapshot().screen, Screen::Settings));

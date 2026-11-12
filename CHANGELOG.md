@@ -11,9 +11,10 @@ The hand-written release notes for each version live in
 
 ### Added
 
-- **Privacy policy** in Settings, under About Notae, opens the published
-  [`PRIVACY.md`](PRIVACY.md) in your browser. Notae still has no network
-  access; the browser fetches the page.
+- **Privacy policy** in Settings, under About Notae, opens the privacy policy
+  ([`PRIVACY.md`](PRIVACY.md), published at <https://notae.c2yz.com/privacy/>)
+  in your browser. Notae still has no network access; the browser fetches the
+  page.
 
 ## [0.7.0] - 2026-11-11
 

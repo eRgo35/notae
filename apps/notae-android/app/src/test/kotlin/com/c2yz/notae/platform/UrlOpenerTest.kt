@@ -14,7 +14,7 @@ import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
 class UrlOpenerTest {
-    private val url = "https://github.com/eRgo35/notae/blob/main/PRIVACY.md"
+    private val url = "https://notae.c2yz.com/privacy/"
 
     @Test
     fun url_opens_with_action_view() {
