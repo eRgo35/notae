@@ -47,10 +47,11 @@ jobs:
             ~/.cargo/registry/cache
             ~/.cargo/git/db
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-      - name: Install cargo-deny and cargo-llvm-cov
+      - name: Install cargo-deny, cargo-llvm-cov and cargo-about
         run: |
           cargo install --locked --version 0.20.2 cargo-deny
           cargo install --locked --version 0.9.1 cargo-llvm-cov
+          cargo install --locked --version 0.9.3 --features cli cargo-about
       - name: Check formatting
         run: cargo fmt --check
       - name: Lint all targets
@@ -65,6 +66,12 @@ jobs:
         run: cargo deny check
       - name: Enforce the coverage floor
         run: cargo llvm-cov --workspace --summary-only --fail-under-lines 84
+      - name: Check the third-party license notices are current
+        run: |
+          cargo fetch --locked
+          cargo about generate -c about.toml -m crates/notae-app-core/Cargo.toml --no-default-features \
+            --locked --offline --fail about.hbs -o "$RUNNER_TEMP/third_party_licenses.txt"
+          diff -u apps/notae-android/app/src/main/assets/third_party_licenses.txt "$RUNNER_TEMP/third_party_licenses.txt"
 
   gradle:
     name: Gradle gates

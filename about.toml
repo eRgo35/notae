@@ -1,0 +1,20 @@
+# cargo-about: the license notices of the Rust crates in the Android library, written to
+# apps/notae-android/app/src/main/assets/third_party_licenses.txt with about.hbs (see
+# docs/engineering-standards.md). The accepted licenses are deny.toml's, MIT first so a crate
+# that offers a choice is listed under MIT.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+# The Android library's target. Build and dev dependencies are left out; cargo-about cannot leave
+# out proc-macro crates and what only they use, so those are listed too.
+targets = ["aarch64-linux-android"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+# Notae's own crates (`publish = false`): its license heads the file.
+private = { ignore = true }
