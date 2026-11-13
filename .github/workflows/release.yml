@@ -1,13 +1,12 @@
 name: Release
 
-# Cuts an Android release from a pushed `vX.Y.Z` tag (docs/android-release.md). It checks the tag
-# and that CI already passed on the tagged commit (it does not run the gates again), builds the
-# release AAB signed with the repository's upload key, checks the AAB against the pinned upload
-# certificate, keeps it as the workflow artifact `notae-vX.Y.Z` and creates a draft GitHub Release
-# with the notes in docs/release-notes/vX.Y.Z.md and no APK. The maintainer uploads the AAB to
-# Google Play, downloads the universal APK Play signs with the app signing key and attaches it with
-# scripts/attach-play-apk.sh, which publishes the draft. Without the signing secrets it fails; it
-# never falls back to the debug key.
+# Cuts a signed Android release from a pushed `vX.Y.Z` tag (docs/android-release.md). It checks
+# the tag and that CI already passed on the tagged commit (it does not run the gates again), builds
+# the release APK and AAB signed with the repository's release key, verifies both against the
+# pinned certificate and attaches the APK to the GitHub Release with the notes in
+# docs/release-notes/vX.Y.Z.md. The AAB is kept as the workflow artifact `notae-vX.Y.Z` for Google
+# Play, where the same key is the upload key and Play re-signs installs with its own app signing
+# key. Without the signing secrets it fails; it never falls back to the debug key.
 on:
   push:
     tags: ['v*']
@@ -21,14 +20,10 @@ concurrency:
 
 env:
   TAG: ${{ github.ref_name }}
-  # Public SHA-256 fingerprint of the upload key's certificate (not a secret): the key in the
-  # NOTAE_* secrets, which signs the AAB uploaded to Google Play. Changing the upload key means
-  # changing this value in a reviewed commit.
-  NOTAE_UPLOAD_CERT_SHA256: BE:27:CD:78:17:66:C5:C2:8A:9D:B1:06:C0:7B:05:1C:EE:E4:E0:00:31:05:96:45:95:E2:A8:48:F3:71:F6:01
-  # Public SHA-256 fingerprint of Google Play's app signing certificate (not a secret): the key
-  # Play signs installed apps with, so the APK attached to the GitHub Release too. Not used by this
-  # workflow; scripts/attach-play-apk.sh reads it from here to verify that APK.
-  NOTAE_APP_SIGNING_CERT_SHA256: C9:29:70:28:91:42:32:BD:DA:2B:CB:41:BF:AC:9F:34:07:1C:08:66:4F:BE:BD:1C:57:1B:9B:39:BD:66:D3:E8
+  # Public SHA-256 fingerprint of the release signing certificate (not a secret): it signs the
+  # GitHub APK and is Google Play's upload key. Changing the release key means changing this value
+  # in a reviewed commit.
+  NOTAE_RELEASE_CERT_SHA256: BE:27:CD:78:17:66:C5:C2:8A:9D:B1:06:C0:7B:05:1C:EE:E4:E0:00:31:05:96:45:95:E2:A8:48:F3:71:F6:01
   NDK_VERSION: 28.2.13676358
 
 jobs:
@@ -74,7 +69,7 @@ jobs:
           [ "$passed" = 1 ] || { echo "::error::CI has not passed on $GITHUB_SHA; let it pass on main (or run it with gh workflow run ci.yml), then delete and push the tag again"; exit 1; }
 
   release:
-    name: Build the AAB and a draft release
+    name: Build, sign, verify and publish
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -109,36 +104,40 @@ jobs:
           keystore=$RUNNER_TEMP/notae-release.keystore
           printf '%s' "$NOTAE_KEYSTORE_BASE64" | base64 --decode > "$keystore"
           echo "NOTAE_RELEASE_KEYSTORE=$keystore" >> "$GITHUB_ENV"
-      - name: Build the AAB signed with the upload key
+      - name: Build the signed release APK and AAB
         working-directory: apps/notae-android
         env:
           NOTAE_KEYSTORE_PASSWORD: ${{ secrets.NOTAE_KEYSTORE_PASSWORD }}
           NOTAE_KEY_ALIAS: ${{ secrets.NOTAE_KEY_ALIAS }}
           NOTAE_KEY_PASSWORD: ${{ secrets.NOTAE_KEY_PASSWORD }}
-        run: ./gradlew bundleRelease
+        run: ./gradlew assembleRelease bundleRelease
       - name: Delete the keystore
         if: always()
         run: rm -f "$RUNNER_TEMP/notae-release.keystore"
-      - name: Check the AAB's certificate
+      - name: Verify the APK and AAB
         run: |
-          # The bundle is jar-signed; its certificate must be the pinned upload certificate.
+          build_tools=$ANDROID_HOME/build-tools/36.0.0
+          scripts/verify-release-apk.sh apps/notae-android/app/build/outputs/apk/release/app-release.apk \
+            "$TAG" dist "$build_tools"
+          # The bundle is jar-signed; its certificate must be the same release certificate.
           aab=apps/notae-android/app/build/outputs/bundle/release/app-release.aab
           actual=$(keytool -printcert -jarfile "$aab" | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1)
-          if [ "$actual" != "$NOTAE_UPLOAD_CERT_SHA256" ]; then
-            echo "::error::AAB signing certificate ${actual:-none} is not the upload certificate"
+          if [ "$actual" != "$NOTAE_RELEASE_CERT_SHA256" ]; then
+            echo "::error::AAB signing certificate ${actual:-none} is not the release certificate"
             exit 1
           fi
-          mkdir -p dist
           cp "$aab" "dist/notae-${TAG#v}.aab"
-      - name: Keep the AAB as a workflow artifact
+      - name: Keep the APK and AAB as workflow artifacts
         uses: actions/upload-artifact@v7
         with:
           name: notae-${{ env.TAG }}
           path: dist/*
           if-no-files-found: error
-      - name: Create the draft GitHub Release
+      - name: Publish the GitHub Release with the APK
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$TAG" --verify-tag --draft --title "Notae $TAG" \
-            --notes-file "docs/release-notes/$TAG.md" --generate-notes
+          version=${TAG#v}
+          gh release create "$TAG" --verify-tag --title "Notae $TAG" \
+            --notes-file "docs/release-notes/$TAG.md" --generate-notes \
+            "dist/notae-$version-arm64.apk" "dist/notae-$version-arm64.apk.sha256"

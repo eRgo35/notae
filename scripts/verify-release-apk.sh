@@ -6,8 +6,7 @@
 # apps/notae-android/buildSrc/src/main/kotlin/VersionCode.kt); the APK verifies with
 # apksigner and the v2 scheme; it is not signed with the Android debug key; and, when
 # NOTAE_RELEASE_CERT_SHA256 is set, the signing certificate's SHA-256 fingerprint equals it
-# (hex, with or without colons, any case). scripts/attach-play-apk.sh always sets it, to Google
-# Play's app signing certificate (NOTAE_APP_SIGNING_CERT_SHA256 in .github/workflows/release.yml).
+# (hex, with or without colons, any case). .github/workflows/release.yml always sets it.
 #
 # Usage: verify-release-apk.sh APK TAG DIST_DIR [BUILD_TOOLS_DIR]
 # BUILD_TOOLS_DIR defaults to $ANDROID_HOME/build-tools/36.0.0 and must hold aapt2 and apksigner.
