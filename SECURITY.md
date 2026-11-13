@@ -65,17 +65,8 @@ Out of scope:
 
 ## Verifying a release
 
-Releases are built in GitHub Actions from a `vX.Y.Z` tag as an AAB signed with
-the maintainer's upload key. Google Play signs the app with its app signing
-key (Play App Signing), and from 0.7.1 the APK on the GitHub Release is the
-universal APK Google Play signs. Its certificate's SHA-256 fingerprint is
-public:
-
-```text
-C9:29:70:28:91:42:32:BD:DA:2B:CB:41:BF:AC:9F:34:07:1C:08:66:4F:BE:BD:1C:57:1B:9B:39:BD:66:D3:E8
-```
-
-Releases up to 0.7.0 were signed with the key that is now the upload key:
+Releases are built in GitHub Actions from a `vX.Y.Z` tag and signed with a
+dedicated release key. The signing certificate's SHA-256 fingerprint is public:
 
 ```text
 BE:27:CD:78:17:66:C5:C2:8A:9D:B1:06:C0:7B:05:1C:EE:E4:E0:00:31:05:96:45:95:E2:A8:48:F3:71:F6:01
@@ -86,9 +77,17 @@ Check an APK with `sha256sum -c <apk>.sha256` and
 workflow verifies before publishing, is in
 [`docs/android-release.md`](docs/android-release.md).
 
+The Google Play app is signed by Google Play with a different key (Play App
+Signing); the release key above is its upload key. The Play app signing
+certificate's SHA-256 fingerprint is:
+
+```text
+C9:29:70:28:91:42:32:BD:DA:2B:CB:41:BF:AC:9F:34:07:1C:08:66:4F:BE:BD:1C:57:1B:9B:39:BD:66:D3:E8
+```
+
 ## Signing key handling
 
-- The upload keystore and its passwords exist only in GitHub Actions secrets
+- The release keystore and its passwords exist only in GitHub Actions secrets
   (`NOTAE_KEYSTORE_BASE64`, `NOTAE_KEYSTORE_PASSWORD`, `NOTAE_KEY_ALIAS`,
   `NOTAE_KEY_PASSWORD`) and in the maintainer's offline backups. They are never
   committed to the repository, and the decoded keystores are deleted at the end
@@ -96,12 +95,10 @@ workflow verifies before publishing, is in
 - The release job is the only job with `contents: write`, and it refuses to
   run unless the tag is on `main` and equals the Cargo version. The build never
   falls back to the Android debug key.
-- The pinned upload certificate fingerprint is checked against the built AAB,
-  so a wrong or substituted secret stops the release before anything is
-  uploaded. The pinned app signing certificate fingerprint is checked against
-  the APK downloaded from Google Play before it is attached to the release.
-- The app signing key is held by Google Play. If you believe the upload key
-  has leaked, treat it as a vulnerability and report it privately as described
-  above; it can be reset through Google Play without users reinstalling.
+- The pinned certificate fingerprint is checked against the built APK, so a
+  wrong or substituted secret cannot publish a release.
+- If you believe the key has leaked, treat it as a vulnerability and report it
+  privately as described above. Rotating the key requires users to uninstall
+  and reinstall, so it is done only when necessary.
 - Contributors must never commit keystores, passwords, tokens or other
   secrets; see [`CONTRIBUTING.md`](CONTRIBUTING.md).
