@@ -85,14 +85,19 @@ internal val NARROW_GRID = 480.dp
 /** Cards never get narrower than this to fit a short grid. */
 private val MIN_SHORT_CELL = 96.dp
 
+/** A phone's card width: a grid with room for three cards at least this wide shows three, not two huge ones. */
+private val THREE_COLUMN_CELL = 140.dp
+
 /**
  * A grid's columns: as many cells of at least [minCell] as fit [inner] width, [gap] apart; then, while a card
  * ([aspect] times as tall as wide plus [extra] for its text) would be taller than [visibleHeight], one more column,
- * until it fits or the cells would be narrower than 96 dp. So a short window shows at least one whole row.
+ * until it fits or the cells would be narrower than 96 dp. So a short window shows at least one whole row. A grid that
+ * fits three cells of [THREE_COLUMN_CELL] shows at least three (a foldable or a small tablet; phones keep two).
  */
 internal fun gridColumns(inner: Dp, gap: Dp, minCell: Dp, visibleHeight: Dp, aspect: Float, extra: Dp): Int {
     fun cell(columns: Int) = (inner - gap * (columns - 1)) / columns
     var columns = floor((inner + gap) / (minCell + gap)).toInt().coerceAtLeast(1)
+    if (columns < 3 && cell(3) >= THREE_COLUMN_CELL) columns = 3
     while (cell(columns) * aspect + extra > visibleHeight && cell(columns + 1) >= MIN_SHORT_CELL) columns++
     return columns
 }
