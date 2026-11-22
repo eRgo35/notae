@@ -67,7 +67,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.nio.file.Files
-import java.security.MessageDigest
 import java.util.Locale
 import java.util.TimeZone
 
@@ -523,7 +522,9 @@ internal class Scores(private val titles: List<String>) : PlatformLibrary {
 
     override fun hash(handle: String, path: String): DocumentContent {
         val title = path.removeSuffix(".pdf")
-        val hex = MessageDigest.getInstance("SHA-256").digest(title.toByteArray()).joinToString("") { "%02x".format(it) }
+        // A distinct 64-hex key per title, in plain Kotlin: the core calls this on its own thread, where Robolectric's
+        // native crypto behind MessageDigest sometimes aborts the test process (JniConstants: class not found).
+        val hex = title.toByteArray().joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }.padEnd(64, '0').take(64)
         return DocumentContent.Sha256(hex)
     }
 
