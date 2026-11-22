@@ -1,6 +1,8 @@
 package com.c2yz.notae.ui
 
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import com.c2yz.notae.ui.library.LibraryScreen
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.SettingsInfo
@@ -50,4 +52,39 @@ class ShortWindowTest {
         val height = titleHeightInSp("Licencje open source")
         assertTrue("one line at 26 sp: $height sp", height < 1.3f * 26)
     }
+
+    private fun scoreTitleIsVisible() {
+        compose.setContent { NotaeTheme { LibraryScreen(Fixture.library(), {}) } }
+
+        // The card reads as its title (the title itself is hidden from TalkBack): the whole card, title included, is in view.
+        compose.onNodeWithContentDescription("Agnus Dei").assertInsideWindow(compose)
+    }
+
+    private fun setNameIsVisible() {
+        compose.setContent { NotaeTheme { LibraryScreen(Fixture.sets(), {}) } }
+
+        compose.onNodeWithContentDescription("Niedziela Palmowa").assertInsideWindow(compose)
+    }
+
+    @Test
+    fun a_score_title_is_visible() = scoreTitleIsVisible()
+
+    @Test
+    @Config(qualifiers = "w832dp-h384dp-xhdpi")
+    fun a_score_title_is_visible_at_832x384() = scoreTitleIsVisible()
+
+    @Test
+    @Config(qualifiers = "w700dp-h500dp-xhdpi")
+    fun a_score_title_is_visible_at_700x500() = scoreTitleIsVisible()
+
+    @Test
+    fun a_set_name_is_visible() = setNameIsVisible()
+
+    @Test
+    @Config(qualifiers = "w832dp-h384dp-xhdpi")
+    fun a_set_name_is_visible_at_832x384() = setNameIsVisible()
+
+    @Test
+    @Config(qualifiers = "w700dp-h500dp-xhdpi")
+    fun a_set_name_is_visible_at_700x500() = setNameIsVisible()
 }

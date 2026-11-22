@@ -73,8 +73,8 @@ import com.c2yz.notae.ui.library.ListScrollbar
 import com.c2yz.notae.ui.library.cellHeight
 import com.c2yz.notae.ui.library.MenuItem
 import com.c2yz.notae.ui.library.NARROW_GRID
+import com.c2yz.notae.ui.library.gridColumns
 import com.c2yz.notae.ui.theme.NotaeTheme
-import kotlin.math.floor
 
 /** 0.3.0's `SetsPane`: the sets as cards (grid) or rows (list) in a card, with the scrollbar handle. */
 @Composable
@@ -94,7 +94,7 @@ internal fun SetsPane(cards: List<SetCard>, list: Boolean, onOpen: (SetCard) -> 
                 val inset = if (narrow) 12.dp else 20.dp
                 val gap = if (narrow) 12.dp else 16.dp
                 val inner = maxWidth - inset * 2
-                val columns = floor((inner + gap) / ((if (narrow) 140.dp else 200.dp) + gap)).toInt().coerceAtLeast(1)
+                val columns = gridColumns(inner, gap, if (narrow) 140.dp else 200.dp, maxHeight - inset - 20.dp, 0.85f, 88.dp)
                 val state = rememberLazyGridState()
                 // As the score grid: other columns lay the grid out afresh, so its cards snap to their new places.
                 key(columns, narrow) {

@@ -82,6 +82,21 @@ internal const val FAVORITE_BADGE_TAG = "favorite-badge"
 /** A grid narrower than this (a phone) packs its cards tighter, two to a row. */
 internal val NARROW_GRID = 480.dp
 
+/** Cards never get narrower than this to fit a short grid. */
+private val MIN_SHORT_CELL = 96.dp
+
+/**
+ * A grid's columns: as many cells of at least [minCell] as fit [inner] width, [gap] apart; then, while a card
+ * ([aspect] times as tall as wide plus [extra] for its text) would be taller than [visibleHeight], one more column,
+ * until it fits or the cells would be narrower than 96 dp. So a short window shows at least one whole row.
+ */
+internal fun gridColumns(inner: Dp, gap: Dp, minCell: Dp, visibleHeight: Dp, aspect: Float, extra: Dp): Int {
+    fun cell(columns: Int) = (inner - gap * (columns - 1)) / columns
+    var columns = floor((inner + gap) / (minCell + gap)).toInt().coerceAtLeast(1)
+    while (cell(columns) * aspect + extra > visibleHeight && cell(columns + 1) >= MIN_SHORT_CELL) columns++
+    return columns
+}
+
 /**
  * 0.3.0's `ScoreGrid` in its card: 20 dp inset, columns of at least 176 dp with 16 dp gaps, 20 dp between rows, and
  * cards 1.3 times as tall as wide plus 64 dp for the text. Inside a set its text notes are tinted cards in their place.
@@ -103,7 +118,7 @@ internal fun ScoreGrid(
             val inset = if (narrow) 12.dp else 20.dp
             val gap = if (narrow) 12.dp else 16.dp
             val inner = maxWidth - inset * 2
-            val columns = floor((inner + gap) / ((if (narrow) 140.dp else 176.dp) + gap)).toInt().coerceAtLeast(1)
+            val columns = gridColumns(inner, gap, if (narrow) 140.dp else 176.dp, maxHeight - inset - 20.dp, 1.3f, 64.dp)
             val state = rememberLazyGridState()
             // Other columns lay the grid out afresh, keeping its scroll position: its cards snap to their new places,
             // even ones gliding, instead of flying over each other.
