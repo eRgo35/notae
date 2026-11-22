@@ -350,7 +350,8 @@ fn run_rescan(
     let Resolved {
         files,
         unchanged,
-        sidecar: to_apply,
+        sidecar: matched,
+        apply: to_apply,
     } = match resolve(local, catalog, listed, sidecar.as_ref()) {
         Ok(resolved) => resolved,
         Err(error) => {
@@ -431,18 +432,27 @@ fn run_rescan(
             for (index, file) in files.iter().enumerate() {
                 let path = file.path().as_str().to_owned();
                 let plan_failure = failures.get(&path).cloned();
-                let entry = to_apply.get(file.path());
-                let skip = entry.is_none() && unchanged.contains(file.path());
+                let entry = matched.get(file.path());
                 let mut applied = false;
                 let failure = plan_failure.clone().or_else(|| {
                     let outcome = match entry {
+                        // An entry applied before keeps its text: the note needs nothing.
+                        Some(entry) if !to_apply.contains(file.path()) => finished(local, file)
+                            .and_then(|done| {
+                                if done {
+                                    Ok(None)
+                                } else {
+                                    apply_sidecar_entry(local, catalog, file, entry)
+                                        .map(|(_, failure)| failure)
+                                }
+                            }),
                         Some(entry) => apply_sidecar_entry(local, catalog, file, entry).map(
                             |(done, failure)| {
                                 applied = done;
                                 failure
                             },
                         ),
-                        None if skip => Ok(None),
+                        None if unchanged.contains(file.path()) => Ok(None),
                         None => apply_pdf_text_layer(local, catalog, file),
                     };
                     outcome.unwrap_or_else(|error| Some(error.to_string()))
@@ -586,6 +596,17 @@ fn apply_sidecar_entry(
         local.reindex_note(&updated.with_status(note.status()))?;
         Ok((true, apply_pdf_text_layer(local, catalog, file)?))
     }
+}
+
+/// Whether the note of `file` finished indexing: [`IndexStatus::Ready`] or
+/// [`IndexStatus::OcrPending`], the statuses a rescan leaves alone.
+fn finished(local: &IndexStore, file: &PdfFile) -> Result<bool, UiError> {
+    let Some(fingerprint) = file.fingerprint() else {
+        return Ok(false);
+    };
+    Ok(local
+        .get_by_hash(&fingerprint.sha256())?
+        .is_some_and(|note| matches!(note.status(), IndexStatus::Ready | IndexStatus::OcrPending)))
 }
 
 /// Copies the sidecar's thumbnail for `key` to `out`, rendering the PDF when the sidecar has none.

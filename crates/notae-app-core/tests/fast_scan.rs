@@ -516,3 +516,116 @@ fn an_entry_for_other_content_is_not_applied_to_an_unchanged_file() {
     let path = RelativePdfPath::new("1 - Alpha.pdf").expect("valid path");
     assert_eq!(store.sidecar_digest(&path).expect("read digest"), None);
 }
+
+/// Scans `1 - Alpha.pdf` with a sidecar entry once at `first`, then again at `second`.
+fn rescan_sidecar_file(first: Option<i64>, second: Option<i64>) -> Vec<String> {
+    let library = Library::new();
+    library
+        .platform
+        .set_text(Ok(Some("pdf text layer".to_owned())));
+    let mut entry = sidecar_entry("1 - Alpha.pdf", ALPHA);
+    entry.text = Some("Adeste fideles laeti triumphantes".to_owned());
+    let files = vec![(SIDECAR_FILE.to_owned(), sidecar(vec![entry]))];
+    library
+        .platform
+        .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, first)]));
+    serve(&library.platform, files.clone());
+    library.scan();
+
+    library
+        .platform
+        .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, second)]));
+    serve(&library.platform, files);
+    let (_, calls) = library.scan();
+
+    let (store, _library) = library.into_store();
+    let hits = store.search("triumphantes", 10).expect("search");
+    assert_eq!(hits.len(), 1, "the sidecar text is still searchable");
+    calls
+}
+
+#[test]
+fn sidecar_text_survives_a_changed_time() {
+    let calls = rescan_sidecar_file(Some(1), Some(2));
+
+    assert_eq!(count(&calls, "hash"), 0);
+    assert_eq!(count(&calls, "text"), 0);
+}
+
+#[test]
+fn sidecar_text_survives_a_provider_without_times() {
+    let calls = rescan_sidecar_file(None, None);
+
+    assert_eq!(count(&calls, "hash"), 0);
+    assert_eq!(count(&calls, "text"), 0);
+}
+
+#[test]
+fn a_missing_cached_thumbnail_is_copied_from_an_applied_sidecar() {
+    let library = Library::new();
+    let thumbnail = b"\x89PNG alpha thumbnail".to_vec();
+    let files = vec![
+        (
+            SIDECAR_FILE.to_owned(),
+            sidecar(vec![sidecar_entry("1 - Alpha.pdf", ALPHA)]),
+        ),
+        (
+            format!(".notae/thumbnails/{}.png", sha256_hex(ALPHA)),
+            thumbnail.clone(),
+        ),
+    ];
+    let cached = library
+        .thumbnails
+        .join(format!("{}.png", sha256_hex(ALPHA)));
+    library
+        .platform
+        .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, Some(1))]));
+    serve(&library.platform, files.clone());
+    library.scan();
+
+    // A changed time, then an unchanged file: both copy the applied entry's thumbnail.
+    for millis in [2, 2] {
+        std::fs::remove_file(&cached).expect("thumbnail was cached");
+        library
+            .platform
+            .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, Some(millis))]));
+        serve(&library.platform, files.clone());
+        let (_, calls) = library.scan();
+
+        assert_eq!(count(&calls, "thumbnail"), 0);
+        assert_eq!(std::fs::read(&cached).expect("thumbnail cached"), thumbnail);
+    }
+}
+
+#[test]
+fn an_interrupted_sidecar_note_is_finished_from_its_entry() {
+    let mut library = Library::new();
+    let files = vec![(
+        SIDECAR_FILE.to_owned(),
+        sidecar(vec![sidecar_entry("1 - Alpha.pdf", ALPHA)]),
+    )];
+    library
+        .platform
+        .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, Some(1))]));
+    serve(&library.platform, files.clone());
+    library.scan();
+    library.restart(|store| {
+        let note = note_at(store, "1 - Alpha.pdf");
+        store
+            .reindex_note(&note.with_status(IndexStatus::Discovered))
+            .expect("reset status");
+    });
+
+    library
+        .platform
+        .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, Some(2))]));
+    serve(&library.platform, files);
+    let (_, calls) = library.scan();
+
+    assert_eq!(count(&calls, "text"), 0);
+    let (store, _library) = library.into_store();
+    assert_eq!(
+        note_at(&store, "1 - Alpha.pdf").status(),
+        IndexStatus::Ready
+    );
+}

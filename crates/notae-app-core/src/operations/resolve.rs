@@ -14,8 +14,10 @@ pub(crate) struct Resolved {
     pub files: Vec<PdfFile>,
     /// Paths whose size and modified time match the index: nothing needs reading.
     pub unchanged: HashSet<RelativePdfPath>,
-    /// Paths whose sidecar entry differs from the one last applied, with that entry.
+    /// Paths matched to a sidecar entry, with that entry: their text and thumbnail come from it.
     pub sidecar: HashMap<RelativePdfPath, SidecarEntry>,
+    /// The paths in `sidecar` whose entry differs from the one last applied.
+    pub apply: HashSet<RelativePdfPath>,
 }
 
 /// Resolves each listed PDF's content: from the index when its size and time match the stored
@@ -29,7 +31,7 @@ pub(crate) struct Resolved {
 /// know its condition (`Inaccessible`, `InvalidPdf`, `DuplicateIdConflict`, the legacy
 /// `ImportMismatch`), so the file is resolved again and its text and thumbnail steps run.
 ///
-/// The sidecar entry of an unchanged file is applied only when its `sha256` is the stored one.
+/// The sidecar entry of an unchanged file is attached only when its `sha256` is the stored one.
 ///
 /// # Errors
 /// [`CatalogError`] when the index cannot be read or the catalog's grant was revoked.
@@ -50,6 +52,7 @@ pub(crate) fn resolve(
         files: Vec::with_capacity(listed.len()),
         unchanged: HashSet::new(),
         sidecar: HashMap::new(),
+        apply: HashSet::new(),
     };
     for pdf in listed {
         let entry = sidecar.and_then(|sidecar| sidecar.matching(pdf.path.as_str(), pdf.size));
@@ -80,8 +83,9 @@ pub(crate) fn resolve(
         if let Some(entry) = entry {
             let digest = entry_digest(entry);
             if local.sidecar_digest(&pdf.path).map_err(index_error)? != Some(digest) {
-                resolved.sidecar.insert(pdf.path.clone(), entry.clone());
+                resolved.apply.insert(pdf.path.clone());
             }
+            resolved.sidecar.insert(pdf.path.clone(), entry.clone());
         }
         resolved
             .files
