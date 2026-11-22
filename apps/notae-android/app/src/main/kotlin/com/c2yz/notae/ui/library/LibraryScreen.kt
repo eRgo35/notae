@@ -376,76 +376,137 @@ private fun Header(
 ) {
     val c = NotaeTheme.colors
     val list = snapshot.layout.libraryView == LibraryView.LIST
-    Row(
-        Modifier.fillMaxWidth().padding(top = 8.dp, start = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    val slim = windowChrome() == Chrome.SLIM_RAIL
+    val setId = snapshot.sectionKey.removePrefix(SET_PREFIX)
+    val scanLabel = stringResource(R.string.library_scan)
+    val settingsLabel = stringResource(R.string.screen_settings)
+    val viewLabel = stringResource(if (list) R.string.library_grid_view else R.string.library_list_view)
+    val viewIcon = if (list) R.drawable.ic_layout_grid else R.drawable.ic_layout_list
+    val viewAction = Action.SetLibraryView(if (list) LibraryView.GRID else LibraryView.LIST)
+    val reorderLabel = stringResource(R.string.set_reorder)
+    // R2: the actions that do not fit beside the title move into ⋮, Scan first, then Share, the view choice, Reorder and
+    // Settings; Back, Search and the side-panel toggle stay, and so do New set, Add and Done unless nothing else fits.
+    val leading = buildList {
         if (expanded) {
-            IconButton(
-                stringResource(if (sidebar) R.string.library_hide_sidebar else R.string.library_show_sidebar),
-                painterResource(if (sidebar) R.drawable.ic_panel_left_close else R.drawable.ic_panel_left_open),
-                { onAction(Action.SetSidebarCollapsed(portrait = portrait, collapsed = sidebar)) },
-                Modifier.screenBar("sidebarToggle"),
+            add(
+                HeaderItem("sidebarToggle", priority = 9, pinned = true, {
+                    IconButton(
+                        stringResource(if (sidebar) R.string.library_hide_sidebar else R.string.library_show_sidebar),
+                        painterResource(if (sidebar) R.drawable.ic_panel_left_close else R.drawable.ic_panel_left_open),
+                        { onAction(Action.SetSidebarCollapsed(portrait = portrait, collapsed = sidebar)) },
+                        Modifier.screenBar("sidebarToggle"),
+                    )
+                }),
             )
         }
         if (inSet) {
-            IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) }, Modifier.screenBar("setBack"))
+            add(
+                HeaderItem("setBack", priority = 9, pinned = true, {
+                    IconButton(stringResource(R.string.set_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.SelectSection("sets")) }, Modifier.screenBar("setBack"))
+                }),
+            )
         }
+    }
+    val trailing = buildList {
+        add(
+            HeaderItem("search", priority = 9, pinned = true, {
+                IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) }, Modifier.screenBar("search"))
+            }),
+        )
+        // Reorder mode always shows the list; the saved choice comes back with Done.
+        if (!reordering) {
+            add(
+                HeaderItem("view", priority = 2, pinned = false, {
+                    IconButton(viewLabel, painterResource(viewIcon), { onAction(viewAction) }, Modifier.screenBar("view"))
+                }) { choose -> MenuItem(viewLabel, painterResource(viewIcon), { choose(viewAction) }) },
+            )
+        }
+        if (snapshot.sectionKey == "sets") {
+            val label = stringResource(R.string.library_new_set)
+            add(
+                HeaderItem("newSet", priority = 5, pinned = false, {
+                    PillButton(label, { onAction(Action.NewSet) }, Modifier.screenBar("newSet"), icon = painterResource(R.drawable.ic_add), primary = true)
+                }) { choose -> MenuItem(label, painterResource(R.drawable.ic_add), { choose(Action.NewSet) }) },
+            )
+        }
+        if (reordering) {
+            val label = stringResource(R.string.picker_done)
+            add(
+                HeaderItem("done", priority = 5, pinned = false, {
+                    PillButton(label, { onAction(Action.ReorderFinished) }, Modifier.screenBar("done"), icon = painterResource(R.drawable.ic_check), primary = true)
+                }) { choose -> MenuItem(label, painterResource(R.drawable.ic_check), { choose(Action.ReorderFinished) }) },
+            )
+        } else if (inSet) {
+            add(
+                HeaderItem("reorder", priority = 3, pinned = false, {
+                    // Under 840 dp (portrait, or the pane beside the details) the labelled icon leaves room for the set's name.
+                    if (expanded) {
+                        PillButton(reorderLabel, { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"), icon = painterResource(R.drawable.ic_reorder))
+                    } else {
+                        IconButton(reorderLabel, painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"))
+                    }
+                }) { choose -> MenuItem(reorderLabel, painterResource(R.drawable.ic_reorder), { choose(Action.ReorderStarted) }) },
+            )
+            add(
+                HeaderItem("share", priority = 1, pinned = false, {
+                    Box(Modifier.screenBar("share")) { ShareSetButton(setId, onAction) }
+                }) { choose ->
+                    MenuItem(stringResource(R.string.share_set_plain), painterResource(R.drawable.ic_share), { choose(Action.ShareSet(setId, false)) })
+                    MenuItem(stringResource(R.string.share_set_with_notes), painterResource(R.drawable.ic_note), { choose(Action.ShareSet(setId, true)) })
+                },
+            )
+            val label = stringResource(R.string.set_add)
+            add(
+                HeaderItem("add", priority = 5, pinned = false, {
+                    PillButton(label, { onAction(Action.OpenAddPicker) }, Modifier.screenBar("add"), icon = painterResource(R.drawable.ic_add), primary = true)
+                }) { choose -> MenuItem(label, painterResource(R.drawable.ic_add), { choose(Action.OpenAddPicker) }) },
+            )
+        }
+        if (!sidebar) {
+            add(
+                HeaderItem("settings", priority = 4, pinned = false, {
+                    IconButton(settingsLabel, painterResource(R.drawable.ic_settings), { onAction(Action.OpenSettings) }, Modifier.screenBar("settings"))
+                }) { choose -> MenuItem(settingsLabel, painterResource(R.drawable.ic_settings), { choose(Action.OpenSettings) }) },
+            )
+        }
+        // Scan is always right-most, so it never moves between screens.
+        add(
+            HeaderItem("scan", priority = 0, pinned = false, {
+                IconButton(scanLabel, painterResource(R.drawable.ic_scan), { onAction(Action.Rescan) }, Modifier.screenBar("scan"), enabled = snapshot.rescanEnabled)
+            }) { choose -> MenuItem(scanLabel, painterResource(R.drawable.ic_scan), { choose(Action.Rescan) }, enabled = snapshot.rescanEnabled) },
+        )
+    }
+    HeaderRow(leading, trailing, onAction, Modifier.fillMaxWidth().padding(top = 8.dp, start = 8.dp)) {
         // The title changes with the section, so it fades through; the controls that stay put do not move.
-        Column(Modifier.weight(1f).screenFade(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.screenFade(), verticalArrangement = Arrangement.spacedBy(if (slim) 2.dp else 4.dp)) {
             Text(
                 sectionTitle(snapshot.title),
-                Modifier.semantics { heading() },
+                Modifier.fillMaxWidth().semantics { heading() },
                 color = c.foreground,
-                fontSize = if (expanded) 40.sp else 30.sp,
+                fontSize = when {
+                    expanded -> 40.sp
+                    slim -> 24.sp
+                    else -> 30.sp
+                },
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(if (reordering) stringResource(R.string.set_reorder_hint) else subtitleText(snapshot.subtitle), color = c.muted, fontSize = 15.sp)
-            val notes = snapshot.setNotes
-            if (inSet && !notes.isNullOrEmpty()) {
-                Text(notes, color = c.foreground, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) }, Modifier.screenBar("search"))
-            // Reorder mode always shows the list; the saved choice comes back with Done.
-            if (!reordering) {
-                IconButton(
-                    stringResource(if (list) R.string.library_grid_view else R.string.library_list_view),
-                    painterResource(if (list) R.drawable.ic_layout_grid else R.drawable.ic_layout_list),
-                    { onAction(Action.SetLibraryView(if (list) LibraryView.GRID else LibraryView.LIST)) },
-                    Modifier.screenBar("view"),
+            val notes = snapshot.setNotes?.takeIf { inSet && it.isNotEmpty() }
+            // A short window has room for one line under the title: the set's notes win over its date and counts, and
+            // the reorder hint wins over the notes.
+            if (reordering || !(slim && notes != null)) {
+                Text(
+                    if (reordering) stringResource(R.string.set_reorder_hint) else subtitleText(snapshot.subtitle),
+                    color = c.muted,
+                    fontSize = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (snapshot.sectionKey == "sets") {
-                PillButton(stringResource(R.string.library_new_set), { onAction(Action.NewSet) }, Modifier.screenBar("newSet"), icon = painterResource(R.drawable.ic_add), primary = true)
+            if (notes != null && !(slim && reordering)) {
+                Text(notes, color = c.foreground, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (reordering) {
-                PillButton(stringResource(R.string.picker_done), { onAction(Action.ReorderFinished) }, Modifier.screenBar("done"), icon = painterResource(R.drawable.ic_check), primary = true)
-            } else if (inSet) {
-                // Under 840 dp (portrait, or the pane beside the details) the labelled icon leaves room for the set's name.
-                if (expanded) {
-                    PillButton(stringResource(R.string.set_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"), icon = painterResource(R.drawable.ic_reorder))
-                } else {
-                    IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"))
-                }
-                Box(Modifier.screenBar("share")) { ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction) }
-                PillButton(stringResource(R.string.set_add), { onAction(Action.OpenAddPicker) }, Modifier.screenBar("add"), icon = painterResource(R.drawable.ic_add), primary = true)
-            }
-            if (!sidebar) {
-                IconButton(stringResource(R.string.screen_settings), painterResource(R.drawable.ic_settings), { onAction(Action.OpenSettings) }, Modifier.screenBar("settings"))
-            }
-            // Scan is always right-most, so it never moves between screens.
-            IconButton(
-                stringResource(R.string.library_scan),
-                painterResource(R.drawable.ic_scan),
-                { onAction(Action.Rescan) },
-                Modifier.screenBar("scan"),
-                enabled = snapshot.rescanEnabled,
-            )
         }
     }
 }

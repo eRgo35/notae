@@ -21,6 +21,7 @@ import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
 import com.c2yz.notae.ui.assertInsideWindow
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -127,5 +128,43 @@ class SlimLayoutTest {
 
         compose.onNodeWithContentDescription("Wszystkie utwory").assertIsDisplayed()
         compose.onNodeWithContentDescription("Ustawienia").assertInsideWindow(compose)
+    }
+
+    private fun titleKeepsItsRoom() {
+        show(Fixture.palmSunday())
+
+        val title = compose.onNodeWithText("Niedziela Palmowa").fetchSemanticsNode().boundsInRoot
+        assertTrue("title ${title.width} px", title.width >= HEADER_TITLE_MIN * compose.density.density - 0.5f)
+        compose.onNodeWithTag(GRID_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun set_header_keeps_its_title() = titleKeepsItsRoom()
+
+    @Test
+    @Config(qualifiers = "w840dp-h600dp-xhdpi")
+    fun set_header_keeps_its_title_at_840dp() = titleKeepsItsRoom()
+
+    @Test
+    @Config(qualifiers = "pl-w1280dp-h800dp-xhdpi")
+    fun set_header_keeps_its_title_in_polish_on_a_tablet() = titleKeepsItsRoom()
+
+    @Test
+    fun overflowed_actions_stay_reachable() {
+        show(Fixture.palmSunday())
+
+        compose.onNodeWithTag(HEADER_OVERFLOW_TAG).performClick()
+        compose.onNodeWithText("Scan library").performClick()
+
+        assertEquals(Action.Rescan, actions.last())
+    }
+
+    @Test
+    @Config(qualifiers = "w915dp-h412dp-xhdpi")
+    fun set_header_with_notes_fits_a_short_window() {
+        show(Fixture.palmWithNotes())
+
+        compose.onNodeWithTag(GRID_TAG).assertIsDisplayed()
+        compose.onNodeWithText("Niedziela Palmowa").assertInsideWindow(compose)
     }
 }
