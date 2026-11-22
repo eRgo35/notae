@@ -7,9 +7,9 @@ The domain terms Notae's code, docs and issues use. Use these words; avoid the s
 - **Number** and **title**: parsed from a file named `<number> - <title>.pdf`. Other names work and have no number.
 - **Details**: the editable metadata of a score (number, title, composer, tags). Edits live in the index and never rename the PDF.
 - **File identity**: the SHA-256 content hash that keeps a renamed or moved PDF one record.
-- **Scan**: walking the library to build or refresh the index. Always started by the user, never in the background. _Avoid:_ sync.
+- **Scan**: walking the library to build or refresh the index. Starts when a folder is picked and when the app starts with a library open, or when the user taps Rescan; never in the background. _Avoid:_ sync.
 - **Index**: the SQLite database (with FTS5 search) built from a library. On Android it is private to the app.
-- **Sidecar**: the `.notae/` directory (`index.sqlite` and `manifest.json`) that the removed desktop indexer wrote next to the PDFs. Sidecar import is removed in 0.5.0; Notae no longer reads or writes it. Indexes written by earlier versions can still hold fields whose provenance records an import from a sidecar, and those keep reading normally.
+- **Sidecar**: the `.notae/` folder the `notae-sidecar` PC tool writes into the library (`library.json`, `thumbnails/`). Notae reads it from 0.8.0 and never writes it. The 0.3.0 sidecar (`index.sqlite`, `manifest.json`) is ignored.
 - **Text layer**: text embedded in a PDF, read on-device on Android 15 and later.
 - **Lyrics**: the searchable page text of a score, from its text layer or from OCR. The code calls it page text (`SearchScope::Text`). _Avoid:_ content.
 - **Scope**: which fields a search looks at: All, Titles, Composers, Lyrics or Tags (`SearchScope`).

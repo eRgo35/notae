@@ -1,6 +1,6 @@
 # 0002. Jetpack Compose UI over a UniFFI Rust core; Android only
 
-- **Status:** Accepted (2026-10-30; maintainer decisions in a design interview)
+- **Status:** Accepted (2026-10-30; maintainer decisions in a design interview); item 8 partly superseded by ADR 0004
 - **Date:** 2026-10-30
 - **Supersedes:** "The UI is implemented in Slint and driven by Rust application state" in `docs/superpowers/specs/2026-10-09-notae-design.md` (UI section), and the desktop indexer and sidecar workflow described there and in `README.md`.
 - **Defers:** ADR 0001 (on-device OCR). Its decision stands, but the work is postponed and `crates/notae-ocr` moves to the `archive/notae-ocr` branch.
