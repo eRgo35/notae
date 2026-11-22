@@ -1338,15 +1338,7 @@ fn dropping_the_core_cancels_a_running_scan() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let platform = library_platform(&["Ave Maria", "Barka"]);
     let harness = start(dir.path(), Arc::clone(&platform));
-    harness
-        .core
-        .library_root_picked("Scores".to_owned(), ROOT.to_owned());
-    harness.listener.wait_for("the library", is_library);
-    let release = platform.hold_enumerate();
-    harness.core.dispatch(Action::Rescan);
-    harness.listener.wait_for("the running scan", |snapshot| {
-        snapshot.banner.message.is_some() && !is_finished(snapshot)
-    });
+    let release = pick_with_blocked_scan(&harness);
 
     // The drop waits for the worker, which is inside the platform call until this releases it.
     let releaser = thread::spawn(move || {
@@ -1356,7 +1348,12 @@ fn dropping_the_core_cancels_a_running_scan() {
     drop(harness);
     releaser.join().expect("releaser thread");
 
-    let restarted = start(dir.path(), platform);
+    // The restarted core scans too; hold that scan so the rows are what the index kept.
+    // Declared first, `restarted` drops last: a failed assertion releases the hold before
+    // the drop waits for the held worker.
+    let restarted;
+    let hold = platform.hold_enumerate();
+    restarted = start(dir.path(), platform);
     let reopened = restarted
         .listener
         .wait_for("the reopened library", is_library);
@@ -1364,6 +1361,7 @@ fn dropping_the_core_cancels_a_running_scan() {
         reopened.rows.is_empty(),
         "the scan did not finish: {reopened:#?}"
     );
+    drop(hold);
 }
 
 #[test]
