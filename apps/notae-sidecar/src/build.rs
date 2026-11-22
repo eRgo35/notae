@@ -15,6 +15,8 @@ use crate::index_csv::{CsvRow, read_index};
 use crate::thumbnails::Renderer;
 
 const CSV_NAME: &str = "Indeks.csv";
+/// Scratch directory for new thumbnails, removed at the end of every run.
+const STAGING_DIR: &str = ".notae-staging";
 
 /// What a run found. Nothing is written while `errors` is not empty.
 #[derive(Debug, Default)]
@@ -35,23 +37,12 @@ pub fn run(library: &Path, renderer: &dyn Renderer) -> Result<Report, ToolError>
     let mut report = Report::default();
 
     let csv_path = library.join(CSV_NAME);
-    let mut csv_loaded = false;
-    let mut rows = if csv_path.is_file() {
-        match read_index(&csv_path) {
-            Ok(rows) => {
-                csv_loaded = true;
-                rows
-            }
-            Err(e) => {
-                report.errors.push(e.to_string());
-                Default::default()
-            }
+    let mut rows = match read_index(&csv_path) {
+        Ok(rows) => rows,
+        Err(e) => {
+            report.errors.push(e.to_string());
+            return Ok(report);
         }
-    } else {
-        report
-            .warnings
-            .push(format!("{CSV_NAME} not found; using file names only"));
-        Default::default()
     };
 
     let mut pdfs = Vec::new();
@@ -63,7 +54,7 @@ pub fn run(library: &Path, renderer: &dyn Renderer) -> Result<Report, ToolError>
         let full = library.join(rel);
         let bytes = fs::read(&full).map_err(|e| ToolError::new(&format!("reading {rel}"), e))?;
         let row = rows.remove(rel.as_str());
-        if row.is_none() && csv_loaded {
+        if row.is_none() {
             report.warnings.push(format!("{rel}: no row in {CSV_NAME}"));
         }
         entries.push(entry(rel, &bytes, row.as_ref()));
@@ -79,37 +70,63 @@ pub fn run(library: &Path, renderer: &dyn Renderer) -> Result<Report, ToolError>
         return Ok(report);
     }
 
+    // Render what is missing into a staging directory; .notae/ is not touched
+    // until every render has succeeded.
     let thumbs_dir = library.join(SIDECAR_THUMBNAILS);
-    let dirs_existed = (library.join(SIDECAR_DIR).exists(), thumbs_dir.exists());
-    fs::create_dir_all(&thumbs_dir).map_err(|e| ToolError::new("creating .notae", e))?;
+    let staging = library.join(STAGING_DIR);
+    let _ = fs::remove_dir_all(&staging);
+    let outcome = write_sidecar(
+        library,
+        &thumbs_dir,
+        &staging,
+        entries,
+        renderer,
+        &mut report,
+    );
+    let _ = fs::remove_dir_all(&staging);
+    outcome?;
+    Ok(report)
+}
 
-    let wanted: BTreeSet<&str> = entries.iter().map(|e| e.sha256.as_str()).collect();
-    let mut created = Vec::new();
+fn write_sidecar(
+    library: &Path,
+    thumbs_dir: &Path,
+    staging: &Path,
+    entries: Vec<SidecarEntry>,
+    renderer: &dyn Renderer,
+    report: &mut Report,
+) -> Result<(), ToolError> {
+    let mut staged: Vec<(PathBuf, PathBuf)> = Vec::new();
     for entry in &entries {
-        let png = thumbs_dir.join(format!("{}.png", entry.sha256));
-        if png.is_file() || created.contains(&png) {
+        let target = thumbs_dir.join(format!("{}.png", entry.sha256));
+        let temp = staging.join(format!("{}.png", entry.sha256));
+        if target.is_file() || staged.iter().any(|(t, _)| *t == temp) {
             continue;
         }
-        if let Err(e) = renderer.render(&library.join(&entry.path), &png) {
-            report.errors.push(format!("{}: {e}", entry.path));
-            break;
+        if staged.is_empty() && !staging.exists() {
+            fs::create_dir(staging).map_err(|e| ToolError::new("creating staging directory", e))?;
         }
-        created.push(png);
+        let rendered = renderer
+            .render(&library.join(&entry.path), &temp)
+            .and_then(|()| match fs::metadata(&temp) {
+                Ok(m) if m.is_file() && m.len() > 0 => Ok(()),
+                _ => Err("renderer produced no output file".to_owned()),
+            });
+        match rendered {
+            Ok(()) => staged.push((temp, target)),
+            Err(e) => report.errors.push(format!("{}: {e}", entry.path)),
+        }
     }
     if !report.errors.is_empty() {
-        for png in &created {
-            let _ = fs::remove_file(png);
-        }
-        if !dirs_existed.1 {
-            let _ = fs::remove_dir(&thumbs_dir);
-        }
-        if !dirs_existed.0 {
-            let _ = fs::remove_dir(library.join(SIDECAR_DIR));
-        }
-        return Ok(report);
+        return Ok(());
     }
 
-    remove_stale_thumbnails(&thumbs_dir, &wanted)?;
+    fs::create_dir_all(thumbs_dir).map_err(|e| ToolError::new("creating .notae", e))?;
+    for (temp, target) in &staged {
+        fs::rename(temp, target).map_err(|e| ToolError::new("moving a thumbnail", e))?;
+    }
+    let wanted: BTreeSet<&str> = entries.iter().map(|e| e.sha256.as_str()).collect();
+    remove_stale_thumbnails(thumbs_dir, &wanted)?;
 
     let file = SidecarFile {
         version: SIDECAR_VERSION,
@@ -122,8 +139,7 @@ pub fn run(library: &Path, renderer: &dyn Renderer) -> Result<Report, ToolError>
     let target = library.join(SIDECAR_FILE);
     let tmp = library.join(SIDECAR_DIR).join("library.json.tmp");
     fs::write(&tmp, json).map_err(|e| ToolError::new("writing library.json", e))?;
-    fs::rename(&tmp, &target).map_err(|e| ToolError::new("replacing library.json", e))?;
-    Ok(report)
+    fs::rename(&tmp, &target).map_err(|e| ToolError::new("replacing library.json", e))
 }
 
 /// Collects library-relative, `/`-separated paths of `*.pdf` files, skipping
@@ -135,12 +151,16 @@ fn collect_pdfs(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), To
         let item = item.map_err(|e| ToolError::new("listing library", e))?;
         let path: PathBuf = item.path();
         let name = item.file_name().to_string_lossy().into_owned();
-        if path.is_dir() {
+        let Ok(kind) = item.file_type() else { continue };
+        if kind.is_symlink() {
+            continue;
+        }
+        if kind.is_dir() {
             if dir == root && (name == SIDECAR_DIR || name == "sources") {
                 continue;
             }
             collect_pdfs(root, &path, out)?;
-        } else if name.to_lowercase().ends_with(".pdf") {
+        } else if kind.is_file() && name.to_lowercase().ends_with(".pdf") {
             let rel = path.strip_prefix(root).unwrap_or(&path);
             let parts: Vec<_> = rel.iter().map(|p| p.to_string_lossy()).collect();
             out.push(parts.join("/"));
@@ -174,15 +194,22 @@ fn entry(rel: &str, bytes: &[u8], row: Option<&CsvRow>) -> SidecarEntry {
     }
 }
 
+/// Removes regular files named exactly `<64 lowercase hex>.png` whose hash is
+/// no longer wanted; anything else in the directory is not ours.
 fn remove_stale_thumbnails(dir: &Path, wanted: &BTreeSet<&str>) -> Result<(), ToolError> {
     let list = fs::read_dir(dir).map_err(|e| ToolError::new("listing thumbnails", e))?;
     for item in list {
-        let path = item
-            .map_err(|e| ToolError::new("listing thumbnails", e))?
-            .path();
-        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        if path.extension().and_then(|e| e.to_str()) == Some("png") && !wanted.contains(stem) {
-            fs::remove_file(&path).map_err(|e| ToolError::new("removing a stale thumbnail", e))?;
+        let item = item.map_err(|e| ToolError::new("listing thumbnails", e))?;
+        let name = item.file_name().to_string_lossy().into_owned();
+        let Some(hash) = name.strip_suffix(".png") else {
+            continue;
+        };
+        let is_hash =
+            hash.len() == 64 && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
+        let is_file = item.file_type().map(|t| t.is_file()).unwrap_or(false);
+        if is_hash && is_file && !wanted.contains(hash) {
+            fs::remove_file(item.path())
+                .map_err(|e| ToolError::new("removing a stale thumbnail", e))?;
         }
     }
     Ok(())

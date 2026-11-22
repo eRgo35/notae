@@ -11,6 +11,8 @@ use sha2::{Digest, Sha256};
 struct FakeRenderer {
     calls: RefCell<Vec<PathBuf>>,
     fail: bool,
+    /// Renders this many PDFs, then fails.
+    ok_budget: usize,
 }
 
 impl FakeRenderer {
@@ -18,6 +20,7 @@ impl FakeRenderer {
         Self {
             calls: RefCell::new(Vec::new()),
             fail: false,
+            ok_budget: usize::MAX,
         }
     }
 }
@@ -25,7 +28,7 @@ impl FakeRenderer {
 impl Renderer for FakeRenderer {
     fn render(&self, pdf: &Path, out_png: &Path) -> Result<(), String> {
         self.calls.borrow_mut().push(pdf.to_path_buf());
-        if self.fail {
+        if self.fail || self.calls.borrow().len() > self.ok_budget {
             return Err("boom".to_owned());
         }
         fs::write(out_png, b"png").map_err(|e| e.to_string())
@@ -193,4 +196,100 @@ fn skips_notae_and_sources_and_leaves_old_files() {
         fs::read(dir.path().join(".notae/index.sqlite")).expect("r"),
         b"sqlite"
     );
+}
+
+#[test]
+fn missing_csv_is_an_error() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fixture(dir.path());
+    fs::remove_file(dir.path().join("Indeks.csv")).expect("rm");
+    let report = run(dir.path(), &FakeRenderer::new()).expect("run");
+    assert_eq!(report.errors.len(), 1);
+    assert!(!dir.path().join(".notae").exists());
+}
+
+#[test]
+fn duplicate_file_name_rows_are_an_error() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fixture(dir.path());
+    let csv = fs::read_to_string(dir.path().join("Indeks.csv")).expect("csv");
+    let last = csv.lines().last().expect("row").to_owned();
+    fs::write(dir.path().join("Indeks.csv"), format!("{csv}{last}\n")).expect("csv");
+    let report = run(dir.path(), &FakeRenderer::new()).expect("run");
+    assert_eq!(report.errors.len(), 1);
+    assert!(report.errors[0].contains("duplicate"));
+    assert!(!dir.path().join(".notae").exists());
+}
+
+#[test]
+fn foreign_files_in_thumbnails_survive() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fixture(dir.path());
+    let thumbs = dir.path().join(".notae/thumbnails");
+    fs::create_dir_all(thumbs.join("dir.png")).expect("mkdir");
+    fs::write(thumbs.join("keep.png"), b"mine").expect("w");
+    let stale = format!("{}.png", "0".repeat(64));
+    fs::write(thumbs.join(&stale), b"old").expect("w");
+    run(dir.path(), &FakeRenderer::new()).expect("run");
+    assert_eq!(fs::read(thumbs.join("keep.png")).expect("r"), b"mine");
+    assert!(thumbs.join("dir.png").is_dir());
+    assert!(!thumbs.join(stale).exists());
+}
+
+#[test]
+fn partial_render_failure_leaves_no_trace() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fixture(dir.path());
+    let renderer = FakeRenderer {
+        ok_budget: 1,
+        ..FakeRenderer::new()
+    };
+    let report = run(dir.path(), &renderer).expect("run");
+    assert_eq!(report.errors.len(), 1);
+    assert!(!dir.path().join(".notae").exists());
+    let names: Vec<_> = fs::read_dir(dir.path())
+        .expect("ls")
+        .map(|e| e.expect("e").file_name())
+        .collect();
+    assert_eq!(names.len(), 3, "no staging leftovers: {names:?}");
+
+    fs::create_dir_all(dir.path().join(".notae")).expect("mkdir");
+    fs::write(dir.path().join(".notae/index.sqlite"), b"sqlite").expect("w");
+    let renderer = FakeRenderer {
+        ok_budget: 1,
+        ..FakeRenderer::new()
+    };
+    run(dir.path(), &renderer).expect("run");
+    let left: Vec<_> = fs::read_dir(dir.path().join(".notae"))
+        .expect("ls")
+        .map(|e| e.expect("e").file_name())
+        .collect();
+    assert_eq!(left, ["index.sqlite"]);
+}
+
+#[test]
+fn every_render_failure_is_reported() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fixture(dir.path());
+    let renderer = FakeRenderer {
+        fail: true,
+        ..FakeRenderer::new()
+    };
+    let report = run(dir.path(), &renderer).expect("run");
+    assert_eq!(report.errors.len(), 2);
+}
+
+#[test]
+fn renderer_without_output_is_an_error() {
+    struct Silent;
+    impl Renderer for Silent {
+        fn render(&self, _: &Path, _: &Path) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    let dir = tempfile::tempdir().expect("tmp");
+    fixture(dir.path());
+    let report = run(dir.path(), &Silent).expect("run");
+    assert_eq!(report.errors.len(), 2);
+    assert!(!dir.path().join(".notae").exists());
 }

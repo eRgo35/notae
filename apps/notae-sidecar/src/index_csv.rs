@@ -66,6 +66,12 @@ pub fn read_index(path: &Path) -> Result<HashMap<String, CsvRow>, ToolError> {
             .filter(|t| !t.is_empty())
             .map(str::to_owned)
             .collect();
+        if rows.contains_key(file) {
+            return Err(ToolError::new(
+                &ctx(),
+                format!("duplicate `Nazwa pliku`: {file}"),
+            ));
+        }
         rows.insert(
             file.to_owned(),
             CsvRow {

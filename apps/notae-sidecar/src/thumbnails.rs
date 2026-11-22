@@ -17,6 +17,8 @@ pub struct Pdftoppm;
 
 impl Renderer for Pdftoppm {
     fn render(&self, pdf: &Path, out_png: &Path) -> Result<(), String> {
+        // 400 px is the app's THUMBNAIL_WIDTH_PX (crates/notae-app-core/src/thumbnails.rs and
+        // the Kotlin SafLibrary constant of the same name); keep the three in step.
         let output = Command::new("pdftoppm")
             .args([
                 "-png",
