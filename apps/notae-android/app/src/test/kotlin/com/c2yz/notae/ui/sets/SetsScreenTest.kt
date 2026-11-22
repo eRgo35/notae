@@ -518,9 +518,16 @@ internal class Scores(private val titles: List<String>) : PlatformLibrary {
     override fun checkRoot(handle: String) = Unit
 
     override fun enumerate(handle: String): List<DocumentEntry> = titles.map { title ->
-        val hex = MessageDigest.getInstance("SHA-256").digest(title.toByteArray()).joinToString("") { "%02x".format(it) }
-        DocumentEntry("$title.pdf", "$title.pdf", 100u, DocumentContent.Sha256(hex))
+        DocumentEntry("$title.pdf", "$title.pdf", 100u, null)
     }
+
+    override fun hash(handle: String, path: String): DocumentContent {
+        val title = path.removeSuffix(".pdf")
+        val hex = MessageDigest.getInstance("SHA-256").digest(title.toByteArray()).joinToString("") { "%02x".format(it) }
+        return DocumentContent.Sha256(hex)
+    }
+
+    override fun readFile(handle: String, path: String): ByteArray? = null
 
     override fun extractTextLayer(handle: String, path: String): String? = null
 

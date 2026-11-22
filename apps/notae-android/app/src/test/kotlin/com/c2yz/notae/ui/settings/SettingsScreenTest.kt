@@ -22,6 +22,7 @@ import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.unit.Density
 import com.c2yz.notae.core.Action
+import com.c2yz.notae.core.DocumentContent
 import com.c2yz.notae.core.DocumentEntry
 import com.c2yz.notae.core.Effect
 import com.c2yz.notae.core.ExportStatus
@@ -244,6 +245,10 @@ class SettingsScreenTest {
         override fun checkRoot(handle: String) = error("no library folder")
 
         override fun enumerate(handle: String): List<DocumentEntry> = error("no library folder")
+
+        override fun hash(handle: String, path: String): DocumentContent = error("no library folder")
+
+        override fun readFile(handle: String, path: String): ByteArray? = error("no library folder")
 
         override fun extractTextLayer(handle: String, path: String): String? = error("no library folder")
 

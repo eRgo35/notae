@@ -1,5 +1,6 @@
 package com.c2yz.notae
 
+import com.c2yz.notae.core.DocumentContent
 import com.c2yz.notae.core.DocumentEntry
 import com.c2yz.notae.core.PlatformLibrary
 import com.c2yz.notae.core.RecordingListener
@@ -52,6 +53,10 @@ private class EmptyPlatform : PlatformLibrary {
     override fun checkRoot(handle: String) = error("no library folder was picked")
 
     override fun enumerate(handle: String): List<DocumentEntry> = error("no library folder was picked")
+
+    override fun hash(handle: String, path: String): DocumentContent = error("no library folder was picked")
+
+    override fun readFile(handle: String, path: String): ByteArray? = error("no library folder was picked")
 
     override fun extractTextLayer(handle: String, path: String): String? = error("no library folder was picked")
 

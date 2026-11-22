@@ -12,7 +12,9 @@ import android.provider.DocumentsProvider
 import com.c2yz.notae.core.DocumentContent
 import com.c2yz.notae.core.DocumentEntry
 import com.c2yz.notae.core.PlatformException
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Rule
@@ -47,25 +49,55 @@ class SafLibraryTest {
     }
 
     @Test
-    fun enumerate_reports_unreadable_document() {
-        val root = "%PDF-1.4\nroot".toByteArray()
+    fun enumerate_lists_size_and_modified_without_opening() {
+        val first = "%PDF-1.4\nroot".toByteArray()
         val nested = "%PDF-1.7\nnested".toByteArray()
-        provider.add("root", FakeDocument("root.pdf", file(root)))
+        provider.add("root", FakeDocument("root.pdf", file(first), modified = 1_700_000_000_000L))
         provider.add("root", FakeDocument("nested", directory = true))
         provider.add("nested", FakeDocument("practice.PDF", file(nested)))
-        provider.add("root", FakeDocument("locked.pdf", null))
         provider.add("root", FakeDocument("notes.txt", file("text".toByteArray())))
 
         val entries = library.enumerate(tree)
 
         assertEquals(
             listOf(
-                DocumentEntry("root.pdf", "root.pdf", root.size.toULong(), sha256(root)),
-                DocumentEntry("nested/practice.PDF", "practice.PDF", nested.size.toULong(), sha256(nested)),
-                DocumentEntry("locked.pdf", "locked.pdf", 0uL, DocumentContent.Unreadable),
+                DocumentEntry("root.pdf", "root.pdf", first.size.toULong(), 1_700_000_000_000L),
+                DocumentEntry("nested/practice.PDF", "practice.PDF", nested.size.toULong(), null),
             ),
             entries,
         )
+        assertEquals(0, provider.openCount)
+    }
+
+    @Test
+    fun enumerate_skips_the_notae_folder() {
+        provider.add("root", FakeDocument("root.pdf", file("%PDF-1.4\nroot".toByteArray())))
+        provider.add("root", FakeDocument(".notae", directory = true))
+        provider.add(".notae", FakeDocument("x.pdf", file("%PDF-1.4\nx".toByteArray())))
+
+        assertEquals(listOf("root.pdf"), library.enumerate(tree).map { it.path })
+    }
+
+    @Test
+    fun hash_reports_sha256_and_unreadable() {
+        val bytes = "%PDF-1.4\nroot".toByteArray()
+        provider.add("root", FakeDocument("root.pdf", file(bytes)))
+        provider.add("root", FakeDocument("locked.pdf", null))
+
+        assertEquals(sha256(bytes), library.hash(tree, "root.pdf"))
+        assertEquals(DocumentContent.Unreadable, library.hash(tree, "locked.pdf"))
+        assertEquals(DocumentContent.Unreadable, library.hash(tree, "gone.pdf"))
+    }
+
+    @Test
+    fun read_file_returns_bytes_or_null() {
+        val json = """{"version":1}""".toByteArray()
+        provider.add("root", FakeDocument(".notae", directory = true))
+        provider.add(".notae", FakeDocument("library.json", file(json)))
+
+        assertArrayEquals(json, library.readFile(tree, ".notae/library.json"))
+        assertNull(library.readFile(tree, ".notae/missing.json"))
+        assertNull(library.readFile(tree, "nowhere/library.json"))
     }
 
     @Test
@@ -106,12 +138,21 @@ class SafLibraryTest {
 }
 
 /** A document the fake provider lists; a null [file] throws on open. */
-data class FakeDocument(val name: String, val file: File? = null, val directory: Boolean = false)
+data class FakeDocument(
+    val name: String,
+    val file: File? = null,
+    val directory: Boolean = false,
+    val modified: Long? = null,
+)
 
 /** A document tree in memory; [revoked] makes every call fail as a revoked grant does. */
 class FakeDocumentsProvider : DocumentsProvider() {
     private val children = mutableMapOf<String, MutableList<Pair<String, FakeDocument>>>()
     var revoked = false
+
+    /** How many times a document was opened, so a test can show a listing reads nothing. */
+    var openCount = 0
+        private set
 
     /** Thrown when the root itself is queried, as a provider does for a deleted or moved tree. */
     var rootFailure: Exception? = null
@@ -129,7 +170,7 @@ class FakeDocumentsProvider : DocumentsProvider() {
         rootFailure?.takeIf { documentId == "root" }?.let { throw it }
         val cursor = cursor()
         if (documentId == "root") {
-            cursor.addRow(arrayOf<Any?>("root", "Scores", Document.MIME_TYPE_DIR, 0))
+            cursor.addRow(arrayOf<Any?>("root", "Scores", Document.MIME_TYPE_DIR, 0, null))
         } else {
             find(documentId)?.let { cursor.addRow(row(documentId, it)) }
         }
@@ -145,6 +186,7 @@ class FakeDocumentsProvider : DocumentsProvider() {
 
     override fun openDocument(documentId: String, mode: String, signal: CancellationSignal?): ParcelFileDescriptor {
         checkGrant()
+        openCount++
         val file = find(documentId)?.file ?: throw FileNotFoundException("cannot open $documentId")
         return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     }
@@ -158,7 +200,7 @@ class FakeDocumentsProvider : DocumentsProvider() {
     private fun find(id: String) = children.values.flatten().firstOrNull { it.first == id }?.second
 
     private fun cursor() = MatrixCursor(
-        arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE),
+        arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE, Document.COLUMN_LAST_MODIFIED),
     )
 
     private fun row(id: String, document: FakeDocument): Array<Any?> = arrayOf(
@@ -166,5 +208,6 @@ class FakeDocumentsProvider : DocumentsProvider() {
         document.name,
         if (document.directory) Document.MIME_TYPE_DIR else if (document.name.endsWith(".txt")) "text/plain" else "application/pdf",
         document.file?.length() ?: 0,
+        document.modified,
     )
 }

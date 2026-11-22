@@ -87,24 +87,35 @@ class SafLibrary(context: Context) : PlatformLibrary {
     private fun enumerateChildren(tree: Uri, parentId: String, parentPath: String, entries: MutableList<DocumentEntry>) {
         for (child in children(resolver, tree, parentId)) {
             if (child.isDirectory) {
+                // The sidecar folder is the core's own; its contents are never library documents.
+                if (parentPath.isEmpty() && child.name == SIDECAR_DIR) continue
                 enumerateChildren(tree, child.id, joinPath(parentPath, child.name), entries)
             } else if (isPdfName(child.name)) {
-                val path = joinPath(parentPath, child.name)
-                entries += readEntry(DocumentsContract.buildDocumentUriUsingTree(tree, child.id), path, child.name)
+                entries += DocumentEntry(joinPath(parentPath, child.name), child.name, child.size.toULong(), child.modified)
             }
         }
     }
 
-    /** One PDF's entry; a document that cannot be read is listed as unreadable with size 0. */
-    private fun readEntry(document: Uri, path: String, name: String): DocumentEntry = try {
-        val stream = resolver.openInputStream(document) ?: throw FileNotFoundException("no stream for $path")
-        val counted = CountingStream(stream)
-        val hex = counted.use { sha256Hex(it) }
-        DocumentEntry(path, name, counted.count.toULong(), DocumentContent.Sha256(hex))
-    } catch (error: SecurityException) {
-        throw error
-    } catch (_: Exception) {
-        DocumentEntry(path, name, 0uL, DocumentContent.Unreadable)
+    /** One PDF's content key; a document that cannot be read is [DocumentContent.Unreadable]. */
+    override fun hash(handle: String, path: String): DocumentContent = platformCall {
+        try {
+            val stream = resolver.openInputStream(documentUri(resolver, handle.toUri(), path))
+                ?: throw FileNotFoundException("no stream for $path")
+            DocumentContent.Sha256(stream.use { sha256Hex(it) })
+        } catch (error: SecurityException) {
+            throw error
+        } catch (_: Exception) {
+            DocumentContent.Unreadable
+        }
+    }
+
+    /** The bytes of the library-relative [path], or null when it does not exist. */
+    override fun readFile(handle: String, path: String): ByteArray? = platformCall {
+        try {
+            resolver.openInputStream(documentUri(resolver, handle.toUri(), path, requirePdf = false))?.use { it.readBytes() }
+        } catch (_: FileNotFoundException) {
+            null
+        }
     }
 
     private fun <T> withRenderer(document: Uri, block: (PdfRenderer) -> T): T {
@@ -131,19 +142,10 @@ class SafLibrary(context: Context) : PlatformLibrary {
         }
     }
 
-    private class CountingStream(private val input: InputStream) : InputStream() {
-        var count = 0L
-            private set
-
-        override fun read(): Int = input.read().also { if (it >= 0) count++ }
-
-        override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
-            input.read(buffer, offset, length).also { if (it > 0) count += it }
-
-        override fun close() = input.close()
-    }
-
     private companion object {
+        /** The folder holding the core's PC sidecar files. */
+        const val SIDECAR_DIR = ".notae"
+
         /** `PdfRenderer.Page.getTextContents` arrived in API 35. */
         const val TEXT_CONTENTS_API = 35
 
@@ -164,10 +166,10 @@ fun sha256Hex(input: InputStream): String {
     return digest.digest().joinToString("") { "%02x".format(it) }
 }
 
-/** Resolves the library-relative PDF [path] below [tree] to its document URI, walking display names. */
-internal fun documentUri(resolver: ContentResolver, tree: Uri, path: String): Uri {
+/** Resolves the library-relative [path] below [tree] to its document URI, walking display names; a PDF unless [requirePdf] is false. */
+internal fun documentUri(resolver: ContentResolver, tree: Uri, path: String, requirePdf: Boolean = true): Uri {
     val segments = path.split('/')
-    if (!isPdfName(segments.last())) throw IllegalArgumentException("not a PDF library path: $path")
+    if (requirePdf && !isPdfName(segments.last())) throw IllegalArgumentException("not a PDF library path: $path")
     var parentId = DocumentsContract.getTreeDocumentId(tree)
     segments.forEachIndexed { index, segment ->
         val isFile = index == segments.lastIndex
@@ -197,22 +199,39 @@ internal inline fun <T> platformCall(block: () -> T): T = try {
     throw PlatformException.Unavailable(error.message ?: error.toString())
 }
 
-private class DocumentRow(val id: String, val name: String, val isDirectory: Boolean)
+private class DocumentRow(val id: String, val name: String, val isDirectory: Boolean, val size: Long, val modified: Long?)
 
 /** The immediate children of [parentId], in the provider's order. */
 private fun children(resolver: ContentResolver, tree: Uri, parentId: String): List<DocumentRow> {
     val uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
-    val projection = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE)
+    val projection = arrayOf(
+        Document.COLUMN_DOCUMENT_ID,
+        Document.COLUMN_DISPLAY_NAME,
+        Document.COLUMN_MIME_TYPE,
+        Document.COLUMN_SIZE,
+        Document.COLUMN_LAST_MODIFIED,
+    )
     val cursor = resolver.query(uri, projection, null, null)
         ?: throw IllegalStateException("cannot list SAF children of document $parentId")
     return cursor.use {
         buildList {
             while (it.moveToNext()) {
-                add(DocumentRow(it.string(Document.COLUMN_DOCUMENT_ID), it.string(Document.COLUMN_DISPLAY_NAME), it.string(Document.COLUMN_MIME_TYPE) == Document.MIME_TYPE_DIR))
+                add(
+                    DocumentRow(
+                        it.string(Document.COLUMN_DOCUMENT_ID),
+                        it.string(Document.COLUMN_DISPLAY_NAME),
+                        it.string(Document.COLUMN_MIME_TYPE) == Document.MIME_TYPE_DIR,
+                        it.long(Document.COLUMN_SIZE) ?: 0L,
+                        it.long(Document.COLUMN_LAST_MODIFIED),
+                    ),
+                )
             }
         }
     }
 }
+
+private fun Cursor.long(column: String): Long? =
+    getColumnIndexOrThrow(column).let { if (isNull(it)) null else getLong(it) }
 
 private fun Cursor.string(column: String): String =
     getString(getColumnIndexOrThrow(column)) ?: throw IllegalStateException("SAF cursor returned null for column $column")
