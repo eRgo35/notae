@@ -9,6 +9,9 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -27,6 +30,7 @@ import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.nav.NotaeNavDisplay
 import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
+import com.c2yz.notae.ui.assertInsideWindow
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -57,6 +61,17 @@ class MetadataEditorTest {
         }
         compose.assertAllClickablesLabelled()
         compose.assertClickTargetsAtLeast48dp(density)
+    }
+
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-xhdpi")
+    fun save_stays_visible_in_short_window() {
+        show()
+
+        compose.onNodeWithText("Save details").assertInsideWindow(compose)
+        compose.onNodeWithText("Cancel").assertInsideWindow(compose)
+        // Pinned under the fields, not scrolled with them.
+        compose.onNode(hasText("Save details") and hasAnyAncestor(hasScrollAction())).assertDoesNotExist()
     }
 
     @Test

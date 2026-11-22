@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -77,20 +77,23 @@ fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: M
                     (event.type == KeyEventType.KeyDown && event.key == Key.Escape).also { if (it) cancel() }
                 }
                 .focusRequester(keys)
-                .focusable(),
+                .focusable()
+                // With the soft keyboard up the fields scroll above it, and Cancel and Save stay in view (R47).
+                .imePadding(),
             padding = PaddingValues(0.dp),
             spacing = 0.dp,
             cardHeight = 620.dp,
             fullScreen = compact,
         ) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
+            val side = if (expanded) 28.dp else 20.dp
+            // The fields scroll; Cancel and Save stay pinned under them, in view in a short window too (R47).
+            Column(Modifier.fillMaxSize()) {
                 Column(
                     Modifier
+                        .weight(1f)
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .heightIn(min = maxHeight)
-                        .padding(start = if (expanded) 28.dp else 20.dp, top = if (expanded) 28.dp else 20.dp, end = if (expanded) 28.dp else 20.dp, bottom = 8.dp),
-                    verticalArrangement = Arrangement.SpaceBetween,
+                        .padding(start = side, top = side, end = side),
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -110,14 +113,14 @@ fun MetadataEditor(draft: MetadataDraft, onAction: (Action) -> Unit, modifier: M
                         Field(stringResource(R.string.details_tags), tags, { tags = it }, stringResource(R.string.metadata_tags_hint))
                         draft.error?.let { Text(failureText(it), color = c.error, fontSize = 14.sp) }
                     }
-                    DialogButtons(
-                        stringResource(R.string.metadata_cancel),
-                        cancel,
-                        stringResource(R.string.metadata_save),
-                        { onAction(Action.SaveMetadata(draft.noteKey, number, title, composer, tags)) },
-                        Modifier.padding(top = 16.dp),
-                    )
                 }
+                DialogButtons(
+                    stringResource(R.string.metadata_cancel),
+                    cancel,
+                    stringResource(R.string.metadata_save),
+                    { onAction(Action.SaveMetadata(draft.noteKey, number, title, composer, tags)) },
+                    Modifier.padding(start = side, top = 16.dp, end = side, bottom = 8.dp),
+                )
             }
         }
     }
