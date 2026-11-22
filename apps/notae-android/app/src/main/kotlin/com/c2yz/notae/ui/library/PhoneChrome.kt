@@ -73,6 +73,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -103,6 +104,12 @@ private val BOTTOM_BAR = 72.dp
 
 private const val COMPOSER_PREFIX = "composer:"
 
+/** The slim rail of a short window. */
+internal const val SLIM_RAIL_TAG = "slimRail"
+
+/** The slim layout's composer filter, which opens the composer sheet. */
+internal const val FILTER_TAG = "filter"
+
 /**
  * The library on a phone, in One UI's shape: a large title over the top of a tall screen that folds into the toolbar as
  * the scores scroll, the toolbar (Back to sets inside a set, Search, Reorder inside a set and ⋮ with Scan library, the
@@ -115,10 +122,11 @@ internal fun CompactLibrary(
     onAction: (Action) -> Unit,
     inSet: Boolean,
     reordering: Boolean,
+    composerSheet: Boolean,
+    onComposerSheet: (Boolean) -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = NotaeTheme.colors
-    var composerSheet by remember { mutableStateOf(false) }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // A short window (a phone on its side, a split screen) has no room for the large title.
         val titleSpace = if (maxHeight >= 560.dp) (maxHeight * 0.24f).coerceIn(140.dp, 220.dp) else 0.dp
@@ -147,7 +155,7 @@ internal fun CompactLibrary(
                     verticalArrangement = collapsingGaps(12.dp),
                 ) {
                     if (showsComposers(snapshot, inSet)) {
-                        Box(Modifier.screenBar("composers")) { ComposerChip(composerName(snapshot), { composerSheet = true }) }
+                        Box(Modifier.screenBar("composers")) { ComposerChip(composerName(snapshot), { onComposerSheet(true) }) }
                     }
                     OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
                     PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
@@ -179,18 +187,68 @@ internal fun CompactLibrary(
                 primary = true,
             )
         }
-        // Back closes the sheet before it reaches the core, which would otherwise leave the app under it.
-        val backState = rememberNavigationEventState(NavigationEventInfo.None)
-        NavigationBackHandler(state = backState, isBackEnabled = composerSheet, onBackCompleted = { composerSheet = false })
-        ClaimBack(composerSheet)
-        CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
-            AnimatedOverlay(if (composerSheet) Unit else null) {
-                ComposerSheet(snapshot, { composerSheet = false }) {
-                    composerSheet = false
-                    onAction(Action.SelectSection(it))
-                }
+        ComposerSheetOverlay(composerSheet, snapshot, onAction, onComposerSheet)
+    }
+}
+
+/**
+ * The composer sheet over the whole window while [open]. Back closes it before it reaches the core, which would
+ * otherwise leave the app under it.
+ */
+@Composable
+private fun ComposerSheetOverlay(open: Boolean, snapshot: Snapshot, onAction: (Action) -> Unit, onOpen: (Boolean) -> Unit) {
+    val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(state = backState, isBackEnabled = open, onBackCompleted = { onOpen(false) })
+    ClaimBack(open)
+    CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
+        AnimatedOverlay(if (open) Unit else null) {
+            ComposerSheet(snapshot, { onOpen(false) }) {
+                onOpen(false)
+                onAction(Action.SelectSection(it))
             }
         }
+    }
+}
+
+/**
+ * The library in a short window (a phone on its side, height under 480 dp): an icon-only rail with the sections and
+ * Settings that fits 360 dp, the header, and the composers behind a filter button that opens the composer sheet
+ * instead of a row of chips. Never the side panel, at any width.
+ */
+@Composable
+internal fun SlimLibrary(
+    snapshot: Snapshot,
+    onAction: (Action) -> Unit,
+    header: @Composable () -> Unit,
+    inSet: Boolean,
+    composerSheet: Boolean,
+    onComposerSheet: (Boolean) -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxSize()) {
+            NavRail(snapshot, onAction, Modifier.width(72.dp).fillMaxHeight().testTag(SLIM_RAIL_TAG).screenBar("rail"), slim = true)
+            Column(
+                Modifier.weight(1f).fillMaxHeight().padding(top = 8.dp, end = 16.dp, bottom = 8.dp),
+                verticalArrangement = collapsingGaps(8.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { header() }
+                    if (showsComposers(snapshot, inSet)) {
+                        IconButton(
+                            stringResource(R.string.library_composers),
+                            painterResource(R.drawable.ic_filter),
+                            { onComposerSheet(true) },
+                            Modifier.testTag(FILTER_TAG),
+                        )
+                    }
+                }
+                OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
+                PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
+                content()
+            }
+        }
+        ComposerSheetOverlay(composerSheet, snapshot, onAction, onComposerSheet)
     }
 }
 
@@ -502,10 +560,13 @@ private fun DoneBar(onAction: (Action) -> Unit) {
     }
 }
 
-/** The sections down the side, with Settings at the foot, for a window between a phone's and a tablet's. */
+/**
+ * The sections down the side, with Settings at the foot, for a window between a phone's and a tablet's. A [slim] rail
+ * (a short window) shows icons only, each read as its label, in 56 dp rows: 4 × 56 + 3 × 4 + 16 + 48 = 300 dp of 360.
+ */
 @Composable
-private fun NavRail(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier) {
-    Column(modifier.padding(vertical = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun NavRail(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier, slim: Boolean = false) {
+    Column(modifier.padding(vertical = if (slim) 8.dp else 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             snapshot.sections.forEach { section ->
                 NavItem(
@@ -513,7 +574,8 @@ private fun NavRail(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Mo
                     painterResource(sectionIcon(section.key)),
                     navSelected(section.key, snapshot.sectionKey),
                     { onAction(Action.SelectSection(section.key)) },
-                    Modifier.width(80.dp).height(68.dp),
+                    if (slim) Modifier.width(64.dp).height(56.dp) else Modifier.width(80.dp).height(68.dp),
+                    showLabel = !slim,
                 )
             }
         }
@@ -524,13 +586,14 @@ private fun NavRail(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Mo
 
 /** One destination of the bottom bar or the rail; read as its label, selected or not. */
 @Composable
-private fun NavItem(label: String, icon: Painter, selected: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun NavItem(label: String, icon: Painter, selected: Boolean, onClick: () -> Unit, modifier: Modifier, showLabel: Boolean = true) {
     val c = NotaeTheme.colors
     val source = remember { MutableInteractionSource() }
     val focused by source.collectIsFocusedAsState()
     Column(
         modifier
             .selectable(selected = selected, interactionSource = source, indication = ripple(bounded = false, radius = 36.dp), role = Role.Tab, onClick = onClick)
+            .then(if (showLabel) Modifier else Modifier.semantics { contentDescription = label })
             .padding(vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -549,7 +612,7 @@ private fun NavItem(label: String, icon: Painter, selected: Boolean, onClick: ()
             Box(Modifier.size(pillWidth, 32.dp).clip(pill).background(fill))
             Icon(icon, null, Modifier.size(24.dp), tint = ink)
         }
-        Text(
+        if (showLabel) Text(
             label,
             color = if (selected) c.foreground else c.muted,
             fontSize = 12.sp,

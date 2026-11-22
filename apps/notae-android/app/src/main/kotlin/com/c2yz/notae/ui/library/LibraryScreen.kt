@@ -42,6 +42,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -97,9 +98,9 @@ import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.SidebarItem
-import com.c2yz.notae.ui.components.WidthClass
+import com.c2yz.notae.ui.components.Chrome
 import com.c2yz.notae.ui.components.toCount
-import com.c2yz.notae.ui.components.windowWidthClass
+import com.c2yz.notae.ui.components.windowChrome
 import com.c2yz.notae.ui.details.detailsKeyAction
 import com.c2yz.notae.ui.sets.SetActionsSheet
 import com.c2yz.notae.ui.sets.ShareSetButton
@@ -152,6 +153,8 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
     val editNote = note(noteEditFor)
     // A piece's set note editor, by item id.
     var setNoteFor by remember { mutableStateOf<String?>(null) }
+    // The composer sheet stays open when the window turns (the bottom bar's chip and the slim layout's filter open it).
+    var composerSheet by rememberSaveable { mutableStateOf(false) }
     val setNoteRow = setNoteFor?.let { id -> snapshot.rows.firstOrNull { it.itemId == id } }
     val sheetOpen = menuRow != null || menuSet != null || menuNote != null || editNote != null || setNoteRow != null
     val closeSheets = {
@@ -224,18 +227,28 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 onSetMore = { setMenuFor = it.id },
             )
         }
-        // The window decides the chrome: a phone gets the bottom bar, a window between a phone and a tablet the rail,
-        // and a tablet the side panel (or chips when it is hidden or the library shares the window with the details).
-        when (windowWidthClass()) {
-            WidthClass.COMPACT -> CompactLibrary(snapshot, onAction, inSet, reordering, content)
-            WidthClass.MEDIUM -> MediumLibrary(
+        // The window decides the chrome: a phone gets the bottom bar, a short window (a phone on its side) the slim
+        // rail, a window between a phone and a tablet the rail, and a tablet the side panel (or chips when it is hidden
+        // or the library shares the window with the details).
+        when (windowChrome()) {
+            Chrome.BOTTOM_BAR -> CompactLibrary(snapshot, onAction, inSet, reordering, composerSheet, { composerSheet = it }, content)
+            Chrome.SLIM_RAIL -> SlimLibrary(
+                snapshot,
+                onAction,
+                { Header(snapshot, onAction, expanded = false, sidebar = true, portrait, inSet, reordering) },
+                inSet,
+                composerSheet,
+                { composerSheet = it },
+                content,
+            )
+            Chrome.RAIL -> MediumLibrary(
                 snapshot,
                 onAction,
                 { Header(snapshot, onAction, expanded = false, sidebar = true, portrait, inSet, reordering) },
                 inSet,
                 content,
             )
-            WidthClass.EXPANDED -> Box(Modifier.fillMaxSize().clipToBounds().padding(16.dp)) {
+            Chrome.SIDE_PANEL -> Box(Modifier.fillMaxSize().clipToBounds().padding(16.dp)) {
                 // The side panel slides in from the start, or out to it, and the rest moves with it. The rest takes its
                 // new width at once and is only moved, so its grid changes its columns once, not at every step.
                 val panel = updateTransition(sidebar, label = "side panel")
