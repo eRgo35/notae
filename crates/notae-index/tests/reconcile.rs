@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use notae_domain::{
-    IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId, NoteMetadata, PdfFingerprint,
-    RelativePdfPath, Sha256Digest,
+    EpochTimestamp, IndexStatus, IndexedNote, MetadataField, MetadataOrigin, NoteId, NoteMetadata,
+    PdfFingerprint, RelativePdfPath, Sha256Digest,
 };
 use notae_index::{
     CatalogError, FileCondition, FileFailureReason, IndexStore, OcrText, PdfCatalog, PdfFile,
@@ -1507,5 +1507,41 @@ fn an_unreadable_record_that_is_contested_keeps_its_condition() {
             "round {round}: the condition survives every rescan"
         );
     }
+    let _ = std::fs::remove_file(&database);
+}
+
+#[test]
+fn unchanged_record_takes_the_new_modified_time() {
+    let (mut store, database) = open("modified-time");
+    let mut original = note("10 - Hymn.pdf", 1, Some(NoteId::new(10)), "Hymn");
+    original.set_status(IndexStatus::Ready);
+    let original = IndexedNote::new(
+        original.path().clone(),
+        PdfFingerprint::new(digest(1), 10, None),
+        original.metadata().clone(),
+    );
+    store
+        .upsert_note_with_ocr(&original, Some(&OcrText::new("kept text")))
+        .expect("seed");
+
+    let modified = EpochTimestamp::new(1_700_000_000, 0).expect("timestamp");
+    let files = vec![PdfFile::from_path(
+        path("10 - Hymn.pdf"),
+        PdfFingerprint::new(digest(1), 10, Some(modified)),
+    )];
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    assert!(plan.unchanged().is_empty());
+    assert_eq!(plan.updates().len(), 1);
+
+    Reconciler::apply(plan, &mut store).expect("apply");
+    assert_eq!(only_note(&store).fingerprint().modified(), Some(modified));
+    assert_eq!(
+        store
+            .ocr_text(&digest(1))
+            .expect("ocr")
+            .expect("ocr text kept")
+            .text(),
+        "kept text"
+    );
     let _ = std::fs::remove_file(&database);
 }

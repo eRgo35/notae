@@ -1280,11 +1280,14 @@ fn classify_bytes(
             // changed what filename-derived metadata *should* be, so the
             // record is reused untouched unless a non-manual value actually
             // differs — a refresh that changes nothing costs no write, and the
-            // record's status is only rewritten when it was stale.
+            // record's status is only rewritten when it was stale. A changed
+            // modified time is also an update, so the stored fingerprint
+            // stays current and later scans can trust it.
             let status = unconflicted(record.status());
             if record.metadata().id() == metadata.id()
                 && record.metadata().title() == metadata.title()
                 && record.status() == status
+                && record.fingerprint() == &fingerprint
             {
                 return Ok(Classification::Unchanged(record.clone()));
             }

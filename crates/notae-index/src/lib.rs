@@ -70,6 +70,7 @@ mod store;
 
 pub use crate::provenance::{
     MetadataRefreshError, RefreshOutcome, metadata_from_filename, refresh_from_filename,
+    refresh_from_sidecar,
 };
 pub use crate::reconcile::{
     CatalogError, DuplicateIdConflict, FileCondition, FileFailure, FileFailureReason, PdfCatalog,
