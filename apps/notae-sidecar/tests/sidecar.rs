@@ -103,8 +103,16 @@ fn quoted_multiline_csv_and_bom_parse() {
 fn empty_id_gives_null_number() {
     let dir = tempfile::tempdir().expect("tmp");
     fixture(dir.path());
+    // A numbered file name does not fill in the row's empty `ID`.
+    fs::write(dir.path().join("009 - Numbered.pdf"), b"%PDF numbered").expect("write");
+    let mut csv = fs::read_to_string(dir.path().join("Indeks.csv")).expect("csv");
+    csv.push_str(",Numbered,,,,009 - Numbered.pdf,,\n");
+    fs::write(dir.path().join("Indeks.csv"), csv).expect("write csv");
     run(dir.path(), &FakeRenderer::new()).expect("run");
-    let e = &load(dir.path()).scores[1];
+    let scores = load(dir.path()).scores;
+    assert_eq!(scores[1].path, "009 - Numbered.pdf");
+    assert_eq!(scores[1].number, None);
+    let e = &scores[2];
     assert_eq!(e.number, None);
     assert_eq!(e.composer, None);
     assert!(e.tags.is_empty());

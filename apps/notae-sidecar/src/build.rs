@@ -172,6 +172,11 @@ fn collect_pdfs(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), To
 fn entry(rel: &str, bytes: &[u8], row: Option<&CsvRow>) -> SidecarEntry {
     let file_name = rel.rsplit('/').next().unwrap_or(rel);
     let parsed = parse_filename(file_name);
+    // A row's empty `ID` stays null; only a PDF with no row takes its file name's number.
+    let number = match row {
+        Some(row) => row.id,
+        None => parsed.id().map(|id| id.get()),
+    };
     let row = row.cloned().unwrap_or_default();
     let mut tags: Vec<String> = Vec::new();
     for tag in row.kind.into_iter().chain(row.tags) {
@@ -186,7 +191,7 @@ fn entry(rel: &str, bytes: &[u8], row: Option<&CsvRow>) -> SidecarEntry {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect(),
-        number: row.id.or_else(|| parsed.id().map(|id| id.get())),
+        number,
         title: row.title.or_else(|| Some(parsed.title().to_owned())),
         composer: row.author,
         tags,
