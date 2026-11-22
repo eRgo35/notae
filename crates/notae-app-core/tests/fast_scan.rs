@@ -76,18 +76,22 @@ impl Library {
     fn scan_outcome(&self) -> (OperationEvent, Vec<String>) {
         let before = self.platform.calls().len();
         self.controller().start_rescan().expect("start rescan");
-        let last = loop {
+        (self.last_event(), self.platform.calls()[before..].to_vec())
+    }
+
+    /// Waits for the running scan's last event.
+    fn last_event(&self) -> OperationEvent {
+        loop {
             match self.controller().recv_event_timeout(Duration::from_secs(5)) {
                 Some(
                     last @ (OperationEvent::Completed { .. }
                     | OperationEvent::Failed { .. }
                     | OperationEvent::Canceled),
-                ) => break last,
+                ) => return last,
                 Some(_) => {}
                 None => panic!("rescan did not finish"),
             }
-        };
-        (last, self.platform.calls()[before..].to_vec())
+        }
     }
 
     fn save_metadata(&self, metadata: EditableMetadata) {
@@ -679,4 +683,31 @@ fn a_sidecar_read_without_permission_fails_the_scan() {
         ),
         "{last:?}"
     );
+}
+
+#[test]
+fn cancel_stops_hashing() {
+    let library = Library::new();
+    library.platform.set_entries(Ok(vec![
+        listed("1 - Alpha.pdf", ALPHA, None),
+        listed("2 - Beta.pdf", BETA, None),
+        listed("3 - Gamma.pdf", GAMMA, None),
+    ]));
+    let release = library.platform.hold_hash();
+    library.controller().start_rescan().expect("start rescan");
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while count(&library.platform.calls(), "hash") == 0 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the scan never hashed"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    }
+
+    library.controller().cancel().expect("cancel");
+    drop(release);
+    let last = library.last_event();
+
+    assert!(matches!(last, OperationEvent::Canceled), "{last:?}");
+    assert_eq!(count(&library.platform.calls(), "hash"), 1);
 }

@@ -352,8 +352,14 @@ fn run_rescan(
         unchanged,
         sidecar: matched,
         apply: to_apply,
-    } = match resolve(local, catalog, listed, sidecar.as_ref()) {
-        Ok(resolved) => resolved,
+    } = match resolve(local, catalog, listed, sidecar.as_ref(), &|| {
+        cancellation.load(Ordering::Acquire) == CANCEL_REQUESTED
+    }) {
+        Ok(Some(resolved)) => resolved,
+        Ok(None) => {
+            stop_if_cancelled(cancellation, events, busy);
+            return;
+        }
         Err(error) => {
             fail_catalog(cancellation, events, busy, &error);
             return;

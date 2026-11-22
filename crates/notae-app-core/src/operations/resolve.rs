@@ -33,6 +33,8 @@ pub(crate) struct Resolved {
 ///
 /// The sidecar entry of an unchanged file is attached only when its `sha256` is the stored one.
 ///
+/// Returns `None`, hashing nothing more, once `cancelled` answers `true` before a file is hashed.
+///
 /// # Errors
 /// [`CatalogError`] when the index cannot be read or the catalog's grant was revoked.
 pub(crate) fn resolve(
@@ -40,7 +42,8 @@ pub(crate) fn resolve(
     catalog: &dyn LibraryCatalog,
     listed: Vec<ListedPdf>,
     sidecar: Option<&Sidecar>,
-) -> Result<Resolved, CatalogError> {
+    cancelled: &dyn Fn() -> bool,
+) -> Result<Option<Resolved>, CatalogError> {
     let stored: HashMap<RelativePdfPath, PdfFingerprint> = local
         .list_all()
         .map_err(index_error)?
@@ -71,6 +74,8 @@ pub(crate) fn resolve(
             ))
         } else if let Some(digest) = from_entry {
             FileCondition::Readable(PdfFingerprint::new(digest, pdf.size, pdf.modified))
+        } else if cancelled() {
+            return Ok(None);
         } else {
             catalog.hash(&pdf.path, pdf.size, pdf.modified)?
         };
@@ -91,7 +96,7 @@ pub(crate) fn resolve(
             .files
             .push(PdfFile::with_condition(pdf.path, pdf.filename, condition));
     }
-    Ok(resolved)
+    Ok(Some(resolved))
 }
 
 fn index_error(error: notae_index::IndexError) -> CatalogError {

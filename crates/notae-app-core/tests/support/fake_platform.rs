@@ -28,6 +28,8 @@ pub struct FakePlatform {
     threads: Mutex<Vec<ThreadId>>,
     /// The next `enumerate` waits on this until the test sends or drops the sender.
     enumerate_hold: Mutex<Option<Receiver<()>>>,
+    /// The next `hash` waits on this until the test sends or drops the sender.
+    hash_hold: Mutex<Option<Receiver<()>>>,
     enumerate_panics: AtomicBool,
 }
 
@@ -44,6 +46,7 @@ impl Default for FakePlatform {
             calls: Mutex::new(Vec::new()),
             threads: Mutex::new(Vec::new()),
             enumerate_hold: Mutex::new(None),
+            hash_hold: Mutex::new(None),
             enumerate_panics: AtomicBool::new(false),
         }
     }
@@ -95,6 +98,13 @@ impl FakePlatform {
     pub fn hold_enumerate(&self) -> Sender<()> {
         let (release, hold) = mpsc::channel();
         *lock(&self.enumerate_hold) = Some(hold);
+        release
+    }
+
+    /// Makes the next `hash` block until the returned sender sends or is dropped.
+    pub fn hold_hash(&self) -> Sender<()> {
+        let (release, hold) = mpsc::channel();
+        *lock(&self.hash_hold) = Some(hold);
         release
     }
 
@@ -150,6 +160,10 @@ impl PlatformLibrary for FakePlatform {
 
     fn hash(&self, handle: String, path: String) -> Result<DocumentContent, PlatformError> {
         self.record(format!("hash {handle} {path}"));
+        let hold = lock(&self.hash_hold).take();
+        if let Some(hold) = hold {
+            let _ = hold.recv();
+        }
         lock(&self.hashes)
             .get(&path)
             .cloned()
