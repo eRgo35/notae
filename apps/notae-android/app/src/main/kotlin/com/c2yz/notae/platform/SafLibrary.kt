@@ -21,6 +21,7 @@ import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -52,7 +53,14 @@ class SafLibrary(context: Context) : PlatformLibrary {
         if (found != true) throw PlatformException.PermissionLost()
     }
 
+    /** Directory listings kept for one scan, so repeated path lookups share a query; cleared by [enumerate]. */
+    private val listings = ConcurrentHashMap<String, List<DocumentRow>>()
+
+    private fun listing(tree: Uri, parentId: String): List<DocumentRow> =
+        listings.getOrPut("$tree|$parentId") { children(resolver, tree, parentId) }
+
     override fun enumerate(handle: String): List<DocumentEntry> = platformCall {
+        listings.clear()
         val tree = handle.toUri()
         val entries = mutableListOf<DocumentEntry>()
         enumerateChildren(tree, DocumentsContract.getTreeDocumentId(tree), "", entries)
@@ -85,7 +93,7 @@ class SafLibrary(context: Context) : PlatformLibrary {
     }
 
     private fun enumerateChildren(tree: Uri, parentId: String, parentPath: String, entries: MutableList<DocumentEntry>) {
-        for (child in children(resolver, tree, parentId)) {
+        for (child in listing(tree, parentId)) {
             if (child.isDirectory) {
                 // The sidecar folder is the core's own; its contents are never library documents.
                 if (parentPath.isEmpty() && child.name == SIDECAR_DIR) continue
@@ -99,7 +107,7 @@ class SafLibrary(context: Context) : PlatformLibrary {
     /** One PDF's content key; a document that cannot be read is [DocumentContent.Unreadable]. */
     override fun hash(handle: String, path: String): DocumentContent = platformCall {
         try {
-            val stream = resolver.openInputStream(documentUri(resolver, handle.toUri(), path))
+            val stream = resolver.openInputStream(documentUri(resolver, handle.toUri(), path, listing = ::listing))
                 ?: throw FileNotFoundException("no stream for $path")
             DocumentContent.Sha256(stream.use { sha256Hex(it) })
         } catch (error: SecurityException) {
@@ -112,7 +120,7 @@ class SafLibrary(context: Context) : PlatformLibrary {
     /** The bytes of the library-relative [path], or null when it does not exist. */
     override fun readFile(handle: String, path: String): ByteArray? = platformCall {
         try {
-            resolver.openInputStream(documentUri(resolver, handle.toUri(), path, requirePdf = false))?.use { it.readBytes() }
+            resolver.openInputStream(documentUri(resolver, handle.toUri(), path, requirePdf = false, listing = ::listing))?.use { it.readBytes() }
         } catch (_: FileNotFoundException) {
             null
         }
@@ -167,13 +175,15 @@ fun sha256Hex(input: InputStream): String {
 }
 
 /** Resolves the library-relative [path] below [tree] to its document URI, walking display names; a PDF unless [requirePdf] is false. */
-internal fun documentUri(resolver: ContentResolver, tree: Uri, path: String, requirePdf: Boolean = true): Uri {
+internal fun documentUri(resolver: ContentResolver, tree: Uri, path: String, requirePdf: Boolean = true,
+    listing: (Uri, String) -> List<DocumentRow> = { t, id -> children(resolver, t, id) },
+): Uri {
     val segments = path.split('/')
     if (requirePdf && !isPdfName(segments.last())) throw IllegalArgumentException("not a PDF library path: $path")
     var parentId = DocumentsContract.getTreeDocumentId(tree)
     segments.forEachIndexed { index, segment ->
         val isFile = index == segments.lastIndex
-        val matches = children(resolver, tree, parentId).filter { it.name == segment && it.isDirectory != isFile }
+        val matches = listing(tree, parentId).filter { it.name == segment && it.isDirectory != isFile }
         parentId = when (matches.size) {
             1 -> matches.single().id
             0 -> throw FileNotFoundException("SAF document not found: $path")
@@ -199,10 +209,10 @@ internal inline fun <T> platformCall(block: () -> T): T = try {
     throw PlatformException.Unavailable(error.message ?: error.toString())
 }
 
-private class DocumentRow(val id: String, val name: String, val isDirectory: Boolean, val size: Long, val modified: Long?)
+internal class DocumentRow(val id: String, val name: String, val isDirectory: Boolean, val size: Long, val modified: Long?)
 
 /** The immediate children of [parentId], in the provider's order. */
-private fun children(resolver: ContentResolver, tree: Uri, parentId: String): List<DocumentRow> {
+internal fun children(resolver: ContentResolver, tree: Uri, parentId: String): List<DocumentRow> {
     val uri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
     val projection = arrayOf(
         Document.COLUMN_DOCUMENT_ID,
@@ -221,8 +231,9 @@ private fun children(resolver: ContentResolver, tree: Uri, parentId: String): Li
                         it.string(Document.COLUMN_DOCUMENT_ID),
                         it.string(Document.COLUMN_DISPLAY_NAME),
                         it.string(Document.COLUMN_MIME_TYPE) == Document.MIME_TYPE_DIR,
-                        it.long(Document.COLUMN_SIZE) ?: 0L,
-                        it.long(Document.COLUMN_LAST_MODIFIED),
+                        // Providers report an unknown size or time as null, 0 or a negative; neither may match an index.
+                        it.long(Document.COLUMN_SIZE)?.coerceAtLeast(0L) ?: 0L,
+                        it.long(Document.COLUMN_LAST_MODIFIED)?.takeIf { millis -> millis > 0 },
                     ),
                 )
             }

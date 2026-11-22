@@ -74,8 +74,33 @@ class SafLibraryTest {
         provider.add("root", FakeDocument("root.pdf", file("%PDF-1.4\nroot".toByteArray())))
         provider.add("root", FakeDocument(".notae", directory = true))
         provider.add(".notae", FakeDocument("x.pdf", file("%PDF-1.4\nx".toByteArray())))
+        provider.add("root", FakeDocument("sub", directory = true))
+        provider.add("sub", FakeDocument(".notae", directory = true, id = "sub-notae"))
+        provider.add("sub-notae", FakeDocument("y.pdf", file("%PDF-1.4\ny".toByteArray())))
 
-        assertEquals(listOf("root.pdf"), library.enumerate(tree).map { it.path })
+        assertEquals(listOf("root.pdf", "sub/.notae/y.pdf"), library.enumerate(tree).map { it.path })
+    }
+
+    @Test
+    fun enumerate_treats_unknown_modified_time_as_null() {
+        provider.add("root", FakeDocument("a.pdf", file("%PDF-1.4\na".toByteArray()), modified = 0L))
+
+        assertNull(library.enumerate(tree).single().modifiedMillis)
+    }
+
+    @Test
+    fun repeated_lookups_in_one_directory_list_it_once() {
+        provider.add("root", FakeDocument(".notae", directory = true))
+        provider.add(".notae", FakeDocument("thumbnails", directory = true))
+        provider.add("thumbnails", FakeDocument("a.png", file(byteArrayOf(1))))
+        provider.add("thumbnails", FakeDocument("b.png", file(byteArrayOf(2))))
+
+        assertArrayEquals(byteArrayOf(1), library.readFile(tree, ".notae/thumbnails/a.png"))
+        val before = provider.listCount("thumbnails")
+        assertArrayEquals(byteArrayOf(2), library.readFile(tree, ".notae/thumbnails/b.png"))
+
+        assertEquals(1, before)
+        assertEquals(1, provider.listCount("thumbnails"))
     }
 
     @Test
@@ -85,6 +110,7 @@ class SafLibraryTest {
         provider.add("root", FakeDocument("locked.pdf", null))
 
         assertEquals(sha256(bytes), library.hash(tree, "root.pdf"))
+        assertEquals(1, provider.openCount)
         assertEquals(DocumentContent.Unreadable, library.hash(tree, "locked.pdf"))
         assertEquals(DocumentContent.Unreadable, library.hash(tree, "gone.pdf"))
     }
@@ -108,6 +134,8 @@ class SafLibraryTest {
         assertThrows(PlatformException.PermissionLost::class.java) { library.enumerate(tree) }
         assertThrows(PlatformException.PermissionLost::class.java) { library.checkRoot(tree) }
         assertThrows(PlatformException.PermissionLost::class.java) { library.extractTextLayer(tree, "root.pdf") }
+        assertThrows(PlatformException.PermissionLost::class.java) { library.hash(tree, "root.pdf") }
+        assertThrows(PlatformException.PermissionLost::class.java) { library.readFile(tree, ".notae/library.json") }
     }
 
     @Test
@@ -143,6 +171,7 @@ data class FakeDocument(
     val file: File? = null,
     val directory: Boolean = false,
     val modified: Long? = null,
+    val id: String = name,
 )
 
 /** A document tree in memory; [revoked] makes every call fail as a revoked grant does. */
@@ -158,7 +187,7 @@ class FakeDocumentsProvider : DocumentsProvider() {
     var rootFailure: Exception? = null
 
     fun add(parent: String, document: FakeDocument) {
-        children.getOrPut(parent) { mutableListOf() } += document.name to document
+        children.getOrPut(parent) { mutableListOf() } += document.id to document
     }
 
     override fun onCreate() = true
@@ -177,8 +206,14 @@ class FakeDocumentsProvider : DocumentsProvider() {
         return cursor
     }
 
+    private val listCounts = mutableMapOf<String, Int>()
+
+    /** How many times the children of [parentId] were queried. */
+    fun listCount(parentId: String) = listCounts[parentId] ?: 0
+
     override fun queryChildDocuments(parentDocumentId: String, projection: Array<out String>?, sortOrder: String?): Cursor {
         checkGrant()
+        listCounts[parentDocumentId] = listCount(parentDocumentId) + 1
         val cursor = cursor()
         children[parentDocumentId].orEmpty().forEach { (id, document) -> cursor.addRow(row(id, document)) }
         return cursor
