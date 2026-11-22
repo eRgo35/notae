@@ -1,15 +1,23 @@
 //! The worker thread that rescans the library and serializes all index access.
 
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use notae_domain::{DomainError, IndexStatus};
-use notae_index::{IndexStore, OcrText, PdfFile, Reconciler, SearchScope};
+use notae_domain::{
+    DomainError, IndexStatus, IndexedNote, SIDECAR_FILE, SIDECAR_THUMBNAILS, SidecarEntry,
+};
+use notae_index::{
+    CatalogError, IndexStore, OcrText, PdfFile, Reconciler, SearchScope, refresh_from_sidecar,
+};
 
 use crate::operations::events::{OperationEvent, RescanSummary};
+use crate::operations::resolve::{Resolved, resolve};
+use crate::pdf_pages::PdfError;
+use crate::sidecar::{Sidecar, entry_digest};
 use crate::storage::LibraryCatalog;
 use crate::text::Failure;
 use crate::thumbnails::ThumbnailCache;
@@ -323,17 +331,30 @@ fn run_rescan(
     if stop_if_cancelled(cancellation, events, busy) {
         return;
     }
-    let (files, rejected) = match catalog.enumerate() {
-        Ok(files) => (files, catalog.take_rejected_paths()),
+    // The sidecar is read after the listing, which refreshes the platform's view of the folder.
+    let listed = catalog.list().and_then(|listed| {
+        let rejected = catalog.take_rejected_paths();
+        let sidecar = read_sidecar(catalog)?;
+        Ok((listed, rejected, sidecar))
+    });
+    let (listed, rejected, (sidecar, sidecar_ignored)) = match listed {
+        Ok(listed) => listed,
         Err(error) => {
-            cancellation.store(CANCEL_CLOSED, Ordering::Release);
-            busy.store(false, Ordering::Release);
-            send(
-                events,
-                OperationEvent::Failed {
-                    failure: (&error).into(),
-                },
-            );
+            fail_catalog(cancellation, events, busy, &error);
+            return;
+        }
+    };
+    if stop_if_cancelled(cancellation, events, busy) {
+        return;
+    }
+    let Resolved {
+        files,
+        unchanged,
+        sidecar: to_apply,
+    } = match resolve(local, catalog, listed, sidecar.as_ref()) {
+        Ok(resolved) => resolved,
+        Err(error) => {
+            fail_catalog(cancellation, events, busy, &error);
             return;
         }
     };
@@ -401,6 +422,7 @@ fn run_rescan(
                 deleted: report.deletions().len(),
                 conflicts: report.conflicts().len(),
                 failures: report.failures().len() + rejected.len(),
+                sidecar_ignored,
             };
             for path in rejected {
                 let reason = DomainError::InvalidRelativePath(path.clone()).to_string();
@@ -409,19 +431,38 @@ fn run_rescan(
             for (index, file) in files.iter().enumerate() {
                 let path = file.path().as_str().to_owned();
                 let plan_failure = failures.get(&path).cloned();
+                let entry = to_apply.get(file.path());
+                let skip = entry.is_none() && unchanged.contains(file.path());
+                let mut applied = false;
                 let failure = plan_failure.clone().or_else(|| {
-                    match apply_pdf_text_layer(local, catalog, file) {
-                        Ok(failure) => failure,
-                        Err(error) => Some(error.to_string()),
-                    }
+                    let outcome = match entry {
+                        Some(entry) => apply_sidecar_entry(local, catalog, file, entry).map(
+                            |(done, failure)| {
+                                applied = done;
+                                failure
+                            },
+                        ),
+                        None if skip => Ok(None),
+                        None => apply_pdf_text_layer(local, catalog, file),
+                    };
+                    outcome.unwrap_or_else(|error| Some(error.to_string()))
                 });
-                if let (Some(cache), Some(fingerprint)) = (thumbnails, file.fingerprint()) {
+                if let (Some(cache), Some(fingerprint), false) =
+                    (thumbnails, file.fingerprint(), skip)
+                {
                     let key = fingerprint.sha256().to_string();
-                    if let Err(error) =
-                        cache.ensure(&key, |out| catalog.render_thumbnail(file.path(), out))
-                    {
+                    let rendered = cache.ensure(&key, |out| match entry {
+                        Some(_) => copy_sidecar_thumbnail(catalog, file, &key, out),
+                        None => catalog.render_thumbnail(file.path(), out),
+                    });
+                    if let Err(error) = rendered {
                         eprintln!("notae: no thumbnail for {path}: {error}");
                     }
+                }
+                if let (Some(entry), true, None) = (entry, applied, &failure)
+                    && let Err(error) = local.set_sidecar_digest(file.path(), &entry_digest(entry))
+                {
+                    eprintln!("notae: cannot record the sidecar entry for {path}: {error}");
                 }
                 if let Some(reason) = failure {
                     if plan_failure.is_none() {
@@ -472,6 +513,98 @@ fn run_rescan(
     };
     busy.store(false, Ordering::Release);
     send(events, last);
+}
+
+/// Ends a scan whose listing, sidecar read or hashing failed.
+fn fail_catalog(
+    cancellation: &AtomicU8,
+    events: &Sender<OperationEvent>,
+    busy: &AtomicBool,
+    error: &CatalogError,
+) {
+    cancellation.store(CANCEL_CLOSED, Ordering::Release);
+    busy.store(false, Ordering::Release);
+    send(
+        events,
+        OperationEvent::Failed {
+            failure: error.into(),
+        },
+    );
+}
+
+/// Reads and parses the library's sidecar: `(None, false)` when there is none, `(None, true)`
+/// when it cannot be parsed.
+///
+/// # Errors
+/// [`CatalogError`] when the platform cannot read the file, such as a revoked grant.
+fn read_sidecar(catalog: &dyn LibraryCatalog) -> Result<(Option<Sidecar>, bool), CatalogError> {
+    let Some(bytes) = catalog.read_file(SIDECAR_FILE)? else {
+        return Ok((None, false));
+    };
+    match Sidecar::parse(&bytes) {
+        Ok(sidecar) => Ok((Some(sidecar), false)),
+        Err(error) => {
+            eprintln!("notae: ignoring {SIDECAR_FILE}: {error}");
+            Ok((None, true))
+        }
+    }
+}
+
+/// Applies a sidecar entry's metadata and text to the note of `file`.
+///
+/// Returns whether the entry was written, and the reason the file failed, if it did: a value the
+/// metadata rejects, or the PDF's own text layer failing when the entry has no text. A note in a
+/// note-number conflict is left alone, so the entry applies once the conflict is resolved.
+fn apply_sidecar_entry(
+    local: &IndexStore,
+    catalog: &dyn LibraryCatalog,
+    file: &PdfFile,
+    entry: &SidecarEntry,
+) -> Result<(bool, Option<String>), UiError> {
+    let Some(fingerprint) = file.fingerprint() else {
+        return Ok((false, None));
+    };
+    let Some(note) = local.get_by_hash(&fingerprint.sha256())? else {
+        return Ok((false, None));
+    };
+    if note.status() == IndexStatus::DuplicateIdConflict {
+        return Ok((false, None));
+    }
+    let metadata = match refresh_from_sidecar(note.metadata(), entry) {
+        Ok((metadata, _)) => metadata,
+        Err(error) => return Ok((false, Some(error.to_string()))),
+    };
+    let updated = IndexedNote::new(note.path().clone(), note.fingerprint().clone(), metadata);
+    let text = entry
+        .text
+        .as_deref()
+        .map(OcrText::new)
+        .filter(|text| !text.text().is_empty());
+    if let Some(text) = text {
+        local.reindex_note_with_ocr(&updated.with_status(IndexStatus::Ready), Some(&text))?;
+        Ok((true, None))
+    } else {
+        local.reindex_note(&updated.with_status(note.status()))?;
+        Ok((true, apply_pdf_text_layer(local, catalog, file)?))
+    }
+}
+
+/// Copies the sidecar's thumbnail for `key` to `out`, rendering the PDF when the sidecar has none.
+fn copy_sidecar_thumbnail(
+    catalog: &dyn LibraryCatalog,
+    file: &PdfFile,
+    key: &str,
+    out: &Path,
+) -> Result<bool, PdfError> {
+    let served = catalog
+        .read_file(&format!("{SIDECAR_THUMBNAILS}/{key}.png"))
+        .map_err(|error| PdfError::Platform(error.to_string()))?;
+    match served {
+        Some(bytes) => std::fs::write(out, bytes)
+            .map(|()| true)
+            .map_err(|error| PdfError::Platform(format!("cannot write thumbnail: {error}"))),
+        None => catalog.render_thumbnail(file.path(), out),
+    }
 }
 
 fn stop_if_cancelled(

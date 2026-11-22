@@ -48,7 +48,7 @@ object Fixture {
     val running = Banner(StatusMessage.ScanningLibrary, busy = true, failed = false, fraction = null, cancelEnabled = true, acknowledgeEnabled = false)
 
     val done = Banner(
-        StatusMessage.Finished(ScanSummary(added = 20u, updated = 0u, moved = 0u, deleted = 0u, conflicts = 0u, failures = 0u)),
+        StatusMessage.Finished(ScanSummary(added = 20u, updated = 0u, moved = 0u, deleted = 0u, conflicts = 0u, failures = 0u, sidecarIgnored = false)),
         busy = false,
         failed = false,
         fraction = null,

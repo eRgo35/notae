@@ -161,7 +161,7 @@ class SettingsScreenTest {
         compose.onNodeWithText("No scan this session").assertIsDisplayed()
         compose.onNodeWithText("ID conflicts").assertDoesNotExist()
 
-        shown = settings(scan = ScanSummary(added = 3u, updated = 1u, moved = 0u, deleted = 2u, conflicts = 1u, failures = 0u))
+        shown = settings(scan = ScanSummary(added = 3u, updated = 1u, moved = 0u, deleted = 2u, conflicts = 1u, failures = 0u, sidecarIgnored = false))
         compose.waitForIdle()
         compose.onNodeWithText("3 added, 1 updated, 0 moved, 2 deleted").assertIsDisplayed()
         compose.onNodeWithText("ID conflicts").assertIsDisplayed()

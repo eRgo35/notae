@@ -133,7 +133,9 @@ fun statusText(message: StatusMessage): String = when (message) {
     StatusMessage.ScanningLibrary -> stringResource(R.string.banner_scanning)
     is StatusMessage.Indexing -> pluralStringResource(R.plurals.banner_indexing, message.total.toCount(), message.total.toLong())
     is StatusMessage.ReadingText -> stringResource(R.string.banner_reading, message.completed.toLong(), message.total.toLong())
-    is StatusMessage.Finished -> stringResource(R.string.banner_finished, summaryText(message.summary))
+    is StatusMessage.Finished -> stringResource(R.string.banner_finished, summaryText(message.summary)).let { finished ->
+        if (message.summary.sidecarIgnored) "$finished\n${stringResource(R.string.scan_sidecar_ignored)}" else finished
+    }
     is StatusMessage.Failed -> failureText(message.failure)
 }
 

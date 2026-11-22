@@ -108,4 +108,6 @@ pub struct RescanSummary {
     pub conflicts: usize,
     /// PDFs that could not be read.
     pub failures: usize,
+    /// The library's `.notae/library.json` could not be parsed, so the scan ran without it.
+    pub sidecar_ignored: bool,
 }

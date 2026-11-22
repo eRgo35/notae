@@ -82,6 +82,7 @@
     </plurals>
     <string name="banner_reading">Reading PDF text and thumbnails: %1$d of %2$d</string>
     <string name="banner_finished">Finished: %1$s</string>
+    <string name="scan_sidecar_ignored">The library\'s .notae file could not be read; scanned without it.</string>
     <string name="summary_no_changes">No changes</string>
     <!-- Unpluralised on purpose: 0.3.0's summary read "1 failures" too. -->
     <string name="summary_added" tools:ignore="PluralsCandidate">%d added</string>

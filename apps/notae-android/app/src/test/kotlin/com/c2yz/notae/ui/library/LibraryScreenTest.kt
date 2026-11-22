@@ -329,9 +329,12 @@ class LibraryScreenTest {
         shown = Fixture.library().copy(banner = Fixture.running.copy(message = StatusMessage.Indexing(20u)))
         compose.waitForIdle()
         compose.onNodeWithText("Indexing 20 PDFs…").assertIsDisplayed()
-        shown = Fixture.library().copy(banner = Fixture.done.copy(message = StatusMessage.Finished(ScanSummary(0u, 0u, 0u, 0u, 0u, 0u))))
+        shown = Fixture.library().copy(banner = Fixture.done.copy(message = StatusMessage.Finished(ScanSummary(0u, 0u, 0u, 0u, 0u, 0u, false))))
         compose.waitForIdle()
         compose.onNodeWithText("Finished: No changes").assertIsDisplayed()
+        shown = Fixture.library().copy(banner = Fixture.done.copy(message = StatusMessage.Finished(ScanSummary(0u, 0u, 0u, 0u, 0u, 0u, true))))
+        compose.waitForIdle()
+        compose.onNodeWithText("Finished: No changes\nThe library's .notae file could not be read; scanned without it.").assertIsDisplayed()
     }
 
     // Screenshots (app/src/test/screenshots), named after their docs/compose-parity references.
@@ -375,7 +378,7 @@ class LibraryScreenTest {
         ),
         rescanEnabled = false,
     )
-    private val done = all.copy(banner = Fixture.done.copy(message = StatusMessage.Finished(ScanSummary(0u, 0u, 0u, 0u, 0u, 0u))), rescanEnabled = false)
+    private val done = all.copy(banner = Fixture.done.copy(message = StatusMessage.Finished(ScanSummary(0u, 0u, 0u, 0u, 0u, 0u, false))), rescanEnabled = false)
     private val running = all.copy(banner = Fixture.running, rescanEnabled = false)
     private val pdfError = all.copy(pdfOpenError = PdfOpenError.NoCompatibleViewer)
     private val openSheet = { compose.onNodeWithContentDescription("More actions for Ave Maria").performClick(); Unit }

@@ -88,6 +88,7 @@
     </plurals>
     <string name="banner_reading">Odczyt tekstu i miniatur PDF: %1$d z %2$d</string>
     <string name="banner_finished">Zakończono: %1$s</string>
+    <string name="scan_sidecar_ignored">Nie udało się odczytać pliku .notae biblioteki; przeskanowano bez niego.</string>
     <string name="summary_no_changes">Bez zmian</string>
     <string name="summary_added">dodano: %d</string>
     <string name="summary_updated">zaktualizowano: %d</string>

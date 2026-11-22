@@ -518,6 +518,8 @@ pub struct ScanSummary {
     pub conflicts: u32,
     /// PDFs that could not be read or indexed, one per file.
     pub failures: u32,
+    /// The library's `.notae/library.json` could not be parsed, so the scan ran without it.
+    pub sidecar_ignored: bool,
 }
 
 impl From<crate::operations::events::RescanSummary> for ScanSummary {
@@ -529,6 +531,7 @@ impl From<crate::operations::events::RescanSummary> for ScanSummary {
             deleted: count(summary.deleted),
             conflicts: count(summary.conflicts),
             failures: count(summary.failures),
+            sidecar_ignored: summary.sidecar_ignored,
         }
     }
 }
