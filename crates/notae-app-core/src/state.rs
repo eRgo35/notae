@@ -228,9 +228,10 @@ impl AppState {
     /// The state a fresh install starts in.
     ///
     /// `Screen::Setup(Setup::Unconfigured)` and `OperationState::Idle`
-    /// are the contract the host smoke test asserts. No automatic rescan
-    /// is started: `AppState::new()` is the only state a fresh process
-    /// observes until a `UiEvent` drives a transition.
+    /// are the contract the host smoke test asserts. No scan
+    /// is started by a fresh process: `AppState::new()` is the only state
+    /// it observes until a library opens. Opening a library, picked or saved,
+    /// starts a scan.
     pub fn new() -> Self {
         Self {
             screen: Screen::Setup(Setup::Unconfigured),

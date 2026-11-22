@@ -232,6 +232,46 @@ fn picking_root_and_rescan_produces_library_rows() {
 }
 
 #[test]
+fn picking_a_root_scans_without_rescan() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+
+    harness
+        .core
+        .library_root_picked("Scores".to_owned(), ROOT.to_owned());
+    let scanned = harness.listener.wait_for("the finished scan", is_finished);
+
+    assert_eq!(titles(&scanned), vec!["Ave Maria", "Barka"]);
+}
+
+#[test]
+fn restarting_with_a_saved_root_scans() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let platform = library_platform(&["Ave Maria", "Barka"]);
+    let first = start(dir.path(), Arc::clone(&platform));
+    first
+        .core
+        .library_root_picked("Scores".to_owned(), ROOT.to_owned());
+    first.listener.wait_for("the library", is_library);
+    drop(first);
+
+    let restarted = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let scanned = restarted
+        .listener
+        .wait_for("the finished scan", |snapshot| {
+            is_library(snapshot) && is_finished(snapshot) && !snapshot.rows.is_empty()
+        });
+
+    assert_eq!(scanned.rows.len(), 2);
+    assert!(
+        restarted
+            .platform
+            .calls()
+            .contains(&format!("enumerate {ROOT}"))
+    );
+}
+
+#[test]
 fn back_closes_innermost_first() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));

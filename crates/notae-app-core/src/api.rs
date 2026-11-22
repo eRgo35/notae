@@ -418,6 +418,7 @@ impl Shared {
                         });
                     }
                     state.operations = Some(Arc::new(controller));
+                    state.begin_rescan();
                     if let Err(error) = save_root(&self.data_dir.join(ROOT_FILE), &root) {
                         eprintln!("notae: cannot save the library folder: {error}");
                     }
@@ -568,6 +569,21 @@ impl CoreState {
             .and_then(command)
     }
 
+    /// Starts a scan of the open library: the model shows it, the worker runs it. A scan
+    /// already in progress is reported, not doubled.
+    fn begin_rescan(&mut self) {
+        match self.model.start_rescan() {
+            Ok(Transition::BeginRescan) => {
+                if let Err(error) = self.on_worker(OperationController::start_rescan) {
+                    self.apply_event(OperationEvent::Failed {
+                        failure: (&error).into(),
+                    });
+                }
+            }
+            outcome => report(outcome),
+        }
+    }
+
     fn apply(&mut self, action: Action) -> Vec<Effect> {
         let model = &mut self.model;
         match action {
@@ -576,16 +592,7 @@ impl CoreState {
                     initial_uri: self.root.as_ref().map(|root| root.handle().to_owned()),
                 }];
             }
-            Action::Rescan => match model.start_rescan() {
-                Ok(Transition::BeginRescan) => {
-                    if let Err(error) = self.on_worker(OperationController::start_rescan) {
-                        self.apply_event(OperationEvent::Failed {
-                            failure: (&error).into(),
-                        });
-                    }
-                }
-                outcome => report(outcome),
-            },
+            Action::Rescan => self.begin_rescan(),
             Action::CancelRescan => {
                 if let Err(error) = self.on_worker(OperationController::cancel) {
                     eprintln!("notae: rescan cancellation rejected: {error}");
