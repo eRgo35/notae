@@ -26,6 +26,9 @@ The hand-written release notes for each version live in
   **Rescan** stays.
 - A scan does not read a file again when its path, size and modified time are
   the same and its note is finished. A missing thumbnail is rebuilt.
+- The first scan after updating from 0.7.1 reads every file once (its hash
+  and its text); later scans are fast. With a `.notae/` sidecar from the PC,
+  the first scan is fast too.
 
 ## [0.7.1] - 2026-11-12
 
