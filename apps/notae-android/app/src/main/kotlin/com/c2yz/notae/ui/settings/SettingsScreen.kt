@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -206,7 +207,8 @@ private fun AboutCard(about: AboutInfo, onAction: (Action) -> Unit, modifier: Mo
         FactRow(stringResource(R.string.settings_license), stringResource(R.string.settings_license_name))
         FactRow(stringResource(R.string.settings_repository), stringResource(R.string.settings_repository_url))
         Text(stringResource(R.string.settings_local_note), color = NotaeTheme.colors.muted, fontSize = 14.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // The buttons wrap to the next line as whole pills when they do not fit side by side.
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             PillButton(stringResource(R.string.settings_privacy_policy), { onAction(Action.OpenPrivacyPolicy) }, tonal = true)
             PillButton(stringResource(R.string.settings_licenses), { onAction(Action.OpenLicenses) }, tonal = true)
         }

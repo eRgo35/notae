@@ -36,6 +36,7 @@ import com.c2yz.notae.core.testCore
 import com.c2yz.notae.platform.setAppLanguage
 import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
+import com.c2yz.notae.ui.assertInsideWindow
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -77,6 +78,21 @@ class SettingsScreenTest {
 
     @After
     fun followTheSystemAgain() = setAppLanguage("")
+
+    @Test
+    @Config(qualifiers = "pl-w360dp-h640dp-xhdpi")
+    fun about_buttons_keep_one_line_labels() {
+        show(settings())
+
+        val licenses = compose.onNodeWithText("Licencje open source").performScrollTo()
+        val height = licenses.fetchSemanticsNode().size.height
+        // The label merges into its pill, which stays at its 52 dp minimum while the label is one line.
+        assertTrue("one line, not wrapped: $height px", height <= 53 * compose.density.density)
+        licenses.assertInsideWindow(compose)
+        val privacy = compose.onNodeWithText("Polityka prywatności").performScrollTo()
+        assertTrue(privacy.fetchSemanticsNode().size.height <= 53 * compose.density.density)
+        privacy.assertInsideWindow(compose)
+    }
 
     @Test
     @Config(sdk = [30, 34])
