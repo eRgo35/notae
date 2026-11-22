@@ -9,6 +9,24 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+### Added
+
+- **PC sidecar tool** (`apps/notae-sidecar`) reads `Indeks.csv` and the PDFs
+  in a library folder and writes `.notae/library.json` and one thumbnail per
+  PDF in `.notae/thumbnails/`.
+- Notae reads `.notae/` when it scans. Titles, numbers, composers, tags and
+  lyrics from the PC fill in new scores, and the PC thumbnails are used
+  instead of rendering them on the tablet. A field you edited on the tablet
+  keeps your edit. A broken `library.json` is ignored and the scan banner
+  says so.
+
+### Changed
+
+- Notae scans when you pick a folder and when it starts with a library open.
+  **Rescan** stays.
+- A scan does not read a file again when its path, size and modified time are
+  the same and its note is finished. A missing thumbnail is rebuilt.
+
 ## [0.7.1] - 2026-11-12
 
 Notae 0.7.1 links the privacy policy, lists the open-source licenses and

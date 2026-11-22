@@ -42,8 +42,8 @@ annotate scores itself: it hands each PDF to the viewer you already use.
 
 - **Browse** as a card grid or a dense list, with a collapsible sidebar, a
   **Recent** section and a full-width **preview** with previous/next buttons.
-  Light and dark themes follow the system setting. Scans are manual; Notae
-  never scans in the background.
+  Light and dark themes follow the system setting. Notae scans when you pick a
+  folder and when it starts; it never scans in the background.
 - **Search** titles, composers, tags and lyrics (the printed text), narrowed by
   scope chips, with highlighted lyric snippets. `Ctrl K` focuses search when a
   hardware keyboard is attached; a microphone action appears when Android
@@ -177,8 +177,7 @@ release workflow builds, signs and verifies it from the release tag.
 and title for free; other names work and simply have no number.
 
 **2. Open Notae and choose the folder.** Tap **Choose score folder**, pick the
-folder in the Android picker, allow access, then start a scan from the Library.
-Notae indexes the PDFs. Coming from 0.3.0 or 0.4.0? Tap **Import from a
+folder in the Android picker, allow access, Notae scans the folder and indexes the PDFs. Coming from 0.3.0 or 0.4.0? Tap **Import from a
 previous Notae** first and pick the file the old app's **Export sets** wrote.
 The import carries your favorites and sets only: details you edited (number,
 title, composer, tags) and the Recent list stay in the old app. Keep the old
@@ -203,7 +202,29 @@ app installed until you have checked that 0.5.0 has what you need.
   menu, then **Share set** or **Share set with notes**. To receive one, open
   the `.notae-set` file in Notae (or use **Import sets** in Settings) and
   check the review.
-- **Rescan** from the Library header after adding files.
+- **Scan:** Notae scans when you pick a folder and when it starts. Files that
+  did not change are not read again. Use **Rescan** in the Library header
+  after adding files while the app is open.
+
+### Preparing a library on a PC
+
+A big library scans slowly on a tablet. You can prepare it on a PC instead:
+
+```sh
+cargo run -p notae-sidecar -- <library-folder>
+```
+
+The tool needs `pdftoppm` (from poppler). It reads `Indeks.csv` in the folder
+with the columns `ID`, `Tytuł`, `Autor`, `Rodzaj`, optional `Tagi` (values
+separated by `;`), `Tekst OCR` and `Nazwa pliku`. It writes
+`.notae/library.json` and `.notae/thumbnails/`. A missing CSV, a row without a
+PDF, a duplicate `Nazwa pliku` or a failed thumbnail is an error and nothing
+is written. A PDF without a row is only a warning. `sources/` and `.notae/`
+in the library root are skipped.
+
+Copy the folder, `.notae/` included, to the tablet. Notae uses an entry when
+its path and size match. Commit `.notae/`. The tool leaves other files in it
+alone, so `git rm` the 0.3.0 `index.sqlite` and `manifest.json` once.
 
 ## Build from source
 
@@ -255,6 +276,7 @@ crates/
   notae-app-core/   The app logic (state, stores, browse, search, sets,
                     scans) behind a UniFFI API for the Kotlin app.
 apps/
+  notae-sidecar/    PC tool that writes the .notae/ sidecar for a library.
   notae-android/    The Android app (Gradle): Jetpack Compose UI and the
                     Storage Access Framework, PDF and speech platform code.
 docs/               Release procedure, engineering standards, debugging guide,
