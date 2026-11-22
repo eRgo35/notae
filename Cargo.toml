@@ -7,6 +7,7 @@ members = [
     "crates/notae-domain",
     "crates/notae-index",
     "crates/notae-app-core",
+    "apps/notae-sidecar",
 ]
 
 [workspace.package]

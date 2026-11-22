@@ -1,0 +1,20 @@
+[package]
+name = "notae-sidecar"
+description = "PC tool that writes the .notae/ sidecar (library.json and thumbnails) next to a score library."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+csv = "1"
+notae-domain = { path = "../../crates/notae-domain" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = "0.11"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
