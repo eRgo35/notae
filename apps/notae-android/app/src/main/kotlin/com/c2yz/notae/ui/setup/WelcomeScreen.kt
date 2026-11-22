@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,8 +40,10 @@ import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.ImportStatus
 import com.c2yz.notae.core.SetupError
 import com.c2yz.notae.core.SetupScreen
+import com.c2yz.notae.ui.components.HeightClass
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.PillButton
+import com.c2yz.notae.ui.components.windowHeightClass
 import com.c2yz.notae.ui.settings.importStatusText
 import com.c2yz.notae.ui.theme.NotaeTheme
 
@@ -62,43 +65,37 @@ fun WelcomeScreen(
     BoxWithConstraints(modifier.fillMaxSize().background(c.background)) {
         val column = (maxWidth - 32.dp).coerceAtLeast(1.dp).coerceAtMost(560.dp)
         val narrow = maxWidth < 420.dp
+        val short = windowHeightClass() == HeightClass.COMPACT
         val top = ((maxHeight - 640.dp) / 6).coerceAtLeast(16.dp).coerceAtMost(64.dp)
-        // Centred in the window: on a tall screen the welcome no longer leaves its bottom half empty.
-        Column(
-            Modifier.fillMaxSize().padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
-        ) {
-            Column(
-                Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = top),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(20.dp),
-            ) {
-                Image(painterResource(R.drawable.notae), null, Modifier.size(96.dp), contentScale = ContentScale.Fit)
-                Text(
-                    stringResource(if (recovery != null) R.string.setup_reconnect_title else R.string.setup_welcome_title),
-                    Modifier.padding(horizontal = 16.dp).semantics { heading() },
-                    color = c.foreground,
-                    fontSize = if (narrow) 32.sp else 40.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                )
-                Column(Modifier.widthIn(max = column).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(
-                        if (recovery != null) stringResource(R.string.setup_reconnect_body, recovery.folder) else stringResource(R.string.setup_intro),
-                        Modifier.fillMaxWidth(),
-                        color = c.muted,
-                        fontSize = 17.sp,
-                        textAlign = TextAlign.Center,
-                    )
-                    NotaeCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                            FeatureRow(R.drawable.ic_folder, R.string.setup_feature_files, R.string.setup_feature_files_detail)
-                            Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
-                            FeatureRow(R.drawable.ic_search, R.string.setup_feature_search, R.string.setup_feature_search_detail)
-                        }
-                    }
+        val title: @Composable () -> Unit = {
+            Text(
+                stringResource(if (recovery != null) R.string.setup_reconnect_title else R.string.setup_welcome_title),
+                Modifier.padding(horizontal = 16.dp).semantics { heading() },
+                color = c.foreground,
+                fontSize = if (narrow || short) 32.sp else 40.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+        }
+        val body: @Composable () -> Unit = {
+            Text(
+                if (recovery != null) stringResource(R.string.setup_reconnect_body, recovery.folder) else stringResource(R.string.setup_intro),
+                Modifier.fillMaxWidth(),
+                color = c.muted,
+                fontSize = 17.sp,
+                textAlign = TextAlign.Center,
+            )
+        }
+        val features: @Composable () -> Unit = {
+            NotaeCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+                    FeatureRow(R.drawable.ic_folder, R.string.setup_feature_files, R.string.setup_feature_files_detail)
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
+                    FeatureRow(R.drawable.ic_search, R.string.setup_feature_search, R.string.setup_feature_search_detail)
                 }
             }
+        }
+        val actions: @Composable () -> Unit = {
             if (setup is SetupScreen.Error) {
                 Text(
                     errorText(setup.error),
@@ -129,6 +126,49 @@ fun WelcomeScreen(
                 }
                 importStatus?.let { Text(importStatusText(it), color = c.muted, fontSize = 14.sp, textAlign = TextAlign.Center) }
                 Text(stringResource(R.string.setup_pick_hint), color = c.muted, fontSize = 14.sp, textAlign = TextAlign.Center)
+            }
+        }
+        if (short) {
+            // A short window (a phone on its side): the intro on the start half, the features and the buttons on the
+            // end half, each scrolling on its own, so the text and the main button are both in view.
+            Row(Modifier.fillMaxSize().padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(
+                    Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                ) {
+                    Image(painterResource(R.drawable.notae), null, Modifier.size(56.dp), contentScale = ContentScale.Fit)
+                    title()
+                    Box(Modifier.padding(horizontal = 16.dp)) { body() }
+                }
+                Column(
+                    Modifier.weight(1f).fillMaxHeight(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                ) {
+                    Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(end = 16.dp)) { features() }
+                    actions()
+                }
+            }
+        } else {
+            // Centred in the window: on a tall screen the welcome no longer leaves its bottom half empty.
+            Column(
+                Modifier.fillMaxSize().padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
+            ) {
+                Column(
+                    Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = top),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    Image(painterResource(R.drawable.notae), null, Modifier.size(96.dp), contentScale = ContentScale.Fit)
+                    title()
+                    Column(Modifier.widthIn(max = column).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        body()
+                        features()
+                    }
+                }
+                actions()
             }
         }
     }

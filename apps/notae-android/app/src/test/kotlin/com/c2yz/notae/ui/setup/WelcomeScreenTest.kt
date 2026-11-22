@@ -12,6 +12,7 @@ import com.c2yz.notae.core.SetupError
 import com.c2yz.notae.core.SetupScreen
 import com.c2yz.notae.ui.assertAllClickablesLabelled
 import com.c2yz.notae.ui.assertClickTargetsAtLeast48dp
+import com.c2yz.notae.ui.assertInsideWindow
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
@@ -54,6 +55,15 @@ class WelcomeScreenTest {
         compose.onNodeWithText("Choose score folder").performClick()
 
         assertEquals(listOf<Action>(Action.PickLibraryRoot), actions)
+    }
+
+    @Test
+    @Config(qualifiers = "w640dp-h360dp-xhdpi")
+    fun reconnect_body_and_button_fit_a_short_window() {
+        show(SetupScreen.PermissionLost("Scores"))
+
+        compose.onNodeWithText("Notae no longer has access to “Scores”. Choose it again to reconnect your scores.").assertInsideWindow(compose)
+        compose.onNodeWithText("Reconnect folder").assertInsideWindow(compose)
     }
 
     @Test
