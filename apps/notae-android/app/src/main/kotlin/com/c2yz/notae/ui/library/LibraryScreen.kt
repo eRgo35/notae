@@ -4,6 +4,7 @@ import com.c2yz.notae.ui.components.ClaimBack
 import androidx.compose.animation.Crossfade
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.components.AnimatedPresence
+import com.c2yz.notae.ui.components.scrollWithEndFade
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeOut
@@ -16,7 +17,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -561,7 +560,7 @@ private fun SidePanel(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: 
 /** The side panel's rows as chips, for when the panel is not shown; they scroll sideways when they do not fit. */
 @Composable
 private fun Chips(snapshot: Snapshot, onAction: (Action) -> Unit) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.fillMaxWidth().scrollWithEndFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         snapshot.sections.forEach { section ->
             Chip(sectionTitle(section.title), isSelected(section.key, snapshot.sectionKey), { onAction(Action.SelectSection(section.key)) })
         }

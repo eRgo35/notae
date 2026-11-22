@@ -3,6 +3,7 @@ package com.c2yz.notae.ui.settings
 import android.content.res.AssetManager
 import android.util.Log
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -89,13 +91,17 @@ fun LicensesScreen(onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     items(paragraphs) { paragraph ->
-                        Text(
-                            paragraph,
-                            Modifier.widthIn(max = 720.dp).fillMaxWidth(),
-                            color = c.foreground,
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
+                        // The notices keep their own line breaks (92 characters at most): a phone scrolls them sideways
+                        // instead of wrapping them raggedly.
+                        Box(Modifier.widthIn(max = 720.dp).fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                            Text(
+                                paragraph,
+                                color = c.foreground,
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace,
+                                softWrap = false,
+                            )
+                        }
                     }
                 }
                 ListScrollbar(state, Modifier.align(Alignment.TopEnd))

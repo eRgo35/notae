@@ -10,6 +10,7 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.input.InputModeManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsEnabled
@@ -29,6 +30,7 @@ import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.withKeyDown
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.c2yz.notae.core.Action
@@ -45,6 +47,7 @@ import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.library.REORDER_TAG
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -80,6 +83,34 @@ class ReorderTest {
     }
 
     private val reordering = Fixture.palmSunday().copy(reordering = true)
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-xhdpi")
+    fun reorder_titles_get_room_at_360dp() {
+        show(reordering)
+
+        // Without the arrows the title takes about half the row, not the ~9 characters three buttons left it.
+        val title = compose.onNodeWithText("Kyrie eleison", useUnmergedTree = true).fetchSemanticsNode()
+        val box = title.layoutInfo.parentInfo?.width ?: title.size.width
+        val list = compose.onNodeWithTag(REORDER_TAG).fetchSemanticsNode().size.width
+        assertTrue("title room $box of $list px", box >= list * 0.45f)
+        val layouts = mutableListOf<TextLayoutResult>()
+        title.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+        // Ellipsized, not overflowing: a rounding of a fraction of a pixel sets didOverflowWidth on text that fits.
+        assertFalse("Kyrie eleison is cut off", layouts.single().isLineEllipsized(0))
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-xhdpi")
+    fun reorder_moves_via_accessibility_actions_at_360dp() {
+        show(reordering)
+
+        val row = compose.onNodeWithContentDescription("2. Kyrie eleison")
+        val up = row.fetchSemanticsNode().config[SemanticsActions.CustomActions].single { it.label == "Move Kyrie eleison up" }
+        compose.runOnIdle { up.action() }
+
+        assertEquals(listOf<Action>(Action.MoveSetItem("item-2", -1)), actions)
+    }
 
     @Test
     fun up_disabled_on_first_row() {

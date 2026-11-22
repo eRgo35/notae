@@ -10,6 +10,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
+import com.c2yz.notae.ui.components.scrollWithEndFade
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.animateColorAsState
 import com.c2yz.notae.ui.components.backProgress
@@ -23,7 +24,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -43,7 +43,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -273,7 +272,7 @@ internal fun MediumLibrary(
         ) {
             header()
             if (showsComposers(snapshot, inSet)) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).screenBar("composers"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth().scrollWithEndFade().screenBar("composers"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Chip(stringResource(R.string.all_composers), snapshot.sectionKey == "all", { onAction(Action.SelectSection("all")) })
                     snapshot.composers.forEach { composer ->
                         Chip(composer.name, composer.key == snapshot.sectionKey, { onAction(Action.SelectSection(composer.key)) })

@@ -2,6 +2,8 @@ package com.c2yz.notae.ui.library
 
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -205,6 +207,18 @@ private fun ReorderRow(
     }
     val up = remember { FocusRequester() }
     val down = remember { FocusRequester() }
+    val moveUp = stringResource(R.string.set_move_up, title)
+    val moveDown = stringResource(R.string.set_move_down, title)
+    // A phone has no room for the arrows beside the title: the row offers the moves to TalkBack as actions instead,
+    // and drag and Remove stay (R5).
+    val moves = if (compact) {
+        listOfNotNull(
+            CustomAccessibilityAction(moveUp) { true.also { onAction(Action.MoveSetItem(itemId, -1)) } }.takeIf { !first },
+            CustomAccessibilityAction(moveDown) { true.also { onAction(Action.MoveSetItem(itemId, 1)) } }.takeIf { !last },
+        )
+    } else {
+        emptyList()
+    }
     val remove = remember { FocusRequester() }
     var removeFocused by remember { mutableStateOf(false) }
     // The arrow that has the keyboard focus. A move that disables it (the row reached an end) hands the focus to the
@@ -255,7 +269,7 @@ private fun ReorderRow(
                 val row = entry.row
                 // A phone drops the page, leaving the title room beside the three buttons.
                 if (!compact) PagePreview(row.thumbnail, Modifier.size(44.dp, 58.dp), radius = 6.dp)
-                Column(Modifier.weight(1f).semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Column(Modifier.weight(1f).semantics(mergeDescendants = true) { customActions = moves }, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     val label = (position?.let { "$it. " } ?: "") + title
                     Text(
                         title,
@@ -272,27 +286,32 @@ private fun ReorderRow(
             is SetEntry.Note -> {
                 if (!compact) NoteTile(44.dp, 58.dp)
                 val label = noteLabel(entry)
-                NoteText(entry.text, Modifier.weight(1f).clearAndSetSemantics { contentDescription = label })
+                NoteText(entry.text, Modifier.weight(1f).clearAndSetSemantics {
+                    contentDescription = label
+                    customActions = moves
+                })
             }
         }
-        IconButton(
-            stringResource(R.string.set_move_up, title),
-            painterResource(R.drawable.ic_arrow_up),
-            { onAction(Action.MoveSetItem(itemId, -1)) },
-            Modifier.focusRequester(up).onFocusChanged {
-                if (it.isFocused) arrow = Arrow.UP else if (arrow == Arrow.UP && !firstNow) arrow = null
-            },
-            enabled = !first,
-        )
-        IconButton(
-            stringResource(R.string.set_move_down, title),
-            painterResource(R.drawable.ic_arrow_down),
-            { onAction(Action.MoveSetItem(itemId, 1)) },
-            Modifier.focusRequester(down).onFocusChanged {
-                if (it.isFocused) arrow = Arrow.DOWN else if (arrow == Arrow.DOWN && !lastNow) arrow = null
-            },
-            enabled = !last,
-        )
+        if (!compact) {
+            IconButton(
+                moveUp,
+                painterResource(R.drawable.ic_arrow_up),
+                { onAction(Action.MoveSetItem(itemId, -1)) },
+                Modifier.focusRequester(up).onFocusChanged {
+                    if (it.isFocused) arrow = Arrow.UP else if (arrow == Arrow.UP && !firstNow) arrow = null
+                },
+                enabled = !first,
+            )
+            IconButton(
+                moveDown,
+                painterResource(R.drawable.ic_arrow_down),
+                { onAction(Action.MoveSetItem(itemId, 1)) },
+                Modifier.focusRequester(down).onFocusChanged {
+                    if (it.isFocused) arrow = Arrow.DOWN else if (arrow == Arrow.DOWN && !lastNow) arrow = null
+                },
+                enabled = !last,
+            )
+        }
         IconButton(
             stringResource(R.string.picker_remove, title),
             painterResource(R.drawable.ic_delete),

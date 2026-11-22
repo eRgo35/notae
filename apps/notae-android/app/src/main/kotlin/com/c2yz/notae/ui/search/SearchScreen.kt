@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.search
 
+import androidx.compose.foundation.layout.widthIn
 import com.c2yz.notae.nav.screenBackground
 import com.c2yz.notae.nav.screenBar
 import com.c2yz.notae.nav.screenFade
@@ -9,7 +10,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -75,6 +74,7 @@ import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.NotaeCard
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.SearchField
+import com.c2yz.notae.ui.components.scrollWithEndFade
 import com.c2yz.notae.ui.library.ListScrollbar
 import com.c2yz.notae.ui.library.PagePreview
 import com.c2yz.notae.ui.library.ScoreSubtitle
@@ -107,8 +107,9 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
     ) {
         val compact = maxWidth < COMPACT_WIDTH
         val side = if (compact) 16.dp else 24.dp
+        // Reading width, as Settings: on a wide tablet the field and results stay a column, not a 1440 dp band.
         Column(
-            Modifier.fillMaxSize().padding(start = side, top = side, end = side, bottom = 16.dp),
+            Modifier.align(Alignment.TopCenter).widthIn(max = 720.dp + side * 2).fillMaxSize().padding(start = side, top = side, end = side, bottom = 16.dp),
             verticalArrangement = collapsingGaps(16.dp),
         ) {
             Row(Modifier.screenFade(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -135,7 +136,7 @@ fun SearchScreen(snapshot: Snapshot, onAction: (Action) -> Unit, voiceAvailable:
 @Composable
 private fun ScopeChips(selected: SearchScope, onAction: (Action) -> Unit, indent: Dp, modifier: Modifier) {
     Row(
-        modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = indent),
+        modifier.fillMaxWidth().scrollWithEndFade().padding(start = indent),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SCOPES.forEach { (scope, label) ->

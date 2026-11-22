@@ -3,6 +3,8 @@ package com.c2yz.notae.ui.settings
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -13,7 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.pressKey
-import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.unit.Density
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Screen
@@ -24,6 +26,7 @@ import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -61,9 +64,9 @@ class LicensesScreenTest {
         compose.onNodeWithText("Copyright (c) 2026 Notae contributors", substring = true).assertIsDisplayed()
         // The MPL-2.0 crates name where their source is.
         val uniffi = hasText("- uniffi 0.32.2: https://github.com/mozilla/uniffi-rs", substring = true)
-        compose.onNode(hasScrollAction()).performScrollToNode(uniffi)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(uniffi)
         compose.onNode(uniffi).assertIsDisplayed()
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Apache License 2.0", substring = true))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Apache License 2.0", substring = true))
     }
 
     @Test
@@ -105,6 +108,16 @@ class LicensesScreenTest {
     @Test fun shot_landscape_dark() = shot(landscape = true, dark = true)
 
     @Test fun shot_portrait_light() = shot(landscape = false, dark = false)
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-xhdpi")
+    fun notices_scroll_sideways_on_a_phone() {
+        show()
+
+        // The monospace notices keep their own line breaks and scroll sideways instead of wrapping raggedly.
+        val sideways = SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange)
+        compose.onAllNodes(sideways).fetchSemanticsNodes().let { assertTrue("no sideways scroll", it.isNotEmpty()) }
+    }
 
     @Test fun shot_portrait_dark() = shot(landscape = false, dark = true)
 }

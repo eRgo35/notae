@@ -13,6 +13,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyChild
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -40,6 +44,7 @@ import com.c2yz.notae.ui.library.LibraryScreen
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -246,6 +251,23 @@ class SearchScreenTest {
     @Test fun shot_no_results_landscape_light() = shot("search-no-results", search("zzzz"), landscape = true, dark = false)
 
     @Test fun shot_no_results_landscape_dark() = shot("search-no-results", search("zzzz"), landscape = true, dark = true)
+
+    @Test
+    @Config(qualifiers = "w1440dp-h900dp-xhdpi")
+    fun search_results_are_capped_at_1440dp() {
+        show(search("lyrics", results))
+
+        val list = compose.onNode(hasScrollToIndexAction()).fetchSemanticsNode()
+        assertTrue("results ${list.size.width} px wide", list.size.width <= 720 * compose.density.density)
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-xhdpi")
+    fun search_scopes_scroll_at_360dp() {
+        show(search("lyrics", results))
+
+        compose.onNode(hasScrollAction() and hasAnyChild(hasText("All"))).assertExists()
+    }
 
     private companion object {
         const val PLACEHOLDER = "Search titles, composers, tags or lyrics"
