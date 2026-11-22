@@ -1,5 +1,8 @@
 package com.c2yz.notae.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
@@ -17,7 +20,10 @@ import com.c2yz.notae.core.SettingsInfo
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.Snippet
 import com.c2yz.notae.nav.NotaeNavDisplay
+import com.c2yz.notae.nav.shellFrame
 import com.c2yz.notae.ui.library.Fixture
+import com.c2yz.notae.ui.settings.AboutInfo
+import com.c2yz.notae.ui.settings.SettingsScreen
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
@@ -30,7 +36,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Every key screen at every window of the size matrix ([Windows.MATRIX]), rendered through the app's navigation so the
- * chrome and two-pane rules apply: `matrix-<state>-<window>[-pl|-fs13|-dark].png`. Pairs the per-screen screenshot tests
+ * chrome and two-pane rules apply (Settings, which has neither, renders alone with a fixed build): `matrix-<state>-<window>[-pl|-fs13|-dark].png`. Pairs the per-screen screenshot tests
  * already capture at 1280×800 and 800×1280 are skipped ([SKIP]). Every capture also checks labels and 48 dp targets.
  */
 @RunWith(ParameterizedRobolectricTestRunner::class)
@@ -49,7 +55,14 @@ class LayoutMatrixScreenshotTest(private val state: String, private val window: 
         var density = Density(1f)
         compose.setContent {
             density = LocalDensity.current
-            NotaeTheme(dark = variant == "dark") { NotaeNavDisplay(snapshot, onAction = {}, onBack = {}) }
+            NotaeTheme(dark = variant == "dark") {
+                // Settings through the app shows this build's commit; a fixed one keeps the capture the same across commits.
+                if (state == "settings") {
+                    Box(Modifier.shellFrame().fillMaxSize()) { SettingsScreen(snapshot, {}, AboutInfo(version = "0.8.0", build = "abc1234")) }
+                } else {
+                    NotaeNavDisplay(snapshot, onAction = {}, onBack = {})
+                }
+            }
         }
         compose.waitForIdle()
         compose.assertAllClickablesLabelled()
