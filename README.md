@@ -177,8 +177,9 @@ release workflow builds, signs and verifies it from the release tag.
 and title for free; other names work and simply have no number.
 
 **2. Open Notae and choose the folder.** Tap **Choose score folder**, pick the
-folder in the Android picker, allow access, Notae scans the folder and indexes the PDFs. Coming from 0.3.0 or 0.4.0? Tap **Import from a
-previous Notae** first and pick the file the old app's **Export sets** wrote.
+folder in the Android picker and allow access. Notae then scans the folder and
+indexes the PDFs. Coming from 0.3.0 or 0.4.0? Tap **Import from a previous
+Notae** first and pick the file the old app's **Export sets** wrote.
 The import carries your favorites and sets only: details you edited (number,
 title, composer, tags) and the Recent list stay in the old app. Keep the old
 app installed until you have checked that 0.5.0 has what you need.
@@ -215,12 +216,13 @@ cargo run -p notae-sidecar -- <library-folder>
 ```
 
 The tool needs `pdftoppm` (from poppler). It reads `Indeks.csv` in the folder
-with the columns `ID`, `Tytuł`, `Autor`, `Rodzaj`, optional `Tagi` (values
-separated by `;`), `Tekst OCR` and `Nazwa pliku`. It writes
+with the columns `ID`, `Tytuł`, `Autor`, `Rodzaj`, `Tagi` (values separated
+by `;`), `Tekst OCR` and `Nazwa pliku`. Only `Nazwa pliku` is required; the
+others are optional, but a non-numeric `ID` is an error. It writes
 `.notae/library.json` and `.notae/thumbnails/`. A missing CSV, a row without a
-PDF, a duplicate `Nazwa pliku` or a failed thumbnail is an error and nothing
-is written. A PDF without a row is only a warning. `sources/` and `.notae/`
-in the library root are skipped.
+PDF, a duplicate `Nazwa pliku` or a failed thumbnail is an error: the tool
+exits with a non-zero code and writes nothing. A PDF without a row is only a
+warning. `sources/` and `.notae/` in the library root are skipped.
 
 Copy the folder, `.notae/` included, to the tablet. Notae uses an entry when
 its path and size match. Commit `.notae/`. The tool leaves other files in it
