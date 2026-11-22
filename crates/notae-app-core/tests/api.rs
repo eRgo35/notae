@@ -277,17 +277,27 @@ fn pick_with_blocked_scan(harness: &Harness) -> std::sync::mpsc::Sender<()> {
     harness
         .core
         .library_root_picked("Scores".to_owned(), ROOT.to_owned());
+    wait_for_calls(&harness.platform, "enumerate", 1);
+    release
+}
+
+/// Waits until the platform has received `method` at least `times` times.
+fn wait_for_calls(platform: &FakePlatform, method: &str, times: usize) {
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !harness
-        .platform
+    let prefix = format!("{method} ");
+    while platform
         .calls()
         .iter()
-        .any(|call| call.starts_with("enumerate"))
+        .filter(|call| call.starts_with(&prefix))
+        .count()
+        < times
     {
-        assert!(Instant::now() < deadline, "the scan never enumerated");
+        assert!(
+            Instant::now() < deadline,
+            "{method} was not called {times} times"
+        );
         thread::sleep(Duration::from_millis(5));
     }
-    release
 }
 
 #[test]
@@ -299,8 +309,9 @@ fn re_picking_a_root_during_a_scan_scans_the_new_root() {
     harness
         .core
         .library_root_picked("Scores".to_owned(), ROOT.to_owned());
-    // The core thread joins the old worker, which waits in `enumerate`.
-    thread::sleep(Duration::from_millis(100));
+    // The core thread cancels the old worker, which waits in `enumerate`, before it checks
+    // the new root.
+    wait_for_calls(&harness.platform, "check_root", 2);
     drop(release);
     let scanned = harness.listener.wait_for("the finished scan", is_finished);
 
@@ -320,7 +331,7 @@ fn re_picking_a_root_that_lost_permission_leaves_no_scan_running() {
     harness
         .core
         .library_root_picked("Scores".to_owned(), ROOT.to_owned());
-    thread::sleep(Duration::from_millis(100));
+    wait_for_calls(&harness.platform, "check_root", 2);
     drop(release);
     let lost = harness.listener.wait_for("permission lost", |snapshot| {
         matches!(
