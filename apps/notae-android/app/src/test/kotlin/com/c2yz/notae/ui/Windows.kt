@@ -17,8 +17,9 @@ object Windows {
 }
 
 /**
- * The whole node lies inside the window (the compose root), so it is visible without scrolling. Its own size counts,
- * not the part a clipping parent leaves visible: a card cut off by the grid's edge fails.
+ * The whole node lies inside the window (the compose root) and no parent clips it, so it is visible without scrolling.
+ * Its own size counts, not the part a clipping parent leaves visible: a card cut off by the grid's edge, or a row cut off
+ * by its list, fails.
  */
 fun SemanticsNodeInteraction.assertInsideWindow(compose: ComposeContentTestRule): SemanticsNodeInteraction {
     val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
@@ -26,5 +27,7 @@ fun SemanticsNodeInteraction.assertInsideWindow(compose: ComposeContentTestRule)
     val node = Rect(semantics.positionInRoot, semantics.size.toSize())
     check(node.left >= root.left - 0.5f && node.top >= root.top - 0.5f && node.right <= root.right + 0.5f &&
         node.bottom <= root.bottom + 0.5f) { "Node $node is outside the window $root" }
+    val visible = semantics.boundsInRoot
+    check(visible.width >= node.width - 0.5f && visible.height >= node.height - 0.5f) { "Node $node is clipped to $visible" }
     return this
 }

@@ -1,15 +1,25 @@
 package com.c2yz.notae.ui
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.unit.Density
+import com.c2yz.notae.core.AddPicker
+import com.c2yz.notae.core.AddToSetSheet
+import com.c2yz.notae.core.PickerRow
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.Selection
+import com.c2yz.notae.core.SetChoice
 import com.c2yz.notae.core.SettingsInfo
+import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.ui.details.DetailsScreen
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.LibraryScreen
+import com.c2yz.notae.ui.sets.SetOverlays
 import com.c2yz.notae.ui.settings.AboutInfo
 import com.c2yz.notae.ui.settings.LicensesScreen
 import com.c2yz.notae.ui.settings.SettingsScreen
@@ -108,4 +118,44 @@ class ShortWindowTest {
     @Test
     @Config(qualifiers = "w700dp-h500dp-xhdpi")
     fun details_actions_visible_at_700x500() = detailsActionsVisible()
+
+    private fun withOverlays(snapshot: Snapshot) {
+        var density = Density(1f)
+        compose.setContent {
+            density = LocalDensity.current
+            NotaeTheme {
+                Box {
+                    LibraryScreen(snapshot, {})
+                    SetOverlays(snapshot, {})
+                }
+            }
+        }
+        // A squeezed footer still lies inside the window; its 48 dp target does not survive.
+        compose.assertClickTargetsAtLeast48dp(density)
+    }
+
+    private fun pickerDoneVisible() {
+        val inPalm = Fixture.palmRows.map { it.title }.toSet()
+        val rows = Fixture.rows.map { PickerRow(it.noteKey, it.title, it.number, it.composer, it.title in inPalm, false) }
+        withOverlays(Fixture.palmSunday().copy(addPicker = AddPicker("", rows, 0u)))
+
+        compose.onNodeWithText("Done").assertIsDisplayed().assertInsideWindow(compose)
+    }
+
+    @Test
+    fun add_picker_done_visible() = pickerDoneVisible()
+
+    @Test
+    @Config(qualifiers = "w832dp-h384dp-xhdpi")
+    fun add_picker_done_visible_at_832x384() = pickerDoneVisible()
+
+    @Test
+    fun add_to_set_shows_two_sets() {
+        val ave = Fixture.rows.first { it.title == "Ave Maria" }
+        val choices = Fixture.setCards.map { SetChoice(it.id, it.name, it.date, it.count, checked = it.id == "palm", previews = it.previews) }
+        withOverlays(Fixture.library().copy(addToSet = AddToSetSheet(ave.noteKey, ave.title, choices)))
+
+        compose.onNodeWithText("Niedziela Palmowa").assertInsideWindow(compose)
+        compose.onNodeWithText("Pusty zestaw").assertInsideWindow(compose)
+    }
 }

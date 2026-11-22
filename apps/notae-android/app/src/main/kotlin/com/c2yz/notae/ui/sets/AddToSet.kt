@@ -78,7 +78,8 @@ internal fun AddToSetSheet(sheet: AddToSetSheet, onAction: (Action) -> Unit) {
     val keys = remember { FocusRequester() }
     LaunchedEffect(Unit) { keys.requestFocus() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val listHeight = minOf(64.dp * sheet.choices.size, maxOf(64.dp, maxHeight - 280.dp))
+        // At least two sets show, so a phone on its side can still choose between them.
+        val listHeight = minOf(64.dp * sheet.choices.size, maxOf(128.dp, maxHeight - 280.dp))
         ActionSheet(stringResource(R.string.add_to_set_dialog), close, Modifier.closeOnEscape(close)) {
             Column(Modifier.focusRequester(keys).focusable(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(stringResource(R.string.score_add_to_set), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
@@ -203,7 +204,7 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
                 Chip(stringResource(R.string.note_tab), noteTab, { noteTab = true })
             }
             if (noteTab) {
-                Column(Modifier.fillMaxWidth().height(listHeight + 72.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 56.dp).height(listHeight + 72.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     TextField(note, { note = it }, stringResource(R.string.note_field), Modifier.focusRequester(noteField), multiLine = true, minLines = NOTE_LINES)
                     Text(stringResource(R.string.note_added_at_end), color = c.muted, fontSize = 14.sp)
                 }
@@ -216,7 +217,8 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
                 )
             } else {
                 SearchField(picker.query, { onAction(Action.AddPickerSearch(it)) }, stringResource(R.string.search_placeholder), field)
-                Box(Modifier.fillMaxWidth().height(listHeight)) {
+                // The list takes what the tabs, field and footer leave, down to one row: Done keeps its size (R4).
+                Box(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(min = 56.dp).height(listHeight)) {
                     if (picker.rows.isEmpty()) {
                         Text(stringResource(R.string.library_empty_composer), Modifier.align(Alignment.Center), color = c.muted, fontSize = 15.sp)
                     } else {
