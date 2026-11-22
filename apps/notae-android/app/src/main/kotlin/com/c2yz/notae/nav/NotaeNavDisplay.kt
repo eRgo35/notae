@@ -1,5 +1,6 @@
 package com.c2yz.notae.nav
 
+import com.c2yz.notae.ui.components.COMPACT_HEIGHT
 import com.c2yz.notae.ui.components.backProgress
 import com.c2yz.notae.ui.components.LocalBackProgress
 import com.c2yz.notae.ui.components.BackClaims
@@ -92,8 +93,9 @@ fun NotaeNavDisplay(
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     val claims = remember { BackClaims() }
     BoxWithConstraints(modifier.shellFrame()) {
-        // R37: two panes from 840 dp (a tablet in landscape), Details alone below that (portrait).
-        val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH
+        // R37: two panes from 840 dp (a tablet in landscape), Details alone below that (portrait) and in short
+        // windows (a phone on its side), where two panes would leave neither room for its content.
+        val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH && maxHeight >= COMPACT_HEIGHT
         val strategy = remember(twoPane) { ListDetailSceneStrategy(twoPane) }
         // The details beside a list leave the banner and the PDF error to the list's pane, which shows them once.
         val besideList = twoPane && isListRoute(backStack.getOrNull(backStack.size - 2))

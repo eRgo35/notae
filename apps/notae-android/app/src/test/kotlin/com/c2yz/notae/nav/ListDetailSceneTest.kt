@@ -54,7 +54,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Library (or a set) and Details as one list-detail scene on a wide window (R37: at least 840 dp), and Details alone
+ * Library (or a set) and Details as one list-detail scene on a wide, tall window (R37: at least 840 × 480 dp), and Details alone
  * below that. The core stands in as the snapshot: each test changes it as the core would.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -149,6 +149,15 @@ class ListDetailSceneTest {
         compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
 
         assertEquals(listOf<Action>(Action.SelectScore(rows[ave + 1].selectionId)), actions)
+    }
+
+    @Test
+    @Config(qualifiers = "w915dp-h412dp-xhdpi")
+    fun short_wide_window_opens_details_alone() {
+        show(selecting(ave))
+
+        compose.onNodeWithTag(DETAILS_BODY_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(GRID_TAG).assertDoesNotExist()
     }
 
     @Test
