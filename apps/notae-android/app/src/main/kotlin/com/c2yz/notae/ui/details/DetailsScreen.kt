@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.details
 
+import androidx.compose.ui.text.style.TextOverflow
 import com.c2yz.notae.ui.components.ClaimBack
 import com.c2yz.notae.nav.screenBackground
 import com.c2yz.notae.nav.screenBar
@@ -72,6 +73,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
 import com.c2yz.notae.ui.components.collapsingGaps
+import com.c2yz.notae.ui.components.screenTitleSize
 import com.c2yz.notae.ui.theme.NotaeMotion
 import com.c2yz.notae.ui.theme.Tokens
 import androidx.compose.ui.unit.dp
@@ -288,7 +290,7 @@ private fun CompactBody(row: ScoreRowData, scroll: ScrollState, preview: Dp, onA
         }
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             row.number?.let { Text(stringResource(R.string.details_number, it), color = c.accentText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
-            Text(row.title, color = c.foreground, fontSize = 26.sp, fontWeight = FontWeight.SemiBold, lineHeight = 32.sp)
+            Text(row.title, color = c.foreground, fontSize = screenTitleSize(narrow = true), fontWeight = FontWeight.SemiBold, lineHeight = 32.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             row.composer?.takeIf { it.isNotEmpty() }?.let { Text(it, color = c.muted, fontSize = 17.sp) }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -445,7 +447,7 @@ private fun Headline(row: ScoreRowData, centered: Boolean, onAction: (Action) ->
         row.number?.let {
             Text(stringResource(R.string.details_number, it), width, color = c.accentText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = align)
         }
-        Text(row.title, width, color = c.foreground, fontSize = if (centered) 26.sp else 32.sp, fontWeight = FontWeight.SemiBold, textAlign = align)
+        Text(row.title, width, color = c.foreground, fontSize = screenTitleSize(narrow = centered), fontWeight = FontWeight.SemiBold, textAlign = align, maxLines = 2, overflow = TextOverflow.Ellipsis)
         row.composer?.takeIf { it.isNotEmpty() }?.let { Text(it, width, color = c.muted, fontSize = 17.sp, textAlign = align) }
         Row(
             width.padding(top = 18.dp),

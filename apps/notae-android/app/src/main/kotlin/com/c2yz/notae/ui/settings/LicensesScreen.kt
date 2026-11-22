@@ -34,6 +34,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
@@ -43,6 +44,7 @@ import com.c2yz.notae.nav.screenContent
 import com.c2yz.notae.nav.screenFade
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.collapsingGaps
+import com.c2yz.notae.ui.components.screenTitleSize
 import com.c2yz.notae.ui.library.ListScrollbar
 import com.c2yz.notae.ui.theme.NotaeTheme
 import java.io.IOException
@@ -75,7 +77,7 @@ fun LicensesScreen(onAction: (Action) -> Unit, modifier: Modifier = Modifier) {
         Column(Modifier.fillMaxSize().padding(start = 16.dp, top = 16.dp, end = 16.dp), verticalArrangement = collapsingGaps(12.dp)) {
             Row(Modifier.screenFade(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(stringResource(R.string.licenses_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseLicenses) })
-                Text(stringResource(R.string.settings_licenses), color = c.foreground, fontSize = if (narrow) 26.sp else 32.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.settings_licenses), color = c.foreground, fontSize = screenTitleSize(narrow), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Box(Modifier.weight(1f).fillMaxWidth().screenContent(c.background)) {
                 val state = rememberLazyListState()
