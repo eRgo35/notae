@@ -314,7 +314,9 @@ fn re_picking_a_root_that_lost_permission_leaves_no_scan_running() {
     let harness = start(dir.path(), library_platform(&["Ave Maria"]));
     let release = pick_with_blocked_scan(&harness);
 
-    harness.platform.set_root(Err(PlatformError::PermissionLost));
+    harness
+        .platform
+        .set_root(Err(PlatformError::PermissionLost));
     harness
         .core
         .library_root_picked("Scores".to_owned(), ROOT.to_owned());
