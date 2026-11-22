@@ -399,6 +399,8 @@ impl Shared {
             let _ = old.cancel();
             drop(old);
         }
+        // Its events are dropped from here on, so its operation can no longer finish.
+        self.lock().model.reset_operation();
         let opened = self
             .platform
             .check_root(root.handle().to_owned())

@@ -271,6 +271,67 @@ fn restarting_with_a_saved_root_scans() {
     );
 }
 
+/// Picks the root and waits until its scan is blocked inside `enumerate`.
+fn pick_with_blocked_scan(harness: &Harness) -> std::sync::mpsc::Sender<()> {
+    let release = harness.platform.hold_enumerate();
+    harness
+        .core
+        .library_root_picked("Scores".to_owned(), ROOT.to_owned());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !harness
+        .platform
+        .calls()
+        .iter()
+        .any(|call| call.starts_with("enumerate"))
+    {
+        assert!(Instant::now() < deadline, "the scan never enumerated");
+        thread::sleep(Duration::from_millis(5));
+    }
+    release
+}
+
+#[test]
+fn re_picking_a_root_during_a_scan_scans_the_new_root() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let release = pick_with_blocked_scan(&harness);
+
+    harness
+        .core
+        .library_root_picked("Scores".to_owned(), ROOT.to_owned());
+    // The core thread joins the old worker, which waits in `enumerate`.
+    thread::sleep(Duration::from_millis(100));
+    drop(release);
+    let scanned = harness.listener.wait_for("the finished scan", is_finished);
+
+    assert_eq!(titles(&scanned), vec!["Ave Maria", "Barka"]);
+    assert!(!scanned.banner.busy);
+}
+
+#[test]
+fn re_picking_a_root_that_lost_permission_leaves_no_scan_running() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let release = pick_with_blocked_scan(&harness);
+
+    harness.platform.set_root(Err(PlatformError::PermissionLost));
+    harness
+        .core
+        .library_root_picked("Scores".to_owned(), ROOT.to_owned());
+    thread::sleep(Duration::from_millis(100));
+    drop(release);
+    let lost = harness.listener.wait_for("permission lost", |snapshot| {
+        matches!(
+            snapshot.screen,
+            Screen::Setup {
+                setup: SetupScreen::PermissionLost { .. }
+            }
+        )
+    });
+
+    assert!(!lost.banner.busy, "no scan is showing without a worker");
+}
+
 #[test]
 fn back_closes_innermost_first() {
     let dir = tempfile::tempdir().expect("temporary directory");

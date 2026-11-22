@@ -260,8 +260,8 @@ impl UiModel {
             crate::state::Screen::Setup(_)
         ) && matches!(&state, StorageState::Ready(_))
         {
-            // SAF readiness must also enable controller navigation. Worker
-            // scheduling remains explicit: choosing a folder does not scan it.
+            // SAF readiness must also enable controller navigation. Scans are
+            // started by the caller once the worker exists.
             self.controller.library_ready();
         }
         self.ready_root = match &state {
@@ -1312,6 +1312,11 @@ impl UiModel {
     /// so this is a guard rather than a control-flow signal.
     pub fn dispatch(&mut self, event: UiEvent) -> Result<Transition, EventError> {
         self.controller.dispatch(event)
+    }
+
+    /// Forgets the operation of a retired worker, so the next library starts idle.
+    pub fn reset_operation(&mut self) {
+        self.controller.reset_operation();
     }
 
     /// The "Rescan" button handler. Forwards to

@@ -468,6 +468,11 @@ impl AppController {
         Ok(())
     }
 
+    /// Forgets whatever operation was showing, because its worker was retired.
+    pub fn reset_operation(&mut self) {
+        self.state.operation = OperationState::Idle;
+    }
+
     /// Records a user-visible failure from the background worker.
     pub fn fail_operation(&mut self, failure: crate::text::Failure) {
         self.state.operation = OperationState::Failed { failure };
