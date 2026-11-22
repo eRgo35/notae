@@ -228,6 +228,7 @@
     <string name="set_add">Dodaj</string>
     <string name="set_reorder">Zmień kolejność</string>
     <string name="set_reorder_hint">Przeciągnij wiersz lub użyj strzałek, aby zmienić kolejność</string>
+    <string name="set_reorder_hint_phone">Przeciągnij wiersz, aby zmienić kolejność</string>
     <string name="set_move_up">Przesuń %1$s w górę</string>
     <string name="set_move_down">Przesuń %1$s w dół</string>
     <string name="set_drag">Przeciągnij, aby zmienić kolejność: %1$s</string>

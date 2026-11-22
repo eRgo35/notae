@@ -351,7 +351,7 @@ private fun LargeTitle(snapshot: Snapshot, inSet: Boolean, reordering: Boolean, 
                 overflow = TextOverflow.Ellipsis,
                 lineHeight = 40.sp,
             )
-            Text(if (reordering) stringResource(R.string.set_reorder_hint) else subtitleText(snapshot.subtitle), color = c.muted, fontSize = 15.sp)
+            Text(if (reordering) stringResource(R.string.set_reorder_hint_phone) else subtitleText(snapshot.subtitle), color = c.muted, fontSize = 15.sp)
             val notes = snapshot.setNotes
             if (inSet && !notes.isNullOrEmpty()) {
                 Text(notes, color = c.foreground, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)

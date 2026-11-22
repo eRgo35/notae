@@ -102,6 +102,15 @@ class ReorderTest {
 
     @Test
     @Config(qualifiers = "w360dp-h640dp-xhdpi")
+    fun phone_hint_does_not_mention_the_arrows() {
+        show(reordering)
+
+        // A phone has no arrows beside the rows, so the hint names only dragging.
+        compose.onNodeWithText("Drag a row to change the order").assertExists()
+    }
+
+    @Test
+    @Config(qualifiers = "w360dp-h640dp-xhdpi")
     fun reorder_moves_via_accessibility_actions_at_360dp() {
         show(reordering)
 
