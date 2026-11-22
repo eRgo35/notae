@@ -22,21 +22,7 @@ internal fun assertOneSandbox() {
 /** A core over [dataDir] for a test, checked to be in the one sandbox. */
 internal fun testCore(dataDir: String, platform: PlatformLibrary, listener: CoreListener): NotaeCore {
     assertOneSandbox()
-    loadNativeRuntimeClasses()
     return NotaeCore(dataDir, platform, listener)
-}
-
-/**
- * Robolectric's native runtime looks up the java.nio buffer classes the first time it needs them, on whichever thread
- * that is. From the core's own thread (a scan starts on the folder pick) such a lookup finds only classes the JVM has
- * already loaded, and a miss aborts the whole test JVM ("JniConstants: Class not found: java/nio/ShortBuffer", then
- * FloatBuffer once ShortBuffer was loaded). Loading them on the test thread first makes every lookup a hit.
- */
-private fun loadNativeRuntimeClasses() {
-    listOf(
-        "java.nio.Buffer", "java.nio.ByteBuffer", "java.nio.CharBuffer", "java.nio.ShortBuffer", "java.nio.IntBuffer",
-        "java.nio.LongBuffer", "java.nio.FloatBuffer", "java.nio.DoubleBuffer", "java.io.FileDescriptor",
-    ).forEach { Class.forName(it) }
 }
 
 private const val PROPERTY = "notae.test.coreSandbox"
