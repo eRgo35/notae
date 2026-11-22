@@ -501,7 +501,45 @@ impl IndexStore {
             &format!("DELETE FROM notes WHERE {kept}"),
             params_from_iter(known.iter().map(|path| path.as_ref())),
         )?;
+        transaction.execute(
+            &format!("DELETE FROM sidecar_applied WHERE {kept}"),
+            params_from_iter(known.iter().map(|path| path.as_ref())),
+        )?;
         transaction.commit()?;
+        Ok(())
+    }
+
+    /// Returns the digest of the sidecar entry last applied to `path`, if any.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database cannot be read.
+    pub fn sidecar_digest(&self, path: &RelativePdfPath) -> Result<Option<String>, IndexError> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT entry_sha256 FROM sidecar_applied WHERE path = ?1",
+                [path.to_string()],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Records the digest of the sidecar entry just applied to `path`.
+    ///
+    /// # Errors
+    ///
+    /// Fails when the database cannot be written.
+    pub fn set_sidecar_digest(
+        &self,
+        path: &RelativePdfPath,
+        digest: &str,
+    ) -> Result<(), IndexError> {
+        self.conn.execute(
+            "INSERT INTO sidecar_applied (path, entry_sha256) VALUES (?1, ?2)
+             ON CONFLICT(path) DO UPDATE SET entry_sha256 = excluded.entry_sha256",
+            params![path.to_string(), digest],
+        )?;
         Ok(())
     }
 }

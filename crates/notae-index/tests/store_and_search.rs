@@ -1237,7 +1237,10 @@ fn the_schema_version_is_the_newest_migration() {
         "{versions:?}"
     );
     assert_eq!(versions.last().copied(), Some(SCHEMA_VERSION));
-    assert_eq!(SCHEMA_VERSION, 2, "the ł/Ł fold is schema version 2");
+    assert_eq!(
+        SCHEMA_VERSION, 3,
+        "the sidecar_applied table is schema version 3"
+    );
 }
 
 /// One SQL expression per `notes_fts` row, comparable across databases.
@@ -1285,7 +1288,8 @@ fn a_version_1_index_is_folded_in_place_when_it_is_opened() {
     drop(store);
     let conn = rusqlite::Connection::open(&legacy).expect("open raw");
     conn.execute_batch(
-        "DELETE FROM schema_migrations WHERE version = 2;
+        "DELETE FROM schema_migrations WHERE version >= 2;
+         DROP TABLE sidecar_applied;
          UPDATE notes_fts SET
              title    = (SELECT title FROM notes WHERE notes.row_id = notes_fts.rowid),
              composer = (SELECT composer_or_artist FROM notes WHERE notes.row_id = notes_fts.rowid),
@@ -1406,4 +1410,47 @@ fn a_snippet_with_a_leading_ellipsis_keeps_the_original_spelling() {
         hits[0].text_snippet.as_deref(),
         Some("…m n o p q r \u{2}Pałka\u{3} zagrała x y z w")
     );
+}
+
+#[test]
+fn fresh_and_migrated_databases_are_at_version_3() {
+    let fresh = temp_db("v3-fresh");
+    let store = IndexStore::open(&fresh).expect("open fresh");
+    assert_eq!(store.schema_version().expect("version"), 3);
+    drop(store);
+    let _ = std::fs::remove_file(&fresh);
+
+    let copy = temp_db("v3-migrated");
+    let source =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sidecar-provenance.sqlite");
+    std::fs::copy(source, &copy).expect("copy fixture");
+    let store = IndexStore::open(&copy).expect("migrate fixture");
+    assert_eq!(store.schema_version().expect("version"), 3);
+    drop(store);
+    let _ = std::fs::remove_file(&copy);
+}
+
+#[test]
+fn sidecar_digest_is_stored_per_path_and_pruned_with_the_file() {
+    let file = temp_db("sidecar-digest");
+    let store = IndexStore::open(&file).expect("open");
+    let a = path("a.pdf");
+    assert_eq!(store.sidecar_digest(&a).expect("read"), None);
+    store.set_sidecar_digest(&a, "abc").expect("set");
+    assert_eq!(
+        store.sidecar_digest(&a).expect("read").as_deref(),
+        Some("abc")
+    );
+    store.set_sidecar_digest(&a, "def").expect("overwrite");
+    assert_eq!(
+        store.sidecar_digest(&a).expect("read").as_deref(),
+        Some("def")
+    );
+
+    store
+        .delete_missing(&keep_only(&[path("b.pdf")]))
+        .expect("prune");
+    assert_eq!(store.sidecar_digest(&a).expect("read"), None);
+    drop(store);
+    let _ = std::fs::remove_file(&file);
 }

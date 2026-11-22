@@ -1,0 +1,1 @@
+CREATE TABLE sidecar_applied (path TEXT PRIMARY KEY, entry_sha256 TEXT NOT NULL) STRICT;

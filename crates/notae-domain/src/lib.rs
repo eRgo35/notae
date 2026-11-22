@@ -7,6 +7,7 @@ mod filename;
 mod identity;
 mod metadata;
 mod ordering;
+mod sidecar;
 mod status;
 mod text;
 
@@ -18,5 +19,8 @@ pub use metadata::{
     DomainError, FieldProvenance, IndexedNote, MetadataField, MetadataOrigin, NoteMetadata,
 };
 pub use ordering::{DuplicateId, compare_library_order, validate_unique_ids};
+pub use sidecar::{
+    SIDECAR_DIR, SIDECAR_FILE, SIDECAR_THUMBNAILS, SIDECAR_VERSION, SidecarEntry, SidecarFile,
+};
 pub use status::IndexStatus;
 pub use text::normalize_whitespace;

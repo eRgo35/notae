@@ -19,8 +19,9 @@ use crate::store::IndexError;
 ///
 /// Version 2 folds the Polish `ł`/`Ł` in `notes_fts` (migration
 /// `0002_fold_l_stroke.sql`). A database at version 2 is refused by builds that
-/// only know version 1: the upgrade is forward-only.
-pub const SCHEMA_VERSION: u32 = 2;
+/// only know version 1: the upgrade is forward-only. Version 3 adds the
+/// `sidecar_applied` table (migration `0003_sidecar_applied.sql`).
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// The bookkeeping table recording applied migrations.
 const CREATE_MIGRATIONS_TABLE: &str = "\
@@ -29,21 +30,23 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
     applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 ) STRICT";
 
-/// Objects every schema version since 1 is made of, as `sqlite_master` type
-/// and name.
+/// Objects the schema is made of, as the version that introduced each plus its
+/// `sqlite_master` type and name.
 ///
 /// Checked when opening, so a database that recorded a version without
-/// actually having it is rejected. Version 2 only rewrites rows of `notes_fts`
+/// actually having it is rejected. An object is only required from the version
+/// that introduced it. Version 2 only rewrites rows of `notes_fts`
 /// and adds no object. The FTS5 shadow tables are deliberately not listed: they
 /// are SQLite's own bookkeeping for `notes_fts` and are dropped and recreated
 /// with it. The check cannot tell whether the rows of `notes_fts` are folded;
 /// that is guaranteed by the migration transaction, not verified at open.
-const SCHEMA_OBJECTS: &[(&str, &str)] = &[
-    ("table", "schema_migrations"),
-    ("table", "notes"),
-    ("table", "notes_fts"),
-    ("index", "notes_note_id_unique"),
-    ("index", "notes_status_idx"),
+const SCHEMA_OBJECTS: &[(u32, &str, &str)] = &[
+    (1, "table", "schema_migrations"),
+    (1, "table", "notes"),
+    (1, "table", "notes_fts"),
+    (1, "index", "notes_note_id_unique"),
+    (1, "index", "notes_status_idx"),
+    (3, "table", "sidecar_applied"),
 ];
 
 /// One forward-only schema change.
@@ -68,6 +71,11 @@ pub const MIGRATIONS: &[Migration] = &[
         version: 2,
         name: "fold_l_stroke",
         sql: include_str!("../migrations/0002_fold_l_stroke.sql"),
+    },
+    Migration {
+        version: 3,
+        name: "sidecar_applied",
+        sql: include_str!("../migrations/0003_sidecar_applied.sql"),
     },
 ];
 
@@ -155,8 +163,8 @@ pub fn migrate(conn: &Connection) -> Result<u32, IndexError> {
 /// `sqlite_master`, and the ones that are absent are named in the error.
 fn verify_objects(conn: &Connection, version: u32) -> Result<u32, IndexError> {
     let mut missing: Vec<&str> = Vec::new();
-    for (kind, name) in SCHEMA_OBJECTS {
-        if !object_exists(conn, kind, name)? {
+    for (since, kind, name) in SCHEMA_OBJECTS {
+        if *since <= version && !object_exists(conn, kind, name)? {
             missing.push(name);
         }
     }
