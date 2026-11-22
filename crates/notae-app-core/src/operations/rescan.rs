@@ -447,9 +447,8 @@ fn run_rescan(
                     };
                     outcome.unwrap_or_else(|error| Some(error.to_string()))
                 });
-                if let (Some(cache), Some(fingerprint), false) =
-                    (thumbnails, file.fingerprint(), skip)
-                {
+                // An unchanged file renders only when its cached thumbnail went missing.
+                if let (Some(cache), Some(fingerprint)) = (thumbnails, file.fingerprint()) {
                     let key = fingerprint.sha256().to_string();
                     let rendered = cache.ensure(&key, |out| match entry {
                         Some(_) => copy_sidecar_thumbnail(catalog, file, &key, out),

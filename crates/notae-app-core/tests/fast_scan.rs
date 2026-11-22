@@ -4,6 +4,7 @@
 mod fake_platform;
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,7 +14,10 @@ use notae_app_core::operations::rescan::OperationController;
 use notae_app_core::platform::PlatformCatalog;
 use notae_app_core::thumbnails::ThumbnailCache;
 use notae_app_core::ui::metadata_editor::EditableMetadata;
-use notae_domain::{IndexedNote, SIDECAR_FILE, SIDECAR_VERSION, SidecarEntry, SidecarFile};
+use notae_domain::{
+    IndexStatus, IndexedNote, RelativePdfPath, SIDECAR_FILE, SIDECAR_VERSION, SidecarEntry,
+    SidecarFile,
+};
 use notae_index::IndexStore;
 
 const HANDLE: &str = "content://tree/library";
@@ -37,15 +41,8 @@ impl Library {
         let database = directory.path().join("index.sqlite");
         let thumbnails = directory.path().join("thumbnails");
         let platform = Arc::new(FakePlatform::default());
-        let controller = OperationController::with_thumbnails(
-            IndexStore::open(&database).expect("open index"),
-            Box::new(PlatformCatalog::new(
-                Arc::clone(&platform) as _,
-                HANDLE.to_owned(),
-            )),
-            ThumbnailCache::new(thumbnails.clone()).expect("thumbnail cache"),
-        )
-        .expect("start worker");
+        platform.set_thumbnail(Ok(true));
+        let controller = start(&platform, &database, &thumbnails);
         Self {
             platform,
             controller: Some(controller),
@@ -53,6 +50,13 @@ impl Library {
             thumbnails,
             _directory: directory,
         }
+    }
+
+    /// Stops the worker, lets `edit` change its index, and starts a new worker over it.
+    fn restart(&mut self, edit: impl FnOnce(&IndexStore)) {
+        drop(self.controller.take());
+        edit(&IndexStore::open(&self.database).expect("reopen index"));
+        self.controller = Some(start(&self.platform, &self.database, &self.thumbnails));
     }
 
     fn controller(&self) -> &OperationController {
@@ -98,6 +102,18 @@ impl Library {
             self,
         )
     }
+}
+
+fn start(platform: &Arc<FakePlatform>, database: &Path, thumbnails: &Path) -> OperationController {
+    OperationController::with_thumbnails(
+        IndexStore::open(database).expect("open index"),
+        Box::new(PlatformCatalog::new(
+            Arc::clone(platform) as _,
+            HANDLE.to_owned(),
+        )),
+        ThumbnailCache::new(thumbnails.to_path_buf()).expect("thumbnail cache"),
+    )
+    .expect("start worker")
 }
 
 fn listed(path: &str, bytes: &[u8], millis: Option<i64>) -> Listed {
@@ -419,4 +435,84 @@ fn sidecar_is_read_after_the_listing() {
         .position(|call| *call == format!("read {HANDLE} {SIDECAR_FILE}"))
         .expect("sidecar read");
     assert!(listing < read);
+}
+
+#[test]
+fn an_interrupted_note_is_finished_by_the_next_scan() {
+    let mut library = Library::new();
+    library
+        .platform
+        .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, Some(1))]));
+    library.scan();
+    // A scan killed after reconciliation committed leaves the note as it was added.
+    library.restart(|store| {
+        let note = note_at(store, "1 - Alpha.pdf");
+        store
+            .reindex_note(&note.with_status(IndexStatus::Discovered))
+            .expect("reset status");
+    });
+
+    library
+        .platform
+        .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, Some(1))]));
+    let (_, calls) = library.scan();
+
+    assert_eq!(count(&calls, "text"), 1);
+    let (store, _library) = library.into_store();
+    assert_eq!(
+        note_at(&store, "1 - Alpha.pdf").status(),
+        IndexStatus::OcrPending
+    );
+}
+
+#[test]
+fn a_missing_cached_thumbnail_is_rendered_again() {
+    let library = Library::new();
+    library.platform.set_entries(Ok(three_files()));
+    library.scan();
+    std::fs::remove_file(
+        library
+            .thumbnails
+            .join(format!("{}.png", sha256_hex(ALPHA))),
+    )
+    .expect("thumbnail was cached");
+
+    library.platform.set_entries(Ok(three_files()));
+    let (_, calls) = library.scan();
+
+    assert_eq!(count(&calls, "hash"), 0);
+    assert_eq!(count(&calls, "text"), 0);
+    let rendered: Vec<_> = calls
+        .iter()
+        .filter(|call| call.starts_with("thumbnail "))
+        .collect();
+    assert_eq!(rendered.len(), 1);
+    assert!(rendered[0].contains("1 - Alpha.pdf"));
+}
+
+#[test]
+fn an_entry_for_other_content_is_not_applied_to_an_unchanged_file() {
+    let library = Library::new();
+    library
+        .platform
+        .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, Some(1))]));
+    library.scan();
+
+    let mut entry = sidecar_entry("1 - Alpha.pdf", ALPHA);
+    entry.sha256 = sha256_hex(BETA);
+    entry.title = Some("Wrong".to_owned());
+    library
+        .platform
+        .set_entries(Ok(vec![listed("1 - Alpha.pdf", ALPHA, Some(1))]));
+    serve(
+        &library.platform,
+        vec![(SIDECAR_FILE.to_owned(), sidecar(vec![entry]))],
+    );
+    let (_, calls) = library.scan();
+
+    assert_eq!(count(&calls, "hash"), 0);
+    let (store, _library) = library.into_store();
+    assert_eq!(note_at(&store, "1 - Alpha.pdf").title(), "Alpha");
+    let path = RelativePdfPath::new("1 - Alpha.pdf").expect("valid path");
+    assert_eq!(store.sidecar_digest(&path).expect("read digest"), None);
 }

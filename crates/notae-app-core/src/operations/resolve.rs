@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use notae_domain::{PdfFingerprint, RelativePdfPath, Sha256Digest, SidecarEntry};
+use notae_domain::{IndexStatus, PdfFingerprint, RelativePdfPath, Sha256Digest, SidecarEntry};
 use notae_index::{CatalogError, FileCondition, IndexStore, PdfFile};
 
 use crate::sidecar::{Sidecar, entry_digest};
@@ -19,7 +19,17 @@ pub(crate) struct Resolved {
 }
 
 /// Resolves each listed PDF's content: from the index when its size and time match the stored
-/// ones, else from a sidecar entry with the same path and size, else by hashing it.
+/// ones and its note finished indexing, else from a sidecar entry with the same path and size,
+/// else by hashing it.
+///
+/// A note has finished indexing when its status is [`IndexStatus::Ready`] or
+/// [`IndexStatus::OcrPending`] (the text layer was read and had no text, which reading it again
+/// would not change). Every other status means a scan stopped part way or a step failed
+/// (`Discovered`, `Indexing`, `OcrIncomplete`, `Stale`), or that the file has to be read again to
+/// know its condition (`Inaccessible`, `InvalidPdf`, `DuplicateIdConflict`, the legacy
+/// `ImportMismatch`), so the file is resolved again and its text and thumbnail steps run.
+///
+/// The sidecar entry of an unchanged file is applied only when its `sha256` is the stored one.
 ///
 /// # Errors
 /// [`CatalogError`] when the index cannot be read or the catalog's grant was revoked.
@@ -33,6 +43,7 @@ pub(crate) fn resolve(
         .list_all()
         .map_err(index_error)?
         .into_iter()
+        .filter(|note| matches!(note.status(), IndexStatus::Ready | IndexStatus::OcrPending))
         .map(|note| (note.path().clone(), note.fingerprint().clone()))
         .collect();
     let mut resolved = Resolved {
@@ -60,6 +71,12 @@ pub(crate) fn resolve(
         } else {
             catalog.hash(&pdf.path, pdf.size, pdf.modified)?
         };
+        // Never attach an unchanged file to an entry that describes other content.
+        let entry = entry.filter(|entry| {
+            known.is_none_or(|fingerprint| {
+                Sha256Digest::parse(&entry.sha256).ok() == Some(fingerprint.sha256())
+            })
+        });
         if let Some(entry) = entry {
             let digest = entry_digest(entry);
             if local.sidecar_digest(&pdf.path).map_err(index_error)? != Some(digest) {

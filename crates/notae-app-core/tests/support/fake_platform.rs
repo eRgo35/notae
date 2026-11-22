@@ -101,7 +101,7 @@ impl FakePlatform {
         *lock(&self.text) = text;
     }
 
-    /// What `render_thumbnail` returns.
+    /// What `render_thumbnail` returns; `Ok(true)` also writes a small PNG stand-in to `out_png`.
     pub fn set_thumbnail(&self, rendered: Result<bool, PlatformError>) {
         *lock(&self.thumbnail) = rendered;
     }
@@ -170,7 +170,12 @@ impl PlatformLibrary for FakePlatform {
         out_png: String,
     ) -> Result<bool, PlatformError> {
         self.record(format!("thumbnail {handle} {path} {out_png}"));
-        lock(&self.thumbnail).clone()
+        let rendered = lock(&self.thumbnail).clone();
+        if rendered == Ok(true) {
+            // Best effort: a test may pass a path that does not exist.
+            let _ = std::fs::write(&out_png, b"\x89PNG rendered");
+        }
+        rendered
     }
 }
 
