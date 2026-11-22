@@ -1,6 +1,6 @@
 package com.c2yz.notae.nav
 
-import com.c2yz.notae.ui.components.COMPACT_HEIGHT
+import com.c2yz.notae.ui.components.HeightClass
 import com.c2yz.notae.ui.components.backProgress
 import com.c2yz.notae.ui.components.LocalBackProgress
 import com.c2yz.notae.ui.components.BackClaims
@@ -61,6 +61,7 @@ import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Screen
 import com.c2yz.notae.core.Snapshot
+import com.c2yz.notae.ui.components.windowHeightClass
 import com.c2yz.notae.ui.details.DetailsScreen
 import com.c2yz.notae.ui.details.MetadataEditor
 import com.c2yz.notae.ui.library.LibraryScreen
@@ -95,7 +96,9 @@ fun NotaeNavDisplay(
     BoxWithConstraints(modifier.shellFrame()) {
         // R37: two panes from 840 dp (a tablet in landscape), Details alone below that (portrait) and in short
         // windows (a phone on its side), where two panes would leave neither room for its content.
-        val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH && maxHeight >= COMPACT_HEIGHT
+        // The height is the window's, as the chrome's (windowChrome): this box's shrinks with the keyboard, which would
+        // drop the library pane behind an editor while it is typed in.
+        val twoPane = maxWidth >= TWO_PANE_MIN_WIDTH && windowHeightClass() == HeightClass.REGULAR
         val strategy = remember(twoPane) { ListDetailSceneStrategy(twoPane) }
         // The details beside a list leave the banner and the PDF error to the list's pane, which shows them once.
         val besideList = twoPane && isListRoute(backStack.getOrNull(backStack.size - 2))

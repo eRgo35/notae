@@ -28,6 +28,10 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.withKeyDown
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.metadata
 import androidx.navigation3.runtime.NavKey
@@ -89,6 +93,24 @@ class ListDetailSceneTest {
     private val rows: List<Row> = Fixture.rows
     private val libraryTitle = hasText("All scores") and isHeading()
     private val ave = rows.indexOfFirst { it.title == "Ave Maria" }
+
+    @Test
+    fun the_keyboard_keeps_both_panes() {
+        WindowCompat.setDecorFitsSystemWindows(compose.activity.window, false)
+        show(selecting(ave))
+
+        // A 400 dp keyboard leaves the shell 400 dp of height; the window is still a tall tablet, so the panes stay.
+        compose.runOnUiThread {
+            ViewCompat.dispatchApplyWindowInsets(
+                compose.activity.window.decorView,
+                WindowInsetsCompat.Builder().setInsets(WindowInsetsCompat.Type.ime(), Insets.of(0, 0, 0, 800)).build(),
+            )
+        }
+        compose.waitForIdle()
+
+        compose.onNode(libraryTitle).assertIsDisplayed()
+        compose.onNodeWithText("Open score").assertIsDisplayed()
+    }
 
     @Test
     fun wide_window_shows_library_and_details_side_by_side() {
