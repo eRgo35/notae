@@ -11,7 +11,8 @@ use std::time::Duration;
 use fake_platform::{FakePlatform, Listed, readable, sha256_hex};
 use notae_app_core::operations::events::{OperationEvent, RescanSummary};
 use notae_app_core::operations::rescan::OperationController;
-use notae_app_core::platform::PlatformCatalog;
+use notae_app_core::platform::{PlatformCatalog, PlatformError};
+use notae_app_core::text::Failure;
 use notae_app_core::thumbnails::ThumbnailCache;
 use notae_app_core::ui::metadata_editor::EditableMetadata;
 use notae_domain::{
@@ -65,17 +66,28 @@ impl Library {
 
     /// Runs one scan; returns its summary and the platform calls it made.
     fn scan(&self) -> (RescanSummary, Vec<String>) {
+        match self.scan_outcome() {
+            (OperationEvent::Completed { summary, .. }, calls) => (summary, calls),
+            (other, _) => panic!("rescan did not complete: {other:?}"),
+        }
+    }
+
+    /// Runs one scan; returns its last event and the platform calls it made.
+    fn scan_outcome(&self) -> (OperationEvent, Vec<String>) {
         let before = self.platform.calls().len();
         self.controller().start_rescan().expect("start rescan");
-        let summary = loop {
+        let last = loop {
             match self.controller().recv_event_timeout(Duration::from_secs(5)) {
-                Some(OperationEvent::Completed { summary, .. }) => break summary,
-                Some(OperationEvent::Failed { failure }) => panic!("rescan failed: {failure:?}"),
+                Some(
+                    last @ (OperationEvent::Completed { .. }
+                    | OperationEvent::Failed { .. }
+                    | OperationEvent::Canceled),
+                ) => break last,
                 Some(_) => {}
                 None => panic!("rescan did not finish"),
             }
         };
-        (summary, self.platform.calls()[before..].to_vec())
+        (last, self.platform.calls()[before..].to_vec())
     }
 
     fn save_metadata(&self, metadata: EditableMetadata) {
@@ -627,5 +639,44 @@ fn an_interrupted_sidecar_note_is_finished_from_its_entry() {
     assert_eq!(
         note_at(&store, "1 - Alpha.pdf").status(),
         IndexStatus::Ready
+    );
+}
+
+#[test]
+fn an_unreadable_sidecar_is_ignored_and_reported() {
+    let library = Library::new();
+    library.platform.set_entries(Ok(three_files()));
+    library.platform.fail_read(
+        SIDECAR_FILE,
+        PlatformError::Unavailable {
+            detail: "I/O error".to_owned(),
+        },
+    );
+
+    let (summary, calls) = library.scan();
+
+    assert!(summary.sidecar_ignored);
+    assert_eq!(summary.added, 3);
+    assert_eq!(count(&calls, "hash"), 3);
+}
+
+#[test]
+fn a_sidecar_read_without_permission_fails_the_scan() {
+    let library = Library::new();
+    library.platform.set_entries(Ok(three_files()));
+    library
+        .platform
+        .fail_read(SIDECAR_FILE, PlatformError::PermissionLost);
+
+    let (last, _) = library.scan_outcome();
+
+    assert!(
+        matches!(
+            last,
+            OperationEvent::Failed {
+                failure: Failure::LibraryPermissionLost
+            }
+        ),
+        "{last:?}"
     );
 }

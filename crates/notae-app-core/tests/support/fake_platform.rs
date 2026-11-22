@@ -21,6 +21,7 @@ pub struct FakePlatform {
     entries: Mutex<Result<Vec<DocumentEntry>, PlatformError>>,
     hashes: Mutex<HashMap<String, Result<DocumentContent, PlatformError>>>,
     files: Mutex<HashMap<String, Vec<u8>>>,
+    read_errors: Mutex<HashMap<String, PlatformError>>,
     text: Mutex<Result<Option<String>, PlatformError>>,
     thumbnail: Mutex<Result<bool, PlatformError>>,
     calls: Mutex<Vec<String>>,
@@ -37,6 +38,7 @@ impl Default for FakePlatform {
             entries: Mutex::new(Ok(Vec::new())),
             hashes: Mutex::new(HashMap::new()),
             files: Mutex::new(HashMap::new()),
+            read_errors: Mutex::new(HashMap::new()),
             text: Mutex::new(Ok(None)),
             thumbnail: Mutex::new(Ok(false)),
             calls: Mutex::new(Vec::new()),
@@ -81,6 +83,11 @@ impl FakePlatform {
     /// The files `read_file` serves, by path; any other path is absent.
     pub fn set_files(&self, files: HashMap<String, Vec<u8>>) {
         *lock(&self.files) = files;
+    }
+
+    /// Makes `read_file` of `path` fail with `error`.
+    pub fn fail_read(&self, path: &str, error: PlatformError) {
+        lock(&self.read_errors).insert(path.to_owned(), error);
     }
 
     /// Makes the next `enumerate` block, as a slow Kotlin call does, until the returned sender
@@ -151,6 +158,9 @@ impl PlatformLibrary for FakePlatform {
 
     fn read_file(&self, handle: String, path: String) -> Result<Option<Vec<u8>>, PlatformError> {
         self.record(format!("read {handle} {path}"));
+        if let Some(error) = lock(&self.read_errors).get(&path) {
+            return Err(error.clone());
+        }
         Ok(lock(&self.files).get(&path).cloned())
     }
 

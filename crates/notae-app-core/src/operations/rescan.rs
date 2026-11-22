@@ -542,13 +542,19 @@ fn fail_catalog(
 }
 
 /// Reads and parses the library's sidecar: `(None, false)` when there is none, `(None, true)`
-/// when it cannot be parsed.
+/// when it cannot be read or parsed.
 ///
 /// # Errors
-/// [`CatalogError`] when the platform cannot read the file, such as a revoked grant.
+/// [`CatalogError::PermissionLost`] when the grant was revoked.
 fn read_sidecar(catalog: &dyn LibraryCatalog) -> Result<(Option<Sidecar>, bool), CatalogError> {
-    let Some(bytes) = catalog.read_file(SIDECAR_FILE)? else {
-        return Ok((None, false));
+    let bytes = match catalog.read_file(SIDECAR_FILE) {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return Ok((None, false)),
+        Err(CatalogError::PermissionLost) => return Err(CatalogError::PermissionLost),
+        Err(error) => {
+            eprintln!("notae: ignoring {SIDECAR_FILE}: {error}");
+            return Ok((None, true));
+        }
     };
     match Sidecar::parse(&bytes) {
         Ok(sidecar) => Ok((Some(sidecar), false)),
