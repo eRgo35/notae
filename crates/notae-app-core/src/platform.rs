@@ -1,8 +1,8 @@
 //! The one boundary between the core and the platform's document storage.
 //!
 //! The platform (Kotlin from 0.5.0) owns every platform API. It
-//! lists the library, reads a PDF's text layer and renders a thumbnail, and hands the results to
-//! the core as plain data through [`PlatformLibrary`]. [`PlatformCatalog`] turns that data into
+//! lists the library, hashes one document on request, reads a sidecar file, reads a PDF's text
+//! layer and renders a thumbnail, and hands the results to the core as plain data through [`PlatformLibrary`]. [`PlatformCatalog`] turns that data into
 //! the [`LibraryCatalog`] the rescan worker reads.
 //!
 //! The trait crosses the UniFFI boundary unchanged: Kotlin implements it (`with_foreign`), with
@@ -14,11 +14,11 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use notae_domain::{PdfFingerprint, RelativePdfPath, Sha256Digest};
+use notae_domain::{EpochTimestamp, PdfFingerprint, RelativePdfPath, Sha256Digest};
 use notae_index::{CatalogError, FileCondition, PdfCatalog, PdfFile};
 
 use crate::pdf_pages::PdfError;
-use crate::storage::{LibraryCatalog, StorageError};
+use crate::storage::{LibraryCatalog, ListedPdf, StorageError};
 
 /// The platform's document storage, called on the worker thread.
 ///
@@ -36,14 +36,26 @@ pub trait PlatformLibrary: Send + Sync {
     /// [`PlatformError::Unavailable`] when the platform cannot tell.
     fn check_root(&self, handle: String) -> Result<(), PlatformError>;
 
-    /// Lists every PDF below the library root.
-    ///
-    /// A PDF that cannot be read is still listed, with [`DocumentContent::Unreadable`] or
-    /// [`DocumentContent::InvalidPdf`].
+    /// Lists every PDF below the library root without reading any of them.
     ///
     /// # Errors
     /// [`PlatformError`] when the tree cannot be listed at all.
     fn enumerate(&self, handle: String) -> Result<Vec<DocumentEntry>, PlatformError>;
+
+    /// Hashes one document.
+    ///
+    /// A PDF that cannot be read is reported as [`DocumentContent::Unreadable`] or
+    /// [`DocumentContent::InvalidPdf`], not as an error.
+    ///
+    /// # Errors
+    /// [`PlatformError`] when the platform fails or the grant was revoked.
+    fn hash(&self, handle: String, path: String) -> Result<DocumentContent, PlatformError>;
+
+    /// Reads a whole file below the library root, such as a sidecar; `Ok(None)` when absent.
+    ///
+    /// # Errors
+    /// [`PlatformError`] when the platform fails or the grant was revoked.
+    fn read_file(&self, handle: String, path: String) -> Result<Option<Vec<u8>>, PlatformError>;
 
     /// Extracts the PDF's text layer; `Ok(None)` when the platform cannot or it has none.
     ///
@@ -76,8 +88,8 @@ pub struct DocumentEntry {
     pub display_name: String,
     /// Size in bytes.
     pub size: u64,
-    /// What the platform could read of it.
-    pub content: DocumentContent,
+    /// Last modification, in milliseconds since the Unix epoch, when the platform knows it.
+    pub modified_millis: Option<i64>,
 }
 
 /// What the platform could read of one document.
@@ -148,8 +160,10 @@ impl From<PlatformError> for PdfError {
 
 /// The [`LibraryCatalog`] over a [`PlatformLibrary`] and one library root.
 ///
-/// Each entry becomes a [`PdfFile`]: a [`DocumentContent::Sha256`] with its size becomes a
-/// readable fingerprint (no modification time), [`DocumentContent::Unreadable`] and
+/// [`list`](LibraryCatalog::list) reads nothing; [`hash`](LibraryCatalog::hash) turns one
+/// document's [`DocumentContent`] into a [`FileCondition`]. [`enumerate`](PdfCatalog::enumerate)
+/// is the two together: a [`DocumentContent::Sha256`] with its size becomes a
+/// readable fingerprint, [`DocumentContent::Unreadable`] and
 /// [`DocumentContent::InvalidPdf`] keep their conditions, and a hash that is not 64 lowercase hex
 /// characters counts as unreadable. An entry whose path the domain rejects is dropped and kept
 /// for [`LibraryCatalog::take_rejected_paths`].
@@ -173,30 +187,71 @@ impl PlatformCatalog {
 
 impl PdfCatalog for PlatformCatalog {
     fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
+        let listed = self.list()?;
+        let mut files = Vec::with_capacity(listed.len());
+        for pdf in listed {
+            let condition = self.hash(&pdf.path, pdf.size, pdf.modified)?;
+            files.push(PdfFile::with_condition(pdf.path, pdf.filename, condition));
+        }
+        Ok(files)
+    }
+}
+
+/// Milliseconds since the epoch as a timestamp; `None` when out of range.
+fn timestamp_from_millis(millis: i64) -> Option<EpochTimestamp> {
+    let nanos = u32::try_from(millis.rem_euclid(1000) * 1_000_000).ok()?;
+    EpochTimestamp::new(millis.div_euclid(1000), nanos)
+}
+
+impl LibraryCatalog for PlatformCatalog {
+    fn list(&self) -> Result<Vec<ListedPdf>, CatalogError> {
         let entries = self.platform.enumerate(self.handle.clone())?;
-        let mut files = Vec::with_capacity(entries.len());
+        let mut listed = Vec::with_capacity(entries.len());
         let mut rejected = Vec::new();
         for entry in entries {
             let Ok(path) = RelativePdfPath::new(entry.path.clone()) else {
                 rejected.push(entry.path);
                 continue;
             };
-            let condition = match entry.content {
-                DocumentContent::Sha256 { hex } => Sha256Digest::parse(&hex)
-                    .map_or(FileCondition::Unreadable, |digest| {
-                        FileCondition::Readable(PdfFingerprint::new(digest, entry.size, None))
-                    }),
-                DocumentContent::Unreadable => FileCondition::Unreadable,
-                DocumentContent::InvalidPdf => FileCondition::InvalidPdf,
-            };
-            files.push(PdfFile::with_condition(path, entry.display_name, condition));
+            listed.push(ListedPdf {
+                path,
+                filename: entry.display_name,
+                size: entry.size,
+                modified: entry.modified_millis.and_then(timestamp_from_millis),
+            });
         }
         *self.rejected.lock().unwrap_or_else(PoisonError::into_inner) = rejected;
-        Ok(files)
+        Ok(listed)
     }
-}
 
-impl LibraryCatalog for PlatformCatalog {
+    fn hash(
+        &self,
+        path: &RelativePdfPath,
+        size: u64,
+        modified: Option<EpochTimestamp>,
+    ) -> Result<FileCondition, CatalogError> {
+        match self
+            .platform
+            .hash(self.handle.clone(), path.as_str().to_owned())
+        {
+            Ok(DocumentContent::Sha256 { hex }) => Ok(Sha256Digest::parse(&hex)
+                .map_or(FileCondition::Unreadable, |digest| {
+                    FileCondition::Readable(PdfFingerprint::new(digest, size, modified))
+                })),
+            Ok(DocumentContent::Unreadable) | Err(PlatformError::Unavailable { .. }) => {
+                Ok(FileCondition::Unreadable)
+            }
+            Ok(DocumentContent::InvalidPdf) => Ok(FileCondition::InvalidPdf),
+            Err(PlatformError::PermissionLost) => Err(CatalogError::PermissionLost),
+        }
+    }
+
+    fn read_file(&self, path: &str) -> Result<Option<Vec<u8>>, CatalogError> {
+        Ok(self
+            .platform
+            .read_file(self.handle.clone(), path.to_owned())?)
+    }
+
     fn extract_text_layer(&self, path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         Ok(self
             .platform

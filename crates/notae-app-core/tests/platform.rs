@@ -3,18 +3,19 @@
 #[path = "support/fake_platform.rs"]
 mod fake_platform;
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use fake_platform::{FakePlatform, entry, readable};
+use fake_platform::{FakePlatform, entry, readable, sha256_hex};
 use notae_app_core::operations::events::OperationEvent;
 use notae_app_core::operations::rescan::OperationController;
 use notae_app_core::pdf_pages::PdfError;
 use notae_app_core::platform::{DocumentContent, PlatformCatalog, PlatformError};
 use notae_app_core::storage::{LibraryCatalog, StorageError};
 use notae_app_core::text::Failure;
-use notae_domain::{IndexStatus, PdfFingerprint, RelativePdfPath, Sha256Digest};
+use notae_domain::{EpochTimestamp, IndexStatus, PdfFingerprint, RelativePdfPath, Sha256Digest};
 use notae_index::{CatalogError, FileCondition, IndexStore, PdfCatalog, PdfFile, Reconciler};
 use sha2::{Digest, Sha256};
 
@@ -33,7 +34,7 @@ fn catalog_maps_entries_to_pdf_files() {
     let bytes = b"%PDF-1.4\nautumn";
     let platform = Arc::new(FakePlatform::default());
     let mut renamed = readable("Jazz/12 - Autumn Leaves.pdf", bytes);
-    renamed.display_name = "12 - Autumn Leaves (shared).pdf".to_owned();
+    renamed.entry.display_name = "12 - Autumn Leaves (shared).pdf".to_owned();
     platform.set_entries(Ok(vec![
         renamed,
         readable("../escape.pdf", b"%PDF-1.4\nescape"),
@@ -68,7 +69,15 @@ fn catalog_maps_entries_to_pdf_files() {
             ),
         ]
     );
-    assert_eq!(platform.calls(), [format!("enumerate {HANDLE}")]);
+    assert_eq!(
+        platform.calls(),
+        [
+            format!("enumerate {HANDLE}"),
+            format!("hash {HANDLE} Jazz/12 - Autumn Leaves.pdf"),
+            format!("hash {HANDLE} locked.pdf"),
+            format!("hash {HANDLE} broken.pdf"),
+        ]
+    );
     assert_eq!(catalog.take_rejected_paths(), ["../escape.pdf"]);
     assert!(catalog.take_rejected_paths().is_empty(), "taken once");
 
@@ -194,6 +203,96 @@ fn catalog_forwards_text_and_thumbnail_requests() {
             format!("text {HANDLE} Jazz/12 - Autumn Leaves.pdf"),
             format!("thumbnail {HANDLE} Jazz/12 - Autumn Leaves.pdf /cache/abc.png.part"),
             format!("thumbnail {HANDLE} Jazz/12 - Autumn Leaves.pdf /cache/abc.png.part"),
+        ]
+    );
+}
+
+#[test]
+fn list_converts_millis_and_hashes_nothing() {
+    let platform = Arc::new(FakePlatform::default());
+    let mut listed = readable("Jazz/Autumn.pdf", b"%PDF-1.4\nautumn");
+    listed.entry.modified_millis = Some(1_700_000_000_123);
+    platform.set_entries(Ok(vec![listed, readable("old.pdf", b"%PDF-1.4\nold")]));
+    let catalog = catalog(&platform);
+
+    let listed = catalog.list().expect("platform listed the library");
+
+    assert_eq!(listed.len(), 2);
+    assert_eq!(listed[0].path, path("Jazz/Autumn.pdf"));
+    assert_eq!(listed[0].filename, "Autumn.pdf");
+    assert_eq!(listed[0].size, 15);
+    assert_eq!(
+        listed[0].modified,
+        EpochTimestamp::new(1_700_000_000, 123_000_000)
+    );
+    assert_eq!(listed[1].modified, None);
+    assert_eq!(platform.calls(), [format!("enumerate {HANDLE}")]);
+}
+
+#[test]
+fn hash_maps_content_to_condition() {
+    let platform = Arc::new(FakePlatform::default());
+    let bytes = b"%PDF-1.4\nautumn";
+    platform.set_hashes(HashMap::from([
+        (
+            "ok.pdf".to_owned(),
+            Ok(DocumentContent::Sha256 {
+                hex: sha256_hex(bytes),
+            }),
+        ),
+        ("locked.pdf".to_owned(), Ok(DocumentContent::Unreadable)),
+        (
+            "bad.pdf".to_owned(),
+            Ok(DocumentContent::Sha256 {
+                hex: "not hex".to_owned(),
+            }),
+        ),
+        ("broken.pdf".to_owned(), Ok(DocumentContent::InvalidPdf)),
+        ("revoked.pdf".to_owned(), Err(PlatformError::PermissionLost)),
+    ]));
+    let catalog = catalog(&platform);
+    let modified = EpochTimestamp::new(5, 0);
+
+    assert_eq!(
+        catalog.hash(&path("ok.pdf"), 15, modified),
+        Ok(FileCondition::Readable(PdfFingerprint::new(
+            Sha256Digest::from_bytes(Sha256::digest(bytes).into()),
+            15,
+            modified,
+        )))
+    );
+    assert_eq!(
+        catalog.hash(&path("locked.pdf"), 1, None),
+        Ok(FileCondition::Unreadable)
+    );
+    assert_eq!(
+        catalog.hash(&path("bad.pdf"), 1, None),
+        Ok(FileCondition::Unreadable)
+    );
+    assert_eq!(
+        catalog.hash(&path("broken.pdf"), 1, None),
+        Ok(FileCondition::InvalidPdf)
+    );
+    assert_eq!(
+        catalog.hash(&path("revoked.pdf"), 1, None),
+        Err(CatalogError::PermissionLost)
+    );
+    assert_eq!(platform.calls()[0], format!("hash {HANDLE} ok.pdf"));
+}
+
+#[test]
+fn read_file_passes_bytes_and_absence() {
+    let platform = Arc::new(FakePlatform::default());
+    platform.set_files(HashMap::from([("sidecar.json".to_owned(), vec![1, 2, 3])]));
+    let catalog = catalog(&platform);
+
+    assert_eq!(catalog.read_file("sidecar.json"), Ok(Some(vec![1, 2, 3])));
+    assert_eq!(catalog.read_file("missing.json"), Ok(None));
+    assert_eq!(
+        platform.calls(),
+        [
+            format!("read {HANDLE} sidecar.json"),
+            format!("read {HANDLE} missing.json")
         ]
     );
 }

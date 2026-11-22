@@ -5,6 +5,7 @@
 //! with `#[path = "support/fake_platform.rs"] mod fake_platform;`.
 #![allow(dead_code)] // Each test binary uses a different part of the helper.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Mutex, MutexGuard};
@@ -18,6 +19,8 @@ use sha2::{Digest, Sha256};
 pub struct FakePlatform {
     root: Mutex<Result<(), PlatformError>>,
     entries: Mutex<Result<Vec<DocumentEntry>, PlatformError>>,
+    hashes: Mutex<HashMap<String, Result<DocumentContent, PlatformError>>>,
+    files: Mutex<HashMap<String, Vec<u8>>>,
     text: Mutex<Result<Option<String>, PlatformError>>,
     thumbnail: Mutex<Result<bool, PlatformError>>,
     calls: Mutex<Vec<String>>,
@@ -32,6 +35,8 @@ impl Default for FakePlatform {
         Self {
             root: Mutex::new(Ok(())),
             entries: Mutex::new(Ok(Vec::new())),
+            hashes: Mutex::new(HashMap::new()),
+            files: Mutex::new(HashMap::new()),
             text: Mutex::new(Ok(None)),
             thumbnail: Mutex::new(Ok(false)),
             calls: Mutex::new(Vec::new()),
@@ -52,9 +57,30 @@ impl FakePlatform {
         *lock(&self.root) = root;
     }
 
-    /// What the next `enumerate` returns.
-    pub fn set_entries(&self, entries: Result<Vec<DocumentEntry>, PlatformError>) {
-        *lock(&self.entries) = entries;
+    /// What the next `enumerate` returns; each fixture's content is what `hash` answers for its
+    /// path, unless [`set_hashes`](Self::set_hashes) says otherwise.
+    pub fn set_entries(&self, entries: Result<Vec<Listed>, PlatformError>) {
+        match entries {
+            Ok(listed) => {
+                let mut hashes = lock(&self.hashes);
+                hashes.clear();
+                for item in &listed {
+                    hashes.insert(item.entry.path.clone(), Ok(item.content.clone()));
+                }
+                *lock(&self.entries) = Ok(listed.into_iter().map(|item| item.entry).collect());
+            }
+            Err(error) => *lock(&self.entries) = Err(error),
+        }
+    }
+
+    /// What `hash` returns per path, replacing every earlier answer.
+    pub fn set_hashes(&self, hashes: HashMap<String, Result<DocumentContent, PlatformError>>) {
+        *lock(&self.hashes) = hashes;
+    }
+
+    /// The files `read_file` serves, by path; any other path is absent.
+    pub fn set_files(&self, files: HashMap<String, Vec<u8>>) {
+        *lock(&self.files) = files;
     }
 
     /// Makes the next `enumerate` block, as a slow Kotlin call does, until the returned sender
@@ -115,6 +141,19 @@ impl PlatformLibrary for FakePlatform {
         lock(&self.entries).clone()
     }
 
+    fn hash(&self, handle: String, path: String) -> Result<DocumentContent, PlatformError> {
+        self.record(format!("hash {handle} {path}"));
+        lock(&self.hashes)
+            .get(&path)
+            .cloned()
+            .unwrap_or(Ok(DocumentContent::Unreadable))
+    }
+
+    fn read_file(&self, handle: String, path: String) -> Result<Option<Vec<u8>>, PlatformError> {
+        self.record(format!("read {handle} {path}"));
+        Ok(lock(&self.files).get(&path).cloned())
+    }
+
     fn extract_text_layer(
         &self,
         handle: String,
@@ -140,8 +179,14 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
     Sha256Digest::from_bytes(Sha256::digest(bytes).into()).to_string()
 }
 
+/// One listed document and what `hash` answers for it.
+pub struct Listed {
+    pub entry: DocumentEntry,
+    pub content: DocumentContent,
+}
+
 /// A readable entry whose display name is the path's last segment.
-pub fn readable(path: &str, bytes: &[u8]) -> DocumentEntry {
+pub fn readable(path: &str, bytes: &[u8]) -> Listed {
     entry(
         path,
         DocumentContent::Sha256 {
@@ -152,11 +197,14 @@ pub fn readable(path: &str, bytes: &[u8]) -> DocumentEntry {
 }
 
 /// An entry with `content` and `size` bytes.
-pub fn entry(path: &str, content: DocumentContent, size: usize) -> DocumentEntry {
-    DocumentEntry {
-        path: path.to_owned(),
-        display_name: path.rsplit('/').next().unwrap_or(path).to_owned(),
-        size: u64::try_from(size).expect("fixture size fits in u64"),
+pub fn entry(path: &str, content: DocumentContent, size: usize) -> Listed {
+    Listed {
+        entry: DocumentEntry {
+            path: path.to_owned(),
+            display_name: path.rsplit('/').next().unwrap_or(path).to_owned(),
+            size: u64::try_from(size).expect("fixture size fits in u64"),
+            modified_millis: None,
+        },
         content,
     }
 }

@@ -59,8 +59,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use notae_domain::RelativePdfPath;
-use notae_index::{CatalogError, PdfCatalog, PdfFile};
+use notae_domain::{EpochTimestamp, RelativePdfPath};
+use notae_index::{CatalogError, FileCondition, PdfCatalog, PdfFile};
 
 use crate::pdf_pages::PdfError;
 
@@ -291,8 +291,78 @@ pub struct LibrarySource {
     catalog: Box<dyn LibraryCatalog + Send>,
 }
 
+/// One PDF a catalog listed, before it is hashed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedPdf {
+    /// The library-relative path.
+    pub path: RelativePdfPath,
+    /// The document's own name, which filename metadata is parsed from.
+    pub filename: String,
+    /// Size in bytes.
+    pub size: u64,
+    /// Last modification time, when known.
+    pub modified: Option<EpochTimestamp>,
+}
+
 /// Catalog capabilities consumed by the library worker.
 pub trait LibraryCatalog: PdfCatalog + Send {
+    /// Lists every PDF without hashing any of them.
+    ///
+    /// The default maps [`enumerate`](PdfCatalog::enumerate): size and modification time come
+    /// from a readable fingerprint, and are `0` and `None` otherwise.
+    ///
+    /// # Errors
+    /// [`CatalogError`] when the library cannot be listed.
+    fn list(&self) -> Result<Vec<ListedPdf>, CatalogError> {
+        Ok(self
+            .enumerate()?
+            .into_iter()
+            .map(|file| {
+                let (size, modified) = match file.condition() {
+                    FileCondition::Readable(fingerprint) => {
+                        (fingerprint.byte_len(), fingerprint.modified())
+                    }
+                    _ => (0, None),
+                };
+                ListedPdf {
+                    path: file.path().clone(),
+                    filename: file.filename().to_owned(),
+                    size,
+                    modified,
+                }
+            })
+            .collect())
+    }
+
+    /// Hashes one listed PDF.
+    ///
+    /// The default looks the path up in [`enumerate`](PdfCatalog::enumerate); a path that is no
+    /// longer listed is unreadable.
+    ///
+    /// # Errors
+    /// [`CatalogError::PermissionLost`] when the grant was revoked; every other failure is
+    /// `Ok(`[`FileCondition::Unreadable`]`)`.
+    fn hash(
+        &self,
+        path: &RelativePdfPath,
+        _size: u64,
+        _modified: Option<EpochTimestamp>,
+    ) -> Result<FileCondition, CatalogError> {
+        Ok(self
+            .enumerate()?
+            .into_iter()
+            .find(|file| file.path() == path)
+            .map_or(FileCondition::Unreadable, |file| file.condition().clone()))
+    }
+
+    /// Reads a whole file below the library root, such as a sidecar; `Ok(None)` when absent.
+    ///
+    /// # Errors
+    /// [`CatalogError`] when the platform fails or the grant was revoked.
+    fn read_file(&self, _path: &str) -> Result<Option<Vec<u8>>, CatalogError> {
+        Ok(None)
+    }
+
     /// Extracts searchable PDF text available without local OCR execution.
     fn extract_text_layer(&self, _path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         Ok(None)
@@ -344,6 +414,20 @@ impl PdfCatalog for LibrarySource {
 }
 
 impl LibraryCatalog for LibrarySource {
+    fn list(&self) -> Result<Vec<ListedPdf>, CatalogError> {
+        self.catalog.list()
+    }
+    fn hash(
+        &self,
+        path: &RelativePdfPath,
+        size: u64,
+        modified: Option<EpochTimestamp>,
+    ) -> Result<FileCondition, CatalogError> {
+        self.catalog.hash(path, size, modified)
+    }
+    fn read_file(&self, path: &str) -> Result<Option<Vec<u8>>, CatalogError> {
+        self.catalog.read_file(path)
+    }
     fn extract_text_layer(&self, path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         self.catalog.extract_text_layer(path)
     }
@@ -362,6 +446,14 @@ impl LibraryCatalog for LibrarySource {
 #[derive(Clone)]
 pub struct SharedLibraryCatalog(pub Arc<Mutex<LibrarySource>>);
 
+impl SharedLibraryCatalog {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, LibrarySource>, CatalogError> {
+        self.0
+            .lock()
+            .map_err(|_| CatalogError::Failed("library source lock poisoned".to_owned()))
+    }
+}
+
 impl PdfCatalog for SharedLibraryCatalog {
     fn enumerate(&self) -> Result<Vec<PdfFile>, CatalogError> {
         self.0
@@ -372,6 +464,20 @@ impl PdfCatalog for SharedLibraryCatalog {
 }
 
 impl LibraryCatalog for SharedLibraryCatalog {
+    fn list(&self) -> Result<Vec<ListedPdf>, CatalogError> {
+        self.lock()?.list()
+    }
+    fn hash(
+        &self,
+        path: &RelativePdfPath,
+        size: u64,
+        modified: Option<EpochTimestamp>,
+    ) -> Result<FileCondition, CatalogError> {
+        self.lock()?.hash(path, size, modified)
+    }
+    fn read_file(&self, path: &str) -> Result<Option<Vec<u8>>, CatalogError> {
+        self.lock()?.read_file(path)
+    }
     fn extract_text_layer(&self, path: &RelativePdfPath) -> Result<Option<String>, PdfError> {
         self.0
             .lock()
