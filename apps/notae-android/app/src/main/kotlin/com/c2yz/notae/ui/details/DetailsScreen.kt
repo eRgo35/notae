@@ -72,8 +72,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
+import com.c2yz.notae.ui.components.HeightClass
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.components.screenTitleSize
+import com.c2yz.notae.ui.components.windowHeightClass
 import com.c2yz.notae.ui.theme.NotaeMotion
 import com.c2yz.notae.ui.theme.Tokens
 import androidx.compose.ui.unit.dp
@@ -399,13 +401,17 @@ private fun Body(row: ScoreRowData, scroll: ScrollState, onAction: (Action) -> U
         // The card's size: this box plus the card's 8 dp padding, and the 48 dp header above it.
         val cardWidth = maxWidth + 16.dp
         val cardHeight = maxHeight + 64.dp
-        // Side by side only on a landscape card: on a portrait tablet that left the bottom half of the card empty.
-        val wide = cardWidth >= 720.dp && cardWidth > cardHeight
+        // Side by side only on a landscape card: on a portrait tablet that left the bottom half of the card empty. A
+        // short window (a phone on its side) goes side by side from 560 dp, so the title and actions stay in view.
+        val short = windowHeightClass() == HeightClass.COMPACT
+        val wide = cardWidth > cardHeight && cardWidth >= (if (short) 560.dp else 720.dp)
         val preview = if (wide) {
-            maxOf(160.dp, minOf(380.dp, cardWidth * 0.4f, (cardHeight - 112.dp) / 1.3f))
+            maxOf(if (short) 96.dp else 160.dp, minOf(380.dp, cardWidth * 0.4f, (cardHeight - 112.dp) / 1.3f))
         } else {
-            // As before in a narrow pane; larger on a portrait tablet, up to 45% of the card's height.
-            maxOf(140.dp, minOf(300.dp, cardWidth - 64.dp), minOf(420.dp, cardWidth * 0.5f, cardHeight * 0.45f / 1.3f))
+            // As before in a narrow pane; larger on a portrait tablet, up to 45% of the card's height. The page leaves
+            // 200 dp below it for the title and actions, down to 96 dp, so a short card keeps them in view.
+            val fit = maxOf(140.dp, minOf(300.dp, cardWidth - 64.dp), minOf(420.dp, cardWidth * 0.5f, cardHeight * 0.45f / 1.3f))
+            maxOf(96.dp, minOf(fit, (cardHeight - 200.dp) / 1.3f))
         }
         Column(Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
             if (wide) {
