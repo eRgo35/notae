@@ -409,9 +409,10 @@ private fun Body(row: ScoreRowData, scroll: ScrollState, onAction: (Action) -> U
             maxOf(if (short) 96.dp else 160.dp, minOf(380.dp, cardWidth * 0.4f, (cardHeight - 112.dp) / 1.3f))
         } else {
             // As before in a narrow pane; larger on a portrait tablet, up to 45% of the card's height. The page leaves
-            // 200 dp below it for the title and actions, down to 96 dp, so a short card keeps them in view.
+            // 256 dp of the card for the header (64 dp) and the headline below it (title, composer, Open score and the
+            // bottom padding, about 190 dp), down to 96 dp, so a short card keeps them in view.
             val fit = maxOf(140.dp, minOf(300.dp, cardWidth - 64.dp), minOf(420.dp, cardWidth * 0.5f, cardHeight * 0.45f / 1.3f))
-            maxOf(96.dp, minOf(fit, (cardHeight - 200.dp) / 1.3f))
+            maxOf(96.dp, minOf(fit, (cardHeight - 256.dp) / 1.3f))
         }
         Column(Modifier.testTag(DETAILS_BODY_TAG).fillMaxSize().verticalScroll(scroll).padding(start = 16.dp, end = 16.dp, bottom = 24.dp)) {
             if (wide) {

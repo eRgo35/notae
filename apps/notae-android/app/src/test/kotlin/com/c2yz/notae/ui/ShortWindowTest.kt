@@ -16,6 +16,7 @@ import com.c2yz.notae.core.Selection
 import com.c2yz.notae.core.SetChoice
 import com.c2yz.notae.core.SettingsInfo
 import com.c2yz.notae.core.Snapshot
+import com.c2yz.notae.nav.NotaeNavDisplay
 import com.c2yz.notae.ui.details.DetailsScreen
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.LibraryScreen
@@ -118,6 +119,20 @@ class ShortWindowTest {
     @Test
     @Config(qualifiers = "w700dp-h500dp-xhdpi")
     fun details_actions_visible_at_700x500() = detailsActionsVisible()
+
+    @Test
+    @Config(qualifiers = "w700dp-h500dp-xhdpi")
+    fun details_open_score_visible_in_the_app_at_700x500() {
+        val library = Fixture.library()
+        // A score with a composer: one more line above the button.
+        val row = library.rows.first { it.title == "Ave Maria" }
+        // Through the app's navigation: its screen frame leaves the details less height than DetailsScreen alone.
+        compose.setContent {
+            NotaeTheme { NotaeNavDisplay(library.copy(selection = Selection(row, previous = null, next = "key-2", position = null)), {}, {}) }
+        }
+
+        compose.onNodeWithText("Open score").assertInsideWindow(compose)
+    }
 
     private fun withOverlays(snapshot: Snapshot) {
         var density = Density(1f)
