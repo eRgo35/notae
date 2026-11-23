@@ -10,15 +10,19 @@ use serde_json::Value;
 use thiserror::Error;
 
 use crate::favorites::{Favorites, PieceRef};
+use crate::overlays::Overlay;
 use crate::recent::is_content_key;
 use crate::score_notes::{ScoreNote, ScoreNotes};
 use crate::sets::{Set, SetStore};
 use crate::share::{SharedSet, parse_shared};
 use crate::ui::browse::civil_from_days;
 
-pub(crate) const SCHEMA_VERSION: u64 = 2;
+/// The export version: 3 adds drawings.
+pub(crate) const SCHEMA_VERSION: u64 = 3;
 /// The first export version, which has no score notes.
 const FIRST_SCHEMA_VERSION: u64 = 1;
+/// The version with score notes and no drawings; also every shared set without drawings.
+pub(crate) const NOTES_SCHEMA_VERSION: u64 = 2;
 pub(crate) const APP: &str = "notae";
 
 /// The export file's MIME type.
@@ -35,6 +39,7 @@ struct ExportOut<'a> {
     favorites: &'a [PieceRef],
     sets: &'a [Set],
     score_notes: &'a [ScoreNote],
+    overlays: &'a [ItemOverlay],
 }
 
 #[derive(Deserialize)]
@@ -43,10 +48,23 @@ struct ExportIn {
     sets: Vec<Set>,
     #[serde(default)]
     score_notes: Vec<ScoreNote>,
+    #[serde(default)]
+    overlays: Vec<ItemOverlay>,
+}
+
+/// The drawings on one set item, as an export file carries them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ItemOverlay {
+    /// The set.
+    pub set_id: String,
+    /// The set item.
+    pub item_id: String,
+    /// Its drawings.
+    pub overlay: Overlay,
 }
 
 /// The contents of a parsed export file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Backup {
     /// The exported favorites.
     pub favorites: Favorites,
@@ -54,10 +72,12 @@ pub struct Backup {
     pub sets: Vec<Set>,
     /// The exported score notes; empty for a version 1 file.
     pub score_notes: ScoreNotes,
+    /// The exported drawings; empty before version 3.
+    pub overlays: Vec<ItemOverlay>,
 }
 
 /// A parsed file for the import: a backup of everything, or one shared set.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ImportFile {
     /// An export of favorites, sets and score notes.
     Backup(Backup),
@@ -88,15 +108,22 @@ pub struct ImportPlan {
     pub replaced: Vec<String>,
 }
 
-/// The export file text: `{"schema_version":2,"app":"notae","favorites":[…],"sets":[…],"score_notes":[…]}`.
+/// The export file text:
+/// `{"schema_version":3,"app":"notae","favorites":[…],"sets":[…],"score_notes":[…],"overlays":[…]}`.
 #[must_use]
-pub fn export_json(favorites: &Favorites, sets: &SetStore, score_notes: &ScoreNotes) -> String {
+pub fn export_json(
+    favorites: &Favorites,
+    sets: &SetStore,
+    score_notes: &ScoreNotes,
+    overlays: &[ItemOverlay],
+) -> String {
     let file = ExportOut {
         schema_version: SCHEMA_VERSION,
         app: APP,
         favorites: favorites.items(),
         sets: sets.sets(),
         score_notes: score_notes.items(),
+        overlays,
     };
     serde_json::to_string(&file).unwrap_or_default()
 }
@@ -121,7 +148,7 @@ pub fn parse_import(text: &str) -> Result<ImportFile, BackupError> {
         return Err(BackupError::NotNotae);
     }
     match value.get("schema_version").and_then(Value::as_u64) {
-        Some(FIRST_SCHEMA_VERSION | SCHEMA_VERSION) => {}
+        Some(FIRST_SCHEMA_VERSION | NOTES_SCHEMA_VERSION | SCHEMA_VERSION) => {}
         Some(_) => return Err(BackupError::UnsupportedVersion),
         None => return Err(BackupError::Invalid),
     }
@@ -153,6 +180,7 @@ pub fn parse_import(text: &str) -> Result<ImportFile, BackupError> {
         favorites: Favorites::from_items(file.favorites),
         sets,
         score_notes,
+        overlays: file.overlays,
     }))
 }
 
@@ -181,6 +209,7 @@ pub fn apply_import(
     backup: Backup,
 ) {
     favorites.merge(&backup.favorites);
+    // Drawings are moved by the caller, which owns the overlay files.
     score_notes.merge(backup.score_notes);
     for set in backup.sets {
         sets.put(set);

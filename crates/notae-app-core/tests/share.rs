@@ -108,7 +108,7 @@ fn parse_export_tells_backup_from_shared_set() {
     let (store, id, rows) = sunday();
     let set = store.get(&id).expect("set");
 
-    let backup = export_json(&Favorites::default(), &store, &ScoreNotes::default());
+    let backup = export_json(&Favorites::default(), &store, &ScoreNotes::default(), &[]);
     assert!(matches!(parse_import(&backup), Ok(ImportFile::Backup(_))));
 
     let Ok(ImportFile::Set(shared)) = parse_import(&share_json(set, &rows, true)) else {

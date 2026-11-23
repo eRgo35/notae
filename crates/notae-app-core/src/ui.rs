@@ -514,13 +514,27 @@ impl UiModel {
     pub fn export_sets(&self, now: u64) -> (String, String) {
         (
             crate::backup::suggested_file_name(now),
-            crate::backup::export_json(&self.favorites, &self.sets, &self.score_notes),
+            crate::backup::export_json(
+                &self.favorites,
+                &self.sets,
+                &self.score_notes,
+                &self.all_overlays(),
+            ),
         )
     }
 
     /// Adds the backup's sets beside the current ones, replacing those with the same id, merges
     /// its favorites, and saves both files. Pieces are re-linked against the open library.
     pub fn import_backup(&mut self, backup: crate::backup::Backup) {
+        for set in &backup.sets {
+            let from_file = backup
+                .overlays
+                .iter()
+                .filter(|drawn| drawn.set_id == set.id)
+                .map(|drawn| (drawn.item_id.clone(), drawn.overlay.clone()))
+                .collect();
+            self.replace_overlays(set, from_file);
+        }
         crate::backup::apply_import(
             &mut self.favorites,
             &mut self.sets,
@@ -535,6 +549,55 @@ impl UiModel {
         self.save_sets();
         self.save_score_notes();
         self.relink_saved_pieces();
+    }
+
+    /// Every drawing in every set, for the export.
+    fn all_overlays(&self) -> Vec<crate::backup::ItemOverlay> {
+        let Some(store) = &self.overlays else {
+            return Vec::new();
+        };
+        self.sets
+            .sets()
+            .iter()
+            .flat_map(|set| {
+                store
+                    .all_for(&set.id)
+                    .into_iter()
+                    .map(|(item_id, overlay)| crate::backup::ItemOverlay {
+                        set_id: set.id.clone(),
+                        item_id,
+                        overlay,
+                    })
+            })
+            .collect()
+    }
+
+    /// Before `set` replaces (or joins as) the set with its id: each of its items takes the file's drawings,
+    /// else the drawings of the local piece it pairs with ([`crate::share::pair_items`]); every other drawing in
+    /// the set is removed.
+    fn replace_overlays(&self, set: &crate::sets::Set, from_file: Vec<(String, Overlay)>) {
+        let Some(store) = &self.overlays else {
+            return;
+        };
+        let mut kept: Vec<(String, Overlay)> = from_file
+            .into_iter()
+            .filter(|(item_id, _)| set.items.iter().any(|item| &item.id == item_id))
+            .collect();
+        if let Some(local) = self.sets.get(&set.id) {
+            for (id, local_id) in crate::share::pair_items(set, local) {
+                if kept.iter().all(|(item_id, _)| *item_id != id)
+                    && let Some(overlay) = store.get(&set.id, &local_id)
+                {
+                    kept.push((id, overlay));
+                }
+            }
+        }
+        store.remove_set(&set.id);
+        for (item_id, overlay) in kept {
+            if let Err(error) = store.put(&set.id, &item_id, &overlay) {
+                eprintln!("notae: cannot save imported drawings: {error}");
+            }
+        }
     }
 
     /// Adds a shared set with its pieces matched against the library now, then saves and relinks.

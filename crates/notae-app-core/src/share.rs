@@ -8,7 +8,7 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-use crate::backup::{APP, BackupError, SCHEMA_VERSION};
+use crate::backup::{APP, BackupError, NOTES_SCHEMA_VERSION};
 use crate::sets::{ItemKind, Set, SetItem, SetStore, new_id};
 use crate::ui::search::SearchRow;
 
@@ -107,36 +107,53 @@ pub fn keep_both(mut set: Set, store: &SetStore) -> Set {
     set
 }
 
-/// Keeps the recipient's set notes when `set` replaces `local`: each piece of `set` without a set note takes the
-/// note of the same piece in `local`, matched by key, else by path. A piece in a set more than once pairs with
-/// the local copies in order. A note in `set` wins over the local one.
-pub fn keep_set_notes(set: &mut Set, local: &Set) {
-    let mut unpaired: Vec<_> = local
+/// Pairs each piece of `set` with a piece of `local` that it replaces, as `(item id in set, item id in local)`:
+/// matched by key, else by path. A piece in a set more than once pairs with the local copies in order.
+#[must_use]
+pub fn pair_items(set: &Set, local: &Set) -> Vec<(String, String)> {
+    let mut unpaired: Vec<(&str, &crate::favorites::PieceRef)> = local
         .items
         .iter()
         .filter_map(|item| match &item.kind {
-            ItemKind::Piece(piece) => Some((piece, item.set_note.as_ref())),
+            ItemKind::Piece(piece) => Some((item.id.as_str(), piece)),
             ItemKind::Note { .. } => None,
         })
         .collect();
-    for item in &mut set.items {
+    let mut pairs = Vec::new();
+    for item in &set.items {
         let ItemKind::Piece(piece) = &item.kind else {
             continue;
         };
         let Some(index) = unpaired
             .iter()
-            .position(|(local, _)| local.key == piece.key)
+            .position(|(_, local)| local.key == piece.key)
             .or_else(|| {
                 unpaired
                     .iter()
-                    .position(|(local, _)| local.path == piece.path)
+                    .position(|(_, local)| local.path == piece.path)
             })
         else {
             continue;
         };
-        let (_, note) = unpaired.remove(index);
-        if item.set_note.is_none() {
-            item.set_note = note.cloned();
+        let (local_id, _) = unpaired.remove(index);
+        pairs.push((item.id.clone(), local_id.to_owned()));
+    }
+    pairs
+}
+
+/// Keeps the recipient's set notes when `set` replaces `local`: each piece of `set` without a set note takes the
+/// note of the piece in `local` it pairs with ([`pair_items`]). A note in `set` wins over the local one.
+pub fn keep_set_notes(set: &mut Set, local: &Set) {
+    for (id, local_id) in pair_items(set, local) {
+        let note = local
+            .items
+            .iter()
+            .find(|item| item.id == local_id)
+            .and_then(|item| item.set_note.clone());
+        if let Some(item) = set.items.iter_mut().find(|item| item.id == id)
+            && item.set_note.is_none()
+        {
+            item.set_note = note;
         }
     }
 }
@@ -203,7 +220,8 @@ pub fn share_json(set: &Set, rows: &[SearchRow], with_notes: bool) -> String {
             }
         }
     }
-    json!({"schema_version": SCHEMA_VERSION, "app": APP, "kind": "set", "set": value}).to_string()
+    json!({"schema_version": NOTES_SCHEMA_VERSION, "app": APP, "kind": "set", "set": value})
+        .to_string()
 }
 
 /// A plain list of the set for people without Notae: a header line, then pieces numbered by their order among

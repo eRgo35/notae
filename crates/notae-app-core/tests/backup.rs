@@ -1,10 +1,12 @@
 //! The sets and favorites export file: building, parsing, planning and applying an import.
 
+use notae_app_core::backup::ItemOverlay;
 use notae_app_core::backup::{
     Backup, BackupError, ImportFile, ImportPlan, apply_import, export_json, parse_import,
     plan_import, suggested_file_name,
 };
 use notae_app_core::favorites::{Favorites, PieceRef};
+use notae_app_core::overlays::{Overlay, PageOverlay, Stroke, Tool};
 use notae_app_core::score_notes::ScoreNotes;
 use notae_app_core::sets::{SetFields, SetStore};
 use notae_app_core::ui::UiModel;
@@ -79,9 +81,9 @@ fn export_then_parse_round_trips() {
     sets.mark_opened(&first, &repeat);
     sets.create(fields("Zaduszki"), 200);
 
-    let text = export_json(&favorites, &sets, &ScoreNotes::default());
+    let text = export_json(&favorites, &sets, &ScoreNotes::default(), &[]);
     assert!(
-        text.starts_with(r#"{"schema_version":2,"app":"notae","favorites":["#),
+        text.starts_with(r#"{"schema_version":3,"app":"notae","favorites":["#),
         "{text}"
     );
     assert!(text.contains(r#""sets":["#), "{text}");
@@ -103,6 +105,7 @@ fn plan_counts_new_and_names_replaced() {
         &Favorites::default(),
         &theirs,
         &ScoreNotes::default(),
+        &[],
     ))
     .expect("parses");
     let mut copy = current.get(&kept).expect("set").clone();
@@ -131,6 +134,7 @@ fn apply_merges_favorites_without_duplicates() {
         &favorites(&[piece('c', "c.pdf"), piece('a', "elsewhere.pdf")]),
         &theirs,
         &ScoreNotes::default(),
+        &[],
     ))
     .expect("parses");
     let mut copy = sets.get(&replaced).expect("set").clone();
@@ -174,7 +178,7 @@ fn rejects_other_json_and_future_versions() {
             BackupError::NotNotae,
         ),
         (
-            r#"{"schema_version":3,"app":"notae","favorites":[],"sets":[]}"#,
+            r#"{"schema_version":4,"app":"notae","favorites":[],"sets":[]}"#,
             BackupError::UnsupportedVersion,
         ),
         (
@@ -197,6 +201,7 @@ fn rejects_other_json_and_future_versions() {
             favorites: Favorites::default(),
             sets: Vec::new(),
             score_notes: ScoreNotes::default(),
+            overlays: Vec::new(),
         })
     );
 }
@@ -249,11 +254,11 @@ fn notes_and_set_with_notes() -> (ScoreNotes, SetStore, String) {
 }
 
 #[test]
-fn export_v2_round_trips_score_and_set_notes() {
+fn export_round_trips_score_and_set_notes() {
     let (score_notes, sets, _) = notes_and_set_with_notes();
-    let text = export_json(&Favorites::default(), &sets, &score_notes);
+    let text = export_json(&Favorites::default(), &sets, &score_notes, &[]);
     assert!(
-        text.starts_with(r#"{"schema_version":2,"app":"notae""#),
+        text.starts_with(r#"{"schema_version":3,"app":"notae""#),
         "{text}"
     );
     let backup = parse_backup(&text).expect("parses");
@@ -272,10 +277,163 @@ fn v1_export_still_imports() {
 #[test]
 fn import_on_clean_install_restores_both_kinds() {
     let (score_notes, sets, id) = notes_and_set_with_notes();
-    let text = export_json(&Favorites::default(), &sets, &score_notes);
+    let text = export_json(&Favorites::default(), &sets, &score_notes, &[]);
     let mut model = UiModel::new();
     model.import_backup(parse_backup(&text).expect("parses"));
     assert_eq!(model.score_note(&key('a')), Some("Capo na 2"));
     let set = model.sets().get(&id).expect("set restored");
     assert_eq!(set.items[0].set_note.as_deref(), Some("Wolniej"));
+}
+
+fn drawing(content_key: &str, x: f32) -> Overlay {
+    Overlay {
+        content_key: content_key.to_owned(),
+        pages: vec![PageOverlay {
+            page: 0,
+            strokes: vec![Stroke {
+                tool: Tool::Pen,
+                color: 0xFF00_0000,
+                width: 0.003,
+                points: vec![x, x, x, x],
+            }],
+            texts: Vec::new(),
+        }],
+    }
+}
+
+/// A model keeping its sets and drawings in `dir`, with set "Zaduszki" holding pieces a and b,
+/// each drawn on; returns the model, the set id and the item ids.
+fn model_with_drawings(dir: &std::path::Path) -> (UiModel, String, Vec<String>) {
+    let mut model = UiModel::new();
+    model.set_sets_path(dir.join("sets.json"));
+    model.set_overlays_dir(dir.join("overlays"));
+    let mut sets = SetStore::default();
+    let id = sets.create(fields("Zaduszki"), 100);
+    let items: Vec<String> = ['a', 'b']
+        .iter()
+        .map(|&c| {
+            sets.add_piece(&id, piece(c, &format!("{c}.pdf")), 101)
+                .expect("set exists")
+        })
+        .collect();
+    sets.save(&dir.join("sets.json")).expect("saved");
+    model.set_sets_path(dir.join("sets.json"));
+    for (item, x) in items.iter().zip([0.1, 0.2]) {
+        model.save_overlay(&id, item, &drawing(&key('a'), x));
+    }
+    (model, id, items)
+}
+
+#[test]
+fn export_includes_overlays_as_schema_3() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let (model, id, items) = model_with_drawings(dir.path());
+    let (_, text) = model.export_sets(100);
+    assert!(
+        text.starts_with(r#"{"schema_version":3,"app":"notae""#),
+        "{text}"
+    );
+    let backup = parse_backup(&text).expect("parses");
+    let mut expected: Vec<ItemOverlay> = items
+        .iter()
+        .zip([0.1, 0.2])
+        .map(|(item, x)| ItemOverlay {
+            set_id: id.clone(),
+            item_id: item.clone(),
+            overlay: drawing(&key('a'), x),
+        })
+        .collect();
+    expected.sort_by(|a, b| a.item_id.cmp(&b.item_id));
+    assert_eq!(backup.overlays, expected);
+}
+
+#[test]
+fn schema_2_backup_still_imports_and_keeps_local_drawings() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let (mut model, id, items) = model_with_drawings(dir.path());
+    let set = model.sets().get(&id).expect("set").clone();
+    let mut store = SetStore::default();
+    store.put(set);
+    let v3 = export_json(&Favorites::default(), &store, &ScoreNotes::default(), &[]);
+    let v2 = v3.replacen(r#""schema_version":3"#, r#""schema_version":2"#, 1);
+    let v2 = v2.replace(r#","overlays":[]"#, "");
+    assert!(!v2.contains("overlays"), "{v2}");
+    model.import_backup(parse_backup(&v2).expect("v2 parses"));
+    let overlays = model.overlays().expect("store");
+    assert_eq!(overlays.get(&id, &items[0]), Some(drawing(&key('a'), 0.1)));
+    assert_eq!(overlays.get(&id, &items[1]), Some(drawing(&key('a'), 0.2)));
+}
+
+#[test]
+fn imported_drawings_win_and_local_ones_fill_gaps() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let (mut model, id, items) = model_with_drawings(dir.path());
+    // The file's copy of the set has new item ids for the same pieces.
+    let mut set = model.sets().get(&id).expect("set").clone();
+    set.items[0].id = "n1".to_owned();
+    set.items[1].id = "n2".to_owned();
+    let mut store = SetStore::default();
+    store.put(set);
+    let text = export_json(
+        &Favorites::default(),
+        &store,
+        &ScoreNotes::default(),
+        &[ItemOverlay {
+            set_id: id.clone(),
+            item_id: "n1".to_owned(),
+            overlay: drawing(&key('a'), 0.9),
+        }],
+    );
+    model.import_backup(parse_backup(&text).expect("parses"));
+    let overlays = model.overlays().expect("store");
+    assert_eq!(
+        overlays.get(&id, "n1"),
+        Some(drawing(&key('a'), 0.9)),
+        "the file's drawings win"
+    );
+    assert_eq!(
+        overlays.get(&id, "n2"),
+        Some(drawing(&key('a'), 0.2)),
+        "local drawings fill gaps"
+    );
+    assert_eq!(
+        overlays.get(&id, &items[0]),
+        None,
+        "the replaced items' files are gone"
+    );
+    assert_eq!(overlays.get(&id, &items[1]), None);
+}
+
+#[test]
+fn a_new_set_takes_the_files_drawings() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let mut theirs = SetStore::default();
+    let id = theirs.create(fields("Wielkanoc"), 200);
+    let item = theirs
+        .add_piece(&id, piece('c', "c.pdf"), 201)
+        .expect("set");
+    let text = export_json(
+        &Favorites::default(),
+        &theirs,
+        &ScoreNotes::default(),
+        &[
+            ItemOverlay {
+                set_id: id.clone(),
+                item_id: item.clone(),
+                overlay: drawing(&key('c'), 0.5),
+            },
+            ItemOverlay {
+                set_id: id.clone(),
+                item_id: "not-in-the-set".to_owned(),
+                overlay: drawing(&key('c'), 0.5),
+            },
+        ],
+    );
+    let mut model = UiModel::new();
+    model.set_sets_path(dir.path().join("sets.json"));
+    model.set_overlays_dir(dir.path().join("overlays"));
+    model.import_backup(parse_backup(&text).expect("parses"));
+    let overlays = model.overlays().expect("store");
+    assert_eq!(overlays.get(&id, &item), Some(drawing(&key('c'), 0.5)));
+    assert_eq!(overlays.get(&id, "not-in-the-set"), None);
 }
