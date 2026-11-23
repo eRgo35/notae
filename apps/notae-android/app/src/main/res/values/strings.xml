@@ -312,4 +312,10 @@
     <string name="viewer_back">Back</string>
     <string name="viewer_page_of" translatable="false">%1$d / %2$d</string>
     <string name="viewer_cannot_open">Could not open this score: %1$s</string>
+    <string name="viewer_previous_piece">Previous piece</string>
+    <string name="viewer_next_piece">Next piece</string>
+    <string name="viewer_notes">Notes</string>
+    <string name="viewer_hint">Scores now open in Notae. Change it in Settings.</string>
+    <string name="viewer_hint_ok">OK</string>
+    <string name="viewer_content_changed">This score\'s PDF changed; drawings may not line up.</string>
 </resources>

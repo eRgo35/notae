@@ -40,7 +40,25 @@ import com.c2yz.notae.core.Viewer
 import com.c2yz.notae.platform.PageSource
 import com.c2yz.notae.platform.PageSourceFactory
 import com.c2yz.notae.platform.PdfPageSource
+import com.c2yz.notae.ui.components.AnimatedOverlay
+import com.c2yz.notae.ui.components.ClaimBack
 import com.c2yz.notae.ui.components.IconButton
+import com.c2yz.notae.ui.components.LocalBackProgress
+import com.c2yz.notae.ui.components.ModalSurface
+import com.c2yz.notae.ui.components.PillButton
+import com.c2yz.notae.ui.components.backProgress
+import com.c2yz.notae.ui.details.NoteBlock
+import com.c2yz.notae.ui.library.NoteEditor
+import com.c2yz.notae.ui.sets.closeOnEscape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.draw.clip
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.c2yz.notae.ui.components.windowHeightClass
 import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.theme.NotaeTheme
@@ -82,6 +100,15 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     // The first page on screen, kept across a rotation that changes how pages pair.
     var page by remember(viewer.row.noteKey) { mutableIntStateOf(0) }
     var bars by remember { mutableStateOf(true) }
+    var notes by remember(viewer.row.noteKey) { mutableStateOf(false) }
+    var editing by remember(viewer.row.noteKey) { mutableStateOf<ViewerNote?>(null) }
+    val backState = rememberNavigationEventState(NavigationEventInfo.None)
+    NavigationBackHandler(
+        state = backState,
+        isBackEnabled = notes || editing != null,
+        onBackCompleted = { if (editing != null) editing = null else notes = false },
+    )
+    ClaimBack(notes || editing != null)
     Column(
         Modifier
             .fillMaxSize()
@@ -107,6 +134,21 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                     overflow = TextOverflow.Ellipsis,
                 )
                 source?.let { Text(stringResource(R.string.viewer_page_of, page + 1, it.pageCount), color = c.muted, fontSize = 15.sp) }
+                if (viewer.setId != null) {
+                    IconButton(stringResource(R.string.viewer_previous_piece), painterResource(R.drawable.ic_chevron_left), { onAction(Action.ViewerPrevious) }, enabled = viewer.hasPrevious)
+                    IconButton(stringResource(R.string.viewer_next_piece), painterResource(R.drawable.ic_chevron_right), { onAction(Action.ViewerNext) }, enabled = viewer.hasNext)
+                }
+                IconButton(stringResource(R.string.viewer_notes), painterResource(R.drawable.ic_note), { notes = true })
+            }
+        }
+        if (viewer.contentChanged) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(R.drawable.ic_warning), null, Modifier.size(20.dp), tint = c.error)
+                Text(stringResource(R.string.viewer_content_changed), color = c.error, fontSize = 15.sp)
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -122,6 +164,65 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                     Modifier.fillMaxSize(),
                 )
             }
+            if (viewer.showHint) ViewerHint({ onAction(Action.ViewerHintSeen) }, Modifier.align(Alignment.BottomCenter))
         }
+    }
+    CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
+        AnimatedOverlay(if (notes && editing == null) viewer else null) {
+            NotesSheet(it, { notes = false }, { note -> editing = note })
+        }
+        AnimatedOverlay(editing) { note ->
+            val close = { editing = null }
+            val row = viewer.row
+            Box(Modifier.closeOnEscape(close)) {
+                when (note) {
+                    ViewerNote.SCORE -> NoteEditor(stringResource(R.string.score_note), row.scoreNote.orEmpty(), close, allowBlank = true) { text ->
+                        close()
+                        onAction(Action.SaveScoreNote(row.noteKey, text))
+                    }
+                    ViewerNote.SET -> NoteEditor(stringResource(R.string.set_note_in, viewer.setName.orEmpty()), row.setNote.orEmpty(), close, allowBlank = true) { text ->
+                        close()
+                        row.itemId?.let { onAction(Action.SaveSetNote(it, text)) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Which note the viewer's editor is open on. */
+private enum class ViewerNote { SCORE, SET }
+
+/** The score note, then (from a set) the set note labelled with the set's name; a tap opens a note's editor. */
+@Composable
+private fun NotesSheet(viewer: Viewer, onClose: () -> Unit, onEdit: (ViewerNote) -> Unit) {
+    val c = NotaeTheme.colors
+    ModalSurface(stringResource(R.string.viewer_notes), onDismiss = onClose, bottomSheet = true, cardWidth = 560.dp, modifier = Modifier.closeOnEscape(onClose)) {
+        Text(stringResource(R.string.viewer_notes), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+        Column {
+            NoteBlock(stringResource(R.string.score_note), viewer.row.scoreNote, stringResource(R.string.add_score_note)) { onEdit(ViewerNote.SCORE) }
+            viewer.setName?.takeIf { viewer.row.itemId != null }?.let { name ->
+                NoteBlock(stringResource(R.string.set_note_in, name), viewer.row.setNote, stringResource(R.string.add_set_note)) { onEdit(ViewerNote.SET) }
+            }
+        }
+    }
+}
+
+/** "Scores now open in Notae. Change it in Settings." with OK, once after updating. */
+@Composable
+private fun ViewerHint(onDismiss: () -> Unit, modifier: Modifier) {
+    val c = NotaeTheme.colors
+    Row(
+        modifier
+            .padding(16.dp)
+            .widthIn(max = 560.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(c.card)
+            .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(stringResource(R.string.viewer_hint), Modifier.weight(1f, fill = false), color = c.foreground, fontSize = 15.sp)
+        PillButton(stringResource(R.string.viewer_hint_ok), onDismiss, tonal = true)
     }
 }

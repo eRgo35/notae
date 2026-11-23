@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -77,5 +79,72 @@ class ViewerScreenTest {
         shown = null
         compose.waitForIdle()
         assertTrue(pages.closed)
+    }
+
+    private fun inSet() = Fixture.viewer(Fixture.rows[0].copy(itemId = "item-1", scoreNote = "Capo 2", setNote = "Slowly"), setId = "palm")
+
+    @Test
+    fun set_bar_moves_between_pieces() {
+        show(inSet().copy(hasPrevious = false, hasNext = true))
+
+        compose.onNodeWithContentDescription("Previous piece").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Next piece").assertIsEnabled().performClick()
+        shown = inSet().copy(hasPrevious = true, hasNext = false)
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Next piece").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Previous piece").performClick()
+
+        assertEquals(listOf(Action.ViewerNext, Action.ViewerPrevious), actions)
+    }
+
+    @Test
+    fun no_set_bar_outside_a_set() {
+        show(Fixture.viewer())
+
+        compose.onNodeWithContentDescription("Next piece").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Previous piece").assertDoesNotExist()
+    }
+
+    @Test
+    fun notes_sheet_lists_score_note_then_set_note() {
+        show(inSet())
+
+        compose.onNodeWithContentDescription("Notes").performClick()
+        val score = compose.onNodeWithText("Capo 2").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val set = compose.onNodeWithText("Slowly").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("the score note comes first", score.top < set.top)
+        compose.onNodeWithText("Note for Niedziela Palmowa").assertIsDisplayed()
+        compose.onNodeWithText("Slowly").performClick()
+        compose.onNodeWithText("Save note").performClick()
+
+        assertEquals(listOf<Action>(Action.SaveSetNote("item-1", "Slowly")), actions)
+    }
+
+    @Test
+    fun outside_a_set_the_notes_sheet_has_only_the_score_note() {
+        show(Fixture.viewer())
+
+        compose.onNodeWithContentDescription("Notes").performClick()
+        compose.onNodeWithText("Add score note").performClick()
+        compose.onNodeWithText("Save note").performClick()
+
+        assertEquals(listOf<Action>(Action.SaveScoreNote(Fixture.rows[0].noteKey, "")), actions)
+    }
+
+    @Test
+    fun hint_shows_and_is_dismissed() {
+        show(Fixture.viewer().copy(showHint = true))
+
+        compose.onNodeWithText("Scores now open in Notae. Change it in Settings.").assertIsDisplayed()
+        compose.onNodeWithText("OK").performClick()
+
+        assertEquals(listOf<Action>(Action.ViewerHintSeen), actions)
+    }
+
+    @Test
+    fun changed_pdf_shows_the_warning() {
+        show(inSet().copy(contentChanged = true))
+
+        compose.onNodeWithText("This score's PDF changed; drawings may not line up.").assertIsDisplayed()
     }
 }

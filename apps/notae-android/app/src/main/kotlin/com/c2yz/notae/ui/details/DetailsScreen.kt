@@ -518,7 +518,7 @@ private fun NotesCard(row: ScoreRowData, notes: NotesProps, modifier: Modifier =
 
 /** One note in [NotesCard]: its label, then its text or the accent "Add …" line; the whole block is the button. */
 @Composable
-private fun NoteBlock(label: String, text: String?, add: String, onClick: () -> Unit) {
+internal fun NoteBlock(label: String, text: String?, add: String, onClick: () -> Unit) {
     val c = NotaeTheme.colors
     Column(
         Modifier.fillMaxWidth().heightIn(min = 60.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 20.dp, vertical = 12.dp),

@@ -2249,6 +2249,7 @@ fn notes_show_score_note_then_set_note() {
     let viewer = harness.core.snapshot().viewer.expect("viewer");
     assert_eq!(viewer.row.score_note.as_deref(), Some("Capo 2"));
     assert_eq!(viewer.row.set_note.as_deref(), Some("Slow"));
+    assert_eq!(viewer.set_name.as_deref(), Some("Mass"));
 }
 
 fn a_stroke(content_key: &str) -> notae_app_core::overlays::Overlay {

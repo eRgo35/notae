@@ -652,6 +652,8 @@ pub struct Viewer {
     pub row: Row,
     /// The set it was opened from; Previous and Next move within it.
     pub set_id: Option<String>,
+    /// That set's name, which labels the set note.
+    pub set_name: Option<String>,
     /// A piece before it in the set.
     pub has_previous: bool,
     /// A piece after it in the set.
@@ -911,6 +913,10 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
                 Viewer {
                     uri,
                     set_id: model.viewer_set_id().map(str::to_owned),
+                    set_name: model
+                        .viewer_set_id()
+                        .and_then(|id| model.sets().get(id))
+                        .map(|set| set.name.clone()),
                     has_previous: before.is_some(),
                     has_next: after.is_some(),
                     show_hint: model.viewer_hint_due(),

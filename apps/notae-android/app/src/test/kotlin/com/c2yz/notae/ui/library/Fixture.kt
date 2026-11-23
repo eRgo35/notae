@@ -87,6 +87,7 @@ object Fixture {
         uri = "content://tree/scores",
         row = row,
         setId = setId,
+        setName = setId?.let { "Niedziela Palmowa" },
         hasPrevious = false,
         hasNext = false,
         showHint = false,
