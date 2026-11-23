@@ -25,6 +25,11 @@ class ZipImportException(val reason: Reason, detail: String? = null) : IOExcepti
 /** The core's library handle for the ZIP library below [filesDir]: a `file:` URI. */
 fun zipLibraryHandle(filesDir: File): String = Uri.fromFile(File(filesDir, ZIP_LIBRARY_DIR)).toString()
 
+/** Deletes the copy a ZIP import left in [filesDir], once a folder is the library again; the user's ZIP is not touched. */
+fun removeZipLibrary(filesDir: File) {
+    File(filesDir, ZIP_LIBRARY_DIR).deleteRecursively()
+}
+
 /**
  * Unpacks the ZIP that [open] streams into `filesDir/zip-library`, replacing what was there, and returns that folder. It
  * keeps PDFs and the PC sidecar (`.notae/`), skipping hidden and other files and `__MACOSX`; names are read as UTF-8,

@@ -114,6 +114,14 @@ class ZipLibraryTest {
         assertEquals(ENTRY_TIME.toDouble(), File(dir, "Ave.pdf").lastModified().toDouble(), 2_000.0)
     }
 
+    @Test
+    fun choosing_a_folder_removes_the_unpacked_copy() {
+        unpack(zip("Ave.pdf" to "a"))
+        removeZipLibrary(temp.root)
+        assertFalse(File(temp.root, ZIP_LIBRARY_DIR).exists())
+        removeZipLibrary(temp.root)
+    }
+
     private companion object {
         const val ENTRY_TIME = 1_700_000_000_000L
     }

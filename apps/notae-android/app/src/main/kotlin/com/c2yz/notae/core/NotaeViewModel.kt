@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.c2yz.notae.platform.SafLibrary
 import com.c2yz.notae.platform.ZipImport
 import com.c2yz.notae.platform.ZipImportException
+import com.c2yz.notae.platform.removeZipLibrary
 import com.c2yz.notae.platform.unpackZipLibrary
 import com.c2yz.notae.platform.zipLibraryHandle
 import kotlinx.coroutines.CancellationException
@@ -61,7 +62,12 @@ class NotaeViewModel(app: Application) : AndroidViewModel(app) {
     /** Closes the innermost thing open; false when nothing is, and the app should go to the background. */
     fun back(): Boolean = core.back()
 
-    fun libraryRootPicked(displayName: String, handle: String) = core.libraryRootPicked(displayName, handle)
+    /** A folder was picked: it becomes the library, and the copy of an imported ZIP, if any, is no longer needed. */
+    fun libraryRootPicked(displayName: String, handle: String) {
+        core.libraryRootPicked(displayName, handle)
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) { removeZipLibrary(app.filesDir) }
+    }
 
     fun libraryRootPickFailed(detail: String) = core.libraryRootPickFailed(detail)
 
