@@ -20,6 +20,7 @@ use notae_app_core::api::{
 use notae_app_core::platform::{DocumentContent, PlatformError};
 use notae_app_core::score_notes::ScoreNotes;
 use notae_app_core::text::{Failure, RowStatus};
+use notae_app_core::ui_prefs::OpenScoresIn;
 
 const ROOT: &str = "content://tree/scores";
 
@@ -2014,4 +2015,20 @@ fn a_shared_set_waiting_for_the_confirmation_survives_a_new_core() {
     let harness = start(dir.path(), Arc::clone(&platform));
     harness.listener.wait_for("the library", is_library);
     assert_eq!(harness.core.snapshot().import_confirmation, None);
+}
+
+#[test]
+fn set_open_scores_in_is_saved_and_shown() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave"]));
+    open_and_scan(&harness);
+    harness.core.dispatch(Action::SetOpenScoresIn {
+        choice: OpenScoresIn::SystemApp,
+    });
+    assert_eq!(
+        harness.core.snapshot().layout.open_scores_in,
+        OpenScoresIn::SystemApp
+    );
+    let saved = std::fs::read_to_string(dir.path().join("ui-prefs.txt")).expect("prefs");
+    assert!(saved.contains("open_scores_in=system"), "{saved}");
 }

@@ -4,7 +4,7 @@ use notae_app_core::sets::{SetFields, SetStore};
 use notae_app_core::ui::UiModel;
 use notae_app_core::ui::browse::LibrarySection;
 use notae_app_core::ui::search::SearchRow;
-use notae_app_core::ui_prefs::{LibraryView, UiPrefs};
+use notae_app_core::ui_prefs::{LibraryView, OpenScoresIn, UiPrefs};
 
 #[test]
 fn defaults_are_grid_portrait_collapsed_landscape_expanded() {
@@ -88,7 +88,14 @@ fn save_then_load_keeps_list_mode_and_both_orientation_choices() {
 #[test]
 fn missing_or_unreadable_files_load_defaults() {
     let dir = tempfile_dir("missing");
-    assert_eq!(UiPrefs::load(&dir.join("absent.txt")), UiPrefs::default());
+    assert_eq!(
+        UiPrefs::load(&dir.join("absent.txt")),
+        UiPrefs {
+            viewer_hint_shown: true,
+            ..UiPrefs::default()
+        },
+        "a new install never sees the viewer hint"
+    );
     // A directory in place of the file is unreadable.
     assert_eq!(UiPrefs::load(&dir), UiPrefs::default());
     let _ = std::fs::remove_dir_all(dir);
@@ -122,7 +129,13 @@ fn model_persists_user_changes_and_a_restart_restores_them() {
     let path = dir.join("ui-prefs.txt");
     let mut model = UiModel::new();
     model.set_ui_prefs_path(path.clone());
-    assert_eq!(model.ui_prefs(), &UiPrefs::default());
+    assert_eq!(
+        model.ui_prefs(),
+        &UiPrefs {
+            viewer_hint_shown: true,
+            ..UiPrefs::default()
+        }
+    );
     assert!(!path.exists(), "loading alone writes nothing");
 
     model.set_library_view(LibraryView::List).expect("saved");
@@ -294,4 +307,29 @@ fn selection_round_trips_and_clears_with_the_section() {
         "a new section closes the details"
     );
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn open_scores_in_defaults_to_notae_for_old_prefs() {
+    let prefs = UiPrefs::from_text("library_view=list\nsection=all\n");
+    assert_eq!(prefs.open_scores_in, OpenScoresIn::Notae);
+}
+
+#[test]
+fn prefs_round_trip_viewer_fields() {
+    let prefs = UiPrefs {
+        open_scores_in: OpenScoresIn::SystemApp,
+        viewer_hint_shown: true,
+        stylus_seen: true,
+        ..UiPrefs::default()
+    };
+    assert_eq!(UiPrefs::from_text(&prefs.to_text()), prefs);
+}
+
+#[test]
+fn hint_is_due_after_an_update_not_on_a_new_install() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    assert!(UiPrefs::load(&dir.path().join("missing")).viewer_hint_shown);
+    std::fs::write(dir.path().join("old"), "section=all\n").expect("write");
+    assert!(!UiPrefs::load(&dir.path().join("old")).viewer_hint_shown);
 }

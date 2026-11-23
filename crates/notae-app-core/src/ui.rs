@@ -34,7 +34,7 @@ use crate::ui::browse::{
 };
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
-use crate::ui_prefs::{LibraryView, UiPrefs};
+use crate::ui_prefs::{LibraryView, OpenScoresIn, UiPrefs};
 
 /// What the app may present while a previously selected library is restored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -978,6 +978,32 @@ impl UiModel {
             return Ok(());
         }
         self.ui_prefs.library_view = view;
+        self.save_ui_prefs()
+    }
+
+    /// Chooses where "Open" shows a score and persists a change.
+    ///
+    /// # Errors
+    ///
+    /// Returns the I/O error when the preferences cannot be saved; the choice stays in effect.
+    pub fn set_open_scores_in(&mut self, choice: OpenScoresIn) -> std::io::Result<()> {
+        if self.ui_prefs.open_scores_in == choice {
+            return Ok(());
+        }
+        self.ui_prefs.open_scores_in = choice;
+        self.save_ui_prefs()
+    }
+
+    /// Remembers that a stylus touched the viewer.
+    ///
+    /// # Errors
+    ///
+    /// Returns the I/O error when the preferences cannot be saved; the choice stays in effect.
+    pub fn set_stylus_seen(&mut self) -> std::io::Result<()> {
+        if self.ui_prefs.stylus_seen {
+            return Ok(());
+        }
+        self.ui_prefs.stylus_seen = true;
         self.save_ui_prefs()
     }
 

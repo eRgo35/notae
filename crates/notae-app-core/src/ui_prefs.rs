@@ -38,6 +38,33 @@ impl LibraryView {
     }
 }
 
+/// Where "Open" shows a score.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum OpenScoresIn {
+    /// Notae's own viewer.
+    #[default]
+    Notae,
+    /// The system's default PDF app, as before 0.8.0.
+    SystemApp,
+}
+
+impl OpenScoresIn {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Notae => "notae",
+            Self::SystemApp => "system",
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "notae" => Some(Self::Notae),
+            "system" => Some(Self::SystemApp),
+            _ => None,
+        }
+    }
+}
+
 /// Persisted user choices that are not library data.
 ///
 /// Portrait means the logical window height exceeds its width. Sidebar
@@ -57,6 +84,14 @@ pub struct UiPrefs {
     /// [`crate::ui::browse::row_id`] of the score in the details pane, restored with
     /// [`Self::section`] for the same reason; `None` when the details are closed.
     pub selection: Option<String>,
+    /// Where "Open" shows a score.
+    pub open_scores_in: OpenScoresIn,
+    /// The "Scores now open in Notae" hint was shown. A prefs file from before 0.8.0 lacks the
+    /// line, so the hint is due after an update; a new install has no file and never sees it.
+    pub viewer_hint_shown: bool,
+    /// A stylus has touched the viewer, so from now on a finger moves the page and only the
+    /// pen draws.
+    pub stylus_seen: bool,
 }
 
 impl Default for UiPrefs {
@@ -67,6 +102,9 @@ impl Default for UiPrefs {
             sidebar_collapsed_landscape: false,
             section: "all".to_owned(),
             selection: None,
+            open_scores_in: OpenScoresIn::Notae,
+            viewer_hint_shown: false,
+            stylus_seen: false,
         }
     }
 }
@@ -105,6 +143,21 @@ impl UiPrefs {
                 }
                 "section" if !value.is_empty() => value.clone_into(&mut prefs.section),
                 "selection" => prefs.selection = Some(value.to_owned()).filter(|id| !id.is_empty()),
+                "open_scores_in" => {
+                    if let Some(choice) = OpenScoresIn::from_key(value) {
+                        prefs.open_scores_in = choice;
+                    }
+                }
+                "viewer_hint_shown" => {
+                    if let Some(shown) = parse_bool(value) {
+                        prefs.viewer_hint_shown = shown;
+                    }
+                }
+                "stylus_seen" => {
+                    if let Some(seen) = parse_bool(value) {
+                        prefs.stylus_seen = seen;
+                    }
+                }
                 _ => {}
             }
         }
@@ -115,19 +168,30 @@ impl UiPrefs {
     #[must_use]
     pub fn to_text(&self) -> String {
         format!(
-            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nsection={}\nselection={}\n",
+            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nsection={}\nselection={}\nopen_scores_in={}\nviewer_hint_shown={}\nstylus_seen={}\n",
             self.library_view.key(),
             self.sidebar_collapsed_portrait,
             self.sidebar_collapsed_landscape,
             self.section,
             self.selection.as_deref().unwrap_or_default(),
+            self.open_scores_in.key(),
+            self.viewer_hint_shown,
+            self.stylus_seen,
         )
     }
 
-    /// Reads `path`; a missing or unreadable file yields the defaults.
+    /// Reads `path`; a missing or unreadable file yields the defaults. A missing file is a new
+    /// install, which has nothing to be told about, so its viewer hint counts as shown.
     #[must_use]
     pub fn load(path: &Path) -> Self {
-        fs::read_to_string(path).map_or_else(|_| Self::default(), |text| Self::from_text(&text))
+        match fs::read_to_string(path) {
+            Ok(text) => Self::from_text(&text),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Self {
+                viewer_hint_shown: true,
+                ..Self::default()
+            },
+            Err(_) => Self::default(),
+        }
     }
 
     /// Writes through a temporary file so a crash never leaves half a file.

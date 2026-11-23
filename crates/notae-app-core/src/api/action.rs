@@ -7,7 +7,7 @@
 //! [`NotaeCore::dispatch`]: super::NotaeCore::dispatch
 
 use crate::api::snapshot::SearchScope;
-use crate::ui_prefs::LibraryView;
+use crate::ui_prefs::{LibraryView, OpenScoresIn};
 
 /// One user action.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
@@ -76,6 +76,13 @@ pub enum Action {
         /// The chosen layout.
         view: LibraryView,
     },
+    /// Settings' "Open scores in".
+    SetOpenScoresIn {
+        /// Notae's viewer or the system app.
+        choice: OpenScoresIn,
+    },
+    /// The viewer saw a stylus for the first time.
+    StylusSeen,
     /// "Hide sidebar" / "Show sidebar".
     SetSidebarCollapsed {
         /// Whether the window is in portrait.
