@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
@@ -56,7 +57,7 @@ class PageAreaTest {
     private fun show(look: ViewLook = twoPages, source: FakePages = FakePages(5)) {
         compose.setContent {
             NotaeTheme {
-                PageArea(source, look, page, { page = it }, { toggles++ }, Modifier.fillMaxSize(), zoom) { index, _ ->
+                PageArea(source, look, page, { page = it }, { toggles++ }, Modifier.fillMaxSize(), zoom) { index ->
                     Box(Modifier.fillMaxSize().testTag("p-$index"))
                 }
             }
@@ -132,7 +133,6 @@ class PageAreaTest {
         show()
         pinchOut { it.center }
         assertTrue("pinched in: ${zoom.factor}", zoom.factor > 1f)
-        assertTrue("at most 4×", zoom.factor <= 4f)
         compose.onRoot().performTouchInput { swipeLeft() }
         compose.waitForIdle()
         assertEquals("a zoomed page pans instead of turning", 0, page)
@@ -185,7 +185,7 @@ class PageAreaTest {
         compose.setContent {
             NotaeTheme {
                 Box(Modifier.fillMaxSize()) {
-                    PageArea(FakePages(5), onePage, page, { page = it }, {}, Modifier.fillMaxHeight().width(if (wide) 1280.dp else 900.dp), zoom) { index, _ ->
+                    PageArea(FakePages(5), onePage, page, { page = it }, {}, Modifier.fillMaxHeight().width(if (wide) 1280.dp else 900.dp), zoom) { index ->
                         Box(Modifier.fillMaxSize().testTag("p-$index"))
                     }
                 }
@@ -198,12 +198,70 @@ class PageAreaTest {
         wide = false
         compose.waitForIdle()
         pinchOut { Offset(450f * it.density, it.centerY) }
-        // One A4 page fits 900 dp (1800 px) by 1600 px: 1132 px wide from x 334. Pinched to 4x around x 900 px, the
-        // page point under the fingers (566) stays there, so the page is panned 4 * 566 - 900 = 1364 px. Measured
-        // against the old 2560 px area, the pan would come out 0.
-        assertEquals(4f, zoom.factor)
-        assertEquals(1364f, zoom.offset.x, 5f)
+        // One A4 page fits 900 dp (1800 px) by 1600 px: 1132 px wide from x 334. Pinched to its limit, 8x (four times
+        // the printed size at the test's 160 dpi), around x 900 px, the page point under the fingers (566) stays there,
+        // so the page is panned 8 * 566 - 900 = 3628 px. Measured against the old 2560 px area, it would be off.
+        assertEquals(8f, zoom.factor, 0.001f)
+        assertEquals(3628f, zoom.offset.x, 8f)
     }
+
+    @Test
+    fun a_still_two_finger_tap_at_the_edge_does_not_turn() {
+        show()
+        compose.onRoot().performTouchInput {
+            down(0, Offset(width * 0.95f, centerY - 60f))
+            down(1, Offset(width * 0.95f, centerY + 60f))
+            up(1)
+            up(0)
+        }
+        compose.mainClock.advanceTimeBy(1000)
+        compose.waitForIdle()
+        assertEquals(0, page)
+    }
+
+    @Test
+    fun a_new_layout_is_laid_out_at_its_scale_from_the_first_frame() {
+        var look by mutableStateOf(twoPages)
+        compose.setContent {
+            NotaeTheme {
+                PageArea(FakePages(5), look, page, { page = it }, {}, Modifier.fillMaxSize(), zoom) { index ->
+                    Box(Modifier.fillMaxSize().testTag("p-$index"))
+                }
+            }
+        }
+        compose.waitForIdle()
+        pinchOut { it.center }
+        assertTrue(zoom.factor > 1f)
+        compose.mainClock.autoAdvance = false
+        look = onePage
+        Snapshot.sendApplyNotifications()
+        compose.mainClock.advanceTimeByFrame()
+        // One A4 page fitted to 1600 px tall is 1132 px wide.
+        assertEquals(1132f, compose.onNodeWithTag("p-0").fetchSemanticsNode().size.width.toFloat(), 4f)
+        compose.mainClock.autoAdvance = true
+    }
+
+    @Test
+    fun pinching_does_not_recompose_the_pages_every_frame() {
+        val pages = FakePages(5)
+        compose.setContent {
+            NotaeTheme {
+                PageArea(pages, onePage, page, { page = it }, {}, Modifier.fillMaxSize(), zoom) { index ->
+                    Box(Modifier.fillMaxSize().testTag("p-$index"))
+                }
+            }
+        }
+        compose.waitForIdle()
+        val before = pages.aspectReads
+        // A pinch changes the zoom a little every frame.
+        for (step in 1..10) {
+            compose.runOnIdle { zoom.factor = 1f + step * 0.1f }
+            compose.waitForIdle()
+        }
+                // Once only: past 1x the pages render sharper.
+        assertEquals("page recomposed", 1, pages.aspectReads - before)
+    }
+
 }
 
 /** The screen stays on while the viewer shows, and Escape closes it. */

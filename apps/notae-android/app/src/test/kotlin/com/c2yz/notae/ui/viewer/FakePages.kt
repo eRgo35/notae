@@ -13,7 +13,10 @@ class FakePages(override val pageCount: Int, private val aspect: Float = 1.414f,
     val rendered = mutableListOf<Int>()
     var closed = false
 
-    override fun pageAspect(index: Int): Float = aspect
+    /** How often the pages' aspect was read: once per composition of a page. */
+    var aspectReads = 0
+
+    override fun pageAspect(index: Int): Float = aspect.also { aspectReads++ }
 
     override fun pageWidthPoints(index: Int): Float = widthPoints
 

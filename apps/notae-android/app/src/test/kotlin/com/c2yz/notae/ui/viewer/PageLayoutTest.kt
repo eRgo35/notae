@@ -107,4 +107,20 @@ class PageLayoutTest {
         assertEquals(1600, renderWidth(800f, zoomed = true, aspect = 1.414f, areaWidth = 2560f))
         assertEquals(800, renderWidth(800f, zoomed = false, aspect = 1.414f, areaWidth = 2560f))
     }
+
+    @Test
+    fun zoom_reaches_from_half_the_fit_to_four_times_the_print() {
+        // At fit page: half of it up to four printed pages.
+        val atFit = zoomBounds(baseHeight = 1600f, fitHeight = 1600f, printedHeight = 3739f)
+        assertEquals(0.5f, atFit.start, 0.001f)
+        assertEquals(4f * 3739f / 1600f, atFit.endInclusive, 0.001f)
+        // At 200 %: down to half the fit, up to 400 % (2x), not 800 %.
+        val at200 = zoomBounds(baseHeight = 7478f, fitHeight = 1600f, printedHeight = 3739f)
+        assertEquals(800f / 7478f, at200.start, 0.001f)
+        assertEquals(2f, at200.endInclusive, 0.001f)
+        // The chosen scale itself is always in range.
+        val tiny = zoomBounds(baseHeight = 400f, fitHeight = 4000f, printedHeight = 50f)
+        assertTrue(1f in tiny)
+    }
+
 }

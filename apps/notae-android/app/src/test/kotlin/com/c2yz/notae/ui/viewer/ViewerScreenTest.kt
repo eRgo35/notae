@@ -200,9 +200,13 @@ class ViewerScreenTest {
         layout = layout.copy(viewerLayout = ViewerLayout.SCROLL)
         compose.waitForIdle()
         compose.onNodeWithText("4 / 5").assertIsDisplayed()
+        // Pages pair as printed (3–4), and the page you were on is kept: back to one page, it is page 4 again.
         layout = layout.copy(viewerPages = ViewerPages.TWO, viewerLayout = ViewerLayout.PAGES)
         compose.waitForIdle()
-        compose.onNodeWithText("3 / 5").assertIsDisplayed()
+        compose.onNodeWithText("4 / 5").assertIsDisplayed()
+        layout = layout.copy(viewerPages = ViewerPages.ONE)
+        compose.waitForIdle()
+        compose.onNodeWithText("4 / 5").assertIsDisplayed()
     }
 
     @Test

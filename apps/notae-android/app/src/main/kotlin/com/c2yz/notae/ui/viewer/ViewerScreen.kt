@@ -266,7 +266,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                     { bars = !bars },
                     Modifier.fillMaxSize(),
                     zoom,
-                ) { index, _ ->
+                ) { index ->
                     PageDrawings(
                         index,
                         session?.overlay() ?: viewer.overlay,

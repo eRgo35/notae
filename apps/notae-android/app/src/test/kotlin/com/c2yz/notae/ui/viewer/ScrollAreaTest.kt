@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.viewer
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
@@ -42,7 +43,7 @@ class ScrollAreaTest {
         val source = FakePages(pages)
         compose.setContent {
             NotaeTheme {
-                PageArea(source, ViewLook(scroll = true, twoPages = twoPages, scale = scale), page, { page = it }, {}, Modifier.fillMaxSize(), zoom) { index, _ ->
+                PageArea(source, ViewLook(scroll = true, twoPages = twoPages, scale = scale), page, { page = it }, {}, Modifier.fillMaxSize(), zoom) { index ->
                     Box(Modifier.fillMaxSize().testTag("p-$index"))
                 }
             }
@@ -111,4 +112,47 @@ class ScrollAreaTest {
         repeat(5) { tapRight() }
         assertEquals(4, page)
     }
+
+    @Test
+    fun pinch_keeps_the_point_under_the_fingers_across() {
+        show()
+        // Already wider than the screen, so the pinch can pan across.
+        compose.runOnIdle { zoom.factor = 2.5f }
+        compose.waitForIdle()
+        val node = { compose.onNodeWithTag("p-0").fetchSemanticsNode() }
+        val screen = compose.onRoot().fetchSemanticsNode().size.width
+        val at = screen * 0.6f
+        val before = node()
+        val fraction = (at - before.positionInRoot.x) / before.size.width
+        compose.onRoot().performTouchInput {
+            val c = Offset(at, centerY)
+            pinch(c - Offset(20f, 0f), c - Offset(26f, 0f), c + Offset(20f, 0f), c + Offset(26f, 0f))
+        }
+        compose.waitForIdle()
+        val after = node()
+        assertTrue("zoomed further: ${zoom.factor}", zoom.factor > 3f)
+        assertEquals(fraction, (at - after.positionInRoot.x) / after.size.width, 0.01f)
+    }
+
+    @Test
+    fun pinching_does_not_recompose_the_rows_every_frame() {
+        val pages = FakePages(5)
+        compose.setContent {
+            NotaeTheme {
+                PageArea(pages, ViewLook(scroll = true, twoPages = false, scale = ViewerScale.FitPage), page, { page = it }, {}, Modifier.fillMaxSize(), zoom) { index ->
+                    Box(Modifier.fillMaxSize().testTag("p-$index"))
+                }
+            }
+        }
+        compose.waitForIdle()
+        val before = pages.aspectReads
+        // A pinch changes the zoom a little every frame.
+        for (step in 1..10) {
+            compose.runOnIdle { zoom.factor = 1f + step * 0.1f }
+            compose.waitForIdle()
+        }
+        // Once only: past 1x the pages render sharper.
+        assertEquals("rows recomposed", 1, pages.aspectReads - before)
+    }
+
 }

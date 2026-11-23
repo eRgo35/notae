@@ -8,20 +8,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
@@ -44,10 +42,12 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.c2yz.notae.core.ViewerScale
 import com.c2yz.notae.platform.PageSource
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
@@ -57,10 +57,11 @@ private val PAGE_GAP = 8.dp
 
 /**
  * The score's pages in [look]: turned a row at a time (one page or a pair) or, when [ViewLook.scroll], one row under
- * another. [page] is the first page on screen and [onPage] reports a new one. A tap on the outer fifth of either side,
- * an arrow key or Page Up/Down turns, animated; a tap in the middle third calls [onToggleBars]. Two fingers zoom
- * anywhere ([pinchZoom]) on top of the chosen scale and a double tap returns to it. [overlay] draws over each page,
- * given its box in the page's own coordinates.
+ * another. [page] is the page being read and [onPage] reports a new one: the first of a row turned to, while the row
+ * on screen holding [page] keeps it. A tap on the outer fifth of either side, an arrow key or Page Up/Down turns,
+ * animated; a tap in the middle third calls [onToggleBars]. Two fingers zoom anywhere ([pinchZoom]) on top of the
+ * chosen scale, from half the fit to four times the printed size, and a double tap returns to it. [overlay] draws over
+ * each page, sized to it.
  */
 @Composable
 fun PageArea(
@@ -71,19 +72,25 @@ fun PageArea(
     onToggleBars: () -> Unit,
     modifier: Modifier = Modifier,
     zoom: PageZoom = remember { PageZoom() },
-    overlay: @Composable (pageIndex: Int, pageBox: Rect) -> Unit = { _, _ -> },
+    overlay: @Composable (pageIndex: Int) -> Unit = {},
 ) {
     val rows = remember(source, look.twoPages) { rowsFor(source.pageCount, look.twoPages) }
     val keys = remember { FocusRequester() }
     LaunchedEffect(Unit) { keys.requestFocus() }
     val focused = modifier.focusRequester(keys).focusable()
-    // A new layout starts at the chosen scale, on the row holding the first page.
-    key(look) {
-        LaunchedEffect(Unit) { zoom.reset() }
+    val reading by rememberUpdatedState(page)
+    val report by rememberUpdatedState(onPage)
+    val shown = remember(rows) { { first: Int -> if (reading !in rows[rowOf(first, rows)]) report(first) } }
+    // A new layout starts at the chosen scale from its first frame, on the row holding the page.
+    val fresh = remember(look) {
+        zoom.reset()
+        look
+    }
+    key(fresh) {
         if (look.scroll) {
-            ScrolledRows(source, rows, look, rowOf(page, rows), onPage, onToggleBars, focused, zoom, overlay)
+            ScrolledRows(source, rows, look, rowOf(page, rows), shown, onToggleBars, focused, zoom, overlay)
         } else {
-            PagedRows(source, rows, look, rowOf(page, rows), onPage, onToggleBars, focused, zoom, overlay)
+            PagedRows(source, rows, look, rowOf(page, rows), shown, onToggleBars, focused, zoom, overlay)
         }
     }
 }
@@ -117,6 +124,29 @@ private fun Modifier.pageTaps(turn: (Int) -> Unit, onToggleBars: () -> Unit, onD
 @Composable
 private fun screenDpi(): Float = LocalContext.current.resources.displayMetrics.xdpi.takeIf { it > 0f } ?: 160f
 
+/** How a look's rows are sized in an [area]: at the chosen scale, and the fit and printed sizes that bound the zoom. */
+private class RowSizes(source: PageSource, rows: List<IntRange>, look: ViewLook, val area: Size, gap: Float, dpi: Float) {
+    private val capacity = if (look.twoPages) 2 else 1
+    private val sizeAt = { scale: ViewerScale ->
+        rows.map { row -> rowSize(row.map(source::pageAspect), row.map(source::pageWidthPoints), area, gap, scale, dpi, capacity) }
+    }
+    val base = sizeAt(look.scale)
+    private val fit = sizeAt(ViewerScale.FitPage)
+    private val printed = sizeAt(ViewerScale.Percent(100.toUShort()))
+
+    fun of(row: Int): Size = base.getOrNull(row) ?: Size.Zero
+
+    /** Row [row] pinched by [factor] as a percentage of its printed size. */
+    fun percent(row: Int, factor: Float): Int {
+        val print = printed.getOrNull(row)?.height ?: 0f
+        return if (print > 0f) (of(row).height * factor / print * 100f).roundToInt() else 100
+    }
+
+    /** The pinch factors row [row] may take. */
+    fun bounds(row: Int): ClosedFloatingPointRange<Float> =
+        zoomBounds(of(row).height, fit.getOrNull(row)?.height ?: 0f, printed.getOrNull(row)?.height ?: 0f)
+}
+
 @Composable
 private fun PagedRows(
     source: PageSource,
@@ -127,7 +157,7 @@ private fun PagedRows(
     onToggleBars: () -> Unit,
     modifier: Modifier,
     zoom: PageZoom,
-    overlay: @Composable (pageIndex: Int, pageBox: Rect) -> Unit,
+    overlay: @Composable (pageIndex: Int) -> Unit,
 ) {
     val pager = remember(rows) { PagerState(initialRow.coerceIn(0, (rows.size - 1).coerceAtLeast(0))) { rows.size } }
     val scope = rememberCoroutineScope()
@@ -151,22 +181,17 @@ private fun PagedRows(
     val gap = with(LocalDensity.current) { PAGE_GAP.toPx() }
     BoxWithConstraints(modifier.fillMaxSize().turnKeys(turn)) {
         val area = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
-        // The size of row [index] at the chosen scale, before the pinch.
-        val baseSize = { index: Int ->
-            rows.getOrNull(index)?.let { row ->
-                rowSize(row.map(source::pageAspect), row.map(source::pageWidthPoints), area, gap, look.scale, dpi, if (look.twoPages) 2 else 1)
-            } ?: Size.Zero
-        }
-        val shown = baseSize(pager.currentPage) * zoom.factor
-        val first = rows.getOrNull(pager.currentPage)?.first
-        SideEffect { if (first != null) zoom.percent = printedPercent(source, first, shown.height, dpi) }
-        val overflowX = shown.width > area.width + 0.5f
-        val overflowY = shown.height > area.height + 0.5f
-        val onPinch = remember(area, rows, look) {
+        val sizes = remember(rows, look, area, gap, dpi) { RowSizes(source, rows, look, area, gap, dpi) }
+        // Sizes during a pinch are read while laying out, so a pinch moves the pages without composing them again.
+        val shown = { sizes.of(pager.currentPage) * zoom.factor }
+        val overflowX by remember(sizes) { derivedStateOf { shown().width > area.width + 0.5f } }
+        val overflowY by remember(sizes) { derivedStateOf { shown().height > area.height + 0.5f } }
+        LaunchedEffect(sizes) { snapshotFlow { sizes.percent(pager.currentPage, zoom.factor) }.collect { zoom.percent = it } }
+        val onPinch = remember(sizes) {
             { centroid: Offset, change: Float, pan: Offset ->
-                val base = baseSize(pager.currentPage)
+                val base = sizes.of(pager.currentPage)
                 val old = zoom.factor
-                val new = (old * change).coerceIn(MIN_ZOOM, MAX_ZOOM)
+                val new = (old * change).coerceIn(sizes.bounds(pager.currentPage))
                 val before = base * old
                 val after = base * new
                 // The content point under the fingers before the move stays under them.
@@ -184,11 +209,12 @@ private fun PagedRows(
                 .pageTaps(turn, onToggleBars) { zoom.reset() }
                 .then(
                     if (overflowX || overflowY) {
-                        Modifier.pointerInput(overflowX, overflowY, shown, area) {
+                        Modifier.pointerInput(sizes) {
                             detectDragGestures { change, drag ->
                                 change.consume()
+                                val size = shown()
                                 val pan = zoom.offset - drag
-                                zoom.offset = Offset(clampPan(pan.x, shown.width, area.width), clampPan(pan.y, shown.height, area.height))
+                                zoom.offset = Offset(clampPan(pan.x, size.width, area.width), clampPan(pan.y, size.height, area.height))
                             }
                         }
                     } else {
@@ -198,18 +224,20 @@ private fun PagedRows(
         ) {
             HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = !overflowX, key = { rows[it].first }) { index ->
                 val current = index == pager.currentPage
-                val factor = if (current) zoom.factor else 1f
-                val pan = if (current) zoom.offset else Offset.Zero
-                val base = baseSize(index)
-                val size = base * factor
-                val origin = Offset(contentStart(size.width, area.width, pan.x), contentStart(size.height, area.height, pan.y))
+                val zoomed by remember(current) { derivedStateOf { current && zoom.factor > 1f } }
                 val row = rows[index]
                 val aspects = row.map(source::pageAspect)
+                val base = sizes.of(index)
+                val fitBoxes = pageBoxes(aspects, base, gap)
                 Box(Modifier.fillMaxSize().clipToBounds()) {
-                    val fitBoxes = pageBoxes(aspects, base, gap)
-                    pageBoxes(aspects, size, gap * factor).forEachIndexed { at, box ->
-                        val renderWidth = renderWidth(fitBoxes[at].width, factor > 1f, aspects[at], area.width)
-                        PageBox(source, row.first + at, box.translate(origin), renderWidth, overlay)
+                    aspects.indices.forEach { at ->
+                        PageBox(source, row.first + at, renderWidth(fitBoxes[at].width, zoomed, aspects[at], area.width), overlay) {
+                            val factor = if (current) zoom.factor else 1f
+                            val pan = if (current) zoom.offset else Offset.Zero
+                            val size = base * factor
+                            val origin = Offset(contentStart(size.width, area.width, pan.x), contentStart(size.height, area.height, pan.y))
+                            pageBoxes(aspects, size, gap * factor)[at].translate(origin)
+                        }
                     }
                 }
             }
@@ -217,23 +245,24 @@ private fun PagedRows(
     }
 }
 
-/** Page [index] drawn into [box] (area pixels), rendered [renderWidth] wide, with its [overlay]. */
+/** Page [index], rendered [renderWidth] wide, with its [overlay], in the [box] its parent's pixels give while laying out. */
 @Composable
 private fun PageBox(
     source: PageSource,
     index: Int,
-    box: Rect,
     renderWidth: Int,
-    overlay: @Composable (pageIndex: Int, pageBox: Rect) -> Unit,
+    overlay: @Composable (pageIndex: Int) -> Unit,
+    box: () -> Rect,
 ) {
-    val density = LocalDensity.current
     Box(
-        Modifier
-            .offset { IntOffset(box.left.roundToInt(), box.top.roundToInt()) }
-            .size(with(density) { box.width.toDp() }, with(density) { box.height.toDp() }),
+        Modifier.layout { measurable, constraints ->
+            val at = box()
+            val placeable = measurable.measure(Constraints.fixed(at.width.roundToInt().coerceAtLeast(0), at.height.roundToInt().coerceAtLeast(0)))
+            layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(at.left.roundToInt(), at.top.roundToInt()) }
+        },
     ) {
         PageImage(source, index, renderWidth.coerceAtLeast(1))
-        overlay(index, Rect(0f, 0f, box.width, box.height))
+        overlay(index)
     }
 }
 
@@ -247,10 +276,9 @@ private fun ScrolledRows(
     onToggleBars: () -> Unit,
     modifier: Modifier,
     zoom: PageZoom,
-    overlay: @Composable (pageIndex: Int, pageBox: Rect) -> Unit,
+    overlay: @Composable (pageIndex: Int) -> Unit,
 ) {
     val list = remember(rows) { LazyListState(initialRow.coerceIn(0, (rows.size - 1).coerceAtLeast(0))) }
-    val across = rememberScrollState()
     val scope = rememberCoroutineScope()
     val report by rememberUpdatedState(onPage)
     // At the end of the score the last row may be too short to reach the top: then it is the row being read.
@@ -265,50 +293,73 @@ private fun ScrolledRows(
         Unit
     }
     val dpi = screenDpi()
-    val density = LocalDensity.current
-    val gap = with(density) { PAGE_GAP.toPx() }
+    val gap = with(LocalDensity.current) { PAGE_GAP.toPx() }
     BoxWithConstraints(modifier.fillMaxSize().turnKeys(turn)) {
         val area = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
-        val baseSizes = remember(rows, look, area, dpi) {
-            rows.map { row -> rowSize(row.map(source::pageAspect), row.map(source::pageWidthPoints), area, gap, look.scale, dpi, if (look.twoPages) 2 else 1) }
-        }
-        val widest = (baseSizes.maxOfOrNull { it.width } ?: 0f) * zoom.factor
-        val contentWidth = maxOf(area.width, widest)
-        val firstRow = list.firstVisibleItemIndex
-        val firstShown = (baseSizes.getOrNull(firstRow)?.height ?: 0f) * zoom.factor
-        SideEffect { rows.getOrNull(firstRow)?.let { zoom.percent = printedPercent(source, it.first, firstShown, dpi) } }
-        val onPinch = remember(list, across) {
+        val sizes = remember(rows, look, area, gap, dpi) { RowSizes(source, rows, look, area, gap, dpi) }
+        val widest = sizes.base.maxOfOrNull { it.width } ?: 0f
+        // Rows are centred in the content, as wide as the widest row or the area. Across, it is panned by zoom.offset.x.
+        val contentWidth = { factor: Float -> maxOf(area.width, widest * factor) }
+        val across = { clampPan(zoom.offset.x, contentWidth(zoom.factor), area.width) }
+        LaunchedEffect(sizes) { snapshotFlow { sizes.percent(list.firstVisibleItemIndex, zoom.factor) }.collect { zoom.percent = it } }
+        val onPinch = remember(list, sizes) {
             { centroid: Offset, change: Float, pan: Offset ->
                 val old = zoom.factor
-                val new = (old * change).coerceIn(MIN_ZOOM, MAX_ZOOM)
+                val new = (old * change).coerceIn(sizes.bounds(list.firstVisibleItemIndex))
                 val k = new / old
+                // The point under the fingers before the move, from the content's centre line, grows by k and stays put.
+                val fromCentre = centroid.x - pan.x - (contentWidth(old) / 2f - across())
                 zoom.factor = new
-                // Rows grow from the point under the fingers: scroll by what grows above and left of it.
-                val down = (list.firstVisibleItemScrollOffset + centroid.y) * (k - 1f) - pan.y
-                val right = (across.value + centroid.x) * (k - 1f) - pan.x
-                list.dispatchRawDelta(down)
-                across.dispatchRawDelta(right)
+                zoom.offset = Offset(clampPan(contentWidth(new) / 2f + fromCentre * k - centroid.x, contentWidth(new), area.width), 0f)
+                // Rows grow from the point under the fingers: scroll by what grows above it.
+                list.dispatchRawDelta((list.firstVisibleItemScrollOffset + centroid.y) * (k - 1f) - pan.y)
                 Unit
             }
         }
-        Box(Modifier.fillMaxSize().pinchZoom(onPinch).pageTaps(turn, onToggleBars) { zoom.reset() }) {
-            Box(Modifier.fillMaxSize().horizontalScroll(across, enabled = contentWidth > area.width + 0.5f)) {
-                LazyColumn(
-                    Modifier.width(with(density) { contentWidth.toDp() }).fillMaxHeight(),
-                    state = list,
-                    verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    items(rows.size, key = { rows[it].first }) { index ->
-                        val row = rows[index]
-                        val aspects = row.map(source::pageAspect)
-                        val base = baseSizes[index]
-                        val size = base * zoom.factor
-                        val fitBoxes = pageBoxes(aspects, base, gap)
-                        Box(Modifier.size(with(density) { size.width.toDp() }, with(density) { size.height.toDp() })) {
-                            pageBoxes(aspects, size, gap * zoom.factor).forEachIndexed { at, box ->
-                                val renderWidth = renderWidth(fitBoxes[at].width, zoom.factor > 1f, aspects[at], area.width)
-                                PageBox(source, row.first + at, box, renderWidth, overlay)
+        val panAcross = rememberScrollableState { delta ->
+            val old = across()
+            val new = clampPan(old - delta, contentWidth(zoom.factor), area.width)
+            zoom.offset = Offset(new, 0f)
+            old - new
+        }
+        val zoomed by remember { derivedStateOf { zoom.factor > 1f } }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clipToBounds()
+                .pinchZoom(onPinch)
+                .pageTaps(turn, onToggleBars) { zoom.reset() }
+                .scrollable(panAcross, Orientation.Horizontal),
+        ) {
+            LazyColumn(
+                Modifier
+                    .layout { measurable, constraints ->
+                        val width = contentWidth(zoom.factor).roundToInt()
+                        val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+                        layout(constraints.maxWidth, placeable.height) { placeable.place(-across().roundToInt(), 0) }
+                    }
+                    .fillMaxHeight(),
+                state = list,
+                verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                items(rows.size, key = { rows[it].first }) { index ->
+                    val row = rows[index]
+                    val aspects = row.map(source::pageAspect)
+                    val base = sizes.of(index)
+                    val fitBoxes = pageBoxes(aspects, base, gap)
+                    Box(
+                        Modifier.layout { measurable, _ ->
+                            val size = base * zoom.factor
+                            val width = size.width.roundToInt()
+                            val height = size.height.roundToInt()
+                            val placeable = measurable.measure(Constraints.fixed(width, height))
+                            layout(width, height) { placeable.place(0, 0) }
+                        },
+                    ) {
+                        aspects.indices.forEach { at ->
+                            PageBox(source, row.first + at, renderWidth(fitBoxes[at].width, zoomed, aspects[at], area.width), overlay) {
+                                pageBoxes(aspects, base * zoom.factor, gap * zoom.factor)[at]
                             }
                         }
                     }
