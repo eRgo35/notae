@@ -310,4 +310,6 @@
     <string name="replace">Replace</string>
     <string name="keep_both">Keep both</string>
     <string name="viewer_back">Back</string>
+    <string name="viewer_page_of" translatable="false">%1$d / %2$d</string>
+    <string name="viewer_cannot_open">Could not open this score: %1$s</string>
 </resources>

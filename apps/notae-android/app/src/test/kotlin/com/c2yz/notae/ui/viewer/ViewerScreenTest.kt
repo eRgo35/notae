@@ -13,6 +13,9 @@ import com.c2yz.notae.core.Viewer
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import java.io.FileNotFoundException
+import com.c2yz.notae.platform.PageSourceFactory
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,10 +34,10 @@ class ViewerScreenTest {
     private val actions = mutableListOf<Action>()
     private var shown by mutableStateOf<Viewer?>(null)
 
-    private fun show(viewer: Viewer) {
+    private fun show(viewer: Viewer, pages: PageSourceFactory = { _, _ -> FakePages(3) }) {
         shown = viewer
         compose.setContent {
-            NotaeTheme { shown?.let { ViewerScreen(it, { action -> actions += action }) } }
+            NotaeTheme { shown?.let { ViewerScreen(it, { action -> actions += action }, pages) } }
         }
         compose.waitForIdle()
     }
@@ -47,5 +50,32 @@ class ViewerScreenTest {
         compose.onNodeWithContentDescription("Back").performClick()
 
         assertEquals(listOf<Action>(Action.CloseViewer), actions)
+    }
+
+    @Test
+    fun pages_render_from_the_source() {
+        val pages = FakePages(3)
+        show(Fixture.viewer()) { _, _ -> pages }
+
+        compose.onNodeWithText("1 / 3").assertIsDisplayed()
+        assertTrue("the first page is drawn", 0 in pages.rendered)
+    }
+
+    @Test
+    fun unreadable_pdf_shows_the_error_with_back() {
+        show(Fixture.viewer()) { _, _ -> throw FileNotFoundException("Ave Maria.pdf is gone") }
+
+        compose.onNodeWithText("Ave Maria.pdf is gone", substring = true).assertIsDisplayed()
+        compose.onNodeWithContentDescription("Back").performClick()
+        assertEquals(listOf<Action>(Action.CloseViewer), actions)
+    }
+
+    @Test
+    fun the_source_closes_when_the_viewer_leaves() {
+        val pages = FakePages(3)
+        show(Fixture.viewer()) { _, _ -> pages }
+        shown = null
+        compose.waitForIdle()
+        assertTrue(pages.closed)
     }
 }

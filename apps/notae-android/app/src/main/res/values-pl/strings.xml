@@ -316,4 +316,5 @@
     <string name="replace">Zastąp</string>
     <string name="keep_both">Zachowaj oba</string>
     <string name="viewer_back">Wstecz</string>
+    <string name="viewer_cannot_open">Nie można otworzyć tych nut: %1$s</string>
 </resources>
