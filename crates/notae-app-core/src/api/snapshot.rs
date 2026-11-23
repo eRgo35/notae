@@ -52,6 +52,8 @@ pub struct Snapshot {
     pub set_cards: Vec<SetCard>,
     /// The details screen's score, when it is open.
     pub selection: Option<Selection>,
+    /// Notae's viewer, drawn over everything else while it is open.
+    pub viewer: Option<Viewer>,
     /// The search field and scope.
     pub search: SearchBox,
     /// The operation banner.
@@ -627,6 +629,23 @@ pub struct UnmatchedPiece {
     pub title: String,
 }
 
+/// The score on Notae's viewer.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct Viewer {
+    /// The library folder the score's PDF is in, as [`super::Effect::OpenPdf`]'s `uri`.
+    pub uri: String,
+    /// The score, with its score note and, in a set, its item id and set note.
+    pub row: Row,
+    /// The set it was opened from; Previous and Next move within it.
+    pub set_id: Option<String>,
+    /// A piece before it in the set.
+    pub has_previous: bool,
+    /// A piece after it in the set.
+    pub has_next: bool,
+    /// Show "Scores now open in Notae. Change it in Settings."
+    pub show_hint: bool,
+}
+
 /// The saved layout choices.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
 pub struct LayoutPrefs {
@@ -860,6 +879,20 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
                 edited: card.edited.into(),
             })
             .collect(),
+        viewer: model
+            .viewer_row()
+            .zip(model.library_root_handle())
+            .map(|(row, uri)| {
+                let (before, after) = model.viewer_neighbours();
+                Viewer {
+                    uri,
+                    row: lookup.row(row),
+                    set_id: model.viewer_set_id().map(str::to_owned),
+                    has_previous: before.is_some(),
+                    has_next: after.is_some(),
+                    show_hint: model.viewer_hint_due(),
+                }
+            }),
         selection: model.selected_row().map(|row| {
             let neighbours = model.preview_neighbours();
             Selection {

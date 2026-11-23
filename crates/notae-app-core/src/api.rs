@@ -49,6 +49,7 @@ pub use snapshot::{
     PdfOpenError, PositionOf, Row, ScanSummary, Screen, SearchBox, SearchScope, SectionEntry,
     SectionTitle, Selection, SetCard, SetChoice, SetDialog, SetEntry, SettingsInfo, SetupError,
     SetupScreen, SharedSetReview, Snapshot, Snippet, StatusMessage, Subtitle, UnmatchedPiece,
+    Viewer,
 };
 
 use crate::backup::{BackupError, ImportFile};
@@ -65,6 +66,7 @@ use crate::ui::browse::LibrarySection;
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::UiError;
 use crate::ui::{SetMove, StartupPresentation, StorageStateKindView, UiModel};
+use crate::ui_prefs::OpenScoresIn;
 
 /// How long the core thread waits for a worker event before it checks for other work.
 const POLL: Duration = Duration::from_millis(50);
@@ -661,6 +663,9 @@ impl CoreState {
             Action::SetLibraryView { view } => log_prefs(model.set_library_view(view)),
             Action::SetOpenScoresIn { choice } => log_prefs(model.set_open_scores_in(choice)),
             Action::StylusSeen => log_prefs(model.set_stylus_seen()),
+            Action::ViewerPrevious => model.viewer_step(false),
+            Action::ViewerNext => model.viewer_step(true),
+            Action::ViewerHintSeen => log_prefs(model.viewer_hint_seen()),
             Action::SetSidebarCollapsed {
                 portrait,
                 collapsed,
@@ -683,6 +688,12 @@ impl CoreState {
                     eprintln!("notae: no library is open to open a PDF from");
                     return Vec::new();
                 };
+                if model.ui_prefs().open_scores_in == OpenScoresIn::Notae {
+                    if !model.open_viewer(&note_key, item_id.as_deref()) {
+                        eprintln!("notae: the score to open is not in the library");
+                    }
+                    return Vec::new();
+                }
                 if let Some(item_id) = &item_id {
                     model.mark_set_item_opened(item_id);
                 }
@@ -872,7 +883,8 @@ impl CoreState {
         if !library_open {
             return false;
         }
-        if model.add_to_set_key().is_some() {
+        if model.close_viewer() {
+        } else if model.add_to_set_key().is_some() {
             model.add_to_set_closed();
         } else if self.set_dialog.take().is_some() {
             model.set_dialog_cancelled();

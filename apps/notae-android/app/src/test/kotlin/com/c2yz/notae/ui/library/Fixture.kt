@@ -226,6 +226,7 @@ object Fixture {
         setEntries = emptyList(),
         setCards = emptyList(),
         selection = null,
+        viewer = null,
         search = SearchBox("", SearchScope.EVERYTHING),
         banner = Banner(message = null, busy = false, failed = false, fraction = null, cancelEnabled = false, acknowledgeEnabled = false),
         rescanEnabled = true,

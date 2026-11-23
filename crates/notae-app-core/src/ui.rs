@@ -12,6 +12,7 @@ pub mod browse;
 pub mod library;
 pub mod metadata_editor;
 pub mod search;
+pub mod viewer;
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -30,7 +31,8 @@ use crate::storage::{LibraryRoot, StorageError, StorageState};
 use crate::text::{Failure, SectionTitle, StatusMessage};
 use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::{
-    LibrarySection, Neighbours, SectionContext, neighbours, row_id, section_rows,
+    LibrarySection, Neighbours, SectionContext, SetEntry, neighbours, row_id, section_rows,
+    set_entries,
 };
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
@@ -131,6 +133,8 @@ pub struct UiModel {
     metadata_editor: Option<EditableMetadata>,
     metadata_error: Option<Failure>,
     pdf_launch_error: Option<ViewerError>,
+    /// The score on Notae's viewer, while it is open.
+    viewer: Option<viewer::ViewerState>,
     section: LibrarySection,
     recent: RecentScores,
     recent_path: Option<PathBuf>,
@@ -180,6 +184,7 @@ impl UiModel {
             metadata_editor: None,
             metadata_error: None,
             pdf_launch_error: None,
+            viewer: None,
             section: LibrarySection::All,
             recent: RecentScores::default(),
             recent_path: None,
@@ -518,6 +523,128 @@ impl UiModel {
             return None;
         };
         self.sets.get(set_id)?.last_opened_item.as_deref()
+    }
+
+    /// Opens the viewer on the score `note_key`, or on set item `item_id` of the open set, and
+    /// counts it as opened. `false` when the score is not on display.
+    pub fn open_viewer(&mut self, note_key: &str, item_id: Option<&str>) -> bool {
+        let set_id = match (&self.section, item_id) {
+            (LibrarySection::Set(set_id), Some(_)) => Some(set_id.clone()),
+            _ => None,
+        };
+        let row = match item_id {
+            Some(item_id) => self.set_entry_row(item_id),
+            None => self
+                .search_rows
+                .iter()
+                .find(|row| row.note_key == note_key)
+                .cloned(),
+        };
+        let Some(row) = row.filter(|row| !row.missing) else {
+            return false;
+        };
+        self.show_in_viewer(row, set_id);
+        true
+    }
+
+    fn show_in_viewer(&mut self, row: SearchRow, set_id: Option<String>) {
+        if let Some(item_id) = &row.item_id {
+            self.mark_set_item_opened(item_id);
+        }
+        if let Err(error) = self.record_opened(&row.note_key) {
+            eprintln!("notae: cannot save recent scores: {error}");
+        }
+        self.viewer = Some(viewer::ViewerState { row, set_id });
+    }
+
+    /// The open set's piece `item_id`, as the set shows it.
+    fn set_entry_row(&self, item_id: &str) -> Option<SearchRow> {
+        self.open_set_entries()
+            .into_iter()
+            .find_map(|entry| match entry {
+                SetEntry::Piece(row) if row.item_id.as_deref() == Some(item_id) => Some(row),
+                _ => None,
+            })
+    }
+
+    fn open_set_entries(&self) -> Vec<SetEntry> {
+        let LibrarySection::Set(set_id) = &self.section else {
+            return Vec::new();
+        };
+        self.sets
+            .get(set_id)
+            .map(|set| set_entries(&self.search_rows, set))
+            .unwrap_or_default()
+    }
+
+    /// The viewer's score, refreshed from the library and its set.
+    #[must_use]
+    pub fn viewer_row(&self) -> Option<SearchRow> {
+        let state = self.viewer.as_ref()?;
+        let fresh = match &state.row.item_id {
+            Some(item_id) => self.set_entry_row(item_id),
+            None => self
+                .search_rows
+                .iter()
+                .find(|row| row.note_key == state.row.note_key)
+                .cloned(),
+        };
+        Some(fresh.unwrap_or_else(|| state.row.clone()))
+    }
+
+    /// The set the viewer's score was opened from.
+    #[must_use]
+    pub fn viewer_set_id(&self) -> Option<&str> {
+        self.viewer.as_ref()?.set_id.as_deref()
+    }
+
+    /// The pieces before and after the viewer's set item.
+    #[must_use]
+    pub fn viewer_neighbours(&self) -> (Option<SearchRow>, Option<SearchRow>) {
+        let Some(item_id) = self
+            .viewer
+            .as_ref()
+            .and_then(|state| state.row.item_id.clone())
+        else {
+            return (None, None);
+        };
+        let entries = self.open_set_entries();
+        let (before, after) = viewer::neighbours(&entries, &item_id);
+        (before.cloned(), after.cloned())
+    }
+
+    /// Previous or Next piece: replaces the viewer's score, so Back still closes the viewer.
+    pub fn viewer_step(&mut self, forward: bool) {
+        let (before, after) = self.viewer_neighbours();
+        let Some(row) = (if forward { after } else { before }) else {
+            return;
+        };
+        let set_id = self.viewer_set_id().map(str::to_owned);
+        self.show_in_viewer(row, set_id);
+    }
+
+    /// Closes the viewer; `false` when it was not open.
+    pub fn close_viewer(&mut self) -> bool {
+        self.viewer.take().is_some()
+    }
+
+    /// Whether the "Scores now open in Notae" hint is due.
+    #[must_use]
+    pub fn viewer_hint_due(&self) -> bool {
+        !self.ui_prefs.viewer_hint_shown
+    }
+
+    /// The hint was dismissed or seen; it never shows again.
+    ///
+    /// # Errors
+    ///
+    /// Returns the I/O error when the preferences cannot be saved.
+    pub fn viewer_hint_seen(&mut self) -> std::io::Result<()> {
+        if self.ui_prefs.viewer_hint_shown {
+            return Ok(());
+        }
+        self.ui_prefs.viewer_hint_shown = true;
+        self.save_ui_prefs()
     }
 
     /// Validates `fields`, adds the set and opens it. A set made from the "Add to set…"

@@ -971,10 +971,13 @@ fn platform_error_becomes_file_failure() {
 }
 
 #[test]
-fn opening_a_set_piece_emits_open_pdf_with_item_id() {
+fn opening_a_set_piece_in_the_system_app_emits_open_pdf_with_item_id() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
     let library = open_and_scan(&harness);
+    harness.core.dispatch(Action::SetOpenScoresIn {
+        choice: OpenScoresIn::SystemApp,
+    });
     let in_set = set_with_first_piece(&harness, &library);
     let row = in_set.rows[0].clone();
     let item_id = row.item_id.clone().expect("a set row has an item id");
@@ -1224,6 +1227,9 @@ fn dispatch_never_waits_for_a_platform_call() {
         thread::sleep(Duration::from_millis(5));
     }
 
+    harness.core.dispatch(Action::SetOpenScoresIn {
+        choice: OpenScoresIn::SystemApp,
+    });
     let core = Arc::clone(&harness.core);
     let row = library.rows[0].clone();
     let (during, closed) = returns_promptly("dispatch, snapshot and back", move || {
@@ -2031,4 +2037,213 @@ fn set_open_scores_in_is_saved_and_shown() {
     );
     let saved = std::fs::read_to_string(dir.path().join("ui-prefs.txt")).expect("prefs");
     assert!(saved.contains("open_scores_in=system"), "{saved}");
+}
+
+/// Opens a set of Ave Maria, a note, Barka, Credo (then gone from the library) and Dona, and
+/// returns the set's piece rows in order.
+fn set_with_a_note_and_a_missing_piece(harness: &Harness) -> Vec<notae_app_core::api::Row> {
+    let platform = Arc::clone(&harness.platform);
+    let library = open_and_scan(harness);
+    set_with_first_piece(harness, &library);
+    harness.core.dispatch(Action::OpenAddPicker);
+    harness.core.dispatch(Action::AddNote {
+        text: "Psalm".to_owned(),
+    });
+    harness.core.dispatch(Action::OpenAddPicker);
+    for index in 1..4 {
+        harness.core.dispatch(Action::ToggleAddPickerPiece {
+            note_key: library.rows[index].note_key.clone(),
+        });
+    }
+    harness.core.dispatch(Action::CloseAddPicker);
+    platform.set_entries(Ok(vec![
+        readable("Ave Maria.pdf", b"Ave Maria"),
+        readable("Barka.pdf", b"Barka"),
+        readable("Dona.pdf", b"Dona"),
+    ]));
+    harness.core.dispatch(Action::AcknowledgeOperation);
+    harness.core.dispatch(Action::Rescan);
+    harness
+        .listener
+        .wait_for("the scan without Credo", is_finished);
+    let rows = harness.core.snapshot().rows;
+    assert_eq!(titles_of(&rows), ["Ave Maria", "Barka", "Credo", "Dona"]);
+    assert!(rows[2].missing);
+    rows
+}
+
+fn titles_of(rows: &[notae_app_core::api::Row]) -> Vec<&str> {
+    rows.iter().map(|row| row.title.as_str()).collect()
+}
+
+fn open(harness: &Harness, row: &notae_app_core::api::Row) -> Vec<Effect> {
+    let before = harness.listener.effects().len();
+    harness.core.dispatch(Action::OpenPdf {
+        relative_path: row.relative_path.clone(),
+        note_key: row.note_key.clone(),
+        item_id: row.item_id.clone(),
+    });
+    harness.listener.effects()[before..].to_vec()
+}
+
+#[test]
+fn open_pdf_opens_the_viewer_and_counts_as_opened() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    let effects = open(&harness, &library.rows[1]);
+    assert_eq!(effects, [], "Notae's viewer needs no other app");
+    let snapshot = harness.core.snapshot();
+    let viewer = snapshot.viewer.expect("the viewer is open");
+    assert_eq!(viewer.uri, ROOT);
+    assert_eq!(viewer.row.note_key, library.rows[1].note_key);
+    assert_eq!(viewer.row.title, "Barka");
+    assert_eq!(viewer.set_id, None);
+    assert!(!viewer.has_previous && !viewer.has_next);
+    assert_eq!(snapshot.sections[1].count, 1, "Recent holds the score");
+    assert_eq!(snapshot.screen, Screen::Library, "the screen below stays");
+}
+
+#[test]
+fn system_app_setting_keeps_the_0_7_effect() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    harness.core.dispatch(Action::SetOpenScoresIn {
+        choice: OpenScoresIn::SystemApp,
+    });
+    let effects = open(&harness, &library.rows[0]);
+    assert!(matches!(effects.as_slice(), [Effect::OpenPdf { .. }]));
+    assert_eq!(harness.core.snapshot().viewer, None);
+}
+
+#[test]
+fn back_closes_the_viewer_first() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: library.rows[1].selection_id.clone(),
+    });
+    open(&harness, &library.rows[1]);
+    assert!(harness.core.back());
+    let after = harness.core.snapshot();
+    assert_eq!(after.viewer, None);
+    assert_eq!(
+        after.selection.map(|selection| selection.row.title),
+        Some("Barka".to_owned()),
+        "the details it was opened from stay"
+    );
+}
+
+#[test]
+fn next_skips_notes_and_missing_pieces() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(
+        dir.path(),
+        library_platform(&["Ave Maria", "Barka", "Credo", "Dona"]),
+    );
+    let rows = set_with_a_note_and_a_missing_piece(&harness);
+    open(&harness, &rows[0]);
+    let first = harness.core.snapshot().viewer.expect("viewer");
+    assert!(first.set_id.is_some());
+    assert!(!first.has_previous && first.has_next);
+
+    harness.core.dispatch(Action::ViewerNext);
+    let second = harness.core.snapshot().viewer.expect("viewer");
+    assert_eq!(second.row.title, "Barka", "the note is skipped");
+    assert_eq!(second.row.item_id, rows[1].item_id);
+    assert!(second.has_previous && second.has_next);
+
+    harness.core.dispatch(Action::ViewerNext);
+    let last = harness.core.snapshot().viewer.expect("viewer");
+    assert_eq!(last.row.title, "Dona", "the missing piece is skipped");
+    assert!(last.has_previous && !last.has_next);
+    harness.core.dispatch(Action::ViewerNext);
+    assert_eq!(
+        harness
+            .core
+            .snapshot()
+            .viewer
+            .map(|viewer| viewer.row.title),
+        Some("Dona".to_owned()),
+        "Next at the end stays"
+    );
+
+    harness.core.dispatch(Action::ViewerPrevious);
+    let back = harness.core.snapshot();
+    assert_eq!(
+        back.viewer.map(|viewer| viewer.row.title),
+        Some("Barka".to_owned())
+    );
+    assert_eq!(back.sections[1].count, 3, "each piece shown joins Recent");
+    assert!(
+        back.rows
+            .iter()
+            .find(|row| row.title == "Barka")
+            .expect("Barka")
+            .just_opened,
+        "the piece shown is the set's last opened"
+    );
+}
+
+#[test]
+fn previous_and_next_do_not_grow_the_back_stack() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(
+        dir.path(),
+        library_platform(&["Ave Maria", "Barka", "Credo", "Dona"]),
+    );
+    let rows = set_with_a_note_and_a_missing_piece(&harness);
+    open(&harness, &rows[0]);
+    harness.core.dispatch(Action::ViewerNext);
+    harness.core.dispatch(Action::ViewerNext);
+    assert!(harness.core.back());
+    let after = harness.core.snapshot();
+    assert_eq!(after.viewer, None);
+    assert!(after.section_key.starts_with("set:"), "back to the set");
+}
+
+#[test]
+fn hint_shows_once_after_an_update() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    std::fs::write(dir.path().join("ui-prefs.txt"), "section=all\n").expect("0.7 prefs");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    open(&harness, &library.rows[0]);
+    assert!(harness.core.snapshot().viewer.expect("viewer").show_hint);
+    harness.core.dispatch(Action::ViewerHintSeen);
+    assert!(!harness.core.snapshot().viewer.expect("viewer").show_hint);
+    let saved = std::fs::read_to_string(dir.path().join("ui-prefs.txt")).expect("prefs");
+    assert!(saved.contains("viewer_hint_shown=true"), "{saved}");
+}
+
+#[test]
+fn a_new_install_never_sees_the_hint() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    open(&harness, &library.rows[0]);
+    assert!(!harness.core.snapshot().viewer.expect("viewer").show_hint);
+}
+
+#[test]
+fn notes_show_score_note_then_set_note() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria", "Barka"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let row = in_set.rows[0].clone();
+    harness.core.dispatch(Action::SaveScoreNote {
+        note_key: row.note_key.clone(),
+        text: "Capo 2".to_owned(),
+    });
+    harness.core.dispatch(Action::SaveSetNote {
+        item_id: row.item_id.clone().expect("item"),
+        text: "Slow".to_owned(),
+    });
+    open(&harness, &row);
+    let viewer = harness.core.snapshot().viewer.expect("viewer");
+    assert_eq!(viewer.row.score_note.as_deref(), Some("Capo 2"));
+    assert_eq!(viewer.row.set_note.as_deref(), Some("Slow"));
 }

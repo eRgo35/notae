@@ -83,6 +83,12 @@ pub enum Action {
     },
     /// The viewer saw a stylus for the first time.
     StylusSeen,
+    /// The viewer's "Previous piece" in a set.
+    ViewerPrevious,
+    /// The viewer's "Next piece" in a set.
+    ViewerNext,
+    /// The viewer's "Scores now open in Notae" hint was dismissed.
+    ViewerHintSeen,
     /// "Hide sidebar" / "Show sidebar".
     SetSidebarCollapsed {
         /// Whether the window is in portrait.
