@@ -7,12 +7,23 @@ import org.junit.Assert.assertTrue
 import org.robolectric.Robolectric
 import androidx.activity.ComponentActivity
 import java.io.File
+import org.junit.After
+import org.junit.Before
 import org.junit.Test
+import androidx.core.content.FileProvider
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class PdfOpenerTest {
+    /** FileProvider keeps each authority's paths in a static cache, which would outlive this test's files directory. */
+    @Before
+    @After
+    fun forgetFileProviderPaths() {
+        val cache = FileProvider::class.java.getDeclaredField("sCache").apply { isAccessible = true }.get(null) as MutableMap<*, *>
+        synchronized(cache) { cache.clear() }
+    }
+
     @Test
     fun pdf_intent_grants_read_and_targets_pdf_mime() {
         val document = Uri.parse("content://com.example.documents/tree/root/document/score.pdf")
