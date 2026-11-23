@@ -318,4 +318,22 @@
     <string name="viewer_hint">Scores now open in Notae. Change it in Settings.</string>
     <string name="viewer_hint_ok">OK</string>
     <string name="viewer_content_changed">This score\'s PDF changed; drawings may not line up.</string>
+    <string name="viewer_draw">Draw</string>
+    <string name="draw_pen">Pen</string>
+    <string name="draw_red_pen">Red pen</string>
+    <string name="draw_highlighter">Highlighter</string>
+    <string name="draw_eraser">Eraser</string>
+    <string name="draw_text">Text</string>
+    <string name="draw_undo">Undo</string>
+    <string name="draw_redo">Redo</string>
+    <string name="draw_clear_page">Clear page</string>
+    <string name="draw_done">Done</string>
+    <string name="drawings_show">Show drawings</string>
+    <string name="drawings_hide">Hide drawings</string>
+    <string name="draw_clear_question">Clear this page\'s drawings?</string>
+    <string name="draw_clear">Clear</string>
+    <string name="draw_add_text">Add text</string>
+    <string name="draw_add">Add</string>
+    <string name="draw_delete_text_question">Delete this text?</string>
+    <string name="draw_delete">Delete</string>
 </resources>

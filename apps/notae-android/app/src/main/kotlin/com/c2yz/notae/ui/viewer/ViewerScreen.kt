@@ -60,6 +60,7 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.c2yz.notae.ui.components.windowHeightClass
+import com.c2yz.notae.ui.components.WidthClass
 import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.theme.NotaeTheme
 import kotlin.coroutines.cancellation.CancellationException
@@ -71,7 +72,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * pages; by default with [PdfPageSource].
  */
 @Composable
-fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSourceFactory? = null) {
+fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSourceFactory? = null, stylusSeen: Boolean = false) {
     val c = NotaeTheme.colors
     val resolver = LocalContext.current.contentResolver
     val open = openPages ?: { treeUri, path -> PdfPageSource.open(resolver, treeUri, path) }
@@ -101,14 +102,40 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     var page by remember(viewer.row.noteKey) { mutableIntStateOf(0) }
     var bars by remember { mutableStateOf(true) }
     var notes by remember(viewer.row.noteKey) { mutableStateOf(false) }
+    // Drawing on a set's piece: the session while drawing mode is on, saved when it ends, on Previous/Next and on leaving.
+    var session by remember(viewer.row.noteKey) { mutableStateOf<DrawSession?>(null) }
+    var showDrawings by remember { mutableStateOf(true) }
+    var clearing by remember(viewer.row.noteKey) { mutableStateOf(false) }
+    var textRequest by remember(viewer.row.noteKey) { mutableStateOf<TextRequest?>(null) }
+    var stylusReported by remember { mutableStateOf(stylusSeen) }
+    val setId = viewer.setId
+    val itemId = viewer.row.itemId
+    val save = { drawn: DrawSession? ->
+        if (drawn != null && drawn.changed && setId != null && itemId != null) onAction(Action.SaveOverlay(setId, itemId, drawn.overlay()))
+    }
+    val finishDrawing = {
+        save(session)
+        session = null
+    }
+    DisposableEffect(viewer.row.noteKey) {
+        onDispose { save(session) }
+    }
     var editing by remember(viewer.row.noteKey) { mutableStateOf<ViewerNote?>(null) }
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(
         state = backState,
-        isBackEnabled = notes || editing != null,
-        onBackCompleted = { if (editing != null) editing = null else notes = false },
+        isBackEnabled = notes || editing != null || session != null,
+        onBackCompleted = {
+            when {
+                editing != null -> editing = null
+                notes -> notes = false
+                else -> finishDrawing()
+            }
+        },
     )
-    ClaimBack(notes || editing != null)
+    ClaimBack(notes || editing != null || session != null)
+    val compact = windowWidthClass() == WidthClass.COMPACT
+    val spreads = spreadsFor(source?.pageCount ?: 0, mode)
     Column(
         Modifier
             .fillMaxSize()
@@ -117,7 +144,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                 (event.type == KeyEventType.KeyDown && event.key == Key.Escape).also { if (it) onAction(Action.CloseViewer) }
             },
     ) {
-        AnimatedVisibility(bars || error != null) {
+        AnimatedVisibility(bars || error != null || session != null) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -134,13 +161,41 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                     overflow = TextOverflow.Ellipsis,
                 )
                 source?.let { Text(stringResource(R.string.viewer_page_of, page + 1, it.pageCount), color = c.muted, fontSize = 15.sp) }
-                if (viewer.setId != null) {
-                    IconButton(stringResource(R.string.viewer_previous_piece), painterResource(R.drawable.ic_chevron_left), { onAction(Action.ViewerPrevious) }, enabled = viewer.hasPrevious)
-                    IconButton(stringResource(R.string.viewer_next_piece), painterResource(R.drawable.ic_chevron_right), { onAction(Action.ViewerNext) }, enabled = viewer.hasNext)
+                if (setId != null) {
+                    if (session == null && viewer.overlay != null) {
+                        IconButton(
+                            stringResource(if (showDrawings) R.string.drawings_hide else R.string.drawings_show),
+                            painterResource(if (showDrawings) R.drawable.ic_eye_off else R.drawable.ic_eye),
+                            { showDrawings = !showDrawings },
+                        )
+                    }
+                    IconButton(
+                        stringResource(R.string.viewer_draw),
+                        painterResource(R.drawable.ic_edit),
+                        {
+                            if (session != null) {
+                                finishDrawing()
+                            } else {
+                                showDrawings = true
+                                session = DrawSession(viewer.overlay, viewer.row.noteKey)
+                            }
+                        },
+                        selected = session != null,
+                    )
+                    IconButton(stringResource(R.string.viewer_previous_piece), painterResource(R.drawable.ic_chevron_left), {
+                        finishDrawing()
+                        onAction(Action.ViewerPrevious)
+                    }, enabled = viewer.hasPrevious)
+                    IconButton(stringResource(R.string.viewer_next_piece), painterResource(R.drawable.ic_chevron_right), {
+                        finishDrawing()
+                        onAction(Action.ViewerNext)
+                    }, enabled = viewer.hasNext)
                 }
                 IconButton(stringResource(R.string.viewer_notes), painterResource(R.drawable.ic_note), { notes = true })
             }
         }
+        val drawing = session
+        if (drawing != null && !compact) DrawToolBar(drawing, compact, { clearing = true }, finishDrawing)
         if (viewer.contentChanged) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -154,7 +209,6 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             error?.let { Text(stringResource(R.string.viewer_cannot_open, it), Modifier.padding(24.dp), color = c.error, fontSize = 15.sp) }
             source?.let { pages ->
-                val spreads = spreadsFor(pages.pageCount, mode)
                 PageArea(
                     pages,
                     mode,
@@ -162,10 +216,48 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                     { spread -> page = spreads.getOrNull(spread)?.first ?: page },
                     { bars = !bars },
                     Modifier.fillMaxSize(),
-                )
+                ) { index, _ ->
+                    PageDrawings(
+                        index,
+                        session?.overlay() ?: viewer.overlay,
+                        session,
+                        showDrawings,
+                        stylusSeen || stylusReported,
+                        {
+                            if (!stylusSeen && !stylusReported) {
+                                stylusReported = true
+                                onAction(Action.StylusSeen)
+                            }
+                        },
+                        { textRequest = it },
+                    )
+                }
             }
             if (viewer.showHint) ViewerHint({ onAction(Action.ViewerHintSeen) }, Modifier.align(Alignment.BottomCenter))
         }
+        if (drawing != null && compact) DrawToolBar(drawing, compact, { clearing = true }, finishDrawing)
+    }
+        if (clearing) {
+            ConfirmDrawingDialog(stringResource(R.string.draw_clear_question), stringResource(R.string.draw_clear), { clearing = false }) {
+                clearing = false
+                // Every page on screen: one, or the two of a landscape spread.
+                spreads.getOrNull(spreadOf(page, spreads))?.forEach { session?.clearPage(it) }
+            }
+        }
+    when (val request = textRequest) {
+        is TextRequest.Add -> AddTextDialog({ textRequest = null }) { text ->
+            textRequest = null
+            session?.addText(request.page, request.x, request.y, text)
+        }
+        is TextRequest.Delete -> ConfirmDrawingDialog(
+            stringResource(R.string.draw_delete_text_question),
+            stringResource(R.string.draw_delete),
+            { textRequest = null },
+        ) {
+            textRequest = null
+            session?.deleteText(request.page, request.index)
+        }
+        null -> Unit
     }
     CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
         AnimatedOverlay(if (notes && editing == null) viewer else null) {

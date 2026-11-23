@@ -84,6 +84,17 @@ class DrawSessionTest {
     }
 
     @Test
+    fun cancel_drops_the_line_being_drawn() {
+        val session = session()
+        session.begin(0, 0.1f, 0.1f)
+        session.extend(0.2f, 0.2f)
+        session.cancel()
+        session.end()
+        assertTrue(strokes(session).isEmpty())
+        assertFalse(session.changed)
+    }
+
+    @Test
     fun clear_page_is_undoable() {
         val initial = Overlay(
             "aa",

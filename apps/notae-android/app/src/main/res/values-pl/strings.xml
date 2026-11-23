@@ -323,4 +323,22 @@
     <string name="viewer_hint">Nuty otwierają się teraz w Notae. Możesz to zmienić w Ustawieniach.</string>
     <string name="viewer_hint_ok">OK</string>
     <string name="viewer_content_changed">PDF tego utworu się zmienił; rysunki mogą nie pasować.</string>
+    <string name="viewer_draw">Rysuj</string>
+    <string name="draw_pen">Pióro</string>
+    <string name="draw_red_pen">Czerwone pióro</string>
+    <string name="draw_highlighter">Zakreślacz</string>
+    <string name="draw_eraser">Gumka</string>
+    <string name="draw_text">Tekst</string>
+    <string name="draw_undo">Cofnij</string>
+    <string name="draw_redo">Ponów</string>
+    <string name="draw_clear_page">Wyczyść stronę</string>
+    <string name="draw_done">Gotowe</string>
+    <string name="drawings_show">Pokaż rysunki</string>
+    <string name="drawings_hide">Ukryj rysunki</string>
+    <string name="draw_clear_question">Wyczyścić rysunki na tej stronie?</string>
+    <string name="draw_clear">Wyczyść</string>
+    <string name="draw_add_text">Dodaj tekst</string>
+    <string name="draw_add">Dodaj</string>
+    <string name="draw_delete_text_question">Usunąć ten tekst?</string>
+    <string name="draw_delete">Usuń</string>
 </resources>
