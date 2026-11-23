@@ -9,6 +9,12 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-23
+
+Notae 0.8.0 opens scores in its own viewer, lets you draw on the scores in a
+set, scans almost instantly and fixes layouts on phones, foldables and
+tablets. See [`docs/release-notes/v0.8.0.md`](docs/release-notes/v0.8.0.md).
+
 ### Added
 
 - **PC sidecar tool** (`apps/notae-sidecar`) reads `Indeks.csv` and the PDFs
@@ -42,6 +48,16 @@ The hand-written release notes for each version live in
 - The first scan after updating from 0.7.1 reads every file once (its hash
   and its text); later scans are fast. With a `.notae/` sidecar from the PC,
   the first scan is fast too.
+
+### Fixed
+
+- Layouts across window sizes: in short windows (a phone on its side, split
+  screen) the library uses a slim rail, the details open alone and keep their
+  title and actions in view, and the welcome, the add picker and the metadata
+  editor keep their buttons in view. Screen titles stay on one line, header
+  actions move into a menu instead of squeezing the title, and the grid
+  sizes its columns so a full row fits, with three columns on foldables and
+  small tablets. A tablet keeps both panes when the keyboard opens.
 
 ## [0.7.1] - 2026-11-12
 
@@ -523,7 +539,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/eRgo35/notae/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/eRgo35/notae/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/eRgo35/notae/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/eRgo35/notae/compare/v0.6.0...v0.6.1
