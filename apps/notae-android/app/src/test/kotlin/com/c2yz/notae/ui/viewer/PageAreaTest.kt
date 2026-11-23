@@ -3,6 +3,9 @@ package com.c2yz.notae.ui.viewer
 import android.view.View
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -176,6 +179,31 @@ class PageAreaTest {
         compose.waitForIdle()
         assertEquals(0, page)
     }
+    @Test
+    fun a_pinch_after_the_area_narrows_keeps_the_point_under_the_fingers() {
+        var wide by mutableStateOf(true)
+        compose.setContent {
+            NotaeTheme {
+                Box(Modifier.fillMaxSize()) {
+                    PageArea(FakePages(5), onePage, page, { page = it }, {}, Modifier.fillMaxHeight().width(if (wide) 1280.dp else 900.dp), zoom) { index, _ ->
+                        Box(Modifier.fillMaxSize().testTag("p-$index"))
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        // Something before the narrowing, so a pinch handler exists from the wide area.
+        pinchOut { it.center }
+        zoom.reset()
+        wide = false
+        compose.waitForIdle()
+        pinchOut { Offset(450f * it.density, it.centerY) }
+        // One A4 page fits 900 dp (1800 px) by 1600 px: 1132 px wide from x 334. Pinched to 4x around x 900 px, the
+        // page point under the fingers (566) stays there, so the page is panned 4 * 566 - 900 = 1364 px. Measured
+        // against the old 2560 px area, the pan would come out 0.
+        assertEquals(4f, zoom.factor)
+        assertEquals(1364f, zoom.offset.x, 5f)
+    }
 }
 
 /** The screen stays on while the viewer shows, and Escape closes it. */
@@ -200,4 +228,5 @@ class ViewerWindowTest {
         compose.waitForIdle()
         assertFalse(view?.keepScreenOn == true)
     }
+
 }

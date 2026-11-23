@@ -57,4 +57,19 @@ class PdfPageSourceTest {
         assertEquals(842f, source.pageWidthPoints(1))
         assertEquals(595f, source.pageWidthPoints(5))
     }
+
+    @Test
+    fun the_cache_is_bounded_by_bytes_not_by_pages() = kotlinx.coroutines.runBlocking {
+        val renders = mutableListOf<Int>()
+        val source = PdfPageSource(List(5) { 1f }, List(5) { 595f }, { index, w ->
+            renders += index
+            Bitmap.createBitmap(w, w, Bitmap.Config.ARGB_8888)
+        }, {})
+        // Five 16 MB pages: more than the cache keeps, though fewer pages than it used to count.
+        for (index in 0 until 5) source.render(index, 2048)
+        source.render(0, 2048)
+        assertEquals(listOf(0, 1, 2, 3, 4, 0), renders)
+        source.render(4, 2048)
+        assertEquals("the newest page is still kept", 6, renders.size)
+    }
 }

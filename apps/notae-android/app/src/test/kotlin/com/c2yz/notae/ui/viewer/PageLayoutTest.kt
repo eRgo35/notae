@@ -10,6 +10,7 @@ import com.c2yz.notae.ui.components.HeightClass.REGULAR
 import com.c2yz.notae.ui.components.WidthClass.EXPANDED
 import com.c2yz.notae.ui.components.WidthClass.MEDIUM
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** How the viewer resolves its look and sizes a row of pages. */
@@ -87,5 +88,23 @@ class PageLayoutTest {
         assertEquals(Rect(0f, 0f, 565.8f, 800f).right, boxes[0].right, 0.5f)
         assertEquals(575.8f, boxes[1].left, 0.5f)
         assertEquals(800f, boxes[1].bottom, 0.5f)
+    }
+
+    @Test
+    fun a_lone_last_page_keeps_the_scale_of_the_pairs() {
+        val pair = size(2, ViewerScale.FitWidth)
+        val lone = rowSize(listOf(1.414f), listOf(595f), Size(1000f, 800f), 10f, ViewerScale.FitWidth, 320f, capacity = 2)
+        assertEquals(pair.height, lone.height, 0.5f)
+        assertEquals((pair.width - 10f) / 2f, lone.width, 0.5f)
+    }
+
+    @Test
+    fun a_render_stays_under_the_bitmap_budget() {
+        // 200 % of an A4 page on an 11" tablet: 4529 px wide would be a 116 MB bitmap.
+        val width = renderWidth(4529f, zoomed = false, aspect = 1.414f, areaWidth = 2560f)
+        assertTrue(width * (width * 1.414f) * 4f <= MAX_RENDER_BYTES)
+        // A zoomed page renders twice as sharp while that fits.
+        assertEquals(1600, renderWidth(800f, zoomed = true, aspect = 1.414f, areaWidth = 2560f))
+        assertEquals(800, renderWidth(800f, zoomed = false, aspect = 1.414f, areaWidth = 2560f))
     }
 }

@@ -104,4 +104,11 @@ class ScrollAreaTest {
         compose.waitForIdle()
         assertTrue("scrolled past page 1: $page", page > 0)
     }
+
+    @Test
+    fun the_counter_reaches_the_last_page_when_rows_are_shorter_than_the_screen() {
+        show(scale = ViewerScale.Percent(30u))
+        repeat(5) { tapRight() }
+        assertEquals(4, page)
+    }
 }

@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
+import android.util.LruCache
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -39,8 +40,8 @@ typealias PageSourceFactory = suspend (treeUri: String, relativePath: String) ->
 
 /**
  * Android's [PdfRenderer] over a library PDF, opened read-only. The renderer has one page open at a time, so a
- * [Mutex] serialises the renders, which run on [Dispatchers.IO]; the last [CACHE_SIZE] bitmaps are kept, which holds
- * the spread on screen and its neighbours.
+ * [Mutex] serialises the renders, which run on [Dispatchers.IO]; the last bitmaps, up to [CACHE_BYTES], are kept, which
+ * holds the spread on screen and its neighbours.
  */
 class PdfPageSource internal constructor(
     private val aspects: List<Float>,
@@ -49,8 +50,9 @@ class PdfPageSource internal constructor(
     private val closeRenderer: () -> Unit,
 ) : PageSource {
     private val lock = Mutex()
-    private val cache = object : LinkedHashMap<Pair<Int, Int>, ImageBitmap>(CACHE_SIZE, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<Int, Int>, ImageBitmap>?): Boolean = size > CACHE_SIZE
+    // Sized by bytes: a zoomed page is many times a fitted one.
+    private val cache = object : LruCache<Pair<Int, Int>, ImageBitmap>(CACHE_BYTES) {
+        override fun sizeOf(key: Pair<Int, Int>, value: ImageBitmap): Int = value.width * value.height * 4
     }
     @Volatile private var closed = false
 
@@ -63,9 +65,9 @@ class PdfPageSource internal constructor(
     // The lock is taken and released on IO, so a render never needs the main thread to finish.
     override suspend fun render(index: Int, widthPx: Int): ImageBitmap = withContext(Dispatchers.IO) {
         lock.withLock {
-            cache[index to widthPx]?.let { return@withLock it }
+            cache.get(index to widthPx)?.let { return@withLock it }
             check(!closed) { "the score was closed" }
-            renderPage(index, widthPx).asImageBitmap().also { cache[index to widthPx] = it }
+            renderPage(index, widthPx).asImageBitmap().also { cache.put(index to widthPx, it) }
         }
     }
 
@@ -76,14 +78,15 @@ class PdfPageSource internal constructor(
         // after it, on IO.
         CoroutineScope(Dispatchers.IO).launch {
             lock.withLock {
-                cache.clear()
+                cache.evictAll()
                 closeRenderer()
             }
         }
     }
 
     companion object {
-        private const val CACHE_SIZE = 6
+        /** The spread on screen and its neighbours at fit, or the zoomed page and one more. */
+        private const val CACHE_BYTES = 64 * 1024 * 1024
 
         /** Page [index] of [renderer] at [widthPx] wide on white. */
         private fun renderPage(renderer: PdfRenderer, index: Int, widthPx: Int): Bitmap = renderer.openPage(index).use { page ->

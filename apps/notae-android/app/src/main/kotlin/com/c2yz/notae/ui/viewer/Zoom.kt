@@ -36,13 +36,17 @@ internal const val MAX_ZOOM = 4f
 /**
  * Two or more fingers pinch and pan: [onPinch] gets the fingers' centroid, the change of their spread and the centroid's
  * move. It sees each event before the pages and the drawing overlay do and consumes the fingers it uses, so a pinch
- * neither turns a page nor draws, wherever it starts. Pen and eraser pointers are never used or consumed.
+ * neither turns a page nor draws, wherever it starts. Pen and eraser pointers are never used or consumed, and while one
+ * is down nothing pinches.
  */
 internal fun Modifier.pinchZoom(onPinch: (centroid: Offset, zoomChange: Float, pan: Offset) -> Unit): Modifier =
-    pointerInput(Unit) {
+    // Keyed on the handler, so a pinch after the area changed (rotation, the notes panel) uses the new sizes.
+    pointerInput(onPinch) {
         awaitEachGesture {
             do {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
+                // While the pen is down, the hand resting on the glass moves nothing.
+                if (event.changes.any { it.type != PointerType.Touch && it.type != PointerType.Mouse && it.pressed }) continue
                 val fingers = event.changes.filter { it.type == PointerType.Touch && it.pressed && it.previousPressed }
                 if (fingers.size >= 2) {
                     val now = centroid(fingers.map { it.position })

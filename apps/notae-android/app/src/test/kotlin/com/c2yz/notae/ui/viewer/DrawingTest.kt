@@ -258,6 +258,29 @@ class DrawingTest {
         val stroke = actions.filterIsInstance<Action.SaveOverlay>().single().overlay.pages.single().strokes.single()
         assertTrue("the pen line, not the palm: ${stroke.points}", stroke.points.chunked(2).all { (_, y) -> y < 0.5f })
     }
+
+    @Test
+    fun a_palm_pinching_while_the_pen_draws_moves_nothing() {
+        showCapturingView(inSet(), stylusSeen = true)
+        compose.onNodeWithContentDescription("Draw").performClick()
+        val before = compose.onNodeWithTag("page-0").fetchSemanticsNode().size
+        val heel = Pointer(0, MotionEvent.TOOL_TYPE_FINGER)
+        val pen = Pointer(1, MotionEvent.TOOL_TYPE_STYLUS)
+        val side = Pointer(2, MotionEvent.TOOL_TYPE_FINGER)
+        val down = { index: Int -> MotionEvent.ACTION_POINTER_DOWN or (index shl MotionEvent.ACTION_POINTER_INDEX_SHIFT) }
+        val up = { index: Int -> MotionEvent.ACTION_POINTER_UP or (index shl MotionEvent.ACTION_POINTER_INDEX_SHIFT) }
+        inject(
+            { o -> motion(MotionEvent.ACTION_DOWN, o, heel to Offset(500f, 800f)) },
+            { o -> motion(down(1), o, heel to Offset(500f, 800f), pen to Offset(100f, 300f)) },
+            { o -> motion(down(2), o, heel to Offset(500f, 800f), pen to Offset(100f, 300f), side to Offset(600f, 800f)) },
+            { o -> motion(MotionEvent.ACTION_MOVE, o, heel to Offset(450f, 800f), pen to Offset(200f, 320f), side to Offset(700f, 800f)) },
+            { o -> motion(MotionEvent.ACTION_MOVE, o, heel to Offset(400f, 800f), pen to Offset(300f, 340f), side to Offset(800f, 800f)) },
+            { o -> motion(up(2), o, heel to Offset(400f, 800f), pen to Offset(300f, 340f), side to Offset(800f, 800f)) },
+            { o -> motion(up(1), o, heel to Offset(400f, 800f), pen to Offset(300f, 340f)) },
+            { o -> motion(MotionEvent.ACTION_UP, o, heel to Offset(400f, 800f)) },
+        )
+        assertEquals(before, compose.onNodeWithTag("page-0").fetchSemanticsNode().size)
+    }
 }
 
 /** A pointer for [motion]: its id and Android tool type. */

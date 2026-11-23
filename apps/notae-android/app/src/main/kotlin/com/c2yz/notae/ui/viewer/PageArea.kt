@@ -154,7 +154,7 @@ private fun PagedRows(
         // The size of row [index] at the chosen scale, before the pinch.
         val baseSize = { index: Int ->
             rows.getOrNull(index)?.let { row ->
-                rowSize(row.map(source::pageAspect), row.map(source::pageWidthPoints), area, gap, look.scale, dpi)
+                rowSize(row.map(source::pageAspect), row.map(source::pageWidthPoints), area, gap, look.scale, dpi, if (look.twoPages) 2 else 1)
             } ?: Size.Zero
         }
         val shown = baseSize(pager.currentPage) * zoom.factor
@@ -184,7 +184,7 @@ private fun PagedRows(
                 .pageTaps(turn, onToggleBars) { zoom.reset() }
                 .then(
                     if (overflowX || overflowY) {
-                        Modifier.pointerInput(overflowX, overflowY, shown) {
+                        Modifier.pointerInput(overflowX, overflowY, shown, area) {
                             detectDragGestures { change, drag ->
                                 change.consume()
                                 val pan = zoom.offset - drag
@@ -208,8 +208,8 @@ private fun PagedRows(
                 Box(Modifier.fillMaxSize().clipToBounds()) {
                     val fitBoxes = pageBoxes(aspects, base, gap)
                     pageBoxes(aspects, size, gap * factor).forEachIndexed { at, box ->
-                        val renderWidth = (fitBoxes[at].width * if (factor > 1f) 2f else 1f).coerceAtMost(area.width * 2f)
-                        PageBox(source, row.first + at, box.translate(origin), renderWidth.roundToInt(), overlay)
+                        val renderWidth = renderWidth(fitBoxes[at].width, factor > 1f, aspects[at], area.width)
+                        PageBox(source, row.first + at, box.translate(origin), renderWidth, overlay)
                     }
                 }
             }
@@ -253,11 +253,13 @@ private fun ScrolledRows(
     val across = rememberScrollState()
     val scope = rememberCoroutineScope()
     val report by rememberUpdatedState(onPage)
-    LaunchedEffect(list) { snapshotFlow { list.firstVisibleItemIndex }.collect { row -> rows.getOrNull(row)?.let { report(it.first) } } }
+    // At the end of the score the last row may be too short to reach the top: then it is the row being read.
+    val shownRow = { if (!list.canScrollForward && list.canScrollBackward) rows.lastIndex else list.firstVisibleItemIndex }
+    LaunchedEffect(list) { snapshotFlow { shownRow() }.collect { row -> rows.getOrNull(row)?.let { report(it.first) } } }
     val turn = { by: Int ->
-        val first = list.firstVisibleItemIndex
+        val first = shownRow()
         // Back from part way down a row goes to that row's top first.
-        val from = if (by < 0 && list.firstVisibleItemScrollOffset > 0) first + 1 else first
+        val from = if (by < 0 && first == list.firstVisibleItemIndex && list.firstVisibleItemScrollOffset > 0) first + 1 else first
         val next = (from + by).coerceIn(0, (rows.size - 1).coerceAtLeast(0))
         scope.launch { list.animateScrollToItem(next) }
         Unit
@@ -268,7 +270,7 @@ private fun ScrolledRows(
     BoxWithConstraints(modifier.fillMaxSize().turnKeys(turn)) {
         val area = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
         val baseSizes = remember(rows, look, area, dpi) {
-            rows.map { row -> rowSize(row.map(source::pageAspect), row.map(source::pageWidthPoints), area, gap, look.scale, dpi) }
+            rows.map { row -> rowSize(row.map(source::pageAspect), row.map(source::pageWidthPoints), area, gap, look.scale, dpi, if (look.twoPages) 2 else 1) }
         }
         val widest = (baseSizes.maxOfOrNull { it.width } ?: 0f) * zoom.factor
         val contentWidth = maxOf(area.width, widest)
@@ -305,8 +307,8 @@ private fun ScrolledRows(
                         val fitBoxes = pageBoxes(aspects, base, gap)
                         Box(Modifier.size(with(density) { size.width.toDp() }, with(density) { size.height.toDp() })) {
                             pageBoxes(aspects, size, gap * zoom.factor).forEachIndexed { at, box ->
-                                val renderWidth = (fitBoxes[at].width * if (zoom.factor > 1f) 2f else 1f).coerceAtMost(area.width * 2f)
-                                PageBox(source, row.first + at, box, renderWidth.roundToInt(), overlay)
+                                val renderWidth = renderWidth(fitBoxes[at].width, zoom.factor > 1f, aspects[at], area.width)
+                                PageBox(source, row.first + at, box, renderWidth, overlay)
                             }
                         }
                     }
