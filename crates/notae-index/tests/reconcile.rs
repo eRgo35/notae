@@ -352,6 +352,33 @@ fn deleted_pdf_is_removed() {
     let _ = std::fs::remove_file(&database);
 }
 
+/// A new library (another folder, or a new ZIP) whose score takes the number of
+/// one whose file is gone: the gone record must not block the new one.
+#[test]
+fn a_new_pdf_takes_the_id_of_one_whose_file_is_gone() {
+    let (mut store, database) = open("reuse-id");
+    store
+        .upsert_note(&note(
+            "Old/12 - Autumn Leaves.pdf",
+            1,
+            Some(NoteId::new(12)),
+            "Autumn Leaves",
+        ))
+        .expect("seed");
+
+    let files = vec![file("Choir/12 - Ave Maria.pdf", 2)];
+    let plan = Reconciler::plan(&store, &files).expect("plan");
+    let report = Reconciler::apply(plan, &mut store).expect("apply");
+
+    assert!(report.failures().is_empty(), "{:?}", report.failures());
+    assert_eq!(report.additions().len(), 1);
+    assert_eq!(report.deletions().len(), 1);
+    let stored = only_note(&store);
+    assert_eq!(stored.path(), &path("Choir/12 - Ave Maria.pdf"));
+    assert_eq!(stored.id(), Some(NoteId::new(12)));
+    let _ = std::fs::remove_file(&database);
+}
+
 #[test]
 fn duplicate_ids_are_reported_as_conflicts_with_both_paths() {
     let (mut store, database) = open("conflict");

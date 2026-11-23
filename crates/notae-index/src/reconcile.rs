@@ -870,6 +870,20 @@ impl Reconciler {
             ..RescanReport::default()
         };
 
+        if !deletions.is_empty() {
+            // First, so a new file may take the note ID of a record whose file
+            // is gone (another library with the same numbers). Everything the
+            // catalog saw is still on disk, whatever happens to its record, so
+            // the deletion pass keeps all of it; so does the path each move
+            // leaves, whose record the move itself refiles, or keeps there
+            // when its write is refused. Only a record whose *file* is gone is
+            // removed.
+            let mut present: HashSet<RelativePdfPath> = present.into_iter().collect();
+            present.extend(moves.iter().map(|moved| moved.from.clone()));
+            store.delete_missing(&present)?;
+            report.deletions = deletions;
+        }
+
         for addition in &additions {
             if write(store, addition.note(), &mut report.failures) {
                 report.additions.push(PlannedAddition {
@@ -885,30 +899,13 @@ impl Reconciler {
                 });
             }
         }
-        let mut moved_from: Vec<RelativePdfPath> = Vec::new();
         for moved in &moves {
             if write(store, moved.note(), &mut report.failures) {
                 report.moves.push(PlannedMove {
                     note: moved.note.clone(),
                     from: moved.from.clone(),
                 });
-            } else {
-                // The record did not follow the file, so it is still filed
-                // under the path it left and must survive the deletion pass.
-                moved_from.push(moved.from.clone());
             }
-        }
-
-        if !deletions.is_empty() {
-            // Everything the catalog saw is still on disk, whatever happened
-            // to its record, so the deletion pass keeps all of it. Only a
-            // record whose *file* is gone is removed.
-            let mut present: HashSet<RelativePdfPath> = present.into_iter().collect();
-            // A record whose file moved but whose write was refused is still
-            // filed under the path it left, so that path must survive too.
-            present.extend(moved_from);
-            store.delete_missing(&present)?;
-            report.deletions = deletions;
         }
 
         Ok(report)
