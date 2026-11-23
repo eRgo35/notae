@@ -1,6 +1,14 @@
 package com.c2yz.notae.ui.viewer
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -164,6 +172,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     )
     ClaimBack(notes || editing != null || session != null)
     val compact = windowWidthClass() == WidthClass.COMPACT
+    val wide = windowWidthClass() == WidthClass.EXPANDED
     val rows = rowsFor(source?.pageCount ?: 0, look.twoPages)
     // Previous and Next piece: in the top bar, or on a phone in a bar of their own under the pages.
     val pieceButtons = @Composable {
@@ -230,7 +239,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                     )
                     if (!compact) pieceButtons()
                 }
-                IconButton(stringResource(R.string.viewer_notes), painterResource(R.drawable.ic_note), { notes = true })
+                IconButton(stringResource(R.string.viewer_notes), painterResource(R.drawable.ic_note), { notes = !notes }, selected = notes && wide)
             }
         }
         val drawing = session
@@ -245,7 +254,8 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                 Text(stringResource(R.string.viewer_content_changed), color = c.error, fontSize = 15.sp)
             }
         }
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
             error?.let { Text(stringResource(R.string.viewer_cannot_open, it), Modifier.padding(24.dp), color = c.error, fontSize = 15.sp) }
             source?.let { pages ->
                 PageArea(
@@ -274,6 +284,15 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                 }
             }
             if (viewer.showHint) ViewerHint({ onAction(Action.ViewerHintSeen) }, Modifier.align(Alignment.BottomCenter))
+        }
+        // On a wide window the notes sit beside the score instead of over it.
+        AnimatedVisibility(
+            wide && notes,
+            enter = slideInHorizontally { it } + fadeIn(),
+            exit = slideOutHorizontally { it } + fadeOut(),
+        ) {
+            NotesPanel(viewer, { notes = false }, { note -> editing = note })
+        }
         }
         if (compact && setId != null) {
             AnimatedVisibility(bars || session != null) {
@@ -305,7 +324,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
         null -> Unit
     }
     CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
-        AnimatedOverlay(if (notes && editing == null) viewer else null) {
+        AnimatedOverlay(if (notes && editing == null && !wide) viewer else null) {
             NotesSheet(it, { notes = false }, { note -> editing = note })
         }
         AnimatedOverlay(editing) { note ->
@@ -332,16 +351,43 @@ private enum class ViewerNote { SCORE, SET }
 
 /** The score note, then (from a set) the set note labelled with the set's name; a tap opens a note's editor. */
 @Composable
+private fun NotesContent(viewer: Viewer, onEdit: (ViewerNote) -> Unit) {
+    Column {
+        NoteBlock(stringResource(R.string.score_note), viewer.row.scoreNote, stringResource(R.string.add_score_note)) { onEdit(ViewerNote.SCORE) }
+        viewer.setName?.takeIf { viewer.row.itemId != null }?.let { name ->
+            NoteBlock(stringResource(R.string.set_note_in, name), viewer.row.setNote, stringResource(R.string.add_set_note)) { onEdit(ViewerNote.SET) }
+        }
+    }
+}
+
+/** The notes as a bottom sheet over the score. */
+@Composable
 private fun NotesSheet(viewer: Viewer, onClose: () -> Unit, onEdit: (ViewerNote) -> Unit) {
     val c = NotaeTheme.colors
     ModalSurface(stringResource(R.string.viewer_notes), onDismiss = onClose, bottomSheet = true, cardWidth = 560.dp, modifier = Modifier.closeOnEscape(onClose)) {
         Text(stringResource(R.string.viewer_notes), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-        Column {
-            NoteBlock(stringResource(R.string.score_note), viewer.row.scoreNote, stringResource(R.string.add_score_note)) { onEdit(ViewerNote.SCORE) }
-            viewer.setName?.takeIf { viewer.row.itemId != null }?.let { name ->
-                NoteBlock(stringResource(R.string.set_note_in, name), viewer.row.setNote, stringResource(R.string.add_set_note)) { onEdit(ViewerNote.SET) }
-            }
+        NotesContent(viewer, onEdit)
+    }
+}
+
+/** The notes as a 360 dp panel on the right of the score, with a close button. */
+@Composable
+private fun NotesPanel(viewer: Viewer, onClose: () -> Unit, onEdit: (ViewerNote) -> Unit) {
+    val c = NotaeTheme.colors
+    Column(
+        Modifier
+            .width(360.dp)
+            .fillMaxHeight()
+            .padding(start = 0.dp, end = 12.dp, bottom = 12.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(c.card)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.viewer_notes), Modifier.weight(1f), color = c.foreground, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+            IconButton(stringResource(R.string.viewer_close_notes), painterResource(R.drawable.ic_close), onClose)
         }
+        Column(Modifier.verticalScroll(rememberScrollState())) { NotesContent(viewer, onEdit) }
     }
 }
 
