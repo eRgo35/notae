@@ -41,6 +41,9 @@ import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Viewer
+import com.c2yz.notae.core.ViewerLayout
+import com.c2yz.notae.core.ViewerPages
+import com.c2yz.notae.core.ViewerScale
 import com.c2yz.notae.platform.PageSource
 import com.c2yz.notae.platform.PageSourceFactory
 import com.c2yz.notae.platform.PdfPageSource
@@ -103,7 +106,14 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     // The piece on screen: the set item (a set may hold the same score twice), else the score.
     val piece = viewer.row.itemId ?: viewer.row.noteKey
     val configuration = LocalConfiguration.current
-    val mode = pageModeFor(configuration.screenWidthDp > configuration.screenHeightDp, windowWidthClass(), windowHeightClass())
+    val look = resolveLook(
+        ViewerLayout.AUTO,
+        ViewerPages.AUTO,
+        ViewerScale.Auto,
+        configuration.screenWidthDp > configuration.screenHeightDp,
+        windowWidthClass(),
+        windowHeightClass(),
+    )
     // The first page on screen, kept across a rotation that changes how pages pair.
     var page by remember(piece) { mutableIntStateOf(0) }
     var bars by remember { mutableStateOf(true) }
@@ -149,7 +159,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     )
     ClaimBack(notes || editing != null || session != null)
     val compact = windowWidthClass() == WidthClass.COMPACT
-    val spreads = spreadsFor(source?.pageCount ?: 0, mode)
+    val rows = rowsFor(source?.pageCount ?: 0, look.twoPages)
     // Previous and Next piece: in the top bar, or on a phone in a bar of their own under the pages.
     val pieceButtons = @Composable {
         IconButton(stringResource(R.string.viewer_previous_piece), painterResource(R.drawable.ic_chevron_left), {
@@ -229,9 +239,9 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
             source?.let { pages ->
                 PageArea(
                     pages,
-                    mode,
-                    spreadOf(page, spreads),
-                    { spread -> page = spreads.getOrNull(spread)?.first ?: page },
+                    look,
+                    page,
+                    { first -> page = first },
                     { bars = !bars },
                     Modifier.fillMaxSize(),
                 ) { index, _ ->
@@ -264,7 +274,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
             ConfirmDrawingDialog(stringResource(R.string.draw_clear_question), stringResource(R.string.draw_clear), { clearing = false }) {
                 clearing = false
                 // Every page on screen: one, or the two of a landscape spread.
-                spreads.getOrNull(spreadOf(page, spreads))?.forEach { session?.clearPage(it) }
+                rows.getOrNull(rowOf(page, rows))?.forEach { session?.clearPage(it) }
             }
         }
     when (val request = textRequest) {

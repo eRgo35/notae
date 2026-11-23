@@ -1,6 +1,7 @@
 package com.c2yz.notae.ui.viewer
 
 import android.view.View
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -10,9 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performTouchInput
@@ -20,6 +23,7 @@ import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
+import com.c2yz.notae.core.ViewerScale
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.Assert.assertEquals
@@ -40,15 +44,18 @@ class PageAreaTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private var spread by mutableIntStateOf(0)
+    private var page by mutableIntStateOf(0)
     private var toggles = 0
     private val zoom = PageZoom()
+    private val twoPages = ViewLook(scroll = false, twoPages = true, scale = ViewerScale.FitPage)
+    private val onePage = ViewLook(scroll = false, twoPages = false, scale = ViewerScale.FitPage)
 
-    private fun show(mode: PageMode = PageMode.TWO, pages: Int = 5) {
-        val source = FakePages(pages)
+    private fun show(look: ViewLook = twoPages, source: FakePages = FakePages(5)) {
         compose.setContent {
             NotaeTheme {
-                PageArea(source, mode, spread, { spread = it }, { toggles++ }, Modifier.fillMaxSize(), zoom)
+                PageArea(source, look, page, { page = it }, { toggles++ }, Modifier.fillMaxSize(), zoom) { index, _ ->
+                    Box(Modifier.fillMaxSize().testTag("p-$index"))
+                }
             }
         }
         compose.waitForIdle()
@@ -57,7 +64,16 @@ class PageAreaTest {
     /** A tap, once the double-tap wait is over. */
     private fun tap(at: (androidx.compose.ui.test.TouchInjectionScope) -> Offset) {
         compose.onRoot().performTouchInput { click(at(this)) }
-        compose.mainClock.advanceTimeBy(500)
+        compose.mainClock.advanceTimeBy(1000)
+        compose.waitForIdle()
+    }
+
+    private fun pinchOut(from: (androidx.compose.ui.test.TouchInjectionScope) -> Offset) {
+        compose.onRoot().performTouchInput {
+            val at = from(this)
+            pinch(at - Offset(10f, 0f), at - Offset(80f, 0f), at + Offset(10f, 0f), at + Offset(80f, 0f))
+        }
+        compose.mainClock.advanceTimeBy(1000)
         compose.waitForIdle()
     }
 
@@ -65,13 +81,28 @@ class PageAreaTest {
     fun edge_tap_turns_by_a_spread() {
         show()
         tap { Offset(it.width * 0.95f, it.centerY) }
-        assertEquals(1, spread)
+        assertEquals(2, page)
         tap { Offset(it.width * 0.95f, it.centerY) }
         tap { Offset(it.width * 0.95f, it.centerY) }
-        assertEquals("the last spread stays", 2, spread)
+        assertEquals("the last spread stays", 4, page)
         tap { Offset(it.width * 0.05f, it.centerY) }
-        assertEquals(1, spread)
+        assertEquals(2, page)
         assertEquals(0, toggles)
+    }
+
+    @Test
+    fun turn_is_animated() {
+        show()
+        compose.mainClock.autoAdvance = false
+        compose.onRoot().performTouchInput { click(Offset(width * 0.95f, centerY)) }
+        // Past the double-tap wait, not yet settled.
+        compose.mainClock.advanceTimeBy(400)
+        compose.onNodeWithTag("p-0").assertExists()
+        compose.onNodeWithTag("p-2").assertExists()
+        compose.mainClock.advanceTimeBy(2000)
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertEquals(2, page)
     }
 
     @Test
@@ -79,45 +110,71 @@ class PageAreaTest {
         show()
         tap { it.center }
         assertEquals(1, toggles)
-        assertEquals(0, spread)
+        assertEquals(0, page)
     }
 
     @Test
     fun swipe_left_turns() {
         show()
         compose.onRoot().performTouchInput { swipeLeft() }
-        assertEquals(1, spread)
+        compose.waitForIdle()
+        assertEquals(2, page)
         compose.onRoot().performTouchInput { swipeRight() }
-        assertEquals(0, spread)
+        compose.waitForIdle()
+        assertEquals(0, page)
     }
 
     @Test
     fun double_tap_returns_to_fit() {
         show()
-        compose.onRoot().performTouchInput {
-            pinch(center - Offset(20f, 0f), center - Offset(200f, 0f), center + Offset(20f, 0f), center + Offset(200f, 0f))
-        }
-        compose.waitForIdle()
-        assertTrue("pinched in: ${zoom.scale}", zoom.scale > 1f)
-        assertTrue("at most 4×", zoom.scale <= 4f)
+        pinchOut { it.center }
+        assertTrue("pinched in: ${zoom.factor}", zoom.factor > 1f)
+        assertTrue("at most 4×", zoom.factor <= 4f)
         compose.onRoot().performTouchInput { swipeLeft() }
-        assertEquals("a zoomed page pans instead of turning", 0, spread)
+        compose.waitForIdle()
+        assertEquals("a zoomed page pans instead of turning", 0, page)
         compose.onRoot().performTouchInput { doubleClick(center) }
         compose.waitForIdle()
-        assertEquals(1f, zoom.scale)
+        assertEquals(1f, zoom.factor)
         assertEquals(Offset.Zero, zoom.offset)
     }
 
     @Test
+    fun pinch_at_the_edge_zooms_without_turning() {
+        show()
+        pinchOut { Offset(it.width * 0.1f, it.centerY) }
+        assertTrue("pinched at the edge: ${zoom.factor}", zoom.factor > 1f)
+        assertEquals(0, page)
+        pinchOut { Offset(it.width * 0.9f, it.height * 0.1f) }
+        assertEquals(0, page)
+    }
+
+    @Test
+    fun overflowing_spread_pans_on_swipe_and_turns_on_edge_tap() {
+        // Landscape pages at fit height are wider than the area.
+        show(ViewLook(scroll = false, twoPages = false, scale = ViewerScale.FitHeight), FakePages(3, aspect = 0.5f))
+        compose.onRoot().performTouchInput { swipeLeft() }
+        compose.waitForIdle()
+        assertEquals("a swipe pans", 0, page)
+        assertTrue("panned: ${zoom.offset}", zoom.offset.x > 0f)
+        tap { Offset(it.width * 0.95f, it.centerY) }
+        assertEquals(1, page)
+        assertEquals("a new page starts at its left", 0f, zoom.offset.x)
+    }
+
+    @Test
     fun page_down_and_arrows_turn() {
-        show(PageMode.ONE)
+        show(onePage)
         compose.onRoot().performKeyInput { pressKey(Key.PageDown) }
-        assertEquals(1, spread)
+        compose.waitForIdle()
+        assertEquals(1, page)
         compose.onRoot().performKeyInput { pressKey(Key.DirectionRight) }
-        assertEquals(2, spread)
+        compose.waitForIdle()
+        assertEquals(2, page)
         compose.onRoot().performKeyInput { pressKey(Key.DirectionLeft) }
         compose.onRoot().performKeyInput { pressKey(Key.PageUp) }
-        assertEquals(0, spread)
+        compose.waitForIdle()
+        assertEquals(0, page)
     }
 }
 

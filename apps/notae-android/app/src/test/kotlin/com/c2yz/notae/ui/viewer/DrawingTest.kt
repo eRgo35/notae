@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.swipe
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Overlay
@@ -126,6 +127,21 @@ class DrawingTest {
 
         val save = actions.filterIsInstance<Action.SaveOverlay>().single()
         assertTrue("the page is cleared", save.overlay.pages.isEmpty())
+    }
+
+    @Test
+    fun pinch_over_drawings_zooms_in_drawing_mode() {
+        show(inSet(drawn))
+        compose.onNodeWithContentDescription("Draw").performClick()
+        val before = compose.onNodeWithTag("page-0").fetchSemanticsNode().size.width
+        compose.onNodeWithTag("page-0").performTouchInput {
+            pinch(center - Offset(10f, 0f), center - Offset(150f, 0f), center + Offset(10f, 0f), center + Offset(150f, 0f))
+        }
+        compose.waitForIdle()
+        val after = compose.onNodeWithTag("page-0").fetchSemanticsNode().size.width
+        assertTrue("the page grew: $before → $after", after > before)
+        compose.onNodeWithText("Done").performClick()
+        assertTrue("a pinch draws nothing: $actions", actions.none { it is Action.SaveOverlay })
     }
 
     @Test

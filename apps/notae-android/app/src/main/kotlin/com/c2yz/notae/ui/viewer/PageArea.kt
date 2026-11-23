@@ -2,12 +2,8 @@ package com.c2yz.notae.ui.viewer
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -18,23 +14,25 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -42,174 +40,194 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.c2yz.notae.platform.PageSource
-import com.c2yz.notae.ui.components.HeightClass
-import com.c2yz.notae.ui.components.WidthClass
-import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
-/** How the viewer lays pages out. */
-enum class PageMode {
-    /** One page fit to the screen. */
-    ONE,
-
-    /** Two pages side by side, paired 1–2, 3–4, …: a tablet in landscape. */
-    TWO,
-
-    /** Pages at full width, scrolled vertically: a short window (a phone on its side). */
-    FIT_WIDTH,
-}
-
-/** Two pages only in a landscape window of EXPANDED width and REGULAR height; a COMPACT height fits to width. */
-fun pageModeFor(landscape: Boolean, width: WidthClass, height: HeightClass): PageMode = when {
-    height == HeightClass.COMPACT -> PageMode.FIT_WIDTH
-    landscape && width == WidthClass.EXPANDED -> PageMode.TWO
-    else -> PageMode.ONE
-}
-
-/** The pages shown together, in order: pairs in [PageMode.TWO] (an odd last page alone), else one page each. */
-fun spreadsFor(pageCount: Int, mode: PageMode): List<IntRange> {
-    val step = if (mode == PageMode.TWO) 2 else 1
-    return (0 until pageCount step step).map { first -> first..min(first + step - 1, pageCount - 1) }
-}
-
-/** The spread holding [page]; 0 when none does. */
-fun spreadOf(page: Int, spreads: List<IntRange>): Int = spreads.indexOfFirst { page in it }.coerceAtLeast(0)
-
-/** The zoom of a spread: 1× (fit) to 4×, and the pan while zoomed. */
-class PageZoom {
-    var scale by mutableFloatStateOf(1f)
-    var offset by mutableStateOf(Offset.Zero)
-
-    fun reset() {
-        scale = 1f
-        offset = Offset.Zero
-    }
-}
-
-private const val MAX_ZOOM = 4f
 private const val EDGE = 0.2f
-private const val SWIPE_FRACTION = 0.15f
 private val PAGE_GAP = 8.dp
 
 /**
- * The score's pages in [mode]: spread [spread] fit to the space, or, in [PageMode.FIT_WIDTH], every page at full
- * width scrolled vertically. A tap on the outer fifth of either side, a swipe, an arrow key or Page Up/Down turns
- * (by a spread); a tap in the middle third calls [onToggleBars]. A pinch zooms 1×–4× and a zoomed page pans instead
- * of turning; a double tap returns to fit. [overlay] draws over each page, given its box in the page area.
+ * The score's pages in [look]: turned a row at a time (one page or a pair) or, when [ViewLook.scroll], one row under
+ * another. [page] is the first page on screen and [onPage] reports a new one. A tap on the outer fifth of either side,
+ * an arrow key or Page Up/Down turns, animated; a tap in the middle third calls [onToggleBars]. Two fingers zoom
+ * anywhere ([pinchZoom]) on top of the chosen scale and a double tap returns to it. [overlay] draws over each page,
+ * given its box in the page's own coordinates.
  */
 @Composable
 fun PageArea(
     source: PageSource,
-    mode: PageMode,
-    spread: Int,
-    onSpread: (Int) -> Unit,
+    look: ViewLook,
+    page: Int,
+    onPage: (Int) -> Unit,
     onToggleBars: () -> Unit,
     modifier: Modifier = Modifier,
     zoom: PageZoom = remember { PageZoom() },
     overlay: @Composable (pageIndex: Int, pageBox: Rect) -> Unit = { _, _ -> },
 ) {
-    val spreads = remember(source, mode) { spreadsFor(source.pageCount, mode) }
-    val current by rememberUpdatedState(spread.coerceIn(0, (spreads.size - 1).coerceAtLeast(0)))
-    val turn = { by: Int ->
-        val next = (current + by).coerceIn(0, (spreads.size - 1).coerceAtLeast(0))
-        if (next != current) {
-            zoom.reset()
-            onSpread(next)
-        }
-    }
+    val rows = remember(source, look.twoPages) { rowsFor(source.pageCount, look.twoPages) }
     val keys = remember { FocusRequester() }
     LaunchedEffect(Unit) { keys.requestFocus() }
-    val keyed = modifier
-        .focusRequester(keys)
-        .focusable()
-        .onKeyEvent { event ->
-            if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
-            when (event.key) {
-                Key.DirectionRight, Key.DirectionDown, Key.PageDown -> turn(1).let { true }
-                Key.DirectionLeft, Key.DirectionUp, Key.PageUp -> turn(-1).let { true }
-                else -> false
-            }
+    val focused = modifier.focusRequester(keys).focusable()
+    // A new layout starts at the chosen scale, on the row holding the first page.
+    key(look) {
+        LaunchedEffect(Unit) { zoom.reset() }
+        if (look.scroll) {
+            ScrolledPages(source, page, onPage, onToggleBars, focused, overlay)
+        } else {
+            PagedRows(source, rows, look, rowOf(page, rows), onPage, onToggleBars, focused, zoom, overlay)
         }
-    if (mode == PageMode.FIT_WIDTH) {
-        ScrolledPages(source, current, onSpread, onToggleBars, keyed, overlay)
-    } else {
-        SpreadPages(source, spreads.getOrElse(current) { IntRange.EMPTY }, turn, onToggleBars, keyed, zoom, overlay)
     }
 }
 
+/** Arrow keys and Page Up/Down call [turn] with -1 or 1. */
+private fun Modifier.turnKeys(turn: (Int) -> Unit): Modifier = onKeyEvent { event ->
+    if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
+    when (event.key) {
+        Key.DirectionRight, Key.DirectionDown, Key.PageDown -> turn(1).let { true }
+        Key.DirectionLeft, Key.DirectionUp, Key.PageUp -> turn(-1).let { true }
+        else -> false
+    }
+}
+
+/** Taps: the outer fifths call [turn], the middle third [onToggleBars], a double tap [onDoubleTap]. */
+private fun Modifier.pageTaps(turn: (Int) -> Unit, onToggleBars: () -> Unit, onDoubleTap: () -> Unit): Modifier =
+    pointerInput(Unit) {
+        detectTapGestures(
+            onDoubleTap = { onDoubleTap() },
+            onTap = { at ->
+                when {
+                    at.x < size.width * EDGE -> turn(-1)
+                    at.x > size.width * (1 - EDGE) -> turn(1)
+                    at.x > size.width / 3f && at.x < size.width * 2f / 3f -> onToggleBars()
+                }
+            },
+        )
+    }
+
+/** The screen's dots per inch, for a percentage of the printed size. */
 @Composable
-private fun SpreadPages(
+private fun screenDpi(): Float = LocalContext.current.resources.displayMetrics.xdpi.takeIf { it > 0f } ?: 160f
+
+@Composable
+private fun PagedRows(
     source: PageSource,
-    pages: IntRange,
-    turn: (Int) -> Unit,
+    rows: List<IntRange>,
+    look: ViewLook,
+    initialRow: Int,
+    onPage: (Int) -> Unit,
     onToggleBars: () -> Unit,
     modifier: Modifier,
     zoom: PageZoom,
     overlay: @Composable (pageIndex: Int, pageBox: Rect) -> Unit,
 ) {
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        val width = constraints.maxWidth.toFloat()
-        val height = constraints.maxHeight.toFloat()
-        var dragged by remember { mutableFloatStateOf(0f) }
-        val transform = rememberTransformableState { zoomChange, panChange, _ ->
-            zoom.scale = (zoom.scale * zoomChange).coerceIn(1f, MAX_ZOOM)
-            zoom.offset = if (zoom.scale == 1f) Offset.Zero else clampPan(zoom.offset + panChange, zoom.scale, width, height)
+    val pager = remember(rows) { PagerState(initialRow.coerceIn(0, (rows.size - 1).coerceAtLeast(0))) { rows.size } }
+    val scope = rememberCoroutineScope()
+    val report by rememberUpdatedState(onPage)
+    LaunchedEffect(pager) {
+        var settled = pager.settledPage
+        snapshotFlow { pager.settledPage }.collect { row ->
+            if (row != settled) zoom.reset()
+            settled = row
+            rows.getOrNull(row)?.let { report(it.first) }
         }
-        val drag = rememberDraggableState { delta -> dragged += delta }
-        val gap = with(LocalDensity.current) { PAGE_GAP.toPx() }
-        val boxes = remember(pages, width, height, gap) { pageBoxes(source, pages, width, height, gap) }
+    }
+    val turn = { by: Int ->
+        val next = (pager.targetPage + by).coerceIn(0, (rows.size - 1).coerceAtLeast(0))
+        if (next != pager.targetPage) {
+            zoom.reset()
+            scope.launch { pager.animateScrollToPage(next) }
+        }
+    }
+    val dpi = screenDpi()
+    val gap = with(LocalDensity.current) { PAGE_GAP.toPx() }
+    BoxWithConstraints(modifier.fillMaxSize().turnKeys(turn)) {
+        val area = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
+        // The size of row [index] at the chosen scale, before the pinch.
+        val baseSize = { index: Int ->
+            rows.getOrNull(index)?.let { row ->
+                rowSize(row.map(source::pageAspect), row.map(source::pageWidthPoints), area, gap, look.scale, dpi)
+            } ?: Size.Zero
+        }
+        val shown = baseSize(pager.currentPage) * zoom.factor
+        val overflowX = shown.width > area.width + 0.5f
+        val overflowY = shown.height > area.height + 0.5f
+        val onPinch = remember(area, rows, look) {
+            { centroid: Offset, change: Float, pan: Offset ->
+                val base = baseSize(pager.currentPage)
+                val old = zoom.factor
+                val new = (old * change).coerceIn(MIN_ZOOM, MAX_ZOOM)
+                val before = base * old
+                val after = base * new
+                // The content point under the fingers before the move stays under them.
+                val start = Offset(contentStart(before.width, area.width, zoom.offset.x), contentStart(before.height, area.height, zoom.offset.y))
+                val point = centroid - pan - start
+                val newStart = centroid - point * (new / old)
+                zoom.factor = new
+                zoom.offset = Offset(clampPan(-newStart.x, after.width, area.width), clampPan(-newStart.y, after.height, area.height))
+            }
+        }
         Box(
             Modifier
                 .fillMaxSize()
-                .pointerInput(pages) {
-                    detectTapGestures(
-                        onDoubleTap = { zoom.reset() },
-                        onTap = { at ->
-                            when {
-                                at.x < size.width * EDGE -> turn(-1)
-                                at.x > size.width * (1 - EDGE) -> turn(1)
-                                at.x > size.width / 3f && at.x < size.width * 2f / 3f -> onToggleBars()
+                .pinchZoom(onPinch)
+                .pageTaps(turn, onToggleBars) { zoom.reset() }
+                .then(
+                    if (overflowX || overflowY) {
+                        Modifier.pointerInput(overflowX, overflowY, shown) {
+                            detectDragGestures { change, drag ->
+                                change.consume()
+                                val pan = zoom.offset - drag
+                                zoom.offset = Offset(clampPan(pan.x, shown.width, area.width), clampPan(pan.y, shown.height, area.height))
                             }
-                        },
-                    )
-                }
-                .transformable(transform, canPan = { zoom.scale > 1f })
-                .draggable(
-                    drag,
-                    Orientation.Horizontal,
-                    enabled = zoom.scale == 1f,
-                    onDragStarted = { dragged = 0f },
-                    onDragStopped = {
-                        if (abs(dragged) > width * SWIPE_FRACTION) turn(if (dragged < 0) 1 else -1)
-                        dragged = 0f
+                        }
+                    } else {
+                        Modifier
                     },
-                )
-                .graphicsLayer {
-                    scaleX = zoom.scale
-                    scaleY = zoom.scale
-                    translationX = zoom.offset.x
-                    translationY = zoom.offset.y
-                },
+                ),
         ) {
-            val density = LocalDensity.current
-            for ((index, box) in boxes) {
-                val renderWidth = (box.width * min(2f, ceil(zoom.scale))).roundToInt().coerceAtLeast(1)
-                Box(
-                    Modifier
-                        .offset { IntOffset(box.left.roundToInt(), box.top.roundToInt()) }
-                        .size(with(density) { box.width.toDp() }, with(density) { box.height.toDp() }),
-                ) {
-                    PageImage(source, index, renderWidth)
-                    overlay(index, Rect(0f, 0f, box.width, box.height))
+            HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = !overflowX, key = { rows[it].first }) { index ->
+                val current = index == pager.currentPage
+                val factor = if (current) zoom.factor else 1f
+                val pan = if (current) zoom.offset else Offset.Zero
+                val base = baseSize(index)
+                val size = base * factor
+                val origin = Offset(contentStart(size.width, area.width, pan.x), contentStart(size.height, area.height, pan.y))
+                val row = rows[index]
+                val aspects = row.map(source::pageAspect)
+                Box(Modifier.fillMaxSize().clipToBounds()) {
+                    val fitBoxes = pageBoxes(aspects, base, gap)
+                    pageBoxes(aspects, size, gap * factor).forEachIndexed { at, box ->
+                        val renderWidth = (fitBoxes[at].width * if (factor > 1f) 2f else 1f).coerceAtMost(area.width * 2f)
+                        PageBox(source, row.first + at, box.translate(origin), renderWidth.roundToInt(), overlay)
+                    }
                 }
             }
         }
+    }
+}
+
+/** Page [index] drawn into [box] (area pixels), rendered [renderWidth] wide, with its [overlay]. */
+@Composable
+private fun PageBox(
+    source: PageSource,
+    index: Int,
+    box: Rect,
+    renderWidth: Int,
+    overlay: @Composable (pageIndex: Int, pageBox: Rect) -> Unit,
+) {
+    val density = LocalDensity.current
+    Box(
+        Modifier
+            .offset { IntOffset(box.left.roundToInt(), box.top.roundToInt()) }
+            .size(with(density) { box.width.toDp() }, with(density) { box.height.toDp() }),
+    ) {
+        PageImage(source, index, renderWidth.coerceAtLeast(1))
+        overlay(index, Rect(0f, 0f, box.width, box.height))
     }
 }
 
@@ -217,20 +235,24 @@ private fun SpreadPages(
 private fun ScrolledPages(
     source: PageSource,
     page: Int,
-    onSpread: (Int) -> Unit,
+    onPage: (Int) -> Unit,
     onToggleBars: () -> Unit,
     modifier: Modifier,
     overlay: @Composable (pageIndex: Int, pageBox: Rect) -> Unit,
 ) {
     val list = rememberLazyListState(page)
-    LaunchedEffect(page) { if (list.firstVisibleItemIndex != page) list.animateScrollToItem(page) }
-    LaunchedEffect(list) { snapshotFlow { list.firstVisibleItemIndex }.collect(onSpread) }
-    BoxWithConstraints(modifier.fillMaxSize()) {
+    val scope = rememberCoroutineScope()
+    val report by rememberUpdatedState(onPage)
+    LaunchedEffect(list) { snapshotFlow { list.firstVisibleItemIndex }.collect { report(it) } }
+    val turn = { by: Int ->
+        val next = (list.firstVisibleItemIndex + by).coerceIn(0, (source.pageCount - 1).coerceAtLeast(0))
+        scope.launch { list.animateScrollToItem(next) }
+        Unit
+    }
+    BoxWithConstraints(modifier.fillMaxSize().turnKeys(turn)) {
         val widthPx = constraints.maxWidth.coerceAtLeast(1)
         LazyColumn(
-            Modifier.fillMaxSize().pointerInput(Unit) {
-                detectTapGestures { at -> if (at.x > size.width / 3f && at.x < size.width * 2f / 3f) onToggleBars() }
-            },
+            Modifier.fillMaxSize().pageTaps(turn, onToggleBars) {},
             state = list,
             verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
         ) {
@@ -251,26 +273,4 @@ private fun PageImage(source: PageSource, index: Int, widthPx: Int) {
         value = runCatching { source.render(index, widthPx) }.getOrNull()
     }
     bitmap?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds) }
-}
-
-/** Each page of [pages] fit together into [width] × [height], centred, [gap] apart, in the area's pixels. */
-private fun pageBoxes(source: PageSource, pages: IntRange, width: Float, height: Float, gap: Float): List<Pair<Int, Rect>> {
-    if (pages.isEmpty() || width <= 0f || height <= 0f) return emptyList()
-    val aspects = pages.map { source.pageAspect(it).coerceAtLeast(0.01f) }
-    val gaps = gap * (aspects.size - 1)
-    // A shared page height: the full height, or less when the pages side by side would be wider than the area.
-    val pageHeight = min(height, (width - gaps) / aspects.sumOf { 1.0 / it }.toFloat())
-    val widths = aspects.map { pageHeight / it }
-    var left = (width - widths.sum() - gaps) / 2f
-    val top = (height - pageHeight) / 2f
-    return pages.zip(widths).map { (index, pageWidth) ->
-        (index to Rect(left, top, left + pageWidth, top + pageHeight)).also { left += pageWidth + gap }
-    }
-}
-
-/** Keeps a page zoomed by [scale] covering the area: it pans at most to its own edges. */
-private fun clampPan(offset: Offset, scale: Float, width: Float, height: Float): Offset {
-    val x = width * (scale - 1f) / 2f
-    val y = height * (scale - 1f) / 2f
-    return Offset(offset.x.coerceIn(-x, x), offset.y.coerceIn(-y, y))
 }
