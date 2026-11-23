@@ -9,11 +9,13 @@ import com.c2yz.notae.platform.PageSource
 import kotlin.math.roundToInt
 
 /** [count] blank A4 pages, rendered white, recording which pages were drawn. */
-class FakePages(override val pageCount: Int, private val aspect: Float = 1.414f) : PageSource {
+class FakePages(override val pageCount: Int, private val aspect: Float = 1.414f, private val widthPoints: Float = 595f) : PageSource {
     val rendered = mutableListOf<Int>()
     var closed = false
 
     override fun pageAspect(index: Int): Float = aspect
+
+    override fun pageWidthPoints(index: Int): Float = widthPoints
 
     override suspend fun render(index: Int, widthPx: Int): ImageBitmap {
         rendered += index

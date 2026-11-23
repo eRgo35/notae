@@ -6,6 +6,9 @@ import com.c2yz.notae.core.Edited
 import com.c2yz.notae.core.LayoutPrefs
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.OpenScoresIn
+import com.c2yz.notae.core.ViewerLayout
+import com.c2yz.notae.core.ViewerPages
+import com.c2yz.notae.core.ViewerScale
 import com.c2yz.notae.core.Viewer
 import com.c2yz.notae.core.Origin
 import com.c2yz.notae.core.Row
@@ -245,7 +248,7 @@ object Fixture {
         banner = Banner(message = null, busy = false, failed = false, fraction = null, cancelEnabled = false, acknowledgeEnabled = false),
         rescanEnabled = true,
         settings = SettingsInfo(libraryName = null, indexedCount = 0u, noTextCount = 0u, latestScan = null, export = null, importStatus = null),
-        layout = LayoutPrefs(LibraryView.GRID, sidebarCollapsedPortrait = true, sidebarCollapsedLandscape = false, openScoresIn = OpenScoresIn.NOTAE, stylusSeen = false),
+        layout = LayoutPrefs(LibraryView.GRID, sidebarCollapsedPortrait = true, sidebarCollapsedLandscape = false, openScoresIn = OpenScoresIn.NOTAE, stylusSeen = false, viewerLayout = ViewerLayout.AUTO, viewerPages = ViewerPages.AUTO, viewerScale = ViewerScale.Auto),
         reordering = false,
         setDialog = null,
         removeItem = null,

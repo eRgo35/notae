@@ -24,6 +24,7 @@ class PdfPageSourceTest {
         val events = mutableListOf<String>()
         val source = PdfPageSource(
             listOf(1.414f),
+            listOf(595f),
             { _, width ->
                 rendering.countDown()
                 release.await(5, TimeUnit.SECONDS)
@@ -48,5 +49,12 @@ class PdfPageSourceTest {
             Thread.sleep(10)
         }
         assertEquals(listOf("rendered", "closed"), synchronized(events) { events.toList() })
+    }
+
+    @Test
+    fun reports_each_pages_printed_width_and_a4_past_the_end() {
+        val source = PdfPageSource(listOf(1.414f, 0.7f), listOf(595f, 842f), { _, w -> Bitmap.createBitmap(w, w, Bitmap.Config.ARGB_8888) }, {})
+        assertEquals(842f, source.pageWidthPoints(1))
+        assertEquals(595f, source.pageWidthPoints(5))
     }
 }

@@ -27,6 +27,9 @@ interface PageSource : Closeable {
     /** Page [index]'s height divided by its width. */
     fun pageAspect(index: Int): Float
 
+    /** Page [index]'s printed width in PDF points (1/72 inch). */
+    fun pageWidthPoints(index: Int): Float
+
     /** Page [index], [widthPx] wide, on white. */
     suspend fun render(index: Int, widthPx: Int): ImageBitmap
 }
@@ -41,6 +44,7 @@ typealias PageSourceFactory = suspend (treeUri: String, relativePath: String) ->
  */
 class PdfPageSource internal constructor(
     private val aspects: List<Float>,
+    private val widths: List<Float>,
     private val renderPage: (index: Int, widthPx: Int) -> Bitmap,
     private val closeRenderer: () -> Unit,
 ) : PageSource {
@@ -53,6 +57,8 @@ class PdfPageSource internal constructor(
     override val pageCount: Int get() = aspects.size
 
     override fun pageAspect(index: Int): Float = aspects.getOrElse(index) { A4_ASPECT }
+
+    override fun pageWidthPoints(index: Int): Float = widths.getOrElse(index) { A4_WIDTH_POINTS }
 
     // The lock is taken and released on IO, so a render never needs the main thread to finish.
     override suspend fun render(index: Int, widthPx: Int): ImageBitmap = withContext(Dispatchers.IO) {
@@ -88,6 +94,7 @@ class PdfPageSource internal constructor(
             }
         }
         private const val A4_ASPECT = 1.414f
+        private const val A4_WIDTH_POINTS = 595f
 
         /** Opens the PDF at [relativePath] below [treeUri]; walks the tree on [Dispatchers.IO]. */
         suspend fun open(resolver: ContentResolver, treeUri: String, relativePath: String): PdfPageSource = withContext(Dispatchers.IO) {
@@ -103,10 +110,10 @@ class PdfPageSource internal constructor(
             }
             try {
                 check(renderer.pageCount > 0) { "PDF has no readable pages" }
-                val aspects = (0 until renderer.pageCount).map { index ->
-                    renderer.openPage(index).use { page -> page.height.toFloat() / max(1, page.width) }
+                val sizes = (0 until renderer.pageCount).map { index ->
+                    renderer.openPage(index).use { page -> page.height.toFloat() / max(1, page.width) to max(1, page.width).toFloat() }
                 }
-                PdfPageSource(aspects, { index, widthPx -> renderPage(renderer, index, widthPx) }, renderer::close)
+                PdfPageSource(sizes.map { it.first }, sizes.map { it.second }, { index, widthPx -> renderPage(renderer, index, widthPx) }, renderer::close)
             } catch (error: Exception) {
                 renderer.close()
                 throw error
