@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -137,7 +138,9 @@ private fun PercentPill(label: String, selected: Boolean, onClick: () -> Unit) {
                 role = Role.RadioButton
             }
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .heightIn(min = 48.dp)
+            .wrapContentHeight()
+            .padding(horizontal = 14.dp),
         color = if (selected) c.onAccent else c.foreground,
         fontSize = 15.sp,
     )

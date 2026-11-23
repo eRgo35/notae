@@ -9,6 +9,20 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+### Added
+
+- **View menu** in the viewer: Pages (turned) or Scroll (one under another),
+  1 or 2 pages on screen, and the scale — fit page(s), fit width, fit height or
+  50–200 % of the printed size. Remembered on the device; until you choose,
+  the viewer behaves as in 0.8.0.
+- On a tablet in landscape the notes open as a panel beside the score.
+
+### Fixed
+
+- Pinch zoom works anywhere on the page, also at the edges and while drawing.
+- Page turns slide: the page follows the finger, and a tap on the edge, an
+  arrow key or a pedal turns with the same animation.
+
 ## [0.8.0] - 2026-11-23
 
 Notae 0.8.0 opens scores in its own viewer, lets you draw on the scores in a

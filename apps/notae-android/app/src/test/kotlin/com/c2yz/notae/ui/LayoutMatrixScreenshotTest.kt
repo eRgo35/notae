@@ -38,6 +38,9 @@ import com.c2yz.notae.ui.theme.NotaeTheme
 import com.github.takahirom.roborazzi.captureRoboImage
 import org.junit.Rule
 import org.junit.Test
+import com.c2yz.notae.core.ViewerLayout
+import com.c2yz.notae.core.ViewerPages
+import com.c2yz.notae.core.ViewerScale
 import org.junit.runner.RunWith
 import org.robolectric.ParameterizedRobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -70,7 +73,7 @@ class LayoutMatrixScreenshotTest(private val state: String, private val window: 
                 // Settings through the app shows this build's commit; a fixed one keeps the capture the same across commits.
                 if (viewer != null) {
                     // The viewer over three blank pages; the real PDF renderer does not run under Robolectric.
-                    Box(Modifier.shellFrame().fillMaxSize()) { ViewerScreen(viewer, {}, { _, _ -> FakePages(3) }) }
+                    Box(Modifier.shellFrame().fillMaxSize()) { ViewerScreen(viewer, {}, { _, _ -> FakePages(3) }, VIEWER_LAYOUT[state] ?: Fixture.layout) }
                 } else if (state == "settings") {
                     Box(Modifier.shellFrame().fillMaxSize()) { SettingsScreen(snapshot, {}, AboutInfo(version = "0.8.0", build = "abc1234")) }
                 } else {
@@ -81,7 +84,7 @@ class LayoutMatrixScreenshotTest(private val state: String, private val window: 
         compose.waitForIdle()
         when (state) {
             "viewer-set-drawing" -> compose.onNodeWithContentDescription("Draw").performClick()
-            "viewer-notes" -> compose.onNodeWithContentDescription("Notes").performClick()
+            "viewer-notes", "viewer-notes-panel" -> compose.onNodeWithContentDescription("Notes").performClick()
         }
         compose.waitForIdle()
         compose.assertAllClickablesLabelled()
@@ -160,6 +163,14 @@ class LayoutMatrixScreenshotTest(private val state: String, private val window: 
             "viewer" to Fixture.viewer(),
             "viewer-set-drawing" to inSet,
             "viewer-notes" to inSet,
+            "viewer-scroll" to Fixture.viewer(),
+            "viewer-two-scroll" to Fixture.viewer(),
+            "viewer-notes-panel" to Fixture.viewer(),
+        )
+        /** The View menu's choices per viewer state; the rest use a fresh install's. */
+        private val VIEWER_LAYOUT = mapOf(
+            "viewer-scroll" to Fixture.layout.copy(viewerLayout = ViewerLayout.SCROLL, viewerPages = ViewerPages.ONE, viewerScale = ViewerScale.FitWidth),
+            "viewer-two-scroll" to Fixture.layout.copy(viewerLayout = ViewerLayout.SCROLL, viewerPages = ViewerPages.TWO, viewerScale = ViewerScale.Percent(50u)),
         )
         private val VIEWER_WINDOWS = listOf("w360dp-h640dp", "w640dp-h360dp", "w1280dp-h800dp", "w800dp-h1280dp")
 

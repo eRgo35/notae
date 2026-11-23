@@ -59,10 +59,12 @@ setting hands them to the viewer you already use instead.
 - **Share a set** through Android's share sheet as a `.notae-set` file plus a
   readable list, with or without your set notes. Never PDFs or score notes.
   The receiver sees a review of matched and unmatched scores first.
-- **Open scores in Notae's viewer**: one page, or two side by side on a
-  tablet in landscape; tap the edges, swipe or use the keyboard to turn, pinch
-  to zoom. From a set, move to the previous or next piece and read the score
-  and set notes. **Settings → Open scores in** hands them to your PDF viewer
+- **Open scores in Notae's viewer**: pages turned one at a time or scrolled
+  one under another, one page or two side by side, fit to the page, width or
+  height or at 50–200 % of the printed size (**View** menu, remembered on the
+  device); tap the edges, swipe or use the keyboard to turn, pinch anywhere to
+  zoom. From a set, move to the previous or next piece. The score and set
+  notes open beside the score on a tablet in landscape. **Settings → Open scores in** hands them to your PDF viewer
   instead (Samsung Notes when installed, otherwise the Android PDF chooser).
 - **Draw on a set's pieces** with a pen, a red pen, a highlighter, an eraser
   and text boxes, with undo. A stylus draws and a finger turns pages. Drawings
