@@ -1,6 +1,8 @@
 package com.c2yz.notae.platform
 
+import android.content.ContentResolver
 import android.net.Uri
+import android.provider.OpenableColumns
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.IOException
@@ -122,4 +124,35 @@ private fun keep(name: String): Boolean {
     val sidecar = segments.first() == ".notae"
     val hidden = segments.drop(if (sidecar) 1 else 0).any { it.startsWith(".") }
     return !hidden && (sidecar || isPdf(segments.last()))
+}
+
+/** A ZIP import in progress, over whatever screen is open. */
+sealed interface ZipImport {
+    /** A ZIP shared to Notae while a library is open: replace it? */
+    data class Confirm(val name: String, val uri: Uri) : ZipImport
+
+    data class Unpacking(val name: String) : ZipImport
+
+    /** The import stopped; the library is as it was. [detail] is the platform's message. */
+    data class Failed(val reason: ZipImportException.Reason, val detail: String?) : ZipImport
+}
+
+/** The name [uri]'s provider shows for it, or the last part of its path. Blocking: call it on `Dispatchers.IO`. */
+fun displayName(resolver: ContentResolver, uri: Uri): String {
+    val shown = try {
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
+    } catch (_: Exception) {
+        null
+    }
+    return shown?.takeIf { it.isNotBlank() } ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "ZIP"
+}
+
+/** Whether the file at [uri] starts as a ZIP does. Blocking: call it on `Dispatchers.IO`. */
+fun isZip(resolver: ContentResolver, uri: Uri): Boolean = try {
+    resolver.openInputStream(uri)?.use { input ->
+        val head = ByteArray(4)
+        input.readNBytesCompat(head) == 4 && isZipHead(head)
+    } ?: false
+} catch (_: Exception) {
+    false
 }

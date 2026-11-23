@@ -73,6 +73,7 @@ import com.c2yz.notae.ui.sets.SetOverlays
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.settings.SettingsScreen
 import com.c2yz.notae.ui.setup.WelcomeScreen
+import com.c2yz.notae.ui.setup.ZipImports
 import com.c2yz.notae.ui.theme.NotaeMotion
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.c2yz.notae.ui.theme.Tokens
@@ -90,6 +91,7 @@ fun NotaeNavDisplay(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     voiceAvailable: Boolean = false,
+    zip: ZipImports = ZipImports.None,
 ) {
     val backStack = backStackFor(snapshot)
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
@@ -105,7 +107,7 @@ fun NotaeNavDisplay(
         val besideList = twoPane && isListRoute(backStack.getOrNull(backStack.size - 2))
         // Navigation 3 remembers the entries until the back stack changes, so they read the newest snapshot from
         // here instead of keeping the one they were built with (a banner, a star or new rows change no key).
-        val shown = rememberUpdatedState(Shown(snapshot, onAction, voiceAvailable, besideList, backStack))
+        val shown = rememberUpdatedState(Shown(snapshot, onAction, voiceAvailable, besideList, backStack, zip))
         val order = rememberUpdatedState(snapshot.sections.map { it.key } + snapshot.composers.map { it.key })
         val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
         val dropPixels = with(LocalDensity.current) { DROP.roundToPx() }
@@ -283,6 +285,7 @@ private data class Shown(
     val voiceAvailable: Boolean,
     val besideList: Boolean,
     val stack: List<NavKey>,
+    val zip: ZipImports = ZipImports.None,
 )
 
 /**
@@ -307,10 +310,10 @@ private class Held(var value: Shown)
 private fun entryFor(key: NavKey, shown: State<Shown>, motion: ScreenMotion): NavEntry<NavKey> = when (key) {
     Route.Loading -> placeholder(key, R.string.screen_loading)
     Route.Setup -> NavEntry(key) {
-        val (snapshot, onAction) = shownFor(key, shown)
-        val setup = (snapshot.screen as? Screen.Setup)?.setup
+        val it = shownFor(key, shown)
+        val setup = (it.snapshot.screen as? Screen.Setup)?.setup
         if (setup != null) {
-            WelcomeScreen(setup, snapshot.importAvailable, onAction, importStatus = snapshot.settings.importStatus)
+            WelcomeScreen(setup, it.snapshot.importAvailable, it.onAction, importStatus = it.snapshot.settings.importStatus, zip = it.zip)
         }
     }
     // The set view is the library screen inside the set (0.3.0 drew it in the same chrome).
@@ -333,8 +336,8 @@ private fun entryFor(key: NavKey, shown: State<Shown>, motion: ScreenMotion): Na
         ScreenFrame(motion) { SearchScreen(it.snapshot, it.onAction, it.voiceAvailable) }
     }
     Route.Settings -> NavEntry(key) {
-        val (snapshot, onAction) = shownFor(key, shown)
-        ScreenFrame(motion) { SettingsScreen(snapshot, onAction, ABOUT) }
+        val it = shownFor(key, shown)
+        ScreenFrame(motion) { SettingsScreen(it.snapshot, it.onAction, ABOUT, zip = it.zip) }
     }
     Route.Licenses -> NavEntry(key) {
         val (_, onAction) = shownFor(key, shown)

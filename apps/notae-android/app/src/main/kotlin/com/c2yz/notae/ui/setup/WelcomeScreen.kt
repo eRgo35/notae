@@ -21,6 +21,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,7 +63,9 @@ fun WelcomeScreen(
     onAction: (Action) -> Unit,
     modifier: Modifier = Modifier,
     importStatus: ImportStatus? = null,
+    zip: ZipImports = ZipImports.None,
 ) {
+    var zipDialog by remember { mutableStateOf(false) }
     val c = NotaeTheme.colors
     val recovery = setup as? SetupScreen.PermissionLost
     BoxWithConstraints(modifier.fillMaxSize().background(c.background)) {
@@ -116,6 +122,15 @@ fun WelcomeScreen(
                     Modifier.widthIn(max = 360.dp).fillMaxWidth(),
                     primary = true,
                 )
+                // A recovering library has its folder to reconnect; a ZIP would replace it.
+                if (recovery == null) {
+                    PillButton(
+                        stringResource(R.string.zip_import),
+                        { zipDialog = true },
+                        Modifier.widthIn(max = 360.dp).fillMaxWidth(),
+                        tonal = true,
+                    )
+                }
                 if (importAvailable) {
                     PillButton(
                         stringResource(R.string.setup_import),
@@ -171,6 +186,7 @@ fun WelcomeScreen(
                 actions()
             }
         }
+        if (zipDialog) ZipImportDialog(zip) { zipDialog = false }
     }
 }
 

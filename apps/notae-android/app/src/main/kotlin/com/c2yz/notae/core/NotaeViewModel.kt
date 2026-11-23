@@ -3,7 +3,17 @@ package com.c2yz.notae.core
 import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
+import android.net.Uri
+import androidx.lifecycle.viewModelScope
 import com.c2yz.notae.platform.SafLibrary
+import com.c2yz.notae.platform.ZipImport
+import com.c2yz.notae.platform.ZipImportException
+import com.c2yz.notae.platform.unpackZipLibrary
+import com.c2yz.notae.platform.zipLibraryHandle
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.FileNotFoundException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +72,52 @@ class NotaeViewModel(app: Application) : AndroidViewModel(app) {
     fun importFileFailed(detail: String) = core.importFileFailed(detail)
 
     fun pdfOpened(error: PdfOpenError?) = core.pdfOpened(error)
+
+    private val zipState = MutableStateFlow<ZipImport?>(null)
+
+    /** The ZIP import waiting for the user or being unpacked; kept here so it outlives the activity. */
+    val zipImport: StateFlow<ZipImport?> = zipState.asStateFlow()
+
+    /** A ZIP chosen in Notae: it becomes the library at once. */
+    fun zipChosen(name: String, uri: Uri) = importZip(name, uri)
+
+    /** A ZIP shared to or opened with Notae: asked about first when it would replace an open library. */
+    fun zipReceived(name: String, uri: Uri) {
+        if (snapshot.value.screen is Screen.Setup) importZip(name, uri) else zipState.value = ZipImport.Confirm(name, uri)
+    }
+
+    fun confirmZip() {
+        (zipState.value as? ZipImport.Confirm)?.let { importZip(it.name, it.uri) }
+    }
+
+    fun dismissZip() {
+        if (zipState.value !is ZipImport.Unpacking) zipState.value = null
+    }
+
+    /**
+     * Unpacks the ZIP at [uri] into Notae's storage on [Dispatchers.IO] and opens it as the library, named [name] without
+     * its extension. Unpacked again into the same folder, it is the same library: its notes, sets and drawings stay.
+     */
+    private fun importZip(name: String, uri: Uri) {
+        if (zipState.value is ZipImport.Unpacking) return
+        zipState.value = ZipImport.Unpacking(name)
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            zipState.value = try {
+                unpackZipLibrary({ app.contentResolver.openInputStream(uri) ?: throw FileNotFoundException("cannot read $uri") }, app.filesDir)
+                core.libraryRootPicked(name.removeSuffix(".zip").removeSuffix(".ZIP").ifEmpty { name }, zipLibraryHandle(app.filesDir))
+                null
+            } catch (error: ZipImportException) {
+                Log.w(TAG, "ZIP import failed: ${error.message}")
+                ZipImport.Failed(error.reason, error.message)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Log.w(TAG, "ZIP import failed", error)
+                ZipImport.Failed(ZipImportException.Reason.UNREADABLE, error.message ?: error.toString())
+            }
+        }
+    }
 
     override fun onCleared() {
         pendingEffects.close()

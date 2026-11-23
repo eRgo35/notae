@@ -1,5 +1,6 @@
 package com.c2yz.notae.core
 
+import android.content.ActivityNotFoundException
 import android.net.Uri
 import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,6 +16,7 @@ import com.c2yz.notae.platform.ImportFilePicker
 import com.c2yz.notae.platform.PdfOpener
 import com.c2yz.notae.platform.SetSharer
 import com.c2yz.notae.platform.VoiceSearch
+import com.c2yz.notae.platform.displayName
 import com.c2yz.notae.platform.openUrl
 import com.c2yz.notae.platform.pdfOpenFailure
 import kotlinx.coroutines.CancellationException
@@ -56,6 +58,23 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
             model.importFileFailed(detail)
         },
     )
+
+    private val zipPicker = activity.registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@registerForActivityResult
+        activity.lifecycleScope.launch {
+            val name = withContext(Dispatchers.IO) { displayName(activity.contentResolver, uri) }
+            model.zipChosen(name, uri)
+        }
+    }
+
+    /** The open-file picker on ZIP files, for "Import scores from a ZIP"; a cancelled picker does nothing. */
+    fun pickZip() {
+        try {
+            zipPicker.launch(ZIP_TYPES)
+        } catch (error: ActivityNotFoundException) {
+            Log.w(TAG, "no file picker: ${error.message}")
+        }
+    }
 
     init {
         activity.lifecycleScope.launch {
@@ -131,5 +150,8 @@ class EffectHandler(private val activity: AppCompatActivity, private val model: 
     private companion object {
         const val TAG = "Notae"
         const val JSON = "application/json"
+
+        /** Some providers label a downloaded ZIP as bytes; anything that is not one fails as "not a ZIP". */
+        val ZIP_TYPES = arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")
     }
 }

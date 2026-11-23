@@ -145,7 +145,7 @@ class SettingsScreenTest {
                 core.dispatch(action)
             }
 
-            compose.onNodeWithText("Export sets").performScrollTo().performClick()
+            compose.scrollListTo("Export sets").performClick()
             compose.waitForIdle()
             compose.waitUntil {
                 listener.rethrow()
@@ -160,7 +160,7 @@ class SettingsScreenTest {
             // The platform saved it: the core's next snapshot shows the outcome under the button.
             core.fileWritten(null)
             shown = settings().copy(settings = listener.snapshots.last().settings.copy(libraryName = "NotaeRef"))
-            compose.onNodeWithText("Favorites and sets exported").performScrollTo().assertIsDisplayed()
+            compose.scrollListTo("Favorites and sets exported").assertIsDisplayed()
             listener.rethrow()
         } finally {
             core.close()
@@ -172,7 +172,7 @@ class SettingsScreenTest {
     fun export_failure_names_the_reason() {
         show(settings(export = ExportStatus.Failed("disk full")))
 
-        compose.onNodeWithText("Could not export sets: disk full").performScrollTo().assertIsDisplayed()
+        compose.scrollListTo("Could not export sets: disk full").assertIsDisplayed()
     }
 
     @Test
@@ -252,7 +252,7 @@ class SettingsScreenTest {
         shown = snapshot
         compose.setContent { NotaeTheme(dark = dark) { shown?.let { SettingsScreen(it, { action -> actions += action }, ABOUT) } } }
         compose.waitForIdle()
-        scrollTo?.let { compose.onNodeWithText(it).performScrollTo() }
+        scrollTo?.let { compose.scrollListTo(it) }
         compose.waitForIdle()
         val orientation = if (landscape) "landscape" else "portrait"
         compose.onRoot().captureRoboImage("src/test/screenshots/$state-$orientation-${if (dark) "dark" else "light"}.png")
@@ -297,4 +297,10 @@ class SettingsScreenTest {
             settings = SettingsInfo(libraryName = "NotaeRef", indexedCount = 20u, noTextCount = 0u, latestScan = scan, export = export, importStatus = null),
         )
     }
+}
+
+/** The node with [text], scrolled into view: a lazy list composes only the cards near the screen. */
+internal fun androidx.compose.ui.test.SemanticsNodeInteractionsProvider.scrollListTo(text: String): androidx.compose.ui.test.SemanticsNodeInteraction {
+    onNode(androidx.compose.ui.test.hasScrollToNodeAction()).performScrollToNode(androidx.compose.ui.test.hasText(text))
+    return onNodeWithText(text)
 }

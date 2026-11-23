@@ -118,7 +118,7 @@ class ImportTest {
     fun import_sets_asks_for_a_file_and_shows_the_outcome() {
         show(settings)
 
-        compose.onNodeWithText("Import sets").performScrollTo().performClick()
+        compose.scrollListTo("Import sets").performClick()
         assertEquals(listOf<Action>(Action.ImportRequested), actions)
 
         shown = settings.withImport(ImportStatus.Imported)

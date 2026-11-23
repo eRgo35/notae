@@ -91,6 +91,8 @@ import com.c2yz.notae.ui.library.ListScrollbar
 import com.c2yz.notae.ui.library.isCtrlK
 import com.c2yz.notae.ui.sets.closeOnEscape
 import com.c2yz.notae.ui.sets.overlayOpen
+import com.c2yz.notae.ui.setup.ZipImportDialog
+import com.c2yz.notae.ui.setup.ZipImports
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 /** The build's version name and git identity, for the About card. */
@@ -104,8 +106,9 @@ data class AboutInfo(val version: String, val build: String)
  * asks for search, as 0.3.0's root shortcuts do.
  */
 @Composable
-fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutInfo, modifier: Modifier = Modifier) {
+fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutInfo, modifier: Modifier = Modifier, zip: ZipImports = ZipImports.None) {
     val c = NotaeTheme.colors
+    var zipDialog by remember { mutableStateOf(false) }
     val keys = remember { FocusRequester() }
     // The import confirmation over Settings keeps the focus while open, and hands it back when it closes.
     val overlay = overlayOpen(snapshot)
@@ -143,7 +146,7 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     val card = Modifier.widthIn(max = 720.dp).fillMaxWidth()
-                    item { LibraryFolderCard(snapshot.settings.libraryName.orEmpty(), onAction, card) }
+                    item { LibraryFolderCard(snapshot.settings.libraryName.orEmpty(), onAction, { zipDialog = true }, card) }
                     item { MaintenanceCard(snapshot.settings, card) }
                     item { AboutCard(about, onAction, card) }
                     item { LanguageCard(card) }
@@ -153,6 +156,7 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
                 ListScrollbar(state, Modifier.align(Alignment.TopEnd))
             }
         }
+        if (zipDialog) ZipImportDialog(zip) { zipDialog = false }
     }
 }
 
@@ -170,7 +174,7 @@ private fun CardTitle(text: String) {
 }
 
 @Composable
-private fun LibraryFolderCard(name: String, onAction: (Action) -> Unit, modifier: Modifier) {
+private fun LibraryFolderCard(name: String, onAction: (Action) -> Unit, onZip: () -> Unit, modifier: Modifier) {
     val c = NotaeTheme.colors
     SettingsCard(modifier, spacing = 4) {
         Text(stringResource(R.string.settings_library_folder), color = c.muted, fontSize = 13.sp)
@@ -178,6 +182,7 @@ private fun LibraryFolderCard(name: String, onAction: (Action) -> Unit, modifier
             Text(name, Modifier.weight(1f), color = c.foreground, fontSize = 15.sp)
             PillButton(stringResource(R.string.settings_change), { onAction(Action.PickLibraryRoot) }, tonal = true)
         }
+        PillButton(stringResource(R.string.zip_import), onZip, Modifier.padding(top = 4.dp), tonal = true)
     }
 }
 
