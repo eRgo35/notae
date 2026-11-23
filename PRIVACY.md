@@ -1,6 +1,6 @@
 # Notae privacy policy
 
-Effective date: 12 November 2026
+Effective date: 23 November 2026
 
 This is the privacy policy of Notae, a score library app for Android developed by Michał Czyż as an open-source project (<https://github.com/eRgo35/notae>).
 
@@ -18,11 +18,17 @@ You choose your folder of PDF scores with Android's folder picker. It can be on 
 
 If you choose a folder from a cloud storage app, that app, not Notae, may download the files when Notae reads them.
 
+## A ZIP of scores
+
+Instead of a folder, you can import a ZIP file of PDF scores: one you pick in Android's file picker, or one you share to or open with Notae. Notae reads only that file. It unpacks the PDFs in it (and a `.notae/` folder from the Notae PC tool) into its private app storage, which then is your library; other files in the ZIP are skipped, and the ZIP itself is not changed. Importing another ZIP replaces those PDFs. Choosing a folder instead deletes Notae's copy; your ZIP file stays where it is.
+
+**From a link** only opens the address you type in your web browser. The browser, not Notae, downloads the file, under its own privacy policy; Notae still has no internet access.
+
 ## Data stored on your device
 
 Notae keeps the following in its private app storage, which other apps cannot read:
 
-- **the folder you chose:** its name and Android's read-only access to it;
+- **the folder you chose:** its name and Android's read-only access to it; or **the PDFs of a ZIP you imported** and its name;
 - **an index of your scores:** file paths and names, sizes and dates, a fingerprint (SHA-256) of each file, numbers, titles, composers and tags, including your edits to them (Notae never writes these edits into the PDFs), and the text already embedded in the PDFs (on Android 15 and later);
 - **a thumbnail** of each score's first page;
 - **your favorites, recently opened scores, sets** (with their descriptions, text items and set notes) **and score notes**;
@@ -33,7 +39,7 @@ Notae updates this data when you scan your folder, edit something, or open a sco
 
 ## Retention and deletion
 
-This data stays on your device until you delete it. Clear Notae's storage in Android's settings, or uninstall the app, and all of it is removed. Your PDF files are not affected. The developer has no copy of your data, so there is nothing the developer could access, correct or delete on your behalf. Files you exported or shared, and Android backups, are not removed by uninstalling Notae.
+This data stays on your device until you delete it. Clear Notae's storage in Android's settings, or uninstall the app, and all of it is removed, Notae's copy of an imported ZIP's PDFs included. Your PDF folder and your ZIP files are not affected. The developer has no copy of your data, so there is nothing the developer could access, correct or delete on your behalf. Files you exported or shared, and Android backups, are not removed by uninstalling Notae.
 
 ## Android backup
 
@@ -43,7 +49,7 @@ Notae uses Android's standard app backup. If backup is turned on for your device
 
 Data leaves Notae only when you act. The app that receives it then handles it under its own privacy policy.
 
-- **Opening a score** gives another app temporary read-only access to that one PDF: Samsung Notes if it is installed, otherwise the app you pick in Android's chooser. That app may keep its own copy.
+- **Opening a score** in the system's PDF app (a setting) gives that app temporary read-only access to that one PDF: Samsung Notes if it is installed, otherwise the app you pick in Android's chooser. That app may keep its own copy.
 - **Voice search** opens your device's speech recognition app. Notae does not record audio. The speech app may process your voice, possibly online, and gives Notae only the recognised text.
 - **Sharing a set** sends a `.notae-set` file and a plain-text list through Android's share sheet to the app you pick. The file contains the set's name, date, description, internal id and last-change time, its text items, and for each score its number, title, composer, path in your library and fingerprint. With **Share set with notes** it also contains your set notes, which then also appear in the text list. It never contains your PDFs, score notes or favorites.
 - **Export sets** saves a file to a location you pick. It contains all your sets (with set notes), favorites and score notes, including each score's library path and fingerprint. It does not contain your PDFs, index, thumbnails, recent scores or settings.
@@ -51,7 +57,7 @@ Data leaves Notae only when you act. The app that receives it then handles it un
 
 ## Security
 
-Notae's data is protected by Android's app sandbox: other apps cannot read it. Because Notae has no network access, it never sends your data anywhere, and the only file it offers to other apps is the set file you choose to share.
+Notae's data is protected by Android's app sandbox: other apps cannot read it. Because Notae has no network access, it never sends your data anywhere, and it offers other apps only the files you hand them: a set you share, or a score you open in another app.
 
 ## Google Play
 

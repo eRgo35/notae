@@ -2,7 +2,7 @@
 
 The domain terms Notae's code, docs and issues use. Use these words; avoid the synonyms listed.
 
-- **Library**: the one folder of PDFs the user picks (a Storage Access Framework grant on Android). Notae reads it and never modifies the PDFs in it. _Avoid:_ collection, catalogue (for the folder).
+- **Library**: the one folder of PDFs the user picks (a Storage Access Framework grant on Android), or the PDFs of a ZIP the user imported, unpacked into Notae's private storage (a **ZIP library**, from 0.9.0). Notae never modifies the PDFs in a folder; importing another ZIP replaces a ZIP library's PDFs. _Avoid:_ collection, catalogue (for the folder).
 - **Score / piece**: one PDF in the library and its one record in the index. The UI says "score"; the favorites and sets code says "piece". _Avoid:_ note, song, file (except for the PDF itself).
 - **Number** and **title**: parsed from a file named `<number> - <title>.pdf`. Other names work and have no number.
 - **Details**: the editable metadata of a score (number, title, composer, tags). Edits live in the index and never rename the PDF.

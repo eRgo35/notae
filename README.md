@@ -35,7 +35,8 @@ cloud, no account, no network access.**
 If you keep a few hundred scanned or exported scores as plain PDFs, a file
 manager gives you file names and nothing else; nothing can search the printed
 text inside a scan. Notae adds a private catalogue on top of your existing
-folder and leaves the PDFs exactly where they are. Scores open in Notae's own
+folder and leaves the PDFs exactly where they are, or unpacks a ZIP of scores
+(say, from your choir's link) into its own storage. Scores open in Notae's own
 viewer, where you can draw on the pieces of a set without touching the PDF; a
 setting hands them to the viewer you already use instead.
 
@@ -113,7 +114,9 @@ physical tablet.</sub>
 ## How it works
 
 Notae reads the folder you pick through Android's Storage Access Framework and
-builds its own private index from it.
+builds its own private index from it. A ZIP you import is unpacked into Notae's
+private storage and read from there; the browser downloads it, as Notae has no
+network access.
 
 ```mermaid
 flowchart LR
@@ -188,7 +191,11 @@ and title for free; other names work and simply have no number.
 
 **2. Open Notae and choose the folder.** Tap **Choose score folder**, pick the
 folder in the Android picker and allow access. Notae then scans the folder and
-indexes the PDFs. Coming from 0.3.0 or 0.4.0? Tap **Import from a previous
+indexes the PDFs. Got the scores as a ZIP, or as a link to one? Tap **Import
+scores from a ZIP**: **Choose ZIP file**, or paste the link and tap **Open in
+browser**, let the browser download it, and come back (or share the file to
+Notae). Importing a newer ZIP later replaces the scores and keeps your
+favorites, sets, notes and drawings. Coming from 0.3.0 or 0.4.0? Tap **Import from a previous
 Notae** first and pick the file the old app's **Export sets** wrote.
 The import carries your favorites and sets only: details you edited (number,
 title, composer, tags) and the Recent list stay in the old app. Keep the old
@@ -314,9 +321,11 @@ architecture are in the
   contains no HTTP client, TLS or async-network crates. There are no accounts and no
   telemetry.
 - **No broad storage access.** Notae reads only the folder you pick through
-  Android's Storage Access Framework, and only reads from it.
-- **PDFs are never modified.** They are not copied, moved, renamed or
-  rewritten. The index and thumbnails live in the app's private storage.
+  Android's Storage Access Framework, and only reads from it, or the one ZIP
+  file you import.
+- **PDFs are never modified.** Those in your folder are not copied, moved,
+  renamed or rewritten. The PDFs of an imported ZIP are unpacked into the app's
+  private storage, with the index and thumbnails.
 - **Handing a score to another viewer** grants that app temporary read access to that
   one PDF.
 - **Voice search** is optional: it only launches Android's installed speech

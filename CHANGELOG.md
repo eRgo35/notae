@@ -9,8 +9,21 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-23
+
+Notae 0.9.0 lets you choose how the viewer lays out pages, zoom anywhere,
+keep the notes beside the score on a tablet, and import the library from a
+ZIP file or a link. See [`docs/release-notes/v0.9.0.md`](docs/release-notes/v0.9.0.md).
+
 ### Added
 
+- **Import scores from a ZIP**, on the welcome screen and in Settings →
+  Library folder: choose a ZIP file, or paste a link that opens in the browser
+  with steps for downloading it. A ZIP shared to or opened with Notae imports
+  too, after asking when a library is open. The PDFs are unpacked into Notae's
+  private storage, so no folder access is asked; a newer ZIP replaces them and
+  keeps favorites, sets, notes and drawings. Choosing a folder again deletes
+  the copy.
 - **View menu** in the viewer: Pages (turned) or Scroll (one under another),
   1 or 2 pages on screen, and the scale — fit page(s), fit width, fit height or
   50–200 % of the printed size. Remembered on the device; until you choose,
@@ -22,6 +35,10 @@ The hand-written release notes for each version live in
 - Pinch zoom works anywhere on the page, also at the edges and while drawing.
 - Page turns slide: the page follows the finger, and a tap on the edge, an
   arrow key or a pedal turns with the same animation.
+- Switching to a library whose scores reuse the numbers of the old one no
+  longer fails those scores until the next scan.
+- Zoomed or 200 % pages render within a memory budget instead of crashing on
+  very large bitmaps.
 
 ## [0.8.0] - 2026-11-23
 
@@ -553,7 +570,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/eRgo35/notae/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/eRgo35/notae/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/eRgo35/notae/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/eRgo35/notae/compare/v0.6.1...v0.7.0
