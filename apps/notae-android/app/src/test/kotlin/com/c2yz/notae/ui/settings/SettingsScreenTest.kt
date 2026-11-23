@@ -21,7 +21,10 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.pressKey
 import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.performScrollToNode
 import com.c2yz.notae.core.Action
+import com.c2yz.notae.core.OpenScoresIn
 import com.c2yz.notae.core.DocumentContent
 import com.c2yz.notae.core.DocumentEntry
 import com.c2yz.notae.core.Effect
@@ -78,6 +81,18 @@ class SettingsScreenTest {
 
     @After
     fun followTheSystemAgain() = setAppLanguage("")
+
+    @Test
+    fun open_scores_in_row_dispatches_the_choice() {
+        show(settings())
+
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("System default app"))
+        compose.onNodeWithText("Open scores in").assertIsDisplayed()
+        compose.onNodeWithText("Notae").assertIsSelected()
+        compose.onNodeWithText("System default app").performClick()
+
+        assertEquals(listOf<Action>(Action.SetOpenScoresIn(OpenScoresIn.SYSTEM_APP)), actions)
+    }
 
     @Test
     @Config(qualifiers = "pl-w360dp-h640dp-xhdpi")

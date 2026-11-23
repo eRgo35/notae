@@ -27,13 +27,17 @@ sealed interface Route : NavKey {
 
     /** The open-source licenses, above Settings. */
     data object Licenses : Route
+
+    /** Notae's viewer on a score (and, from a set, its item), above the screen that opened it. */
+    data class Viewer(val noteKey: String, val itemId: String?) : Route
 }
 
 private const val SET_PREFIX = "set:"
 
 /**
  * The back stack the snapshot shows (design spec §4.4). It mirrors `NotaeCore.back`: what the core
- * closes first is last, so search or settings sit above the details (ruling R45), which sit above the open set.
+ * closes first is last: the viewer above everything, search or settings above the details (ruling R45), which sit
+ * above the open set.
  */
 fun backStackFor(snapshot: Snapshot): List<NavKey> {
     val section = when (snapshot.screen) {
@@ -55,5 +59,7 @@ fun backStackFor(snapshot: Snapshot): List<NavKey> {
         Screen.Licenses -> stack += listOf(Route.Settings, Route.Licenses)
         else -> Unit
     }
+    // The core closes the viewer first, so it sits on top of whatever opened it.
+    snapshot.viewer?.let { stack += Route.Viewer(it.row.noteKey, it.row.itemId) }
     return stack
 }

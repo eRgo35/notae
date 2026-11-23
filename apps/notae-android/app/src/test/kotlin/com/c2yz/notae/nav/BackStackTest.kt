@@ -55,6 +55,26 @@ class BackStackTest {
         )
     }
 
+    @Test
+    fun viewer_sits_above_the_screen_it_opened_from() {
+        val base = Fixture.base
+        val details = selection("score")
+        val viewer = Fixture.viewer(details.row)
+        assertEquals(
+            listOf(Route.Library("all"), Route.Details("score"), Route.Viewer("score", null)),
+            backStackFor(base.copy(screen = Screen.Library, sectionKey = "all", selection = details, viewer = viewer)),
+        )
+        assertEquals(
+            listOf(Route.Library("recent"), Route.Search, Route.Viewer("score", null)),
+            backStackFor(base.copy(screen = Screen.Search, sectionKey = "recent", viewer = viewer)),
+        )
+        val inSet = Fixture.viewer(details.row.copy(itemId = "item-1"), setId = "0123456789abcdef")
+        assertEquals(
+            listOf(Route.Library("sets"), Route.Set("0123456789abcdef"), Route.Viewer("score", "item-1")),
+            backStackFor(base.copy(screen = Screen.Library, sectionKey = "set:0123456789abcdef", viewer = inSet)),
+        )
+    }
+
     private fun selection(id: String) = Selection(
         row = Row(
             selectionId = id,

@@ -188,6 +188,8 @@
     <string name="settings_no_browser">Żadna aplikacja nie może otworzyć linku</string>
     <string name="settings_licenses">Licencje open source</string>
     <string name="licenses_back">Wróć do ustawień</string>
+    <string name="settings_open_scores_in">Otwieraj nuty w</string>
+    <string name="settings_open_in_system">Domyślna aplikacja systemowa</string>
     <string name="settings_language">Język</string>
     <string name="settings_language_system">Język systemu</string>
     <string name="settings_sets">Zestawy i ulubione</string>
@@ -313,4 +315,5 @@
     <string name="shared_set_unmatched">Brak w bibliotece</string>
     <string name="replace">Zastąp</string>
     <string name="keep_both">Zachowaj oba</string>
+    <string name="viewer_back">Wstecz</string>
 </resources>

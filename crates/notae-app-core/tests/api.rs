@@ -2546,3 +2546,18 @@ fn replacing_from_a_file_without_drawings_keeps_local_drawings() {
     harness.core.dispatch(Action::ImportConfirmed);
     assert!(harness.core.snapshot().set_cards[0].has_drawings);
 }
+
+#[test]
+fn close_viewer_closes_only_the_viewer() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    harness.core.dispatch(Action::SelectScore {
+        selection_id: library.rows[0].selection_id.clone(),
+    });
+    open(&harness, &library.rows[0]);
+    harness.core.dispatch(Action::CloseViewer);
+    let after = harness.core.snapshot();
+    assert_eq!(after.viewer, None);
+    assert!(after.selection.is_some(), "the details stay");
+}

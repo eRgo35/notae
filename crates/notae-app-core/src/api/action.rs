@@ -84,6 +84,8 @@ pub enum Action {
     },
     /// The viewer saw a stylus for the first time.
     StylusSeen,
+    /// The viewer's Back button, or Escape on the viewer.
+    CloseViewer,
     /// The viewer's "Previous piece" in a set.
     ViewerPrevious,
     /// The viewer's "Next piece" in a set.

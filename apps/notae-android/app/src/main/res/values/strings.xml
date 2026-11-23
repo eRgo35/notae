@@ -187,6 +187,9 @@
     <string name="settings_no_browser">No app can open the link</string>
     <string name="settings_licenses">Open-source licenses</string>
     <string name="licenses_back">Back to settings</string>
+    <string name="settings_open_scores_in">Open scores in</string>
+    <string name="settings_open_in_notae" translatable="false">Notae</string>
+    <string name="settings_open_in_system">System default app</string>
     <string name="settings_language">Language</string>
     <string name="settings_language_system">System default</string>
     <!-- Language names stay in their own language so anyone can find theirs. -->
@@ -306,4 +309,5 @@
     <string name="shared_set_unmatched">Not in your library</string>
     <string name="replace">Replace</string>
     <string name="keep_both">Keep both</string>
+    <string name="viewer_back">Back</string>
 </resources>

@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
+import com.c2yz.notae.core.OpenScoresIn
 import com.c2yz.notae.core.ExportStatus
 import com.c2yz.notae.core.ImportConfirmation
 import com.c2yz.notae.core.ImportError
@@ -97,8 +98,8 @@ data class AboutInfo(val version: String, val build: String)
 
 /**
  * 0.3.0's `SettingsScreen`: back and "Settings", the operation banner, then a scrolling column (at most 720 dp,
- * centred) of cards: Library folder with Change, Library maintenance, About Notae ([about]) with Privacy policy and Open-source licenses, Language and Sets and
- * favorites with Export sets and its outcome. The language is Android's per-app language (AppCompat), not the core's.
+ * centred) of cards: Library folder with Change, Library maintenance, About Notae ([about]) with Privacy policy and Open-source licenses, Language, Sets and
+ * favorites with Export sets and its outcome, then Open scores in. The language is Android's per-app language (AppCompat), not the core's.
  * The screen has the keys as soon as it shows, and again when the import confirmation closes: Escape closes it, Ctrl K
  * asks for search, as 0.3.0's root shortcuts do.
  */
@@ -147,6 +148,7 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
                     item { AboutCard(about, onAction, card) }
                     item { LanguageCard(card) }
                     item { SetsCard(snapshot.settings, onAction, card) }
+                    item { OpenScoresInCard(snapshot.layout.openScoresIn, onAction, card) }
                 }
                 ListScrollbar(state, Modifier.align(Alignment.TopEnd))
             }
@@ -236,6 +238,24 @@ private fun LanguageCard(modifier: Modifier) {
         }
     }
 }
+
+/** "Open scores in": Notae's own viewer, or the system's default PDF app as before 0.8.0. */
+@Composable
+private fun OpenScoresInCard(current: OpenScoresIn, onAction: (Action) -> Unit, modifier: Modifier) {
+    SettingsCard(modifier) {
+        CardTitle(stringResource(R.string.settings_open_scores_in))
+        Column(Modifier.selectableGroup()) {
+            OPEN_SCORES_IN.forEach { (choice, label) ->
+                ChoiceRow(stringResource(label), selected = current == choice) { onAction(Action.SetOpenScoresIn(choice)) }
+            }
+        }
+    }
+}
+
+private val OPEN_SCORES_IN = listOf(
+    OpenScoresIn.NOTAE to R.string.settings_open_in_notae,
+    OpenScoresIn.SYSTEM_APP to R.string.settings_open_in_system,
+)
 
 @Composable
 private fun SetsCard(settings: SettingsInfo, onAction: (Action) -> Unit, modifier: Modifier) {

@@ -6,6 +6,7 @@ import com.c2yz.notae.core.Edited
 import com.c2yz.notae.core.LayoutPrefs
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.OpenScoresIn
+import com.c2yz.notae.core.Viewer
 import com.c2yz.notae.core.Origin
 import com.c2yz.notae.core.Row
 import com.c2yz.notae.core.RowStatus
@@ -81,6 +82,18 @@ object Fixture {
     )
 
     /** All scores, in the grid, with the side panel open. */
+    /** Notae's viewer on [row], opened from set [setId] when one is given. */
+    fun viewer(row: Row = rows[0], setId: String? = null): Viewer = Viewer(
+        uri = "content://tree/scores",
+        row = row,
+        setId = setId,
+        hasPrevious = false,
+        hasNext = false,
+        showHint = false,
+        overlay = null,
+        contentChanged = false,
+    )
+
     fun library(): Snapshot = base.copy(
         screen = Screen.Library,
         sectionKey = "all",

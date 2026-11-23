@@ -664,6 +664,9 @@ impl CoreState {
             Action::SetLibraryView { view } => log_prefs(model.set_library_view(view)),
             Action::SetOpenScoresIn { choice } => log_prefs(model.set_open_scores_in(choice)),
             Action::StylusSeen => log_prefs(model.set_stylus_seen()),
+            Action::CloseViewer => {
+                model.close_viewer();
+            }
             Action::ViewerPrevious => model.viewer_step(false),
             Action::ViewerNext => model.viewer_step(true),
             Action::ViewerHintSeen => log_prefs(model.viewer_hint_seen()),

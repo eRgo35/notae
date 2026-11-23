@@ -76,6 +76,7 @@ import com.c2yz.notae.ui.setup.WelcomeScreen
 import com.c2yz.notae.ui.theme.NotaeMotion
 import com.c2yz.notae.ui.theme.NotaeTheme
 import com.c2yz.notae.ui.theme.Tokens
+import com.c2yz.notae.ui.viewer.ViewerScreen
 
 /**
  * The app's screens, as the snapshot's back stack ([backStackFor]). The core owns navigation: every
@@ -154,6 +155,7 @@ internal fun Modifier.shellFrame(): Modifier =
     background(NotaeTheme.colors.background).windowInsetsPadding(WindowInsets.safeDrawing)
 
 private const val DETAILS_CONTENT_KEY = "details"
+private const val VIEWER_CONTENT_KEY = "viewer"
 
 /**
  * How screens change, toward the end of the line (flipped in a right-to-left language): only content moves. Navigation 3
@@ -337,6 +339,11 @@ private fun entryFor(key: NavKey, shown: State<Shown>, motion: ScreenMotion): Na
     Route.Licenses -> NavEntry(key) {
         val (_, onAction) = shownFor(key, shown)
         ScreenFrame(motion) { LicensesScreen(onAction) }
+    }
+    // One content key for every score: Previous and Next swap the score in place instead of sliding a new screen in.
+    is Route.Viewer -> NavEntry(key, contentKey = VIEWER_CONTENT_KEY) {
+        val (snapshot, onAction) = shownFor(key, shown)
+        snapshot.viewer?.let { ScreenFrame(motion) { ViewerScreen(it, onAction) } }
     }
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)
