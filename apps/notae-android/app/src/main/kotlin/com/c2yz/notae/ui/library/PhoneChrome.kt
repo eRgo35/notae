@@ -96,6 +96,7 @@ import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.sets.ShareSetButton
+import com.c2yz.notae.ui.sets.setHasDrawings
 import com.c2yz.notae.ui.theme.NotaeTheme
 
 /** The bottom navigation bar's height, which the floating button keeps clear of. */
@@ -385,7 +386,7 @@ private fun Toolbar(snapshot: Snapshot, onAction: (Action) -> Unit, inSet: Boole
         IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) }, Modifier.screenBar("search"))
         if (inSet && !reordering) {
             IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"))
-            Box(Modifier.screenBar("share")) { ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), onAction) }
+            Box(Modifier.screenBar("share")) { ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), setHasDrawings(snapshot, snapshot.sectionKey.removePrefix(SET_PREFIX)), onAction) }
         }
         Box(Modifier.screenBar("more")) { OverflowMenu(snapshot, onAction, reordering) }
     }

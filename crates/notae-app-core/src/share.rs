@@ -8,7 +8,8 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-use crate::backup::{APP, BackupError, NOTES_SCHEMA_VERSION};
+use crate::backup::{APP, BackupError, NOTES_SCHEMA_VERSION, SCHEMA_VERSION};
+use crate::overlays::Overlay;
 use crate::sets::{ItemKind, Set, SetItem, SetStore, new_id};
 use crate::ui::search::SearchRow;
 
@@ -24,12 +25,14 @@ pub struct SharedPiece {
 }
 
 /// A parsed shared set file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SharedSet {
     /// The shared set.
     pub set: Set,
     /// Per piece item (by item id), what the sender knew about the score.
     pub pieces: HashMap<String, SharedPiece>,
+    /// The sender's drawings, as `(item id, overlay)`; empty when they were not included.
+    pub overlays: Vec<(String, Overlay)>,
 }
 
 /// A shared set with its pieces matched against the recipient's library.
@@ -191,11 +194,18 @@ pub(crate) fn file_stem(path: &str) -> String {
         .to_owned()
 }
 
-/// The shared set file text: `{"schema_version":2,"app":"notae","kind":"set","set":{…}}`. Each piece carries its
+/// The shared set file text: `{"schema_version":2,"app":"notae","kind":"set","set":{…}}`, or with `overlays`
+/// (the drawings, as `(item id, overlay)`) version 3 with `"overlays":[{"item_id":…,"overlay":{…}}]`, which
+/// 0.7.x cannot read. Each piece carries its
 /// number, title and composer. Set notes are included only with `with_notes`; score notes, favorites and the
 /// last opened item are never included.
 #[must_use]
-pub fn share_json(set: &Set, rows: &[SearchRow], with_notes: bool) -> String {
+pub fn share_json(
+    set: &Set,
+    rows: &[SearchRow],
+    with_notes: bool,
+    overlays: Option<&[(String, Overlay)]>,
+) -> String {
     let mut shared = set.clone();
     shared.last_opened_item = None;
     if !with_notes {
@@ -220,7 +230,15 @@ pub fn share_json(set: &Set, rows: &[SearchRow], with_notes: bool) -> String {
             }
         }
     }
-    json!({"schema_version": NOTES_SCHEMA_VERSION, "app": APP, "kind": "set", "set": value})
+    let Some(overlays) = overlays else {
+        return json!({"schema_version": NOTES_SCHEMA_VERSION, "app": APP, "kind": "set", "set": value})
+            .to_string();
+    };
+    let drawn: Vec<Value> = overlays
+        .iter()
+        .map(|(item_id, overlay)| json!({"item_id": item_id, "overlay": overlay}))
+        .collect();
+    json!({"schema_version": SCHEMA_VERSION, "app": APP, "kind": "set", "set": value, "overlays": drawn})
         .to_string()
 }
 
@@ -308,5 +326,23 @@ pub(crate) fn parse_shared(value: &Value) -> Result<SharedSet, BackupError> {
             });
         }
     }
-    Ok(SharedSet { set, pieces })
+    let overlays = value
+        .get("overlays")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|drawn| {
+            let item_id = drawn.get("item_id")?.as_str()?.to_owned();
+            let overlay: Overlay = serde_json::from_value(drawn.get("overlay")?.clone()).ok()?;
+            set.items
+                .iter()
+                .any(|item| item.id == item_id)
+                .then_some((item_id, overlay))
+        })
+        .collect();
+    Ok(SharedSet {
+        set,
+        pieces,
+        overlays,
+    })
 }

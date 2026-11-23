@@ -175,6 +175,18 @@ impl OverlayStore {
         }
     }
 
+    /// Whether any item of the set has a drawings file; cheaper than [`Self::all_for`].
+    #[must_use]
+    pub fn has_any(&self, set_id: &str) -> bool {
+        self.set_dir(set_id)
+            .and_then(|dir| fs::read_dir(dir).ok())
+            .is_some_and(|mut entries| {
+                entries.any(|entry| {
+                    entry.is_ok_and(|entry| entry.file_name().to_string_lossy().ends_with(".json"))
+                })
+            })
+    }
+
     /// Every item of the set with drawings, as `(item id, overlay)`, sorted by item id.
     #[must_use]
     pub fn all_for(&self, set_id: &str) -> Vec<(String, Overlay)> {

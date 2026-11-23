@@ -360,6 +360,8 @@ pub struct SetCard {
     pub edited: Edited,
     /// Thumbnail paths of the set's first pieces, in set order; `None` is a blank page.
     pub previews: Vec<Option<String>>,
+    /// A piece in the set has drawings, so Share offers "Include drawings".
+    pub has_drawings: bool,
 }
 
 /// When a set was last edited ([`text::Edited`]).
@@ -882,17 +884,21 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         set_entries,
         set_cards: set_cards
             .into_iter()
-            .map(|card| SetCard {
-                previews: card
-                    .preview_keys
-                    .iter()
-                    .map(|key| lookup.thumbnail_for(key, !library_keys.contains(key.as_str())))
-                    .collect(),
-                id: card.id,
-                name: card.name,
-                date: card.date,
-                count: count(card.count),
-                edited: card.edited.into(),
+            .map(|card| {
+                let has_drawings = model.set_has_drawings(&card.id);
+                SetCard {
+                    previews: card
+                        .preview_keys
+                        .iter()
+                        .map(|key| lookup.thumbnail_for(key, !library_keys.contains(key.as_str())))
+                        .collect(),
+                    id: card.id,
+                    name: card.name,
+                    date: card.date,
+                    count: count(card.count),
+                    edited: card.edited.into(),
+                    has_drawings,
+                }
             })
             .collect(),
         viewer: model

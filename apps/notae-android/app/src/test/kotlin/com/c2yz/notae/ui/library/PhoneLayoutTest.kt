@@ -148,7 +148,7 @@ class PhoneLayoutTest {
         compose.onNodeWithContentDescription("Back to sets").performClick()
 
         assertEquals(
-            listOf(Action.NewSet, Action.OpenAddPicker, Action.ReorderStarted, Action.ShareSet("palm", true), Action.SelectSection("sets")),
+            listOf(Action.NewSet, Action.OpenAddPicker, Action.ReorderStarted, Action.ShareSet("palm", true, false), Action.SelectSection("sets")),
             actions,
         )
     }

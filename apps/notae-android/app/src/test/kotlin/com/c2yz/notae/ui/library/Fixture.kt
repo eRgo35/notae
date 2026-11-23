@@ -106,9 +106,9 @@ object Fixture {
     /** The three sets, most recently edited first. */
     val setCards = listOf(
         // The fixture's scores have no thumbnails yet, so Palm Sunday's stack is three blank pages.
-        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, listOf(null, null, null)),
-        SetCard("empty", "Pusty zestaw", null, 0u, Edited.Today, emptyList()),
-        SetCard("friday", FRIDAY_NAME, "2026-04-03", 0u, Edited.Today, emptyList()),
+        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, listOf(null, null, null), hasDrawings = false),
+        SetCard("empty", "Pusty zestaw", null, 0u, Edited.Today, emptyList(), hasDrawings = false),
+        SetCard("friday", FRIDAY_NAME, "2026-04-03", 0u, Edited.Today, emptyList(), hasDrawings = false),
     )
 
     /**
@@ -116,11 +116,11 @@ object Fixture {
      * the second has no thumbnail yet, notes only, and empty.
      */
     fun stackCards(pages: List<String?>): List<SetCard> = listOf(
-        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, pages.take(3)),
-        SetCard("wedding", "Ślub Anny i Piotra", "2026-06-20", 1u, Edited.Yesterday, pages.take(1)),
-        SetCard("advent", "Roraty", "2026-12-01", 2u, Edited.DaysAgo(3u), listOf(pages[1], null)),
-        SetCard("retreat", "Rekolekcje - teksty", null, 2u, Edited.DaysAgo(5u), emptyList()),
-        SetCard("empty", "Pusty zestaw", null, 0u, Edited.On("2026-02-14"), emptyList()),
+        SetCard("palm", "Niedziela Palmowa", "2026-03-29", 9u, Edited.Today, pages.take(3), hasDrawings = false),
+        SetCard("wedding", "Ślub Anny i Piotra", "2026-06-20", 1u, Edited.Yesterday, pages.take(1), hasDrawings = false),
+        SetCard("advent", "Roraty", "2026-12-01", 2u, Edited.DaysAgo(3u), listOf(pages[1], null), hasDrawings = false),
+        SetCard("retreat", "Rekolekcje - teksty", null, 2u, Edited.DaysAgo(5u), emptyList(), hasDrawings = false),
+        SetCard("empty", "Pusty zestaw", null, 0u, Edited.On("2026-02-14"), emptyList(), hasDrawings = false),
     )
 
     /** The Sets section over [stackCards]. */

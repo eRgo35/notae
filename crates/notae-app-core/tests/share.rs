@@ -2,6 +2,7 @@
 
 use notae_app_core::backup::{BackupError, ImportFile, export_json, parse_import};
 use notae_app_core::favorites::{Favorites, PieceRef};
+use notae_app_core::overlays::{Overlay, PageOverlay, Stroke, Tool};
 use notae_app_core::score_notes::ScoreNotes;
 use notae_app_core::sets::{ItemKind, Set};
 use notae_app_core::sets::{SetFields, SetStore};
@@ -70,7 +71,7 @@ fn share_json_has_one_set_and_no_private_fields() {
     let set = store.get(&id).expect("set");
 
     let without: serde_json::Value =
-        serde_json::from_str(&share_json(set, &rows, false)).expect("json");
+        serde_json::from_str(&share_json(set, &rows, false, None)).expect("json");
     assert_eq!(without["kind"], "set");
     assert_eq!(without["app"], "notae");
     assert_eq!(without["schema_version"], 2);
@@ -85,7 +86,7 @@ fn share_json_has_one_set_and_no_private_fields() {
     assert_eq!(first["key"], key('a'));
 
     let with: serde_json::Value =
-        serde_json::from_str(&share_json(set, &rows, true)).expect("json");
+        serde_json::from_str(&share_json(set, &rows, true, None)).expect("json");
     assert_eq!(with["set"]["items"][0]["set_note"], "slowly");
 }
 
@@ -111,7 +112,7 @@ fn parse_export_tells_backup_from_shared_set() {
     let backup = export_json(&Favorites::default(), &store, &ScoreNotes::default(), &[]);
     assert!(matches!(parse_import(&backup), Ok(ImportFile::Backup(_))));
 
-    let Ok(ImportFile::Set(shared)) = parse_import(&share_json(set, &rows, true)) else {
+    let Ok(ImportFile::Set(shared)) = parse_import(&share_json(set, &rows, true, None)) else {
         panic!("a shared set");
     };
     assert_eq!(shared.set.name, "Sunday");
@@ -168,7 +169,7 @@ fn received_mass() -> SharedSet {
         row('a', Some("123"), "Gloria", None),
         row('b', Some("7"), "Sanctus", None),
     ];
-    let json = share_json(store.get(&id).expect("set"), &sender, false);
+    let json = share_json(store.get(&id).expect("set"), &sender, false, None);
     let Ok(ImportFile::Set(shared)) = parse_import(&json) else {
         panic!("a shared set");
     };
@@ -414,7 +415,7 @@ fn received_hymns() -> MatchedSet {
         library_row('f', "elsewhere/missing.pdf", Some("999"), "Missing Hymn"),
         row('b', Some("7"), "Sanctus", None),
     ];
-    let json = share_json(store.get(&id).expect("set"), &sender, false);
+    let json = share_json(store.get(&id).expect("set"), &sender, false, None);
     let Ok(ImportFile::Set(shared)) = parse_import(&json) else {
         panic!("a shared set");
     };
@@ -473,7 +474,7 @@ fn a_placeholder_keeps_the_senders_number_and_title_when_shared_on() {
     let text = share_text(&matched.set, &recipient(), false);
     assert!(text.contains("1. 999 – Missing Hymn"), "{text}");
 
-    let json = share_json(&matched.set, &recipient(), false);
+    let json = share_json(&matched.set, &recipient(), false, None);
     let Ok(ImportFile::Set(again)) = parse_import(&json) else {
         panic!("a shared set");
     };
@@ -557,4 +558,58 @@ fn a_piece_number_or_title_that_is_not_text_reads_as_absent() {
         (item.number.as_deref(), item.title.as_deref()),
         (None, None)
     );
+}
+
+fn drawing(x: f32) -> Overlay {
+    Overlay {
+        content_key: key('a'),
+        pages: vec![PageOverlay {
+            page: 0,
+            strokes: vec![Stroke {
+                tool: Tool::Highlighter,
+                color: 0x66FF_EB3B,
+                width: 0.02,
+                points: vec![x, x, x, x],
+            }],
+            texts: Vec::new(),
+        }],
+    }
+}
+
+#[test]
+fn share_without_drawings_stays_version_2() {
+    let (store, id, rows) = sunday();
+    let set = store.get(&id).expect("set");
+    let text = share_json(set, &rows, true, None);
+    let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+    assert_eq!(value["schema_version"], 2, "0.7.x can still read it");
+    assert!(value.get("overlays").is_none());
+}
+
+#[test]
+fn share_with_drawings_is_version_3_and_round_trips() {
+    let (store, id, rows) = sunday();
+    let set = store.get(&id).expect("set");
+    let gloria = set.items[0].id.clone();
+    let drawn = vec![(gloria.clone(), drawing(0.4))];
+    let text = share_json(set, &rows, false, Some(&drawn));
+    let value: serde_json::Value = serde_json::from_str(&text).expect("json");
+    assert_eq!(value["schema_version"], 3);
+    assert!(!text.contains("score_note"), "score notes are never shared");
+    let Ok(ImportFile::Set(shared)) = parse_import(&text) else {
+        panic!("a shared set");
+    };
+    assert_eq!(shared.overlays, drawn);
+}
+
+#[test]
+fn shared_drawings_for_items_not_in_the_set_are_dropped() {
+    let (store, id, rows) = sunday();
+    let set = store.get(&id).expect("set");
+    let drawn = vec![("nope".to_owned(), drawing(0.4))];
+    let Ok(ImportFile::Set(shared)) = parse_import(&share_json(set, &rows, false, Some(&drawn)))
+    else {
+        panic!("a shared set");
+    };
+    assert!(shared.overlays.is_empty());
 }

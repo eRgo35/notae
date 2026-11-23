@@ -103,6 +103,8 @@ import com.c2yz.notae.ui.components.windowChrome
 import com.c2yz.notae.ui.details.detailsKeyAction
 import com.c2yz.notae.ui.sets.SetActionsSheet
 import com.c2yz.notae.ui.sets.ShareSetButton
+import com.c2yz.notae.ui.sets.IncludeDrawingsItem
+import com.c2yz.notae.ui.sets.setHasDrawings
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.sets.SetsPane
 import com.c2yz.notae.ui.sets.setSubtitle
@@ -377,6 +379,8 @@ private fun Header(
     val list = snapshot.layout.libraryView == LibraryView.LIST
     val slim = windowChrome() == Chrome.SLIM_RAIL
     val setId = snapshot.sectionKey.removePrefix(SET_PREFIX)
+    val hasDrawings = setHasDrawings(snapshot, setId)
+    var includeDrawings by remember(setId) { mutableStateOf(false) }
     val scanLabel = stringResource(R.string.library_scan)
     val settingsLabel = stringResource(R.string.screen_settings)
     val viewLabel = stringResource(if (list) R.string.library_grid_view else R.string.library_list_view)
@@ -448,10 +452,11 @@ private fun Header(
             )
             add(
                 HeaderItem("share", priority = 1, pinned = false, {
-                    Box(Modifier.screenBar("share")) { ShareSetButton(setId, onAction) }
+                    Box(Modifier.screenBar("share")) { ShareSetButton(setId, hasDrawings, onAction) }
                 }) { choose ->
-                    MenuItem(stringResource(R.string.share_set_plain), painterResource(R.drawable.ic_share), { choose(Action.ShareSet(setId, false)) })
-                    MenuItem(stringResource(R.string.share_set_with_notes), painterResource(R.drawable.ic_note), { choose(Action.ShareSet(setId, true)) })
+                    if (hasDrawings) IncludeDrawingsItem(includeDrawings) { includeDrawings = !includeDrawings }
+                    MenuItem(stringResource(R.string.share_set_plain), painterResource(R.drawable.ic_share), { choose(Action.ShareSet(setId, false, hasDrawings && includeDrawings)) })
+                    MenuItem(stringResource(R.string.share_set_with_notes), painterResource(R.drawable.ic_note), { choose(Action.ShareSet(setId, true, hasDrawings && includeDrawings)) })
                 },
             )
             val label = stringResource(R.string.set_add)

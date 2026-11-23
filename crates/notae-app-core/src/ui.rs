@@ -551,6 +551,23 @@ impl UiModel {
         self.relink_saved_pieces();
     }
 
+    /// Every drawing in set `set_id`, as `(item id, overlay)`.
+    #[must_use]
+    pub fn set_overlays(&self, set_id: &str) -> Vec<(String, Overlay)> {
+        self.overlays
+            .as_ref()
+            .map(|store| store.all_for(set_id))
+            .unwrap_or_default()
+    }
+
+    /// Whether any piece of set `set_id` has drawings.
+    #[must_use]
+    pub fn set_has_drawings(&self, set_id: &str) -> bool {
+        self.overlays
+            .as_ref()
+            .is_some_and(|store| store.has_any(set_id))
+    }
+
     /// Every drawing in every set, for the export.
     fn all_overlays(&self) -> Vec<crate::backup::ItemOverlay> {
         let Some(store) = &self.overlays else {
@@ -616,6 +633,7 @@ impl UiModel {
             }
             set
         };
+        self.replace_overlays(&set, shared.overlays.clone());
         self.sets.put(set);
         self.save_sets();
         self.relink_saved_pieces();

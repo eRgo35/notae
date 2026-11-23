@@ -85,4 +85,10 @@ fn ids_cannot_reach_outside_the_overlay_folder() {
     let store = OverlayStore::new(dir.path().join("overlays"));
     assert!(store.put("..", "x", &drawing("aa")).is_err());
     assert!(store.put("set1", "../x", &drawing("aa")).is_err());
+    let outside = dir.path().join("keep.json");
+    std::fs::write(&outside, "{}").expect("write");
+    store.remove_set("..");
+    store.remove_item("overlays/..", "keep");
+    assert!(outside.exists(), "removal never leaves the folder");
+    assert!(dir.path().exists());
 }

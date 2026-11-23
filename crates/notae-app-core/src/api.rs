@@ -727,7 +727,11 @@ impl CoreState {
                     json,
                 }];
             }
-            Action::ShareSet { set_id, with_notes } => {
+            Action::ShareSet {
+                set_id,
+                with_notes,
+                with_drawings,
+            } => {
                 // A search's hits lack the other pieces' numbers and titles; Search covers the
                 // set, so this is only the moment before the whole library's rows return.
                 let Some(set) = model.sets().get(&set_id).filter(|_| !model.rows_filtered()) else {
@@ -736,7 +740,14 @@ impl CoreState {
                 let rows = model.search_rows();
                 return vec![Effect::ShareSet {
                     file_name: crate::share::share_file_name(&set.name),
-                    json: crate::share::share_json(set, rows, with_notes),
+                    json: crate::share::share_json(
+                        set,
+                        rows,
+                        with_notes,
+                        Some(model.set_overlays(&set_id))
+                            .filter(|drawn| with_drawings && !drawn.is_empty())
+                            .as_deref(),
+                    ),
                     text: crate::share::share_text(set, rows, with_notes),
                 }];
             }

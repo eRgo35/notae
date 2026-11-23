@@ -280,5 +280,7 @@ pub enum Action {
         set_id: String,
         /// Whether the set notes go with it.
         with_notes: bool,
+        /// Whether the drawings go with it ("Include drawings").
+        with_drawings: bool,
     },
 }

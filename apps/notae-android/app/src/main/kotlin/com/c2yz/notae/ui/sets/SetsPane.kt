@@ -28,6 +28,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
+import com.c2yz.notae.core.Snapshot
+import androidx.compose.ui.state.ToggleableState
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.semantics.role
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -237,7 +245,7 @@ internal fun SetActionsSheet(card: SetCard, onDismiss: () -> Unit, onAction: (Ac
         SheetAction(stringResource(R.string.set_edit), painterResource(R.drawable.ic_edit), { onAction(Action.EditSet(card.id)) }, Modifier.focusRequester(first))
         Box {
             SheetAction(stringResource(R.string.share_set), painterResource(R.drawable.ic_share), { sharing = true })
-            ShareSetMenu(card.id, sharing, { sharing = false }, onAction)
+            ShareSetMenu(card.id, card.hasDrawings, sharing, { sharing = false }, onAction)
         }
         SheetAction(stringResource(R.string.set_delete), painterResource(R.drawable.ic_delete), { onAction(Action.DeleteSet(card.id)) })
     }
@@ -246,20 +254,27 @@ internal fun SetActionsSheet(card: SetCard, onDismiss: () -> Unit, onAction: (Ac
 
 /** The open set's Share icon, with its [ShareSetMenu] under it. */
 @Composable
-internal fun ShareSetButton(setId: String, onAction: (Action) -> Unit) {
+internal fun ShareSetButton(setId: String, hasDrawings: Boolean, onAction: (Action) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(stringResource(R.string.share_set), painterResource(R.drawable.ic_share), { open = true })
-        ShareSetMenu(setId, open, { open = false }, onAction)
+        ShareSetMenu(setId, hasDrawings, open, { open = false }, onAction)
     }
 }
 
-/** D10's choice under Share: Share set or Share set with notes, each dispatching [Action.ShareSet] and closing the menu. */
+/** Whether set `setId` has drawings, so Share offers [IncludeDrawingsItem]. */
+internal fun setHasDrawings(snapshot: Snapshot, setId: String): Boolean = snapshot.setCards.any { it.id == setId && it.hasDrawings }
+
+/**
+ * D10's choice under Share: Share set or Share set with notes, each dispatching [Action.ShareSet] and closing the menu.
+ * A set with drawings adds [IncludeDrawingsItem] above them, off each time the menu opens.
+ */
 @Composable
-private fun ShareSetMenu(setId: String, expanded: Boolean, onDismiss: () -> Unit, onAction: (Action) -> Unit) {
+private fun ShareSetMenu(setId: String, hasDrawings: Boolean, expanded: Boolean, onDismiss: () -> Unit, onAction: (Action) -> Unit) {
+    var includeDrawings by remember(expanded) { mutableStateOf(false) }
     val choose = { withNotes: Boolean ->
         onDismiss()
-        onAction(Action.ShareSet(setId, withNotes))
+        onAction(Action.ShareSet(setId, withNotes, hasDrawings && includeDrawings))
     }
     val c = NotaeTheme.colors
     // The outline sets the menu apart from the set sheet, whose card colour it shares.
@@ -270,9 +285,26 @@ private fun ShareSetMenu(setId: String, expanded: Boolean, onDismiss: () -> Unit
         containerColor = c.card,
         border = BorderStroke(1.dp, c.divider),
     ) {
+        if (hasDrawings) IncludeDrawingsItem(includeDrawings) { includeDrawings = !includeDrawings }
         MenuItem(stringResource(R.string.share_set_plain), painterResource(R.drawable.ic_share), { choose(false) })
         MenuItem(stringResource(R.string.share_set_with_notes), painterResource(R.drawable.ic_note), { choose(true) })
     }
+}
+
+/** "Include drawings": a checkbox row in a share menu; ticking it leaves the menu open. */
+@Composable
+internal fun IncludeDrawingsItem(checked: Boolean, onToggle: () -> Unit) {
+    val c = NotaeTheme.colors
+    DropdownMenuItem(
+        text = { Text(stringResource(R.string.share_include_drawings), fontSize = 16.sp) },
+        onClick = onToggle,
+        leadingIcon = { Checkbox(checked = checked, onCheckedChange = null) },
+        colors = MenuDefaults.itemColors(textColor = c.foreground),
+        modifier = Modifier.heightIn(min = 52.dp).semantics(mergeDescendants = true) {
+            role = Role.Checkbox
+            toggleableState = ToggleableState(checked)
+        },
+    )
 }
 
 /** A core ISO date in the app's locale ([formatIsoDate]). */

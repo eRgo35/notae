@@ -383,6 +383,24 @@ class SetsScreenTest {
     }
 
     @Test
+    fun include_drawings_shows_only_when_the_set_has_drawings() {
+        show(Fixture.palmSunday())
+        compose.onNodeWithContentDescription("Share").performClick()
+        compose.onNodeWithText("Share set").assertIsDisplayed()
+        compose.onNodeWithText("Include drawings").assertDoesNotExist()
+        compose.onNodeWithText("Share set").performClick()
+
+        shown = Fixture.palmSunday().copy(setCards = Fixture.setCards.map { if (it.id == "palm") it.copy(hasDrawings = true) else it })
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Share").performClick()
+        compose.onNodeWithText("Include drawings").assertIsDisplayed().assertIsOff().performClick()
+        compose.onNodeWithText("Include drawings").assertIsOn()
+        compose.onNodeWithText("Share set with notes").performClick()
+
+        assertEquals(listOf(Action.ShareSet("palm", false, false), Action.ShareSet("palm", true, true)), actions)
+    }
+
+    @Test
     fun shareMenuFromToolbarAndSheet() {
         show(Fixture.palmSunday())
 
@@ -402,7 +420,7 @@ class SetsScreenTest {
         // The choice closes the menu and the sheet.
         compose.onNodeWithText("Delete set").assertDoesNotExist()
 
-        assertEquals(listOf(Action.ShareSet("palm", true), Action.ShareSet("palm", false), Action.ShareSet("empty", false)), actions)
+        assertEquals(listOf(Action.ShareSet("palm", true, false), Action.ShareSet("palm", false, false), Action.ShareSet("empty", false, false)), actions)
     }
 
     @Test

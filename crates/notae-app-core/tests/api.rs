@@ -1778,6 +1778,7 @@ fn share_set_returns_the_file_and_text_and_ignores_unknown_sets() {
     harness.core.dispatch(Action::ShareSet {
         set_id: "missing".to_owned(),
         with_notes: true,
+        with_drawings: false,
     });
     assert!(
         !harness
@@ -1790,6 +1791,7 @@ fn share_set_returns_the_file_and_text_and_ignores_unknown_sets() {
     harness.core.dispatch(Action::ShareSet {
         set_id: set_id.clone(),
         with_notes: false,
+        with_drawings: false,
     });
     let Some(Effect::ShareSet {
         file_name,
@@ -1811,6 +1813,7 @@ fn share_set_returns_the_file_and_text_and_ignores_unknown_sets() {
     harness.core.dispatch(Action::ShareSet {
         set_id,
         with_notes: false,
+        with_drawings: false,
     });
     assert_eq!(harness.listener.effects().len(), shared);
 }
@@ -2447,4 +2450,99 @@ fn unchecking_a_set_with_drawings_on_the_piece_asks_first() {
     assert_eq!(kept.remove_item, None);
     assert_eq!(kept.rows.len(), 1);
     assert!(kept.add_to_set.is_some(), "the checklist stays open");
+}
+
+fn shared_json(harness: &Harness, set_id: &str, with_drawings: bool) -> String {
+    harness.core.dispatch(Action::ShareSet {
+        set_id: set_id.to_owned(),
+        with_notes: false,
+        with_drawings,
+    });
+    let Some(Effect::ShareSet { json, .. }) = harness.listener.effects().pop() else {
+        panic!("sharing asks Kotlin to send the set");
+    };
+    json
+}
+
+#[test]
+fn share_includes_drawings_only_when_asked() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let set_id = in_set
+        .section_key
+        .strip_prefix("set:")
+        .expect("set")
+        .to_owned();
+    assert!(!harness.core.snapshot().set_cards[0].has_drawings);
+    draw_on_first_piece(&harness, &in_set);
+    assert!(harness.core.snapshot().set_cards[0].has_drawings);
+
+    let plain = shared_json(&harness, &set_id, false);
+    assert!(plain.contains(r#""schema_version":2"#), "{plain}");
+    assert!(!plain.contains("overlays"));
+    let drawn = shared_json(&harness, &set_id, true);
+    assert!(drawn.contains(r#""schema_version":3"#), "{drawn}");
+    assert!(drawn.contains(r#""overlays""#));
+}
+
+#[test]
+fn keep_both_gives_the_drawings_to_the_copy() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let set_id = in_set
+        .section_key
+        .strip_prefix("set:")
+        .expect("set")
+        .to_owned();
+    let (_, item_id) = draw_on_first_piece(&harness, &in_set);
+    let file = shared_json(&harness, &set_id, true);
+    // The recipient's own copy has no drawings.
+    harness.core.dispatch(Action::SaveOverlay {
+        set_id: set_id.clone(),
+        item_id: item_id.clone(),
+        overlay: notae_app_core::overlays::Overlay {
+            content_key: String::new(),
+            pages: Vec::new(),
+        },
+    });
+
+    harness.core.import_file_read(file);
+    harness.core.dispatch(Action::ImportKeepBoth);
+    let cards = harness.core.snapshot().set_cards;
+    assert_eq!(cards.len(), 2);
+    let copy = cards
+        .iter()
+        .find(|card| card.id != set_id)
+        .expect("the copy");
+    assert!(copy.has_drawings, "the copy has the file's drawings");
+    assert!(
+        !cards
+            .iter()
+            .find(|card| card.id == set_id)
+            .expect("own")
+            .has_drawings,
+        "the recipient's set is untouched"
+    );
+}
+
+#[test]
+fn replacing_from_a_file_without_drawings_keeps_local_drawings() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let set_id = in_set
+        .section_key
+        .strip_prefix("set:")
+        .expect("set")
+        .to_owned();
+    draw_on_first_piece(&harness, &in_set);
+    let file = shared_json(&harness, &set_id, false);
+    harness.core.import_file_read(file);
+    harness.core.dispatch(Action::ImportConfirmed);
+    assert!(harness.core.snapshot().set_cards[0].has_drawings);
 }
