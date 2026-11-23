@@ -2247,3 +2247,117 @@ fn notes_show_score_note_then_set_note() {
     assert_eq!(viewer.row.score_note.as_deref(), Some("Capo 2"));
     assert_eq!(viewer.row.set_note.as_deref(), Some("Slow"));
 }
+
+fn a_stroke(content_key: &str) -> notae_app_core::overlays::Overlay {
+    use notae_app_core::overlays::{Overlay, PageOverlay, Stroke, Tool};
+    Overlay {
+        content_key: content_key.to_owned(),
+        pages: vec![PageOverlay {
+            page: 0,
+            strokes: vec![Stroke {
+                tool: Tool::Pen,
+                color: 0xFF00_0000,
+                width: 0.003,
+                points: vec![0.1, 0.1, 0.2, 0.2],
+            }],
+            texts: Vec::new(),
+        }],
+    }
+}
+
+/// Draws on the open set's first piece and returns (set id, item id).
+fn draw_on_first_piece(harness: &Harness, in_set: &Snapshot) -> (String, String) {
+    let set_id = in_set
+        .section_key
+        .strip_prefix("set:")
+        .expect("a set is open")
+        .to_owned();
+    let row = &in_set.rows[0];
+    let item_id = row.item_id.clone().expect("item");
+    harness.core.dispatch(Action::SaveOverlay {
+        set_id: set_id.clone(),
+        item_id: item_id.clone(),
+        overlay: a_stroke(&row.note_key),
+    });
+    (set_id, item_id)
+}
+
+#[test]
+fn a_saved_overlay_shows_in_the_viewer() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let (set_id, item_id) = draw_on_first_piece(&harness, &in_set);
+    assert!(
+        dir.path()
+            .join("overlays")
+            .join(&set_id)
+            .join(format!("{item_id}.json"))
+            .exists()
+    );
+    open(&harness, &in_set.rows[0]);
+    let viewer = harness.core.snapshot().viewer.expect("viewer");
+    assert_eq!(viewer.overlay, Some(a_stroke(&in_set.rows[0].note_key)));
+    assert!(!viewer.content_changed);
+}
+
+#[test]
+fn removing_an_item_deletes_its_overlay() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let (set_id, item_id) = draw_on_first_piece(&harness, &in_set);
+    harness.core.dispatch(Action::RemoveSetItem {
+        item_id: item_id.clone(),
+    });
+    confirm_removal_if_asked(&harness);
+    assert!(
+        !dir.path()
+            .join("overlays")
+            .join(&set_id)
+            .join(format!("{item_id}.json"))
+            .exists()
+    );
+}
+
+/// Task 4 asks before removing a piece with drawings.
+fn confirm_removal_if_asked(_harness: &Harness) {}
+
+#[test]
+fn deleting_a_set_deletes_its_overlays() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let (set_id, _) = draw_on_first_piece(&harness, &in_set);
+    harness.core.dispatch(Action::DeleteSet {
+        set_id: set_id.clone(),
+    });
+    harness.core.dispatch(Action::ConfirmDeleteSet);
+    assert!(!dir.path().join("overlays").join(&set_id).exists());
+}
+
+#[test]
+fn a_changed_pdf_keeps_the_overlay_and_warns() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let row = &in_set.rows[0];
+    let set_id = in_set
+        .section_key
+        .strip_prefix("set:")
+        .expect("set")
+        .to_owned();
+    harness.core.dispatch(Action::SaveOverlay {
+        set_id,
+        item_id: row.item_id.clone().expect("item"),
+        overlay: a_stroke("an older content key"),
+    });
+    open(&harness, row);
+    let viewer = harness.core.snapshot().viewer.expect("viewer");
+    assert!(viewer.overlay.is_some());
+    assert!(viewer.content_changed);
+}

@@ -7,10 +7,11 @@
 //! [`NotaeCore::dispatch`]: super::NotaeCore::dispatch
 
 use crate::api::snapshot::SearchScope;
+use crate::overlays::Overlay;
 use crate::ui_prefs::{LibraryView, OpenScoresIn};
 
 /// One user action.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+#[derive(Debug, Clone, PartialEq, uniffi::Enum)]
 pub enum Action {
     /// "Choose score folder", "Reconnect folder" or Settings' "Change": asks Kotlin for the
     /// folder picker ([`Effect::PickLibraryRoot`](super::Effect::PickLibraryRoot)), starting at the
@@ -89,6 +90,15 @@ pub enum Action {
     ViewerNext,
     /// The viewer's "Scores now open in Notae" hint was dismissed.
     ViewerHintSeen,
+    /// Drawing ended, or the viewer moved on or closed, with changed drawings on a set item.
+    SaveOverlay {
+        /// The set.
+        set_id: String,
+        /// The set item drawn on.
+        item_id: String,
+        /// Every drawing on the item; an empty overlay deletes them.
+        overlay: Overlay,
+    },
     /// "Hide sidebar" / "Show sidebar".
     SetSidebarCollapsed {
         /// Whether the window is in portrait.

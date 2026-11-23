@@ -18,6 +18,7 @@ pub mod api;
 pub mod backup;
 pub mod favorites;
 pub mod operations;
+pub mod overlays;
 pub mod pdf_intent;
 pub mod pdf_pages;
 pub mod platform;

@@ -20,6 +20,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::favorites::{Favorites, PieceRef};
 use crate::operations::events::{OperationEvent, RescanSummary};
+use crate::overlays::{Overlay, OverlayStore};
 use crate::pdf_intent::ViewerError;
 use crate::recent::RecentScores;
 use crate::score_notes::ScoreNotes;
@@ -135,6 +136,8 @@ pub struct UiModel {
     pdf_launch_error: Option<ViewerError>,
     /// The score on Notae's viewer, while it is open.
     viewer: Option<viewer::ViewerState>,
+    /// Drawings on set pieces; `None` until a data folder is set.
+    overlays: Option<OverlayStore>,
     section: LibrarySection,
     recent: RecentScores,
     recent_path: Option<PathBuf>,
@@ -185,6 +188,7 @@ impl UiModel {
             metadata_error: None,
             pdf_launch_error: None,
             viewer: None,
+            overlays: None,
             section: LibrarySection::All,
             recent: RecentScores::default(),
             recent_path: None,
@@ -440,6 +444,52 @@ impl UiModel {
     #[must_use]
     pub fn favorites(&self) -> &[PieceRef] {
         self.favorites.items()
+    }
+
+    /// Keeps drawings on set pieces under `dir`.
+    pub fn set_overlays_dir(&mut self, dir: PathBuf) {
+        self.overlays = Some(OverlayStore::new(dir));
+    }
+
+    /// The drawings on set pieces.
+    #[must_use]
+    pub const fn overlays(&self) -> Option<&OverlayStore> {
+        self.overlays.as_ref()
+    }
+
+    /// Saves the drawings on set item `item_id`; an empty overlay deletes them.
+    pub fn save_overlay(&mut self, set_id: &str, item_id: &str, overlay: &Overlay) {
+        if self
+            .sets
+            .get(set_id)
+            .is_none_or(|set| set.items.iter().all(|item| item.id != item_id))
+        {
+            eprintln!("notae: drawings for a set item that no longer exists are dropped");
+            return;
+        }
+        if let Some(store) = &self.overlays
+            && let Err(error) = store.put(set_id, item_id, overlay)
+        {
+            eprintln!("notae: cannot save drawings: {error}");
+        }
+    }
+
+    /// The drawings on the viewer's set item.
+    #[must_use]
+    pub fn viewer_overlay(&self) -> Option<Overlay> {
+        let state = self.viewer.as_ref()?;
+        let set_id = state.set_id.as_deref()?;
+        let item_id = state.row.item_id.as_deref()?;
+        self.overlays.as_ref()?.get(set_id, item_id)
+    }
+
+    /// Removes an item from a set, with its drawings.
+    fn remove_item_with_drawings(&mut self, set_id: &str, item_id: &str, now: u64) -> bool {
+        let removed = self.sets.remove_item(set_id, item_id, now);
+        if removed && let Some(store) = &self.overlays {
+            store.remove_item(set_id, item_id);
+        }
+        removed
     }
 
     /// Loads the singing sets from, and later saves them to, `path`. Call before
@@ -760,7 +810,7 @@ impl UiModel {
                 .map(|item| item.id.clone())
         });
         let changed = match last_copy {
-            Some(item_id) => self.sets.remove_item(set_id, &item_id, now),
+            Some(item_id) => self.remove_item_with_drawings(set_id, &item_id, now),
             None => self
                 .piece_ref(key)
                 .and_then(|piece| self.sets.add_piece(set_id, piece, now))
@@ -787,7 +837,8 @@ impl UiModel {
         let LibrarySection::Set(set_id) = &self.section else {
             return;
         };
-        if self.sets.remove_item(set_id, item_id, unix_now()) {
+        let set_id = set_id.clone();
+        if self.remove_item_with_drawings(&set_id, item_id, unix_now()) {
             self.save_sets();
             self.forget_missing_selection();
         }
@@ -928,7 +979,8 @@ impl UiModel {
         let changed = match picker.added.iter().rposition(|(added, _)| added == key) {
             Some(index) => {
                 let (_, item_id) = picker.added.remove(index);
-                self.sets.remove_item(&picker.set_id, &item_id, now)
+                let set_id = picker.set_id.clone();
+                self.remove_item_with_drawings(&set_id, &item_id, now)
             }
             None => match piece.and_then(|piece| self.sets.add_piece(&picker.set_id, piece, now)) {
                 Some(item_id) => {
@@ -1003,6 +1055,9 @@ impl UiModel {
     pub fn delete_set(&mut self, id: &str) {
         if !self.sets.delete(id) {
             return;
+        }
+        if let Some(store) = &self.overlays {
+            store.remove_set(id);
         }
         self.save_sets();
         if self.section == LibrarySection::Set(id.to_owned()) {

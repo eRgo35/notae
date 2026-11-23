@@ -117,6 +117,7 @@ impl NotaeCore {
         model.set_score_notes_path(data_dir.join("score-notes.json"));
         // Before the UI preferences, which reopen a saved set only if it still exists.
         model.set_sets_path(data_dir.join("sets.json"));
+        model.set_overlays_dir(data_dir.join("overlays"));
         model.set_ui_prefs_path(data_dir.join("ui-prefs.txt"));
         match ThumbnailCache::new(data_dir.join("thumbnails")) {
             Ok(cache) => model.set_thumbnail_cache(cache),
@@ -666,6 +667,11 @@ impl CoreState {
             Action::ViewerPrevious => model.viewer_step(false),
             Action::ViewerNext => model.viewer_step(true),
             Action::ViewerHintSeen => log_prefs(model.viewer_hint_seen()),
+            Action::SaveOverlay {
+                set_id,
+                item_id,
+                overlay,
+            } => model.save_overlay(&set_id, &item_id, &overlay),
             Action::SetSidebarCollapsed {
                 portrait,
                 collapsed,

@@ -9,6 +9,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::backup::{ImportFile, plan_import};
+use crate::overlays::Overlay;
 use crate::sets::SetFieldError;
 use crate::state::OperationState;
 use crate::storage::StorageError;
@@ -630,7 +631,7 @@ pub struct UnmatchedPiece {
 }
 
 /// The score on Notae's viewer.
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct Viewer {
     /// The library folder the score's PDF is in, as [`super::Effect::OpenPdf`]'s `uri`.
     pub uri: String,
@@ -644,6 +645,10 @@ pub struct Viewer {
     pub has_next: bool,
     /// Show "Scores now open in Notae. Change it in Settings."
     pub show_hint: bool,
+    /// The drawings on this set item.
+    pub overlay: Option<Overlay>,
+    /// The drawings were made on a different version of the PDF.
+    pub content_changed: bool,
 }
 
 /// The saved layout choices.
@@ -884,13 +889,19 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
             .zip(model.library_root_handle())
             .map(|(row, uri)| {
                 let (before, after) = model.viewer_neighbours();
+                let overlay = model.viewer_overlay();
+                let row = lookup.row(row);
                 Viewer {
                     uri,
-                    row: lookup.row(row),
                     set_id: model.viewer_set_id().map(str::to_owned),
                     has_previous: before.is_some(),
                     has_next: after.is_some(),
                     show_hint: model.viewer_hint_due(),
+                    content_changed: overlay
+                        .as_ref()
+                        .is_some_and(|overlay| overlay.content_key != row.note_key),
+                    overlay,
+                    row,
                 }
             }),
         selection: model.selected_row().map(|row| {
