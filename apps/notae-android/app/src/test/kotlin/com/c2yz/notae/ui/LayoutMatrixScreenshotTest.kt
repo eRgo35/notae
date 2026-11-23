@@ -19,6 +19,16 @@ import com.c2yz.notae.core.Selection
 import com.c2yz.notae.core.SettingsInfo
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.Snippet
+import com.c2yz.notae.core.Overlay
+import com.c2yz.notae.core.PageOverlay
+import com.c2yz.notae.core.Stroke
+import com.c2yz.notae.core.TextBox
+import com.c2yz.notae.core.Tool
+import com.c2yz.notae.core.Viewer
+import com.c2yz.notae.ui.viewer.FakePages
+import com.c2yz.notae.ui.viewer.ViewerScreen
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import com.c2yz.notae.nav.NotaeNavDisplay
 import com.c2yz.notae.nav.shellFrame
 import com.c2yz.notae.ui.library.Fixture
@@ -51,18 +61,27 @@ class LayoutMatrixScreenshotTest(private val state: String, private val window: 
         val qualifiers = Windows.MATRIX.getValue(window)
         RuntimeEnvironment.setQualifiers(if (variant == "pl") "+pl-" + qualifiers.removePrefix("+") else qualifiers)
         if (variant == "fs13") RuntimeEnvironment.setFontScale(1.3f)
-        val snapshot = STATES.getValue(state)()
+        val viewer = VIEWER[state]
+        val snapshot = if (viewer == null) STATES.getValue(state)() else Fixture.base
         var density = Density(1f)
         compose.setContent {
             density = LocalDensity.current
             NotaeTheme(dark = variant == "dark") {
                 // Settings through the app shows this build's commit; a fixed one keeps the capture the same across commits.
-                if (state == "settings") {
+                if (viewer != null) {
+                    // The viewer over three blank pages; the real PDF renderer does not run under Robolectric.
+                    Box(Modifier.shellFrame().fillMaxSize()) { ViewerScreen(viewer, {}, { _, _ -> FakePages(3) }) }
+                } else if (state == "settings") {
                     Box(Modifier.shellFrame().fillMaxSize()) { SettingsScreen(snapshot, {}, AboutInfo(version = "0.8.0", build = "abc1234")) }
                 } else {
                     NotaeNavDisplay(snapshot, onAction = {}, onBack = {})
                 }
             }
+        }
+        compose.waitForIdle()
+        when (state) {
+            "viewer-set-drawing" -> compose.onNodeWithContentDescription("Draw").performClick()
+            "viewer-notes" -> compose.onNodeWithContentDescription("Notes").performClick()
         }
         compose.waitForIdle()
         compose.assertAllClickablesLabelled()
@@ -115,6 +134,35 @@ class LayoutMatrixScreenshotTest(private val state: String, private val window: 
             "welcome" to { Fixture.base },
         )
 
+        /** A set's piece with a pen line and a highlight on page 1, its score note and set note. */
+        private val inSet = Fixture.viewer(
+            Fixture.rows[0].copy(itemId = "item-1", scoreNote = "Capo 2", setNote = "Slowly, second verse only"),
+            setId = "palm",
+        ).copy(
+            hasNext = true,
+            overlay = Overlay(
+                Fixture.rows[0].noteKey,
+                listOf(
+                    PageOverlay(
+                        0u,
+                        listOf(
+                            Stroke(Tool.HIGHLIGHTER, 0x66FFEB3Bu, 0.02f, listOf(0.15f, 0.3f, 0.85f, 0.3f)),
+                            Stroke(Tool.PEN, 0xFFD32F2Fu, 0.003f, listOf(0.2f, 0.5f, 0.4f, 0.45f, 0.6f, 0.55f, 0.8f, 0.5f)),
+                        ),
+                        listOf(TextBox(0.2f, 0.6f, "rit.", 0.025f)),
+                    ),
+                ),
+            ),
+        )
+
+        /** The viewer, outside a set and from a set while drawing and with the notes open. */
+        private val VIEWER: Map<String, Viewer> = linkedMapOf(
+            "viewer" to Fixture.viewer(),
+            "viewer-set-drawing" to inSet,
+            "viewer-notes" to inSet,
+        )
+        private val VIEWER_WINDOWS = listOf("w360dp-h640dp", "w640dp-h360dp", "w1280dp-h800dp", "w800dp-h1280dp")
+
         private const val TABLET_LANDSCAPE = "w1280dp-h800dp"
         private const val TABLET_PORTRAIT = "w800dp-h1280dp"
 
@@ -140,6 +188,7 @@ class LayoutMatrixScreenshotTest(private val state: String, private val window: 
                 FONT_SCALE.forEach { add(arrayOf<Any>(state, it, "fs13")) }
             }
             DARK.forEach { add(arrayOf<Any>("library-grid", it, "dark")) }
+            for (state in VIEWER.keys) VIEWER_WINDOWS.forEach { add(arrayOf<Any>(state, it, "")) }
         }
     }
 }

@@ -19,6 +19,19 @@ The hand-written release notes for each version live in
   instead of rendering them on the tablet. A field you edited on the tablet
   keeps your edit. A broken `library.json` is ignored and the scan banner
   says so.
+- **In-app PDF viewer.** Scores open in Notae: one page, or two side by side
+  on a tablet in landscape, pages at full width on a phone on its side. Tap
+  the edges, swipe, or use the arrow and Page keys to turn; pinch to zoom and
+  double-tap to fit. From a set, Previous and Next move between pieces and
+  Notes shows the score and set notes. The screen stays on while it shows.
+- **Drawings on scores in a set.** Pen, red pen, highlighter, eraser and text
+  boxes, with undo and redo. A stylus draws and a finger moves the page once a
+  stylus has been seen. Drawings are kept per set, never change the PDF, can
+  be hidden, and warn when the PDF has changed since. Removing a drawn-on
+  piece from a set asks first.
+- **Settings → Open scores in**: Notae or the system's PDF app. After the
+  update a one-time hint says where to change it.
+- **Include drawings** when sharing a set; backups carry drawings too.
 
 ### Changed
 

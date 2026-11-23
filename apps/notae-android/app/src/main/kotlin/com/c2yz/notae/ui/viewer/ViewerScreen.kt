@@ -136,6 +136,17 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     ClaimBack(notes || editing != null || session != null)
     val compact = windowWidthClass() == WidthClass.COMPACT
     val spreads = spreadsFor(source?.pageCount ?: 0, mode)
+    // Previous and Next piece: in the top bar, or on a phone in a bar of their own under the pages.
+    val pieceButtons = @Composable {
+        IconButton(stringResource(R.string.viewer_previous_piece), painterResource(R.drawable.ic_chevron_left), {
+            finishDrawing()
+            onAction(Action.ViewerPrevious)
+        }, enabled = viewer.hasPrevious)
+        IconButton(stringResource(R.string.viewer_next_piece), painterResource(R.drawable.ic_chevron_right), {
+            finishDrawing()
+            onAction(Action.ViewerNext)
+        }, enabled = viewer.hasNext)
+    }
     Column(
         Modifier
             .fillMaxSize()
@@ -182,20 +193,13 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                         },
                         selected = session != null,
                     )
-                    IconButton(stringResource(R.string.viewer_previous_piece), painterResource(R.drawable.ic_chevron_left), {
-                        finishDrawing()
-                        onAction(Action.ViewerPrevious)
-                    }, enabled = viewer.hasPrevious)
-                    IconButton(stringResource(R.string.viewer_next_piece), painterResource(R.drawable.ic_chevron_right), {
-                        finishDrawing()
-                        onAction(Action.ViewerNext)
-                    }, enabled = viewer.hasNext)
+                    if (!compact) pieceButtons()
                 }
                 IconButton(stringResource(R.string.viewer_notes), painterResource(R.drawable.ic_note), { notes = true })
             }
         }
         val drawing = session
-        if (drawing != null && !compact) DrawToolBar(drawing, compact, { clearing = true }, finishDrawing)
+        if (drawing != null && !compact) DrawToolBar(drawing, windowWidthClass() != WidthClass.EXPANDED, { clearing = true }, finishDrawing)
         if (viewer.contentChanged) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -235,7 +239,12 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
             }
             if (viewer.showHint) ViewerHint({ onAction(Action.ViewerHintSeen) }, Modifier.align(Alignment.BottomCenter))
         }
-        if (drawing != null && compact) DrawToolBar(drawing, compact, { clearing = true }, finishDrawing)
+        if (compact && setId != null) {
+            AnimatedVisibility(bars || session != null) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) { pieceButtons() }
+            }
+        }
+        if (drawing != null && compact) DrawToolBar(drawing, windowWidthClass() != WidthClass.EXPANDED, { clearing = true }, finishDrawing)
     }
         if (clearing) {
             ConfirmDrawingDialog(stringResource(R.string.draw_clear_question), stringResource(R.string.draw_clear), { clearing = false }) {

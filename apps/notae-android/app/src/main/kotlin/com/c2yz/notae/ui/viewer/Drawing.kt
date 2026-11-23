@@ -361,8 +361,8 @@ private fun DrawScope.drawStroke(stroke: Stroke) {
 
 /**
  * The drawing tools: Pen, Red pen, Highlighter, Eraser and Text (the chosen one filled), which scroll sideways when they
- * do not fit, then Undo, Redo, Clear page and Done, always in view. A [compact] window puts the actions on a row of
- * their own.
+ * do not fit, then Undo, Redo, Clear page and Done (always in view). [compact] puts the actions on a row of their
+ * own: any window narrower than EXPANDED.
  */
 @Composable
 fun DrawToolBar(session: DrawSession, compact: Boolean, onClearPage: () -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
@@ -379,22 +379,27 @@ fun DrawToolBar(session: DrawSession, compact: Boolean, onClearPage: () -> Unit,
             }
         }
     }
-    val actions = @Composable {
-        PillButton(stringResource(R.string.draw_undo), session::undo, enabled = session.canUndo)
-        PillButton(stringResource(R.string.draw_redo), session::redo, enabled = session.canRedo)
-        PillButton(stringResource(R.string.draw_clear_page), onClearPage)
-        PillButton(stringResource(R.string.draw_done), onDone, primary = true)
+    // Done stays in view; Undo, Redo and Clear page scroll before it when they do not fit.
+    val actions = @Composable { actionsModifier: Modifier ->
+        Row(actionsModifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillButton(stringResource(R.string.draw_undo), session::undo, enabled = session.canUndo)
+                PillButton(stringResource(R.string.draw_redo), session::redo, enabled = session.canRedo)
+                PillButton(stringResource(R.string.draw_clear_page), onClearPage)
+            }
+            PillButton(stringResource(R.string.draw_done), onDone, primary = true)
+        }
     }
     val row = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
     if (compact) {
         Column(modifier) {
             tools(row)
-            Row(row.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) { actions() }
+            Row(row, horizontalArrangement = Arrangement.End) { actions(Modifier) }
         }
     } else {
         Row(modifier.then(row), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             tools(Modifier.weight(1f))
-            actions()
+            actions(Modifier)
         }
     }
 }

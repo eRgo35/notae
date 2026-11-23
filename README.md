@@ -35,8 +35,9 @@ cloud, no account, no network access.**
 If you keep a few hundred scanned or exported scores as plain PDFs, a file
 manager gives you file names and nothing else; nothing can search the printed
 text inside a scan. Notae adds a private catalogue on top of your existing
-folder and leaves the PDFs exactly where they are. It does not render or
-annotate scores itself: it hands each PDF to the viewer you already use.
+folder and leaves the PDFs exactly where they are. Scores open in Notae's own
+viewer, where you can draw on the pieces of a set without touching the PDF; a
+setting hands them to the viewer you already use instead.
 
 ## Features
 
@@ -58,8 +59,15 @@ annotate scores itself: it hands each PDF to the viewer you already use.
 - **Share a set** through Android's share sheet as a `.notae-set` file plus a
   readable list, with or without your set notes. Never PDFs or score notes.
   The receiver sees a review of matched and unmatched scores first.
-- **Open scores in your PDF viewer**: Samsung Notes when installed, otherwise
-  the Android PDF chooser.
+- **Open scores in Notae's viewer**: one page, or two side by side on a
+  tablet in landscape; tap the edges, swipe or use the keyboard to turn, pinch
+  to zoom. From a set, move to the previous or next piece and read the score
+  and set notes. **Settings → Open scores in** hands them to your PDF viewer
+  instead (Samsung Notes when installed, otherwise the Android PDF chooser).
+- **Draw on a set's pieces** with a pen, a red pen, a highlighter, an eraser
+  and text boxes, with undo. A stylus draws and a finger turns pages. Drawings
+  belong to the set, never change the PDF, and travel with backups and, if you
+  choose **Include drawings**, with a shared set.
 - Parses `<number> - <title>.pdf` file names and re-indexes incrementally by
   SHA-256 content hash, so a renamed file stays one record.
 - Reads a PDF's own text layer on-device on Android 15 (API 35) and later.
@@ -109,8 +117,8 @@ builds its own private index from it.
 flowchart LR
     subgraph tablet["Android tablet"]
         files[("Library folder<br/>PDFs")]
-        app["Notae<br/>scan, browse, search,<br/>edit details"]
-        viewer["Your PDF viewer<br/>(Samsung Notes, ...)"]
+        app["Notae<br/>scan, browse, search,<br/>edit details, view, draw"]
+        viewer["Your PDF viewer, if chosen<br/>(Samsung Notes, ...)"]
         files -->|"folder grant (SAF)"| app
         app -->|"open score"| viewer
     end
@@ -189,7 +197,8 @@ app installed until you have checked that 0.5.0 has what you need.
 - **Browse:** use the sidebar (or the chip row on a narrow window) for All
   scores and Recent, and the header buttons for grid/list and for hiding the
   sidebar. Both choices are remembered.
-- **Open:** tap a score to open it in your PDF viewer. The **⋮** (More
+- **Open:** tap a score to open it in Notae's viewer (or your PDF viewer,
+  per Settings). The **⋮** (More
   actions) button on every card and row opens a bottom sheet with **Open
   score**, **Score details** (the first page and metadata) and **Edit
   details**.
@@ -306,7 +315,7 @@ architecture are in the
   Android's Storage Access Framework, and only reads from it.
 - **PDFs are never modified.** They are not copied, moved, renamed or
   rewritten. The index and thumbnails live in the app's private storage.
-- **Handing a score to a viewer** grants that app temporary read access to that
+- **Handing a score to another viewer** grants that app temporary read access to that
   one PDF.
 - **Voice search** is optional: it only launches Android's installed speech
   recognizer. That recognizer is not part of Notae and may use network services
@@ -355,7 +364,8 @@ What comes next is in [`ROADMAP.md`](ROADMAP.md).
   OCR were removed in 0.5.0.
 - **Platforms:** Notae runs on Android phones and tablets, and the release is
   arm64 (minSdk 26). There is no desktop, iOS, Windows or macOS build.
-- **No in-app PDF viewing or annotation, and no cloud sync**, by design.
+- **No cloud sync**, by design. Drawings are an overlay kept by Notae; they
+  are never written into the PDF.
 - Preview thumbnails are 400 px wide, so the full-width preview can look soft
   on a large tablet.
 
