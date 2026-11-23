@@ -8,12 +8,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
@@ -77,7 +80,7 @@ fun PageArea(
     key(look) {
         LaunchedEffect(Unit) { zoom.reset() }
         if (look.scroll) {
-            ScrolledPages(source, page, onPage, onToggleBars, focused, overlay)
+            ScrolledRows(source, rows, look, rowOf(page, rows), onPage, onToggleBars, focused, zoom, overlay)
         } else {
             PagedRows(source, rows, look, rowOf(page, rows), onPage, onToggleBars, focused, zoom, overlay)
         }
@@ -232,35 +235,75 @@ private fun PageBox(
 }
 
 @Composable
-private fun ScrolledPages(
+private fun ScrolledRows(
     source: PageSource,
-    page: Int,
+    rows: List<IntRange>,
+    look: ViewLook,
+    initialRow: Int,
     onPage: (Int) -> Unit,
     onToggleBars: () -> Unit,
     modifier: Modifier,
+    zoom: PageZoom,
     overlay: @Composable (pageIndex: Int, pageBox: Rect) -> Unit,
 ) {
-    val list = rememberLazyListState(page)
+    val list = remember(rows) { LazyListState(initialRow.coerceIn(0, (rows.size - 1).coerceAtLeast(0))) }
+    val across = rememberScrollState()
     val scope = rememberCoroutineScope()
     val report by rememberUpdatedState(onPage)
-    LaunchedEffect(list) { snapshotFlow { list.firstVisibleItemIndex }.collect { report(it) } }
+    LaunchedEffect(list) { snapshotFlow { list.firstVisibleItemIndex }.collect { row -> rows.getOrNull(row)?.let { report(it.first) } } }
     val turn = { by: Int ->
-        val next = (list.firstVisibleItemIndex + by).coerceIn(0, (source.pageCount - 1).coerceAtLeast(0))
+        val first = list.firstVisibleItemIndex
+        // Back from part way down a row goes to that row's top first.
+        val from = if (by < 0 && list.firstVisibleItemScrollOffset > 0) first + 1 else first
+        val next = (from + by).coerceIn(0, (rows.size - 1).coerceAtLeast(0))
         scope.launch { list.animateScrollToItem(next) }
         Unit
     }
+    val dpi = screenDpi()
+    val density = LocalDensity.current
+    val gap = with(density) { PAGE_GAP.toPx() }
     BoxWithConstraints(modifier.fillMaxSize().turnKeys(turn)) {
-        val widthPx = constraints.maxWidth.coerceAtLeast(1)
-        LazyColumn(
-            Modifier.fillMaxSize().pageTaps(turn, onToggleBars) {},
-            state = list,
-            verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
-        ) {
-            items(source.pageCount) { index ->
-                val heightPx = widthPx * source.pageAspect(index)
-                Box(Modifier.fillMaxWidth().height(with(LocalDensity.current) { heightPx.toDp() })) {
-                    PageImage(source, index, widthPx)
-                    overlay(index, Rect(0f, 0f, widthPx.toFloat(), heightPx))
+        val area = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
+        val baseSizes = remember(rows, look, area, dpi) {
+            rows.map { row -> rowSize(row.map(source::pageAspect), row.map(source::pageWidthPoints), area, gap, look.scale, dpi) }
+        }
+        val widest = (baseSizes.maxOfOrNull { it.width } ?: 0f) * zoom.factor
+        val contentWidth = maxOf(area.width, widest)
+        val onPinch = remember(list, across) {
+            { centroid: Offset, change: Float, pan: Offset ->
+                val old = zoom.factor
+                val new = (old * change).coerceIn(MIN_ZOOM, MAX_ZOOM)
+                val k = new / old
+                zoom.factor = new
+                // Rows grow from the point under the fingers: scroll by what grows above and left of it.
+                val down = (list.firstVisibleItemScrollOffset + centroid.y) * (k - 1f) - pan.y
+                val right = (across.value + centroid.x) * (k - 1f) - pan.x
+                list.dispatchRawDelta(down)
+                across.dispatchRawDelta(right)
+                Unit
+            }
+        }
+        Box(Modifier.fillMaxSize().pinchZoom(onPinch).pageTaps(turn, onToggleBars) { zoom.reset() }) {
+            Box(Modifier.fillMaxSize().horizontalScroll(across, enabled = contentWidth > area.width + 0.5f)) {
+                LazyColumn(
+                    Modifier.width(with(density) { contentWidth.toDp() }).fillMaxHeight(),
+                    state = list,
+                    verticalArrangement = Arrangement.spacedBy(PAGE_GAP),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    items(rows.size, key = { rows[it].first }) { index ->
+                        val row = rows[index]
+                        val aspects = row.map(source::pageAspect)
+                        val base = baseSizes[index]
+                        val size = base * zoom.factor
+                        val fitBoxes = pageBoxes(aspects, base, gap)
+                        Box(Modifier.size(with(density) { size.width.toDp() }, with(density) { size.height.toDp() })) {
+                            pageBoxes(aspects, size, gap * zoom.factor).forEachIndexed { at, box ->
+                                val renderWidth = (fitBoxes[at].width * if (zoom.factor > 1f) 2f else 1f).coerceAtMost(area.width * 2f)
+                                PageBox(source, row.first + at, box, renderWidth.roundToInt(), overlay)
+                            }
+                        }
+                    }
                 }
             }
         }
