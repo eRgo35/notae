@@ -4,7 +4,9 @@ use notae_app_core::sets::{SetFields, SetStore};
 use notae_app_core::ui::UiModel;
 use notae_app_core::ui::browse::LibrarySection;
 use notae_app_core::ui::search::SearchRow;
-use notae_app_core::ui_prefs::{LibraryView, OpenScoresIn, UiPrefs};
+use notae_app_core::ui_prefs::{
+    LibraryView, OpenScoresIn, UiPrefs, ViewerLayout, ViewerPages, ViewerScale,
+};
 
 #[test]
 fn defaults_are_grid_portrait_collapsed_landscape_expanded() {
@@ -332,4 +334,44 @@ fn hint_is_due_after_an_update_not_on_a_new_install() {
     assert!(UiPrefs::load(&dir.path().join("missing")).viewer_hint_shown);
     std::fs::write(dir.path().join("old"), "section=all\n").expect("write");
     assert!(!UiPrefs::load(&dir.path().join("old")).viewer_hint_shown);
+}
+
+#[test]
+fn viewer_look_defaults_to_auto_for_old_prefs() {
+    let prefs = UiPrefs::from_text("section=all\n");
+    assert_eq!(
+        (prefs.viewer_layout, prefs.viewer_pages, prefs.viewer_scale),
+        (ViewerLayout::Auto, ViewerPages::Auto, ViewerScale::Auto)
+    );
+}
+
+#[test]
+fn viewer_look_round_trips() {
+    let prefs = UiPrefs {
+        viewer_layout: ViewerLayout::Scroll,
+        viewer_pages: ViewerPages::Two,
+        viewer_scale: ViewerScale::Percent { value: 125 },
+        ..UiPrefs::default()
+    };
+    assert_eq!(UiPrefs::from_text(&prefs.to_text()), prefs);
+    for scale in [
+        ViewerScale::FitPage,
+        ViewerScale::FitWidth,
+        ViewerScale::FitHeight,
+    ] {
+        let prefs = UiPrefs {
+            viewer_scale: scale,
+            ..UiPrefs::default()
+        };
+        assert_eq!(UiPrefs::from_text(&prefs.to_text()).viewer_scale, scale);
+    }
+}
+
+#[test]
+fn bad_viewer_values_fall_back_to_auto() {
+    let prefs =
+        UiPrefs::from_text("viewer_layout=sideways\nviewer_scale=9000\nviewer_pages=three\n");
+    assert_eq!(prefs.viewer_scale, ViewerScale::Auto);
+    assert_eq!(prefs.viewer_layout, ViewerLayout::Auto);
+    assert_eq!(prefs.viewer_pages, ViewerPages::Auto);
 }

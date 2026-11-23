@@ -20,7 +20,7 @@ use notae_app_core::api::{
 use notae_app_core::platform::{DocumentContent, PlatformError};
 use notae_app_core::score_notes::ScoreNotes;
 use notae_app_core::text::{Failure, RowStatus};
-use notae_app_core::ui_prefs::OpenScoresIn;
+use notae_app_core::ui_prefs::{OpenScoresIn, ViewerLayout, ViewerPages, ViewerScale};
 
 const ROOT: &str = "content://tree/scores";
 
@@ -2040,6 +2040,25 @@ fn set_open_scores_in_is_saved_and_shown() {
     );
     let saved = std::fs::read_to_string(dir.path().join("ui-prefs.txt")).expect("prefs");
     assert!(saved.contains("open_scores_in=system"), "{saved}");
+}
+
+#[test]
+fn set_viewer_look_is_saved_and_shown() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave"]));
+    open_and_scan(&harness);
+    harness.core.dispatch(Action::SetViewerLook {
+        layout: ViewerLayout::Scroll,
+        pages: ViewerPages::One,
+        scale: ViewerScale::FitHeight,
+    });
+    let layout = harness.core.snapshot().layout;
+    assert_eq!(layout.viewer_layout, ViewerLayout::Scroll);
+    assert_eq!(layout.viewer_pages, ViewerPages::One);
+    assert_eq!(layout.viewer_scale, ViewerScale::FitHeight);
+    let saved = std::fs::read_to_string(dir.path().join("ui-prefs.txt")).expect("prefs");
+    assert!(saved.contains("viewer_layout=scroll"), "{saved}");
+    assert!(saved.contains("viewer_scale=fit_height"), "{saved}");
 }
 
 /// Opens a set of Ave Maria, a note, Barka, Credo (then gone from the library) and Dona, and

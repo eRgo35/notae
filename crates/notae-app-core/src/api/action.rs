@@ -8,7 +8,7 @@
 
 use crate::api::snapshot::SearchScope;
 use crate::overlays::Overlay;
-use crate::ui_prefs::{LibraryView, OpenScoresIn};
+use crate::ui_prefs::{LibraryView, OpenScoresIn, ViewerLayout, ViewerPages, ViewerScale};
 
 /// One user action.
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
@@ -81,6 +81,15 @@ pub enum Action {
     SetOpenScoresIn {
         /// Notae's viewer or the system app.
         choice: OpenScoresIn,
+    },
+    /// The viewer's View menu: layout, pages side by side and scale.
+    SetViewerLook {
+        /// Turned pages or a scroll.
+        layout: ViewerLayout,
+        /// One or two pages side by side.
+        pages: ViewerPages,
+        /// Fit or a percentage.
+        scale: ViewerScale,
     },
     /// The viewer saw a stylus for the first time.
     StylusSeen,

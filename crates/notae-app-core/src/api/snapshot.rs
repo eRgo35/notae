@@ -18,7 +18,7 @@ use crate::thumbnails::ThumbnailCache;
 use crate::ui::browse::{self, LibrarySection};
 use crate::ui::search::{SearchRow, split_snippet};
 use crate::ui::{OperationBanner, PickerRow, StartupPresentation, StorageStateKindView, UiModel};
-use crate::ui_prefs::{LibraryView, OpenScoresIn};
+use crate::ui_prefs::{LibraryView, OpenScoresIn, ViewerLayout, ViewerPages, ViewerScale};
 
 /// Everything Kotlin needs to draw the app.
 ///
@@ -679,6 +679,12 @@ pub struct LayoutPrefs {
     pub open_scores_in: OpenScoresIn,
     /// A stylus has been seen, so a finger moves the page instead of drawing.
     pub stylus_seen: bool,
+    /// The viewer's layout.
+    pub viewer_layout: ViewerLayout,
+    /// Pages side by side in the viewer.
+    pub viewer_pages: ViewerPages,
+    /// The viewer's scale.
+    pub viewer_scale: ViewerScale,
 }
 
 /// The new or edit set dialog. The fields are what it opened with, or what the last rejected
@@ -965,6 +971,9 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
             sidebar_collapsed_landscape: prefs.sidebar_collapsed_landscape,
             open_scores_in: prefs.open_scores_in,
             stylus_seen: prefs.stylus_seen,
+            viewer_layout: prefs.viewer_layout,
+            viewer_pages: prefs.viewer_pages,
+            viewer_scale: prefs.viewer_scale,
         },
         reordering: model.reordering(),
         set_dialog: extras.set_dialog.cloned(),

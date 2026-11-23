@@ -37,7 +37,7 @@ use crate::ui::browse::{
 };
 use crate::ui::metadata_editor::EditableMetadata;
 use crate::ui::search::SearchRow;
-use crate::ui_prefs::{LibraryView, OpenScoresIn, UiPrefs};
+use crate::ui_prefs::{LibraryView, OpenScoresIn, UiPrefs, ViewerLayout, ViewerPages, ViewerScale};
 
 /// What the app may present while a previously selected library is restored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1312,6 +1312,27 @@ impl UiModel {
             return Ok(());
         }
         self.ui_prefs.open_scores_in = choice;
+        self.save_ui_prefs()
+    }
+
+    /// Chooses the viewer's layout, pages side by side and scale, and persists a change.
+    ///
+    /// # Errors
+    ///
+    /// Returns the I/O error when the preferences cannot be saved; the choice stays in effect.
+    pub fn set_viewer_look(
+        &mut self,
+        layout: ViewerLayout,
+        pages: ViewerPages,
+        scale: ViewerScale,
+    ) -> std::io::Result<()> {
+        let prefs = &mut self.ui_prefs;
+        if (prefs.viewer_layout, prefs.viewer_pages, prefs.viewer_scale) == (layout, pages, scale) {
+            return Ok(());
+        }
+        prefs.viewer_layout = layout;
+        prefs.viewer_pages = pages;
+        prefs.viewer_scale = scale;
         self.save_ui_prefs()
     }
 

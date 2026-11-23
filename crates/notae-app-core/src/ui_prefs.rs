@@ -65,6 +65,116 @@ impl OpenScoresIn {
     }
 }
 
+/// How the viewer lays pages out; `Auto` chooses from the window.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum ViewerLayout {
+    /// From the window: scrolled on a short window, else turned.
+    #[default]
+    Auto,
+    /// One spread at a time, turned.
+    Pages,
+    /// Pages one under another, scrolled.
+    Scroll,
+}
+
+impl ViewerLayout {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Pages => "pages",
+            Self::Scroll => "scroll",
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "auto" => Some(Self::Auto),
+            "pages" => Some(Self::Pages),
+            "scroll" => Some(Self::Scroll),
+            _ => None,
+        }
+    }
+}
+
+/// How many pages the viewer shows side by side; `Auto` chooses from the window.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum ViewerPages {
+    /// From the window: two on a landscape tablet, else one.
+    #[default]
+    Auto,
+    /// One page.
+    One,
+    /// Two pages side by side.
+    Two,
+}
+
+impl ViewerPages {
+    fn key(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::One => "one",
+            Self::Two => "two",
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "auto" => Some(Self::Auto),
+            "one" => Some(Self::One),
+            "two" => Some(Self::Two),
+            _ => None,
+        }
+    }
+}
+
+/// The smallest and largest stored viewer percentage.
+const VIEWER_PERCENT: std::ops::RangeInclusive<u16> = 25..=400;
+
+/// The viewer's scale; `Auto` chooses from the window.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum ViewerScale {
+    /// From the window: fit width on a short window, else fit page.
+    #[default]
+    Auto,
+    /// The whole page (or spread) on screen.
+    FitPage,
+    /// The page (or spread) as wide as the screen.
+    FitWidth,
+    /// The page (or spread) as tall as the screen.
+    FitHeight,
+    /// A percentage of the printed size.
+    Percent {
+        /// 25 to 400.
+        value: u16,
+    },
+}
+
+impl ViewerScale {
+    fn key(self) -> String {
+        match self {
+            Self::Auto => "auto".to_owned(),
+            Self::FitPage => "fit_page".to_owned(),
+            Self::FitWidth => "fit_width".to_owned(),
+            Self::FitHeight => "fit_height".to_owned(),
+            Self::Percent { value } => value.to_string(),
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "auto" => Some(Self::Auto),
+            "fit_page" => Some(Self::FitPage),
+            "fit_width" => Some(Self::FitWidth),
+            "fit_height" => Some(Self::FitHeight),
+            number => number
+                .parse::<u16>()
+                .ok()
+                .filter(|value| VIEWER_PERCENT.contains(value))
+                .map(|value| Self::Percent { value }),
+        }
+    }
+}
+
 /// Persisted user choices that are not library data.
 ///
 /// Portrait means the logical window height exceeds its width. Sidebar
@@ -92,6 +202,12 @@ pub struct UiPrefs {
     /// A stylus has touched the viewer, so from now on a finger moves the page and only the
     /// pen draws.
     pub stylus_seen: bool,
+    /// The viewer's layout.
+    pub viewer_layout: ViewerLayout,
+    /// Pages side by side in the viewer.
+    pub viewer_pages: ViewerPages,
+    /// The viewer's scale.
+    pub viewer_scale: ViewerScale,
 }
 
 impl Default for UiPrefs {
@@ -105,6 +221,9 @@ impl Default for UiPrefs {
             open_scores_in: OpenScoresIn::Notae,
             viewer_hint_shown: false,
             stylus_seen: false,
+            viewer_layout: ViewerLayout::Auto,
+            viewer_pages: ViewerPages::Auto,
+            viewer_scale: ViewerScale::Auto,
         }
     }
 }
@@ -158,6 +277,21 @@ impl UiPrefs {
                         prefs.stylus_seen = seen;
                     }
                 }
+                "viewer_layout" => {
+                    if let Some(layout) = ViewerLayout::from_key(value) {
+                        prefs.viewer_layout = layout;
+                    }
+                }
+                "viewer_pages" => {
+                    if let Some(pages) = ViewerPages::from_key(value) {
+                        prefs.viewer_pages = pages;
+                    }
+                }
+                "viewer_scale" => {
+                    if let Some(scale) = ViewerScale::from_key(value) {
+                        prefs.viewer_scale = scale;
+                    }
+                }
                 _ => {}
             }
         }
@@ -168,7 +302,7 @@ impl UiPrefs {
     #[must_use]
     pub fn to_text(&self) -> String {
         format!(
-            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nsection={}\nselection={}\nopen_scores_in={}\nviewer_hint_shown={}\nstylus_seen={}\n",
+            "library_view={}\nsidebar_collapsed_portrait={}\nsidebar_collapsed_landscape={}\nsection={}\nselection={}\nopen_scores_in={}\nviewer_hint_shown={}\nstylus_seen={}\nviewer_layout={}\nviewer_pages={}\nviewer_scale={}\n",
             self.library_view.key(),
             self.sidebar_collapsed_portrait,
             self.sidebar_collapsed_landscape,
@@ -177,6 +311,9 @@ impl UiPrefs {
             self.open_scores_in.key(),
             self.viewer_hint_shown,
             self.stylus_seen,
+            self.viewer_layout.key(),
+            self.viewer_pages.key(),
+            self.viewer_scale.key(),
         )
     }
 

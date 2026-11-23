@@ -663,6 +663,13 @@ impl CoreState {
             Action::CancelMetadata => model.close_metadata_editor(),
             Action::SetLibraryView { view } => log_prefs(model.set_library_view(view)),
             Action::SetOpenScoresIn { choice } => log_prefs(model.set_open_scores_in(choice)),
+            Action::SetViewerLook {
+                layout,
+                pages,
+                scale,
+            } => {
+                log_prefs(model.set_viewer_look(layout, pages, scale));
+            }
             Action::StylusSeen => log_prefs(model.set_stylus_seen()),
             Action::CloseViewer => {
                 model.close_viewer();
