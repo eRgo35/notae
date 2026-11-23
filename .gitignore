@@ -8,3 +8,6 @@
 /apps/notae-android/**/.kotlin/
 /apps/notae-android/**/build/
 /apps/notae-android/local.properties
+# Release downloads (APK, AAB, Play release notes), kept locally only.
+/dist/
+/dist-*/
