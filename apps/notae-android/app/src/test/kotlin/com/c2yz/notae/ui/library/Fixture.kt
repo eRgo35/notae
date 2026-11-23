@@ -86,6 +86,9 @@ object Fixture {
 
     /** All scores, in the grid, with the side panel open. */
     /** Notae's viewer on [row], opened from set [setId] when one is given. */
+    /** The layout choices of a fresh install. */
+    val layout = LayoutPrefs(LibraryView.GRID, sidebarCollapsedPortrait = true, sidebarCollapsedLandscape = false, openScoresIn = OpenScoresIn.NOTAE, stylusSeen = false, viewerLayout = ViewerLayout.AUTO, viewerPages = ViewerPages.AUTO, viewerScale = ViewerScale.Auto)
+
     fun viewer(row: Row = rows[0], setId: String? = null): Viewer = Viewer(
         uri = "content://tree/scores",
         row = row,
@@ -248,7 +251,7 @@ object Fixture {
         banner = Banner(message = null, busy = false, failed = false, fraction = null, cancelEnabled = false, acknowledgeEnabled = false),
         rescanEnabled = true,
         settings = SettingsInfo(libraryName = null, indexedCount = 0u, noTextCount = 0u, latestScan = null, export = null, importStatus = null),
-        layout = LayoutPrefs(LibraryView.GRID, sidebarCollapsedPortrait = true, sidebarCollapsedLandscape = false, openScoresIn = OpenScoresIn.NOTAE, stylusSeen = false, viewerLayout = ViewerLayout.AUTO, viewerPages = ViewerPages.AUTO, viewerScale = ViewerScale.Auto),
+        layout = layout,
         reordering = false,
         setDialog = null,
         removeItem = null,

@@ -52,7 +52,7 @@ class DrawingTest {
     private fun show(viewer: Viewer, stylusSeen: Boolean = false) {
         shown = viewer
         compose.setContent {
-            NotaeTheme { shown?.let { ViewerScreen(it, { action -> actions += action }, { _, _ -> FakePages(3) }, stylusSeen) } }
+            NotaeTheme { shown?.let { ViewerScreen(it, { action -> actions += action }, { _, _ -> FakePages(3) }, Fixture.layout.copy(stylusSeen = stylusSeen)) } }
         }
         compose.waitForIdle()
     }
@@ -216,7 +216,7 @@ class DrawingTest {
         shown = viewer
         compose.setContent {
             view = LocalView.current
-            NotaeTheme { shown?.let { ViewerScreen(it, { action -> actions += action }, { _, _ -> FakePages(3) }, stylusSeen) } }
+            NotaeTheme { shown?.let { ViewerScreen(it, { action -> actions += action }, { _, _ -> FakePages(3) }, Fixture.layout.copy(stylusSeen = stylusSeen)) } }
         }
         compose.waitForIdle()
     }

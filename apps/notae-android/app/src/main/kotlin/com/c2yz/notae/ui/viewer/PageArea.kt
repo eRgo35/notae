@@ -21,6 +21,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
@@ -157,6 +158,8 @@ private fun PagedRows(
             } ?: Size.Zero
         }
         val shown = baseSize(pager.currentPage) * zoom.factor
+        val first = rows.getOrNull(pager.currentPage)?.first
+        SideEffect { if (first != null) zoom.percent = printedPercent(source, first, shown.height, dpi) }
         val overflowX = shown.width > area.width + 0.5f
         val overflowY = shown.height > area.height + 0.5f
         val onPinch = remember(area, rows, look) {
@@ -269,6 +272,9 @@ private fun ScrolledRows(
         }
         val widest = (baseSizes.maxOfOrNull { it.width } ?: 0f) * zoom.factor
         val contentWidth = maxOf(area.width, widest)
+        val firstRow = list.firstVisibleItemIndex
+        val firstShown = (baseSizes.getOrNull(firstRow)?.height ?: 0f) * zoom.factor
+        SideEffect { rows.getOrNull(firstRow)?.let { zoom.percent = printedPercent(source, it.first, firstShown, dpi) } }
         val onPinch = remember(list, across) {
             { centroid: Offset, change: Float, pan: Offset ->
                 val old = zoom.factor

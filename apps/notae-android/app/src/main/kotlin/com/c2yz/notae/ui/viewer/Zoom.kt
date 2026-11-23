@@ -3,6 +3,7 @@ package com.c2yz.notae.ui.viewer
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -10,6 +11,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.roundToInt
 
 /**
  * The pinch zoom on top of the chosen scale: [factor] 1 is the chosen scale itself; [offset] is how far content larger
@@ -18,6 +20,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 class PageZoom {
     var factor by mutableFloatStateOf(1f)
     var offset by mutableStateOf(Offset.Zero)
+
+    /** The first page on screen as a percentage of its printed size, kept up to date by the page area. */
+    var percent by mutableIntStateOf(100)
 
     fun reset() {
         factor = 1f
@@ -63,3 +68,9 @@ internal fun clampPan(pan: Float, size: Float, area: Float): Float = if (size <=
 
 /** Where content [size] long starts in an area [area] long: centred when it fits, else moved left by [pan]. */
 internal fun contentStart(size: Float, area: Float, pan: Float): Float = if (size <= area) (area - size) / 2f else -pan
+
+/** A row [shownHeight] tall as a percentage of page [first]'s printed height at [dpi]. */
+internal fun printedPercent(source: com.c2yz.notae.platform.PageSource, first: Int, shownHeight: Float, dpi: Float): Int {
+    val printed = source.pageWidthPoints(first) / 72f * dpi * source.pageAspect(first)
+    return if (printed > 0f) (shownHeight / printed * 100f).roundToInt() else 100
+}

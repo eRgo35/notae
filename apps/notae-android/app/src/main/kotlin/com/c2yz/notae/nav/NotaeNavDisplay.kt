@@ -343,7 +343,7 @@ private fun entryFor(key: NavKey, shown: State<Shown>, motion: ScreenMotion): Na
     // One content key for every score: Previous and Next swap the score in place instead of sliding a new screen in.
     is Route.Viewer -> NavEntry(key, contentKey = VIEWER_CONTENT_KEY) {
         val (snapshot, onAction) = shownFor(key, shown)
-        snapshot.viewer?.let { ScreenFrame(motion) { ViewerScreen(it, onAction, stylusSeen = snapshot.layout.stylusSeen) } }
+        snapshot.viewer?.let { ScreenFrame(motion) { ViewerScreen(it, onAction, layout = snapshot.layout) } }
     }
     // backStackFor puts only routes on the stack.
     else -> placeholder(key, R.string.screen_loading)

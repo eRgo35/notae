@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
+import com.c2yz.notae.core.LayoutPrefs
 import com.c2yz.notae.core.Viewer
 import com.c2yz.notae.core.ViewerLayout
 import com.c2yz.notae.core.ViewerPages
@@ -79,7 +80,9 @@ import kotlin.coroutines.cancellation.CancellationException
  * pages; by default with [PdfPageSource].
  */
 @Composable
-fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSourceFactory? = null, stylusSeen: Boolean = false) {
+fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSourceFactory? = null, layout: LayoutPrefs? = null) {
+    val stylusSeen = layout?.stylusSeen ?: false
+    val stored = Triple(layout?.viewerLayout ?: ViewerLayout.AUTO, layout?.viewerPages ?: ViewerPages.AUTO, layout?.viewerScale ?: ViewerScale.Auto)
     val c = NotaeTheme.colors
     val resolver = LocalContext.current.contentResolver
     val open = openPages ?: { treeUri, path -> PdfPageSource.open(resolver, treeUri, path) }
@@ -107,9 +110,9 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     val piece = viewer.row.itemId ?: viewer.row.noteKey
     val configuration = LocalConfiguration.current
     val look = resolveLook(
-        ViewerLayout.AUTO,
-        ViewerPages.AUTO,
-        ViewerScale.Auto,
+        stored.first,
+        stored.second,
+        stored.third,
         configuration.screenWidthDp > configuration.screenHeightDp,
         windowWidthClass(),
         windowHeightClass(),
@@ -117,6 +120,8 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     // The first page on screen, kept across a rotation that changes how pages pair.
     var page by remember(piece) { mutableIntStateOf(0) }
     var bars by remember { mutableStateOf(true) }
+    val zoom = remember(piece) { PageZoom() }
+    var viewMenu by remember { mutableStateOf(false) }
     var notes by remember(piece) { mutableStateOf(false) }
     // Drawing on a set's piece: the session while drawing mode is on, saved when it ends, on Previous/Next and on leaving.
     var session by remember(piece) { mutableStateOf<DrawSession?>(null) }
@@ -196,6 +201,12 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                     overflow = TextOverflow.Ellipsis,
                 )
                 source?.let { Text(stringResource(R.string.viewer_page_of, page + 1, it.pageCount), color = c.muted, fontSize = 15.sp) }
+                Box {
+                    IconButton(stringResource(R.string.viewer_view), painterResource(R.drawable.ic_book_open), { viewMenu = true }, selected = viewMenu)
+                    ViewMenu(look, stored, zoom.percent.takeIf { zoom.factor != 1f }, viewMenu, { viewMenu = false }) { l, p, s ->
+                        onAction(Action.SetViewerLook(l, p, s))
+                    }
+                }
                 if (setId != null) {
                     if (session == null && viewer.overlay != null) {
                         IconButton(
@@ -244,6 +255,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                     { first -> page = first },
                     { bars = !bars },
                     Modifier.fillMaxSize(),
+                    zoom,
                 ) { index, _ ->
                     PageDrawings(
                         index,

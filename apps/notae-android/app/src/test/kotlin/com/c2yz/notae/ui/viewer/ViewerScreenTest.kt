@@ -12,6 +12,19 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Viewer
+import com.c2yz.notae.core.ViewerLayout
+import com.c2yz.notae.core.ViewerPages
+import com.c2yz.notae.core.ViewerScale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.pinch
+import androidx.compose.ui.test.pressKey
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.theme.NotaeTheme
 import org.junit.Assert.assertEquals
@@ -35,11 +48,12 @@ class ViewerScreenTest {
 
     private val actions = mutableListOf<Action>()
     private var shown by mutableStateOf<Viewer?>(null)
+    private var layout by mutableStateOf(Fixture.layout)
 
     private fun show(viewer: Viewer, pages: PageSourceFactory = { _, _ -> FakePages(3) }) {
         shown = viewer
         compose.setContent {
-            NotaeTheme { shown?.let { ViewerScreen(it, { action -> actions += action }, pages) } }
+            NotaeTheme { shown?.let { ViewerScreen(it, { action -> actions += action }, pages, layout) } }
         }
         compose.waitForIdle()
     }
@@ -146,5 +160,63 @@ class ViewerScreenTest {
         show(inSet().copy(contentChanged = true))
 
         compose.onNodeWithText("This score's PDF changed; drawings may not line up.").assertIsDisplayed()
+    }
+
+    @Test
+    fun view_menu_marks_the_current_look() {
+        show(Fixture.viewer())
+        compose.onNodeWithContentDescription("View").performClick()
+        compose.onNodeWithText("Pages").assertIsSelected()
+        compose.onNodeWithText("Scroll").assertIsNotSelected()
+        compose.onNodeWithText("2 pages").assertIsSelected()
+        compose.onNodeWithText("Fit pages").assertIsSelected()
+        compose.onNodeWithText("Fit width").assertIsNotSelected()
+        compose.onNodeWithText("100 %").assertIsNotSelected()
+    }
+
+    @Test
+    fun picking_scroll_dispatches_the_look() {
+        layout = Fixture.layout.copy(viewerScale = ViewerScale.Percent(150u))
+        show(Fixture.viewer())
+        compose.onNodeWithContentDescription("View").performClick()
+        compose.onNodeWithText("150 %").assertIsSelected()
+        compose.onNodeWithText("Scroll").performClick()
+        assertEquals(
+            listOf<Action>(Action.SetViewerLook(ViewerLayout.SCROLL, ViewerPages.AUTO, ViewerScale.Percent(150u))),
+            actions.filterIsInstance<Action.SetViewerLook>(),
+        )
+        compose.onNodeWithText("Scroll").assertDoesNotExist()
+    }
+
+    @Test
+    fun switching_layout_keeps_the_page() {
+        layout = Fixture.layout.copy(viewerPages = ViewerPages.ONE)
+        show(Fixture.viewer()) { _, _ -> FakePages(5) }
+        repeat(3) {
+            compose.onRoot().performKeyInput { pressKey(Key.PageDown) }
+            compose.waitForIdle()
+        }
+        compose.onNodeWithText("4 / 5").assertIsDisplayed()
+        layout = layout.copy(viewerLayout = ViewerLayout.SCROLL)
+        compose.waitForIdle()
+        compose.onNodeWithText("4 / 5").assertIsDisplayed()
+        layout = layout.copy(viewerPages = ViewerPages.TWO, viewerLayout = ViewerLayout.PAGES)
+        compose.waitForIdle()
+        compose.onNodeWithText("3 / 5").assertIsDisplayed()
+    }
+
+    @Test
+    fun pinched_view_shows_live_percent() {
+        show(Fixture.viewer())
+        compose.onNodeWithContentDescription("View").performClick()
+        compose.onNodeWithText("Scale", substring = true).assertTextEquals("Scale")
+        compose.onNodeWithText("Pages").performClick()
+        compose.onRoot().performTouchInput {
+            pinch(center - Offset(10f, 0f), center - Offset(80f, 0f), center + Offset(10f, 0f), center + Offset(80f, 0f))
+        }
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("View").performClick()
+        compose.onNodeWithText("Scale (", substring = true).assertExists()
+        compose.onNodeWithText("Fit pages").assertIsNotSelected()
     }
 }
