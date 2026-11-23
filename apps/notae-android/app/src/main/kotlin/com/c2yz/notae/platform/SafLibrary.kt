@@ -17,6 +17,7 @@ import com.c2yz.notae.core.DocumentContent
 import com.c2yz.notae.core.DocumentEntry
 import com.c2yz.notae.core.PlatformException
 import com.c2yz.notae.core.PlatformLibrary
+import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -38,6 +39,11 @@ class SafLibrary(context: Context) : PlatformLibrary {
 
     override fun checkRoot(handle: String) = platformCall {
         val tree = handle.toUri()
+        // A library imported from a ZIP: a folder in Notae's own storage, which only goes when the app's data is cleared.
+        fileRoot(tree)?.let { root ->
+            if (!root.isDirectory) throw PlatformException.PermissionLost()
+            return@platformCall
+        }
         // Retaking a grant that was revoked throws SecurityException.
         resolver.takePersistableUriPermission(tree, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         val root = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
@@ -63,6 +69,10 @@ class SafLibrary(context: Context) : PlatformLibrary {
         listings.clear()
         val tree = handle.toUri()
         val entries = mutableListOf<DocumentEntry>()
+        fileRoot(tree)?.let { root ->
+            enumerateFiles(root, "", entries)
+            return@platformCall entries
+        }
         enumerateChildren(tree, DocumentsContract.getTreeDocumentId(tree), "", entries)
         entries
     }
@@ -100,6 +110,18 @@ class SafLibrary(context: Context) : PlatformLibrary {
                 enumerateChildren(tree, child.id, joinPath(parentPath, child.name), entries)
             } else if (isPdfName(child.name)) {
                 entries += DocumentEntry(joinPath(parentPath, child.name), child.name, child.size.toULong(), child.modified)
+            }
+        }
+    }
+
+    private fun enumerateFiles(dir: File, parentPath: String, entries: MutableList<DocumentEntry>) {
+        val children = dir.listFiles() ?: throw FileNotFoundException("cannot list $dir")
+        for (child in children) {
+            if (child.isDirectory) {
+                if (parentPath.isEmpty() && child.name == SIDECAR_DIR) continue
+                enumerateFiles(child, joinPath(parentPath, child.name), entries)
+            } else if (isPdfName(child.name)) {
+                entries += DocumentEntry(joinPath(parentPath, child.name), child.name, child.length().toULong(), child.lastModified().takeIf { it > 0 })
             }
         }
     }
@@ -180,6 +202,7 @@ internal fun documentUri(resolver: ContentResolver, tree: Uri, path: String, req
 ): Uri {
     val segments = path.split('/')
     if (requirePdf && !isPdfName(segments.last())) throw IllegalArgumentException("not a PDF library path: $path")
+    fileRoot(tree)?.let { root -> return Uri.fromFile(libraryFile(root, path)) }
     var parentId = DocumentsContract.getTreeDocumentId(tree)
     segments.forEachIndexed { index, segment ->
         val isFile = index == segments.lastIndex
@@ -191,6 +214,19 @@ internal fun documentUri(resolver: ContentResolver, tree: Uri, path: String, req
         }
     }
     return DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
+}
+
+/** The folder a `file:` library handle names (a library imported from a ZIP); null for a SAF tree. */
+internal fun fileRoot(tree: Uri): File? =
+    if (tree.scheme == ContentResolver.SCHEME_FILE) File(tree.path ?: throw IllegalArgumentException("Invalid URI: $tree")) else null
+
+/** The existing file at the library-relative [path] below [root]; a path that leaves [root] is refused. */
+internal fun libraryFile(root: File, path: String): File {
+    val base = root.canonicalFile
+    val file = File(base, path).canonicalFile
+    require(file.path.startsWith(base.path + File.separator)) { "not a library path: $path" }
+    if (!file.isFile) throw FileNotFoundException("not found: $path")
+    return file
 }
 
 /**

@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.net.Uri
 import android.os.Build
+import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.c2yz.notae.R
 import com.c2yz.notae.core.PdfOpenError
@@ -17,10 +18,14 @@ import com.c2yz.notae.core.PdfOpenError
 class PdfOpener(private val activity: Activity) {
     /**
      * The document at [relativePath] below the library tree [treeUri]. It walks the tree's folders,
-     * so call it off the main thread; it throws what the provider throws.
+     * so call it off the main thread; it throws what the provider throws. A PDF of a library imported from a ZIP is in
+     * Notae's own storage, so the viewer gets it through Notae's [FileProvider].
      */
-    fun find(treeUri: String, relativePath: String): Uri =
-        documentUri(activity.contentResolver, treeUri.toUri(), relativePath)
+    fun find(treeUri: String, relativePath: String): Uri {
+        val document = documentUri(activity.contentResolver, treeUri.toUri(), relativePath)
+        val file = fileRoot(document) ?: return document
+        return FileProvider.getUriForFile(activity, "${activity.packageName}.files", file)
+    }
 
     /** Opens [document] in a viewer, on the main thread; the error to report, or null once a viewer was launched. */
     fun open(document: Uri): PdfOpenError? = try {

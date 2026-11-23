@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The FileProvider shares only the set files written for the share sheet. -->
+<!-- The FileProvider shares the set files written for the share sheet, and a ZIP library's PDFs with the PDF app the
+     user opens one in (read only, one document per grant). -->
 <paths>
     <cache-path name="shared" path="shared/" />
+    <files-path name="library" path="zip-library/" />
 </paths>

@@ -156,6 +156,37 @@ class SafLibraryTest {
         assertEquals("bitmap too large", error.detail)
     }
 
+    @Test
+    fun a_zip_library_folder_is_read_through_its_file_handle() {
+        val root = files.newFolder("zip-library")
+        val pdf = "%PDF-1.4\nave".toByteArray()
+        File(root, "Nutki/sub").mkdirs()
+        File(root, "Nutki/001 - Ave.pdf").writeBytes(pdf)
+        File(root, "Nutki/sub/002 - Credo.PDF").writeBytes("%PDF-1.4\ncredo".toByteArray())
+        File(root, "Nutki/readme.txt").writeText("t")
+        File(root, ".notae").mkdirs()
+        File(root, ".notae/library.json").writeText("{}")
+        File(root, ".notae/hidden.pdf").writeText("x")
+        val handle = android.net.Uri.fromFile(root).toString()
+
+        library.checkRoot(handle)
+        val entries = library.enumerate(handle).sortedBy { it.path }
+
+        assertEquals(listOf("Nutki/001 - Ave.pdf", "Nutki/sub/002 - Credo.PDF"), entries.map { it.path })
+        assertEquals("001 - Ave.pdf", entries[0].displayName)
+        assertEquals(pdf.size.toULong(), entries[0].size)
+        assertEquals(sha256(pdf), library.hash(handle, "Nutki/001 - Ave.pdf"))
+        assertArrayEquals("{}".toByteArray(), library.readFile(handle, ".notae/library.json"))
+        assertNull(library.readFile(handle, ".notae/missing.json"))
+        assertThrows(PlatformException.Unavailable::class.java) { library.readFile(handle, "../outside.pdf") }
+    }
+
+    @Test
+    fun a_missing_zip_library_folder_is_a_lost_root() {
+        val handle = android.net.Uri.fromFile(File(files.root, "gone")).toString()
+        assertThrows(PlatformException.PermissionLost::class.java) { library.checkRoot(handle) }
+    }
+
     private fun file(bytes: ByteArray): File = files.newFile().apply { writeBytes(bytes) }
 
     private fun sha256(bytes: ByteArray) = DocumentContent.Sha256(sha256Hex(bytes.inputStream()))
