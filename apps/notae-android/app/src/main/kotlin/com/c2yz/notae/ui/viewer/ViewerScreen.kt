@@ -1,5 +1,6 @@
 package com.c2yz.notae.ui.viewer
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,26 +10,24 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import com.c2yz.notae.platform.PageSource
-import com.c2yz.notae.platform.PageSourceFactory
-import com.c2yz.notae.platform.PdfPageSource
-import kotlin.coroutines.cancellation.CancellationException
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -38,12 +37,20 @@ import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Viewer
+import com.c2yz.notae.platform.PageSource
+import com.c2yz.notae.platform.PageSourceFactory
+import com.c2yz.notae.platform.PdfPageSource
 import com.c2yz.notae.ui.components.IconButton
+import com.c2yz.notae.ui.components.windowHeightClass
+import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.theme.NotaeTheme
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Notae's viewer: a bar with Back and the score's title over its pages. It is drawn over the screen that opened it;
- * Back (the button, the gesture or Escape) closes it through the core.
+ * Notae's viewer: a bar with Back, the score's title and the page over its pages ([PageArea]). It is drawn over the
+ * screen that opened it; Back (the button, the gesture or Escape) closes it through the core. A tap in the middle of
+ * the page hides or shows the bar, and the screen stays on while the viewer shows. [openPages] opens the score's
+ * pages; by default with [PdfPageSource].
  */
 @Composable
 fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSourceFactory? = null) {
@@ -65,38 +72,56 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
         val opened = source
         onDispose { opened?.close() }
     }
-    val page by remember(viewer.row.noteKey) { mutableIntStateOf(0) }
-    Column(Modifier.fillMaxSize().background(c.background)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(stringResource(R.string.viewer_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseViewer) })
-            Text(
-                viewer.row.title,
-                Modifier.weight(1f),
-                color = c.foreground,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            source?.let { Text(stringResource(R.string.viewer_page_of, page + 1, it.pageCount), color = c.muted, fontSize = 15.sp) }
+    val view = LocalView.current
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
+    val configuration = LocalConfiguration.current
+    val mode = pageModeFor(configuration.screenWidthDp > configuration.screenHeightDp, windowWidthClass(), windowHeightClass())
+    // The first page on screen, kept across a rotation that changes how pages pair.
+    var page by remember(viewer.row.noteKey) { mutableIntStateOf(0) }
+    var bars by remember { mutableStateOf(true) }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(c.background)
+            .onPreviewKeyEvent { event ->
+                (event.type == KeyEventType.KeyDown && event.key == Key.Escape).also { if (it) onAction(Action.CloseViewer) }
+            },
+    ) {
+        AnimatedVisibility(bars || error != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(stringResource(R.string.viewer_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseViewer) })
+                Text(
+                    viewer.row.title,
+                    Modifier.weight(1f),
+                    color = c.foreground,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                source?.let { Text(stringResource(R.string.viewer_page_of, page + 1, it.pageCount), color = c.muted, fontSize = 15.sp) }
+            }
         }
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             error?.let { Text(stringResource(R.string.viewer_cannot_open, it), Modifier.padding(24.dp), color = c.error, fontSize = 15.sp) }
-            source?.let { SinglePage(it, page) }
+            source?.let { pages ->
+                val spreads = spreadsFor(pages.pageCount, mode)
+                PageArea(
+                    pages,
+                    mode,
+                    spreadOf(page, spreads),
+                    { spread -> page = spreads.getOrNull(spread)?.first ?: page },
+                    { bars = !bars },
+                    Modifier.fillMaxSize(),
+                )
+            }
         }
-    }
-}
-
-/** Page [index] fit to the space, until the page area arrives. */
-@Composable
-private fun SinglePage(source: PageSource, index: Int) {
-    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        val widthPx = constraints.maxWidth.coerceAtLeast(1)
-        val bitmap by produceState<ImageBitmap?>(null, source, index, widthPx) { value = source.render(index, widthPx) }
-        bitmap?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
     }
 }
