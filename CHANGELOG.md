@@ -9,6 +9,22 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-23
+
+Notae 0.9.1 fixes small things in the 0.9.0 viewer. See
+[`docs/release-notes/v0.9.1.md`](docs/release-notes/v0.9.1.md).
+
+### Fixed
+
+- Pinch zoom reaches from half the fit page to four times the printed size,
+  whatever scale is chosen.
+- A still two-finger tap at the edge no longer turns the page.
+- Switching from 1 to 2 pages keeps the page you are on (page 4 stays 4 on the
+  3–4 spread).
+- In Scroll, a pinch keeps the point under the fingers also across.
+- A new layout starts at its scale from the first frame.
+- Pinching no longer composes the pages again on every frame.
+
 ## [0.9.0] - 2026-11-23
 
 Notae 0.9.0 lets you choose how the viewer lays out pages, zoom anywhere,
@@ -570,7 +586,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/eRgo35/notae/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/eRgo35/notae/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/eRgo35/notae/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/eRgo35/notae/compare/v0.7.0...v0.7.1

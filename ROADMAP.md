@@ -5,7 +5,7 @@ Notae has one maintainer. Work is tracked in
 [milestones](https://github.com/eRgo35/notae/milestones); this page is the
 short version.
 
-## Released: 0.9.0
+## Released: 0.9.1
 
 0.5.0 replaced the Rust UI with a Jetpack Compose app over a UniFFI Rust core
 (application id `com.c2yz.notae`, Android only). 0.6.0 added phone layouts,
@@ -16,7 +16,8 @@ privacy policy and the open-source licenses and prepares Notae for Google Play.
 ([ADR 0003](docs/adr/0003-in-app-viewer-and-overlays.md)) and near-instant
 scans with the PC sidecar ([ADR 0004](docs/adr/0004-pc-sidecar-and-automatic-scans.md)).
 0.9.0 adds the viewer's layouts and scales, zoom anywhere, the notes panel on
-a tablet, and the library from a ZIP file or a link. See
+a tablet, and the library from a ZIP file or a link; 0.9.1 fixes small
+things in that viewer. See
 [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Later
