@@ -17,7 +17,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -96,17 +100,19 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
         view.keepScreenOn = true
         onDispose { view.keepScreenOn = false }
     }
+    // The piece on screen: the set item (a set may hold the same score twice), else the score.
+    val piece = viewer.row.itemId ?: viewer.row.noteKey
     val configuration = LocalConfiguration.current
     val mode = pageModeFor(configuration.screenWidthDp > configuration.screenHeightDp, windowWidthClass(), windowHeightClass())
     // The first page on screen, kept across a rotation that changes how pages pair.
-    var page by remember(viewer.row.noteKey) { mutableIntStateOf(0) }
+    var page by remember(piece) { mutableIntStateOf(0) }
     var bars by remember { mutableStateOf(true) }
-    var notes by remember(viewer.row.noteKey) { mutableStateOf(false) }
+    var notes by remember(piece) { mutableStateOf(false) }
     // Drawing on a set's piece: the session while drawing mode is on, saved when it ends, on Previous/Next and on leaving.
-    var session by remember(viewer.row.noteKey) { mutableStateOf<DrawSession?>(null) }
+    var session by remember(piece) { mutableStateOf<DrawSession?>(null) }
     var showDrawings by remember { mutableStateOf(true) }
-    var clearing by remember(viewer.row.noteKey) { mutableStateOf(false) }
-    var textRequest by remember(viewer.row.noteKey) { mutableStateOf<TextRequest?>(null) }
+    var clearing by remember(piece) { mutableStateOf(false) }
+    var textRequest by remember(piece) { mutableStateOf<TextRequest?>(null) }
     var stylusReported by remember { mutableStateOf(stylusSeen) }
     val setId = viewer.setId
     val itemId = viewer.row.itemId
@@ -117,10 +123,18 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
         save(session)
         session = null
     }
-    DisposableEffect(viewer.row.noteKey) {
+    DisposableEffect(piece) {
         onDispose { save(session) }
     }
-    var editing by remember(viewer.row.noteKey) { mutableStateOf<ViewerNote?>(null) }
+    // Android may end the app once it is in the background: save what is drawn when it stops.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val saveNow by rememberUpdatedState { save(session) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) saveNow() }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+    var editing by remember(piece) { mutableStateOf<ViewerNote?>(null) }
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(
         state = backState,

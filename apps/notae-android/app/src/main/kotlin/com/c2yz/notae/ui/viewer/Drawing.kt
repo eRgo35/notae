@@ -40,6 +40,9 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke as DrawStroke
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -227,6 +230,15 @@ private fun distance(a: Offset, b: Offset, x: Float, y: Float): Float {
     return hypot(x - (a.x + t * dx), y - (a.y + t * dy))
 }
 
+/** The first pen (or eraser) touch while fingers are down; null once every pointer is up. */
+private suspend fun AwaitPointerEventScope.awaitPen(): PointerInputChange? {
+    while (true) {
+        val event = awaitPointerEvent()
+        event.changes.firstOrNull { it.changedToDown() && (it.type == PointerType.Stylus || it.type == PointerType.Eraser) }?.let { return it }
+        if (event.changes.none { it.pressed }) return null
+    }
+}
+
 /** What the page layer asks the viewer to do with text: add a box at a point, or delete one. */
 sealed interface TextRequest {
     data class Add(val page: Int, val x: Float, val y: Float) : TextRequest
@@ -259,7 +271,10 @@ fun PageDrawings(
     } else {
         Modifier.pointerInput(page, session) {
             awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false)
+                val first = awaitFirstDown(requireUnconsumed = false)
+                // Once a pen has been seen a finger only moves the page, but a resting palm must not keep the pen
+                // from drawing: wait, while fingers are down, for a pen to touch.
+                val down = if (first.type == PointerType.Touch && seen) awaitPen() ?: return@awaitEachGesture else first
                 if (down.type == PointerType.Stylus || down.type == PointerType.Eraser) stylus()
                 val pointers = currentEvent.changes.count { it.pressed }
                 val route = routeTouch(down.type, seen, pointers, drawing = true)
@@ -280,9 +295,10 @@ fun PageDrawings(
                     }
                     when {
                         hit != null && moved -> {
-                            val start = session.overlay().pages.first { it.page == page.toUInt() }.texts[hit]
+                            // The box may be gone (Undo during the drag).
+                            val start = session.overlay().pages.firstOrNull { it.page == page.toUInt() }?.texts?.getOrNull(hit)
                             val delta = pageFraction(last, box) - at
-                            session.moveText(page, hit, start.x + delta.x, start.y + delta.y)
+                            if (start != null) session.moveText(page, hit, start.x + delta.x, start.y + delta.y)
                         }
                         hit != null -> text(TextRequest.Delete(page, hit))
                         !moved -> text(TextRequest.Add(page, at.x, at.y))
@@ -302,7 +318,8 @@ fun PageDrawings(
                         break
                     }
                     val change = event.changes.firstOrNull { it.id == down.id } ?: run { session.end(); null } ?: break
-                    change.consume()
+                    // While the pen draws, a resting palm moves nothing either.
+                    if (down.type == PointerType.Touch) change.consume() else event.changes.forEach { it.consume() }
                     if (!change.pressed) {
                         session.end()
                         break
