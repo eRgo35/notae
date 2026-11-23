@@ -26,7 +26,7 @@ class ZipLibraryTest {
         val bytes = ByteArrayOutputStream()
         ZipOutputStream(bytes, charset).use { out ->
             for ((name, content) in entries) {
-                out.putNextEntry(ZipEntry(name))
+                out.putNextEntry(ZipEntry(name).apply { time = ENTRY_TIME })
                 out.write(content.toByteArray())
                 out.closeEntry()
             }
@@ -105,5 +105,16 @@ class ZipLibraryTest {
         assertFalse(File(dir, "Gone.pdf").exists())
         assertTrue(zipLibraryHandle(temp.root).startsWith("file:"))
         assertTrue(zipLibraryHandle(temp.root).endsWith("/$ZIP_LIBRARY_DIR"))
+    }
+
+    @Test
+    fun files_keep_the_time_the_zip_gives_them_so_a_reimport_changes_nothing() {
+        val dir = unpack(zip("Ave.pdf" to "a"))
+        // ZIP times have a two-second resolution.
+        assertEquals(ENTRY_TIME.toDouble(), File(dir, "Ave.pdf").lastModified().toDouble(), 2_000.0)
+    }
+
+    private companion object {
+        const val ENTRY_TIME = 1_700_000_000_000L
     }
 }

@@ -94,6 +94,8 @@ private fun unpackInto(open: () -> InputStream, dir: File, charset: Charset, usa
                     }
                 }
                 if (free - written < SPARE_BYTES) throw ZipImportException(ZipImportException.Reason.NO_SPACE)
+                // The ZIP's own time, so a score unchanged in a new ZIP is not reported as updated.
+                if (entry.time > 0) out.setLastModified(entry.time)
                 if (isPdf(entry.name)) pdfs++
             }
         }
