@@ -35,6 +35,7 @@ import com.c2yz.notae.core.AddPicker
 import com.c2yz.notae.core.AddToSetSheet
 import com.c2yz.notae.core.CoreListener
 import com.c2yz.notae.core.DeleteSetConfirmation
+import com.c2yz.notae.core.RemoveItemConfirmation
 import com.c2yz.notae.core.DocumentContent
 import com.c2yz.notae.core.DocumentEntry
 import com.c2yz.notae.core.Effect
@@ -466,6 +467,20 @@ class SetsScreenTest {
         SetChoice("empty", "Pusty zestaw", null, 0u, false, emptyList()),
         SetChoice("friday", Fixture.FRIDAY_NAME, "2026-04-03", 0u, false, emptyList()),
     )
+
+    @Test
+    fun remove_confirmation_shows_and_confirms() {
+        show(Fixture.sets().copy(removeItem = RemoveItemConfirmation("item1", "Barka")))
+
+        compose.onNodeWithText("Remove “Barka”?").assertIsDisplayed()
+        compose.onNodeWithText("Its drawings in this set are deleted too.").assertIsDisplayed()
+        compose.assertAllClickablesLabelled()
+        compose.onNodeWithText("Remove").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        compose.onRoot().performKeyInput { pressKey(Key.Escape) }
+
+        assertEquals(listOf(Action.ConfirmRemoveSetItem, Action.CancelRemoveSetItem, Action.CancelRemoveSetItem), actions)
+    }
 
     @Test
     fun escape_closes_the_delete_confirmation_without_a_click() {

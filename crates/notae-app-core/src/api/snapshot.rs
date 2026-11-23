@@ -70,6 +70,8 @@ pub struct Snapshot {
     pub reordering: bool,
     /// The set dialog, while it is open.
     pub set_dialog: Option<SetDialog>,
+    /// The question before removing a piece with drawings, while it is open.
+    pub remove_item: Option<RemoveItemConfirmation>,
     /// The delete confirmation, while it is open.
     pub delete_set: Option<DeleteSetConfirmation>,
     /// The metadata editor, while it is open.
@@ -630,6 +632,15 @@ pub struct UnmatchedPiece {
     pub title: String,
 }
 
+/// "Remove “title”?" before a piece with drawings leaves a set.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RemoveItemConfirmation {
+    /// The set item.
+    pub item_id: String,
+    /// The piece's title.
+    pub title: String,
+}
+
 /// The score on Notae's viewer.
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
 pub struct Viewer {
@@ -945,6 +956,9 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         },
         reordering: model.reordering(),
         set_dialog: extras.set_dialog.cloned(),
+        remove_item: model
+            .pending_remove_item()
+            .map(|(item_id, title)| RemoveItemConfirmation { item_id, title }),
         delete_set: model
             .pending_delete_set_name()
             .map(|name| DeleteSetConfirmation {

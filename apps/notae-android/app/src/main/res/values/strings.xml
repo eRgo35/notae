@@ -248,6 +248,10 @@
     <string name="set_delete_title">Delete “%1$s”?</string>
     <string name="set_delete_body">The set is removed. Its pieces stay in your library.</string>
     <string name="set_delete_confirm">Delete</string>
+    <string name="set_remove_item_dialog">Remove piece dialog</string>
+    <string name="set_remove_item_title">Remove “%1$s”?</string>
+    <string name="set_remove_item_body">Its drawings in this set are deleted too.</string>
+    <string name="set_remove_item_confirm">Remove</string>
     <string name="add_to_set_dialog">Add to set dialog</string>
     <string name="picker_dialog">Add pieces dialog</string>
     <string name="picker_title">Pieces</string>

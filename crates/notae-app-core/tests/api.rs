@@ -2322,8 +2322,12 @@ fn removing_an_item_deletes_its_overlay() {
     );
 }
 
-/// Task 4 asks before removing a piece with drawings.
-fn confirm_removal_if_asked(_harness: &Harness) {}
+/// A piece with drawings is removed only once the user confirms.
+fn confirm_removal_if_asked(harness: &Harness) {
+    if harness.core.snapshot().remove_item.is_some() {
+        harness.core.dispatch(Action::ConfirmRemoveSetItem);
+    }
+}
 
 #[test]
 fn deleting_a_set_deletes_its_overlays() {
@@ -2360,4 +2364,87 @@ fn a_changed_pdf_keeps_the_overlay_and_warns() {
     let viewer = harness.core.snapshot().viewer.expect("viewer");
     assert!(viewer.overlay.is_some());
     assert!(viewer.content_changed);
+}
+
+#[test]
+fn removing_a_piece_with_drawings_asks_first() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let (set_id, item_id) = draw_on_first_piece(&harness, &in_set);
+    harness.core.dispatch(Action::RemoveSetItem {
+        item_id: item_id.clone(),
+    });
+    let asked = harness.core.snapshot();
+    assert_eq!(asked.rows.len(), 1, "nothing is removed yet");
+    let confirmation = asked.remove_item.expect("asks first");
+    assert_eq!(confirmation.item_id, item_id);
+    assert_eq!(confirmation.title, "Ave Maria");
+    harness.core.dispatch(Action::ConfirmRemoveSetItem);
+    let removed = harness.core.snapshot();
+    assert!(removed.rows.is_empty());
+    assert_eq!(removed.remove_item, None);
+    let file = dir
+        .path()
+        .join("overlays")
+        .join(set_id)
+        .join(format!("{item_id}.json"));
+    assert!(!file.exists());
+}
+
+#[test]
+fn removing_a_piece_without_drawings_is_immediate() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    harness.core.dispatch(Action::RemoveSetItem {
+        item_id: in_set.rows[0].item_id.clone().expect("item"),
+    });
+    let removed = harness.core.snapshot();
+    assert!(removed.rows.is_empty());
+    assert_eq!(removed.remove_item, None);
+}
+
+#[test]
+fn back_cancels_the_removal() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let (_, item_id) = draw_on_first_piece(&harness, &in_set);
+    harness.core.dispatch(Action::RemoveSetItem { item_id });
+    assert!(harness.core.back());
+    let kept = harness.core.snapshot();
+    assert_eq!(kept.remove_item, None);
+    assert_eq!(kept.rows.len(), 1, "the piece stays");
+    assert!(
+        kept.section_key.starts_with("set:"),
+        "back only closed the question"
+    );
+}
+
+#[test]
+fn unchecking_a_set_with_drawings_on_the_piece_asks_first() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let library = open_and_scan(&harness);
+    let in_set = set_with_first_piece(&harness, &library);
+    let (set_id, _) = draw_on_first_piece(&harness, &in_set);
+    harness.core.dispatch(Action::AddToSet {
+        note_key: library.rows[0].note_key.clone(),
+    });
+    harness.core.dispatch(Action::ToggleSetMembership {
+        set_id: set_id.clone(),
+        note_key: library.rows[0].note_key.clone(),
+    });
+    let asked = harness.core.snapshot();
+    assert!(asked.remove_item.is_some(), "asks first");
+    assert_eq!(asked.rows.len(), 1);
+    harness.core.dispatch(Action::CancelRemoveSetItem);
+    let kept = harness.core.snapshot();
+    assert_eq!(kept.remove_item, None);
+    assert_eq!(kept.rows.len(), 1);
+    assert!(kept.add_to_set.is_some(), "the checklist stays open");
 }

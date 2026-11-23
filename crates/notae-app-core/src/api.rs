@@ -46,10 +46,10 @@ pub use effect::Effect;
 pub use snapshot::{
     AddPicker, AddToSetSheet, Banner, ComposerEntry, DeleteSetConfirmation, Edited, ExportStatus,
     ImportConfirmation, ImportError, ImportStatus, LayoutPrefs, MetadataDraft, Origin,
-    PdfOpenError, PositionOf, Row, ScanSummary, Screen, SearchBox, SearchScope, SectionEntry,
-    SectionTitle, Selection, SetCard, SetChoice, SetDialog, SetEntry, SettingsInfo, SetupError,
-    SetupScreen, SharedSetReview, Snapshot, Snippet, StatusMessage, Subtitle, UnmatchedPiece,
-    Viewer,
+    PdfOpenError, PositionOf, RemoveItemConfirmation, Row, ScanSummary, Screen, SearchBox,
+    SearchScope, SectionEntry, SectionTitle, Selection, SetCard, SetChoice, SetDialog, SetEntry,
+    SettingsInfo, SetupError, SetupScreen, SharedSetReview, Snapshot, Snippet, StatusMessage,
+    Subtitle, UnmatchedPiece, Viewer,
 };
 
 use crate::backup::{BackupError, ImportFile};
@@ -826,6 +826,10 @@ impl CoreState {
             }
             Action::CloseAddToSet => model.add_to_set_closed(),
             Action::RemoveSetItem { item_id } => model.remove_set_item_requested(&item_id),
+            Action::ConfirmRemoveSetItem => model.confirm_remove_item(),
+            Action::CancelRemoveSetItem => {
+                model.cancel_remove_item();
+            }
             Action::OpenAddPicker => model.add_picker_opened(),
             Action::AddPickerSearch { query } => {
                 model.add_picker_search_changed(&query);
@@ -889,7 +893,7 @@ impl CoreState {
         if !library_open {
             return false;
         }
-        if model.close_viewer() {
+        if model.cancel_remove_item() || model.close_viewer() {
         } else if model.add_to_set_key().is_some() {
             model.add_to_set_closed();
         } else if self.set_dialog.take().is_some() {

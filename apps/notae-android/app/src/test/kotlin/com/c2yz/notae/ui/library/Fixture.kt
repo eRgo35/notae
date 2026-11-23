@@ -234,6 +234,7 @@ object Fixture {
         layout = LayoutPrefs(LibraryView.GRID, sidebarCollapsedPortrait = true, sidebarCollapsedLandscape = false, openScoresIn = OpenScoresIn.NOTAE, stylusSeen = false),
         reordering = false,
         setDialog = null,
+        removeItem = null,
         deleteSet = null,
         metadataEditor = null,
         addToSet = null,

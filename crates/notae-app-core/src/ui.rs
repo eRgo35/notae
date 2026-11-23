@@ -138,6 +138,8 @@ pub struct UiModel {
     viewer: Option<viewer::ViewerState>,
     /// Drawings on set pieces; `None` until a data folder is set.
     overlays: Option<OverlayStore>,
+    /// `(set id, item id)` of a piece with drawings waiting for "Remove" to be confirmed.
+    pending_remove_item: Option<(String, String)>,
     section: LibrarySection,
     recent: RecentScores,
     recent_path: Option<PathBuf>,
@@ -189,6 +191,7 @@ impl UiModel {
             pdf_launch_error: None,
             viewer: None,
             overlays: None,
+            pending_remove_item: None,
             section: LibrarySection::All,
             recent: RecentScores::default(),
             recent_path: None,
@@ -809,6 +812,11 @@ impl UiModel {
                 .find(|item| matches!(&item.kind, ItemKind::Piece(piece) if piece.key == key))
                 .map(|item| item.id.clone())
         });
+        if let Some(item_id) = &last_copy
+            && self.ask_before_removing(set_id, item_id)
+        {
+            return;
+        }
         let changed = match last_copy {
             Some(item_id) => self.remove_item_with_drawings(set_id, &item_id, now),
             None => self
@@ -832,16 +840,66 @@ impl UiModel {
         self.new_set_piece = self.add_to_set.take().map(|open| open.key);
     }
 
-    /// Removes one item from the open set at once; removal is not confirmed.
+    /// Removes one item from the open set; a piece with drawings waits for
+    /// [`Self::confirm_remove_item`].
     pub fn remove_set_item_requested(&mut self, item_id: &str) {
         let LibrarySection::Set(set_id) = &self.section else {
             return;
         };
         let set_id = set_id.clone();
-        if self.remove_item_with_drawings(&set_id, item_id, unix_now()) {
+        if !self.ask_before_removing(&set_id, item_id) {
+            self.remove_and_save(&set_id, item_id);
+        }
+    }
+
+    fn remove_and_save(&mut self, set_id: &str, item_id: &str) {
+        if self.remove_item_with_drawings(set_id, item_id, unix_now()) {
             self.save_sets();
             self.forget_missing_selection();
         }
+    }
+
+    /// Holds the removal of an item with drawings for confirmation; `false` when it has none.
+    fn ask_before_removing(&mut self, set_id: &str, item_id: &str) -> bool {
+        let drawn = self
+            .overlays
+            .as_ref()
+            .is_some_and(|store| store.has(set_id, item_id));
+        if drawn {
+            self.pending_remove_item = Some((set_id.to_owned(), item_id.to_owned()));
+        }
+        drawn
+    }
+
+    /// The piece waiting for "Remove" to be confirmed: its item id and title.
+    #[must_use]
+    pub fn pending_remove_item(&self) -> Option<(String, String)> {
+        let (set_id, item_id) = self.pending_remove_item.as_ref()?;
+        let set = self.sets.get(set_id)?;
+        let item = set.items.iter().find(|item| &item.id == item_id)?;
+        let ItemKind::Piece(piece) = &item.kind else {
+            return None;
+        };
+        let title = self
+            .search_rows
+            .iter()
+            .find(|row| row.note_key == piece.key)
+            .map(|row| row.title.clone())
+            .or_else(|| item.title.clone())
+            .unwrap_or_else(|| crate::share::file_stem(&piece.path));
+        Some((item_id.clone(), title))
+    }
+
+    /// Removes the piece the user was asked about, with its drawings.
+    pub fn confirm_remove_item(&mut self) {
+        if let Some((set_id, item_id)) = self.pending_remove_item.take() {
+            self.remove_and_save(&set_id, &item_id);
+        }
+    }
+
+    /// Keeps the piece the user was asked about; `false` when nothing was asked.
+    pub fn cancel_remove_item(&mut self) -> bool {
+        self.pending_remove_item.take().is_some()
     }
 
     /// Starts reorder mode in the open set and closes the details beside it. Outside a set,

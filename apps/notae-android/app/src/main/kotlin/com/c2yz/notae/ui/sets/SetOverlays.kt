@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.DeleteSetConfirmation
+import com.c2yz.notae.core.RemoveItemConfirmation
 import com.c2yz.notae.core.SetDialog
 import com.c2yz.notae.core.SetFieldError
 import com.c2yz.notae.core.Snapshot
@@ -77,6 +78,7 @@ fun SetOverlays(snapshot: Snapshot, onAction: (Action) -> Unit) {
     AnimatedOverlay(snapshot.deleteSet) { DeleteSetDialog(it, onAction) }
     AnimatedOverlay(snapshot.addToSet) { AddToSetSheet(it, onAction) }
     AnimatedOverlay(snapshot.addPicker) { AddPickerDialog(it, onAction) }
+    AnimatedOverlay(snapshot.removeItem) { RemoveItemDialog(it, onAction) }
 }
 
 /**
@@ -84,7 +86,7 @@ fun SetOverlays(snapshot: Snapshot, onAction: (Action) -> Unit) {
  * and the core closes it before any screen, and the screen beneath leaves the keys to it.
  */
 fun overlayOpen(snapshot: Snapshot): Boolean =
-    snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.metadataEditor != null ||
+    snapshot.setDialog != null || snapshot.deleteSet != null || snapshot.removeItem != null || snapshot.metadataEditor != null ||
         snapshot.addToSet != null || snapshot.addPicker != null || snapshot.importConfirmation != null
 
 /** Escape, as 0.3.0's dialogs read it. */
@@ -232,6 +234,34 @@ private fun DeleteSetDialog(confirmation: DeleteSetConfirmation, onAction: (Acti
             cancel,
             stringResource(R.string.set_delete_confirm),
             { onAction(Action.ConfirmDeleteSet) },
+            destructive = true,
+        )
+    }
+}
+
+/** "Remove “title”?" before a piece with drawings leaves a set, since its drawings go with it. */
+@Composable
+private fun RemoveItemDialog(confirmation: RemoveItemConfirmation, onAction: (Action) -> Unit) {
+    val c = NotaeTheme.colors
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(Unit) { keys.requestFocus() }
+    val cancel = { onAction(Action.CancelRemoveSetItem) }
+    ModalSurface(
+        stringResource(R.string.set_remove_item_dialog),
+        onDismiss = null,
+        bottomSheet = false,
+        cardWidth = 480.dp,
+        modifier = Modifier.closeOnEscape(cancel).focusRequester(keys).focusable(),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(R.string.set_remove_item_title, confirmation.title), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.set_remove_item_body), color = c.muted, fontSize = 15.sp)
+        }
+        DialogButtons(
+            stringResource(R.string.set_cancel),
+            cancel,
+            stringResource(R.string.set_remove_item_confirm),
+            { onAction(Action.ConfirmRemoveSetItem) },
             destructive = true,
         )
     }

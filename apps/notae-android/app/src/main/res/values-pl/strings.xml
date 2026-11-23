@@ -251,6 +251,10 @@
     <string name="set_delete_title">Usunąć „%1$s”?</string>
     <string name="set_delete_body">Zestaw zostanie usunięty. Jego utwory zostaną w bibliotece.</string>
     <string name="set_delete_confirm">Usuń</string>
+    <string name="set_remove_item_dialog">Okno usuwania utworu</string>
+    <string name="set_remove_item_title">Usunąć „%1$s”?</string>
+    <string name="set_remove_item_body">Jego rysunki w tym zestawie też zostaną usunięte.</string>
+    <string name="set_remove_item_confirm">Usuń</string>
     <string name="add_to_set_dialog">Okno dodawania do zestawu</string>
     <string name="picker_dialog">Okno dodawania utworów</string>
     <string name="picker_title">Utwory</string>

@@ -215,6 +215,10 @@ pub enum Action {
         /// The set item's id.
         item_id: String,
     },
+    /// "Remove" in the question about a piece with drawings.
+    ConfirmRemoveSetItem,
+    /// "Cancel" in that question.
+    CancelRemoveSetItem,
     /// The set header's Add: opens the add picker.
     OpenAddPicker,
     /// The picker's search text changed.
