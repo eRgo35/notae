@@ -20,10 +20,11 @@ a tablet, and the library from a ZIP file or a link; 0.9.1 fixes small
 things in that viewer. See
 [`CHANGELOG.md`](CHANGELOG.md).
 
+Notae has been on Google Play (internal testing) since 0.7.1
+([`docs/android-release.md`](docs/android-release.md)).
+
 ## Later
 
-- Google Play release
-  ([#40](https://github.com/eRgo35/notae/issues/40)).
 - On-device OCR for scanned PDFs, started manually and run in the foreground
   ([#28](https://github.com/eRgo35/notae/issues/28),
   [ADR 0001](docs/adr/0001-on-device-ocr.md)).
