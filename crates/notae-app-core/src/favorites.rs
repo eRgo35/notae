@@ -148,9 +148,14 @@ impl PieceRef {
     }
 }
 
-/// Writes `text` to `path` through a sibling `.tmp` file and a rename.
+/// Writes `text` to `path` through a sibling `.tmp` file and a rename. The
+/// temporary file reaches the disk before the rename, so a power cut leaves
+/// the old file or the new one, never an empty one.
 pub(crate) fn write_atomically(path: &Path, text: &str) -> io::Result<()> {
     let temporary = path.with_extension("tmp");
-    fs::write(&temporary, text)?;
+    let mut file = fs::File::create(&temporary)?;
+    io::Write::write_all(&mut file, text.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
     fs::rename(temporary, path)
 }

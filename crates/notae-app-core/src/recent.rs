@@ -57,9 +57,7 @@ impl RecentScores {
     ///
     /// Returns the I/O error from writing or renaming the file.
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        let temporary = path.with_extension("tmp");
-        fs::write(&temporary, self.to_text())?;
-        fs::rename(temporary, path)
+        crate::favorites::write_atomically(path, &self.to_text())
     }
 
     /// Moves `key` to the front. Keys that are not content keys are ignored.

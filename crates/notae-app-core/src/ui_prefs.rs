@@ -128,7 +128,7 @@ impl ViewerPages {
 }
 
 /// The smallest and largest stored viewer percentage.
-const VIEWER_PERCENT: std::ops::RangeInclusive<u16> = 25..=400;
+pub(crate) const VIEWER_PERCENT: std::ops::RangeInclusive<u16> = 25..=400;
 
 /// The viewer's scale; `Auto` chooses from the window.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, uniffi::Enum)]
@@ -338,9 +338,7 @@ impl UiPrefs {
     /// Returns the I/O error from writing or renaming the file. The caller
     /// keeps its in-memory preferences either way.
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        let temporary = path.with_extension("tmp");
-        fs::write(&temporary, self.to_text())?;
-        fs::rename(temporary, path)
+        crate::favorites::write_atomically(path, &self.to_text())
     }
 }
 

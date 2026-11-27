@@ -1001,9 +1001,7 @@ fn save_root(path: &Path, root: &LibraryRoot) -> io::Result<()> {
         "handle": root.handle(),
     })
     .to_string();
-    let temporary = path.with_extension("tmp");
-    fs::write(&temporary, text)?;
-    fs::rename(temporary, path)
+    crate::favorites::write_atomically(path, &text)
 }
 
 impl From<BackupError> for ImportError {
