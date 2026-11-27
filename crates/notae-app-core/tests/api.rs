@@ -321,6 +321,32 @@ fn re_picking_a_root_during_a_scan_scans_the_new_root() {
 }
 
 #[test]
+fn a_re_picked_root_is_not_scanned_until_the_old_worker_stops() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(dir.path(), library_platform(&["Ave Maria"]));
+    let release = pick_with_blocked_scan(&harness);
+
+    harness
+        .core
+        .library_root_picked("Scores".to_owned(), ROOT.to_owned());
+    wait_for_calls(&harness.platform, "check_root", 2);
+    // The new worker exists but waits: two workers never write the index at once.
+    thread::sleep(Duration::from_millis(200));
+    let enumerations = |platform: &FakePlatform| {
+        platform
+            .calls()
+            .iter()
+            .filter(|call| call.starts_with("enumerate "))
+            .count()
+    };
+    assert_eq!(enumerations(&harness.platform), 1);
+
+    drop(release);
+    harness.listener.wait_for("the finished scan", is_finished);
+    assert_eq!(enumerations(&harness.platform), 2);
+}
+
+#[test]
 fn re_picking_a_root_that_lost_permission_leaves_no_scan_running() {
     let dir = tempfile::tempdir().expect("temporary directory");
     let harness = start(dir.path(), library_platform(&["Ave Maria"]));

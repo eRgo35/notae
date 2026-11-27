@@ -346,6 +346,8 @@ impl Shared {
                 (state.open_request.take(), state.operations.clone())
             };
             if let Some(root) = open_request {
+                // Not held across `open_root`, which hands the old worker to the new one.
+                drop(controller);
                 self.open_root(root);
                 continue;
             }
@@ -396,11 +398,12 @@ impl Shared {
     /// Checks `root` with the platform and opens it with a new worker, or shows why it
     /// cannot be opened.
     fn open_root(&self, root: LibraryRoot) {
-        // One worker at a time owns the index: stop the old one first.
-        let old = self.lock().operations.take();
-        if let Some(old) = old {
+        // One worker at a time writes the index: the old one is cancelled here and the new
+        // one waits for it to stop. The core thread never waits for it, since it may be
+        // blocked in a platform call.
+        let mut old = self.lock().operations.take();
+        if let Some(old) = &old {
             let _ = old.cancel();
-            drop(old);
         }
         // Its events are dropped from here on, so its operation can no longer finish.
         self.lock().model.reset_operation();
@@ -408,7 +411,11 @@ impl Shared {
             .platform
             .check_root(root.handle().to_owned())
             .map_err(StorageError::from)
-            .and_then(|()| self.start_worker(&root));
+            .and_then(|()| self.start_worker(&root, &mut old));
+        // Not handed to a new worker: stop it off the core thread.
+        if let Some(old) = old {
+            retire_in_background(old);
+        }
         let snapshot = {
             let mut state = self.lock();
             match opened {
@@ -445,10 +452,12 @@ impl Shared {
         self.listener.on_snapshot(snapshot);
     }
 
-    /// Opens the index and starts the worker over `root`.
+    /// Opens the index and starts the worker over `root`, after the worker in `previous`
+    /// (taken from it once the new worker exists).
     fn start_worker(
         &self,
         root: &LibraryRoot,
+        previous: &mut Option<Arc<OperationController>>,
     ) -> Result<(OperationController, Arc<Mutex<LibrarySource>>), StorageError> {
         let local = IndexStore::open(self.data_dir.join("index.sqlite"))
             .map_err(|error| StorageError::Other(error.to_string()))?;
@@ -459,13 +468,19 @@ impl Shared {
         )));
         let worker_catalog = Box::new(SharedLibraryCatalog(Arc::clone(&source)));
         let thumbnails = self.lock().model.thumbnail_cache().cloned();
-        let controller = match thumbnails {
-            Some(cache) => OperationController::with_thumbnails(local, worker_catalog, cache),
-            None => OperationController::new(local, worker_catalog),
-        }
-        .map_err(|error| StorageError::Other(error.to_string()))?;
+        let controller =
+            OperationController::after(local, worker_catalog, thumbnails, previous.take())
+                .map_err(|error| StorageError::Other(error.to_string()))?;
         Ok((controller, source))
     }
+}
+
+/// Shuts `worker` down and joins it on a thread of its own. When no thread can start, the
+/// refused closure is dropped here and joins it in place.
+fn retire_in_background(worker: Arc<OperationController>) {
+    let _ = thread::Builder::new()
+        .name("notae-index-retire".to_owned())
+        .spawn(move || drop(worker));
 }
 
 /// Everything behind the core's lock.

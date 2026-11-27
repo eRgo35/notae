@@ -62,7 +62,7 @@ impl OperationController {
         local: IndexStore,
         catalog: Box<dyn LibraryCatalog + Send>,
     ) -> Result<Self, UiError> {
-        Self::start(local, catalog, None)
+        Self::start(local, catalog, None, None)
     }
 
     /// Like [`OperationController::new`], also rendering first-page thumbnails into `cache`.
@@ -74,13 +74,29 @@ impl OperationController {
         catalog: Box<dyn LibraryCatalog + Send>,
         cache: ThumbnailCache,
     ) -> Result<Self, UiError> {
-        Self::start(local, catalog, Some(cache))
+        Self::start(local, catalog, Some(cache), None)
+    }
+
+    /// Like [`OperationController::new`] or [`OperationController::with_thumbnails`], but the
+    /// new worker first waits for `previous` to stop, so only one worker writes the index. The
+    /// caller is not blocked; `previous` should already be cancelled.
+    ///
+    /// # Errors
+    /// Returns [`UiError::WorkerStart`] if the background worker cannot be started.
+    pub(crate) fn after(
+        local: IndexStore,
+        catalog: Box<dyn LibraryCatalog + Send>,
+        thumbnails: Option<ThumbnailCache>,
+        previous: Option<Arc<Self>>,
+    ) -> Result<Self, UiError> {
+        Self::start(local, catalog, thumbnails, previous)
     }
 
     fn start(
         local: IndexStore,
         catalog: Box<dyn LibraryCatalog + Send>,
         thumbnails: Option<ThumbnailCache>,
+        previous: Option<Arc<Self>>,
     ) -> Result<Self, UiError> {
         let (command_tx, command_rx) = mpsc::channel();
         let (event_tx, event_rx) = mpsc::channel();
@@ -91,6 +107,8 @@ impl OperationController {
         let worker = thread::Builder::new()
             .name("notae-index-worker".to_owned())
             .spawn(move || {
+                // Dropping the last handle shuts the previous worker down and joins it.
+                drop(previous);
                 run_worker(
                     local,
                     catalog,
