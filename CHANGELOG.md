@@ -9,6 +9,10 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+### Added
+- The release workflow uploads the AAB to Google Play's internal testing
+  track when the `PLAY_SERVICE_ACCOUNT_JSON` secret is set.
+
 ## [0.10.0] - 2026-11-27
 
 Notae 0.10.0 fixes the rest of the bugs found in the 0.9.2 review and moves

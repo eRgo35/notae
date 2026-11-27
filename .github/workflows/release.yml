@@ -4,9 +4,10 @@ name: Release
 # the tag and that CI already passed on the tagged commit (it does not run the gates again), builds
 # the release APK and AAB signed with the repository's release key, verifies both against the
 # pinned certificate and attaches the APK to the GitHub Release with the notes in
-# docs/release-notes/vX.Y.Z.md. The AAB is kept as the workflow artifact `notae-vX.Y.Z` for Google
-# Play, where the same key is the upload key and Play re-signs installs with its own app signing
-# key. Without the signing secrets it fails; it never falls back to the debug key.
+# docs/release-notes/vX.Y.Z.md. The AAB is kept as the workflow artifact `notae-vX.Y.Z` and, when
+# the PLAY_SERVICE_ACCOUNT_JSON secret is set, uploaded to Google Play's internal testing track,
+# where the same key is the upload key and Play re-signs installs with its own app signing key.
+# Without the signing secrets it fails; it never falls back to the debug key.
 on:
   push:
     tags: ['v*']
@@ -141,3 +142,78 @@ jobs:
           gh release create "$TAG" --verify-tag --title "Notae $TAG" \
             --notes-file "docs/release-notes/$TAG.md" --generate-notes \
             "dist/notae-$version-arm64.apk" "dist/notae-$version-arm64.apk.sha256"
+
+  # Uploads the verified AAB to a Google Play track with plain curl calls to the Play Developer
+  # API, authenticated by a service account (docs/android-release.md). It is a separate job, so the
+  # build never sees the Play key and a failed upload can be re-run alone. Without the secret it
+  # only leaves a notice, and the AAB is uploaded by hand as before.
+  play:
+    name: Upload the AAB to Google Play
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions: {}
+    env:
+      PLAY_PACKAGE: com.c2yz.notae
+      PLAY_TRACK: internal
+      # `completed` rolls the release out to the track's testers; `draft` leaves it for Play Console
+      # (the only status Play accepts while the app itself is still a draft).
+      PLAY_RELEASE_STATUS: completed
+    steps:
+      - name: Check that the Play secret is configured
+        id: secret
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -n "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set, so the AAB was not uploaded to Google Play; upload it by hand (docs/android-release.md)."
+          fi
+      - uses: actions/download-artifact@v8
+        if: steps.secret.outputs.configured == 'true'
+        with:
+          name: notae-${{ env.TAG }}
+          path: dist
+      - name: Upload the AAB and roll it out on the track
+        if: steps.secret.outputs.configured == 'true'
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          version=${TAG#v}
+          aab=dist/notae-$version.aab
+          [ -f "$aab" ] || { echo "::error::missing $aab"; exit 1; }
+
+          # OAuth access token from a JWT signed with the service account key.
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          umask 077
+          key=$RUNNER_TEMP/play-key.pem
+          trap 'rm -f "$key"' EXIT
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" | jq -r .private_key > "$key"
+          email=$(printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" | jq -r .client_email)
+          now=$(date +%s)
+          header=$(printf '%s' '{"alg":"RS256","typ":"JWT"}' | b64url)
+          claims=$(jq -cjn --arg iss "$email" --argjson iat "$now" \
+            '{iss: $iss, scope: "https://www.googleapis.com/auth/androidpublisher",
+              aud: "https://oauth2.googleapis.com/token", iat: $iat, exp: ($iat + 600)}' | b64url)
+          signature=$(printf '%s.%s' "$header" "$claims" | openssl dgst -sha256 -sign "$key" -binary | b64url)
+          rm -f "$key"
+          token=$(curl -sS --fail-with-body https://oauth2.googleapis.com/token \
+            --data-urlencode grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer \
+            --data-urlencode "assertion=$header.$claims.$signature" | jq -r .access_token)
+          echo "::add-mask::$token"
+
+          api=https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PLAY_PACKAGE
+          call() { curl -sS --fail-with-body -H "Authorization: Bearer $token" "$@"; }
+
+          # An edit is Play's transaction: nothing is visible until it is committed.
+          edit=$(call -X POST "$api/edits" | jq -r .id)
+          version_code=$(call -X POST -H 'Content-Type: application/octet-stream' --data-binary "@$aab" \
+            "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PLAY_PACKAGE/edits/$edit/bundles?uploadType=media" \
+            | jq -r .versionCode)
+          jq -n --arg track "$PLAY_TRACK" --arg name "$version" --arg code "$version_code" --arg status "$PLAY_RELEASE_STATUS" \
+            '{track: $track, releases: [{name: $name, versionCodes: [$code], status: $status}]}' \
+            | call -X PUT -H 'Content-Type: application/json' --data-binary @- "$api/edits/$edit/tracks/$PLAY_TRACK" > /dev/null
+          call -X POST "$api/edits/$edit:commit" > /dev/null
+          echo "::notice::Notae $version (version code $version_code) is on the Google Play $PLAY_TRACK track as $PLAY_RELEASE_STATUS."

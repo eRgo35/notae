@@ -100,10 +100,21 @@ Since 0.7.1 Notae is also on Google Play, with [Play App Signing](https://suppor
 
 So the GitHub APK and the Play app do not update each other; switching between them needs **Export sets**, uninstall, install, **Import from a previous Notae**. GitHub installs keep updating in place from GitHub releases.
 
-For each release, after `release.yml` succeeds:
+With the `PLAY_SERVICE_ACCOUNT_JSON` secret set, the `play` job of `release.yml` uploads the AAB to the **internal testing** track and rolls it out, named `X.Y.Z`, without release notes. It calls the Play Developer API with `curl`, authenticated by a service account. The track and status are `PLAY_TRACK` and `PLAY_RELEASE_STATUS` at the top of the job. Promoting a release to production stays a manual step in Play Console. If the upload fails, fix the cause and re-run only the failed `play` job.
+
+One-time setup of the service account:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), pick or create a project and enable the **Google Play Android Developer API** (APIs & Services → Library).
+2. In **IAM & Admin → Service accounts**, create a service account (for example `notae-play-upload`) with no project roles. Under **Keys → Add key → Create new key → JSON**, download its key.
+3. In Play Console, **Users and permissions → Invite new users**, invite the service account's e-mail. Under **App permissions**, add Notae with **Release apps to testing tracks** only, and send the invitation. It can take up to a day before the API accepts the account.
+4. Add the whole JSON file as a repository Actions secret: `gh secret set PLAY_SERVICE_ACCOUNT_JSON < key.json`. Then delete the downloaded file.
+
+Without the secret, the `play` job only leaves a notice, and the AAB is uploaded by hand:
 
 1. Download the AAB: `gh run download <run-id> -n notae-vX.Y.Z -D dist-X.Y.Z`.
 2. In Play Console, **Test and release → Testing → Internal testing** (or the track in use) **→ Create new release**, upload `dist-X.Y.Z/notae-X.Y.Z.aab`, name it `X.Y.Z`, add release notes and roll it out.
+
+The service account key can only release to testing tracks; if it leaks, delete the key in Google Cloud and remove the user in Play Console.
 
 If the upload key ever leaks, Google can reset it for Play without users reinstalling, but GitHub users are still on the same key, so treat it as a leak of the release key.
 
