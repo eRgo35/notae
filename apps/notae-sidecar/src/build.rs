@@ -142,8 +142,12 @@ fn write_sidecar(
     fs::rename(&tmp, &target).map_err(|e| ToolError::new("replacing library.json", e))
 }
 
+/// Folders at the library root that hold no library scores: transcription
+/// sources, original scans and other material.
+const SKIPPED_ROOT_DIRS: [&str; 3] = ["sources", "skany", "inne"];
+
 /// Collects library-relative, `/`-separated paths of `*.pdf` files, skipping
-/// `.notae/` and `sources/` at the library root.
+/// `.notae/` and [`SKIPPED_ROOT_DIRS`] at the library root.
 fn collect_pdfs(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), ToolError> {
     let list =
         fs::read_dir(dir).map_err(|e| ToolError::new(&format!("listing {}", dir.display()), e))?;
@@ -156,7 +160,7 @@ fn collect_pdfs(root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<(), To
             continue;
         }
         if kind.is_dir() {
-            if dir == root && (name == SIDECAR_DIR || name == "sources") {
+            if dir == root && (name == SIDECAR_DIR || SKIPPED_ROOT_DIRS.contains(&name.as_str())) {
                 continue;
             }
             collect_pdfs(root, &path, out)?;

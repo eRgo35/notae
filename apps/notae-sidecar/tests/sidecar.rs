@@ -189,13 +189,16 @@ fn rerun_is_byte_identical_and_renders_only_missing() {
 }
 
 #[test]
-fn skips_notae_and_sources_and_leaves_old_files() {
+fn skips_notae_sources_scans_and_other_and_leaves_old_files() {
     let dir = tempfile::tempdir().expect("tmp");
     fixture(dir.path());
-    fs::create_dir_all(dir.path().join(".notae")).expect("mkdir");
-    fs::create_dir_all(dir.path().join("sources")).expect("mkdir");
+    for sub in [".notae", "sources", "skany", "inne"] {
+        fs::create_dir_all(dir.path().join(sub)).expect("mkdir");
+    }
     fs::write(dir.path().join(".notae/old.pdf"), b"x").expect("w");
     fs::write(dir.path().join("sources/scan.pdf"), b"y").expect("w");
+    fs::write(dir.path().join("skany/001 - Scan.pdf"), b"y").expect("w");
+    fs::write(dir.path().join("inne/Exercises.pdf"), b"y").expect("w");
     fs::write(dir.path().join(".notae/index.sqlite"), b"sqlite").expect("w");
     let report = run(dir.path(), &FakeRenderer::new()).expect("run");
     assert!(report.warnings.is_empty());

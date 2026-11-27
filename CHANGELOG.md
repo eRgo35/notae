@@ -9,6 +9,12 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+### Changed
+
+- The app and the sidecar tool skip `sources/`, `skany/` and `inne/` in the
+  library root, so transcription sources, original scans and other material
+  are not listed as scores.
+
 ## [0.9.1] - 2026-11-23
 
 Notae 0.9.1 fixes small things in the 0.9.0 viewer. See

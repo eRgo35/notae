@@ -105,8 +105,8 @@ class SafLibrary(context: Context) : PlatformLibrary {
     private fun enumerateChildren(tree: Uri, parentId: String, parentPath: String, entries: MutableList<DocumentEntry>) {
         for (child in listing(tree, parentId)) {
             if (child.isDirectory) {
-                // The sidecar folder is the core's own; its contents are never library documents.
-                if (parentPath.isEmpty() && child.name == SIDECAR_DIR) continue
+                // The sidecar folder is the core's own and the other skipped folders hold no scores.
+                if (parentPath.isEmpty() && child.name in SKIPPED_ROOT_DIRS) continue
                 enumerateChildren(tree, child.id, joinPath(parentPath, child.name), entries)
             } else if (isPdfName(child.name)) {
                 entries += DocumentEntry(joinPath(parentPath, child.name), child.name, child.size.toULong(), child.modified)
@@ -118,7 +118,7 @@ class SafLibrary(context: Context) : PlatformLibrary {
         val children = dir.listFiles() ?: throw FileNotFoundException("cannot list $dir")
         for (child in children) {
             if (child.isDirectory) {
-                if (parentPath.isEmpty() && child.name == SIDECAR_DIR) continue
+                if (parentPath.isEmpty() && child.name in SKIPPED_ROOT_DIRS) continue
                 enumerateFiles(child, joinPath(parentPath, child.name), entries)
             } else if (isPdfName(child.name)) {
                 entries += DocumentEntry(joinPath(parentPath, child.name), child.name, child.length().toULong(), child.lastModified().takeIf { it > 0 })
@@ -175,6 +175,9 @@ class SafLibrary(context: Context) : PlatformLibrary {
     private companion object {
         /** The folder holding the core's PC sidecar files. */
         const val SIDECAR_DIR = ".notae"
+
+        /** Root folders that are not scanned: the sidecar, transcription sources, original scans and other material. Matches the sidecar tool. */
+        val SKIPPED_ROOT_DIRS = setOf(SIDECAR_DIR, "sources", "skany", "inne")
 
         /** `PdfRenderer.Page.getTextContents` arrived in API 35. */
         const val TEXT_CONTENTS_API = 35

@@ -240,7 +240,8 @@ others are optional, but a non-numeric `ID` is an error. It writes
 `.notae/library.json` and `.notae/thumbnails/`. A missing CSV, a row without a
 PDF, a duplicate `Nazwa pliku` or a failed thumbnail is an error: the tool
 exits with a non-zero code and writes nothing. A PDF without a row is only a
-warning. `sources/` and `.notae/` in the library root are skipped.
+warning. `.notae/`, `sources/`, `skany/` (original scans) and `inne/` (other
+material) in the library root are skipped, here and in the app.
 
 Copy the folder, `.notae/` included, to the tablet. Notae uses an entry when
 its path and size match. Commit `.notae/`. The tool leaves other files in it
