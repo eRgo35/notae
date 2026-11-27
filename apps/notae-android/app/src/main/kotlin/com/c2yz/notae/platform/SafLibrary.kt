@@ -26,6 +26,12 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+/** The folder holding the core's PC sidecar files. */
+internal const val SIDECAR_DIR = ".notae"
+
+/** Root folders that are not scanned: the sidecar, transcription sources, original scans and other material. Matches the sidecar tool. */
+internal val SKIPPED_ROOT_DIRS = setOf(SIDECAR_DIR, "sources", "skany", "inne")
+
 /**
  * The core's [PlatformLibrary] over the Storage Access Framework. A handle is the library's tree
  * URI; a path is `/`-separated below it, built from display names as 0.3.0 built it
@@ -173,12 +179,6 @@ class SafLibrary(context: Context) : PlatformLibrary {
     }
 
     private companion object {
-        /** The folder holding the core's PC sidecar files. */
-        const val SIDECAR_DIR = ".notae"
-
-        /** Root folders that are not scanned: the sidecar, transcription sources, original scans and other material. Matches the sidecar tool. */
-        val SKIPPED_ROOT_DIRS = setOf(SIDECAR_DIR, "sources", "skany", "inne")
-
         /** `PdfRenderer.Page.getTextContents` arrived in API 35. */
         const val TEXT_CONTENTS_API = 35
 

@@ -89,6 +89,8 @@ class NotaeViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A ZIP shared to or opened with Notae: asked about first when it would replace an open library. */
     fun zipReceived(name: String, uri: Uri) {
+        // One import at a time: a second one would unpack into the same staging folder.
+        if (zipState.value is ZipImport.Unpacking) return
         if (snapshot.value.screen is Screen.Setup) importZip(name, uri) else zipState.value = ZipImport.Confirm(name, uri)
     }
 

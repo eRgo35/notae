@@ -67,6 +67,30 @@ class ZipLibraryTest {
     }
 
     @Test
+    fun skipped_root_folders_are_not_unpacked() {
+        val dir = unpack(
+            zip(
+                "001 - Ave.pdf" to "a",
+                "skany/001 - Ave.pdf" to "s",
+                "inne/Ćwiczenia.pdf" to "i",
+                "sources/Indeks.pdf" to "x",
+                "Nutki/skany/002 - Credo.pdf" to "c",
+            ),
+        )
+        assertTrue(File(dir, "001 - Ave.pdf").exists())
+        assertFalse(File(dir, "skany").exists())
+        assertFalse(File(dir, "inne").exists())
+        assertFalse(File(dir, "sources").exists())
+        // Only the library root's folders are skipped, as when scanning.
+        assertTrue(File(dir, "Nutki/skany/002 - Credo.pdf").exists())
+    }
+
+    @Test
+    fun a_zip_of_only_skipped_folders_has_no_pdfs() {
+        assertEquals(ZipImportException.Reason.NO_PDFS, reason { unpack(zip("skany/001 - Ave.pdf" to "s")) })
+    }
+
+    @Test
     fun zip_slip_is_rejected_and_the_old_library_kept() {
         unpack(zip("Ave.pdf" to "old"))
         assertEquals(ZipImportException.Reason.UNREADABLE, reason { unpack(zip("../evil.pdf" to "x", "Credo.pdf" to "c")) })
@@ -79,6 +103,12 @@ class ZipLibraryTest {
     fun polish_windows_names_come_out_right() {
         val dir = unpack(zip("Błogosławiona Ząb.pdf" to "p", charset = Charset.forName("IBM852")))
         assertTrue(dir.list()!!.joinToString(), File(dir, "Błogosławiona Ząb.pdf").exists())
+    }
+
+    @Test
+    fun backslashes_between_folders_make_folders() {
+        val dir = unpack(zip("Msze\\Ave.pdf" to "a"))
+        assertEquals("a", File(dir, "Msze/Ave.pdf").readText())
     }
 
     @Test

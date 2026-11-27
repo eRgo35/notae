@@ -43,8 +43,8 @@ fun unpackZipLibrary(open: () -> InputStream, filesDir: File, usableSpace: () ->
     try {
         val pdfs = try {
             unpackInto(open, staging, Charsets.UTF_8, usableSpace)
-        } catch (_: ZipException) {
-            // A name that is not UTF-8 ("bad entry name"): most likely a ZIP made on Windows. A broken ZIP fails again.
+        } catch (_: NotUtf8) {
+            // A name that is not UTF-8: most likely a ZIP made on Windows. A broken ZIP fails again.
             unpackInto(open, staging, windowsCharset(), usableSpace)
         }
         if (pdfs == 0) throw ZipImportException(ZipImportException.Reason.NO_PDFS)
@@ -61,6 +61,9 @@ fun unpackZipLibrary(open: () -> InputStream, filesDir: File, usableSpace: () ->
         staging.deleteRecursively()
     }
 }
+
+/** A ZIP entry name that is not UTF-8. */
+private class NotUtf8 : IOException()
 
 private fun windowsCharset(): Charset =
     listOf("IBM852", "Cp852", "IBM437").firstOrNull(Charset::isSupported)?.let(Charset::forName) ?: Charsets.ISO_8859_1
@@ -82,12 +85,22 @@ private fun unpackInto(open: () -> InputStream, dir: File, charset: Charset, usa
         ZipInputStream(raw, charset).use { zip ->
             val buffer = ByteArray(64 * 1024)
             while (true) {
-                val entry = zip.nextEntry ?: break
-                val out = File(root, entry.name).canonicalFile
+                // The JDK throws on a name that is not UTF-8, while Android decodes it with U+FFFD for the bad bytes.
+                val entry = try {
+                    zip.nextEntry
+                } catch (error: ZipException) {
+                    if (charset == Charsets.UTF_8) throw NotUtf8() else throw error
+                } catch (error: IllegalArgumentException) {
+                    if (charset == Charsets.UTF_8) throw NotUtf8() else throw error
+                } ?: break
+                if (charset == Charsets.UTF_8 && '\uFFFD' in entry.name) throw NotUtf8()
+                // Windows tools may write `\` between folders; on Android that would be part of one file's name.
+                val name = entry.name.replace('\\', '/')
+                val out = File(root, name).canonicalFile
                 if (!out.path.startsWith(root.path + File.separator)) {
                     throw ZipImportException(ZipImportException.Reason.UNREADABLE, "an entry leaves the folder: ${entry.name}")
                 }
-                if (entry.isDirectory || !keep(entry.name)) continue
+                if (entry.isDirectory || !keep(name)) continue
                 out.parentFile?.mkdirs()
                 out.outputStream().use { file ->
                     while (true) {
@@ -101,7 +114,7 @@ private fun unpackInto(open: () -> InputStream, dir: File, charset: Charset, usa
                 if (free - written < SPARE_BYTES) throw ZipImportException(ZipImportException.Reason.NO_SPACE)
                 // The ZIP's own time, so a score unchanged in a new ZIP is not reported as updated.
                 if (entry.time > 0) out.setLastModified(entry.time)
-                if (isPdf(entry.name)) pdfs++
+                if (isPdf(name)) pdfs++
             }
         }
     }
@@ -124,11 +137,15 @@ private fun InputStream.readNBytesCompat(into: ByteArray): Int {
 
 private fun isPdf(name: String) = name.endsWith(".pdf", ignoreCase = true)
 
-/** PDFs and the sidecar folder; nothing hidden (a segment starting with a dot, `.notae` aside) and nothing from macOS. */
+/**
+ * PDFs and the sidecar folder; nothing hidden (a segment starting with a dot, `.notae` aside), nothing from macOS and
+ * nothing in the root folders a scan skips ([SKIPPED_ROOT_DIRS]).
+ */
 private fun keep(name: String): Boolean {
-    val segments = name.replace('\\', '/').split('/').filter { it.isNotEmpty() }
+    val segments = name.split('/').filter { it.isNotEmpty() }
     if (segments.isEmpty() || segments.first() == "__MACOSX") return false
-    val sidecar = segments.first() == ".notae"
+    val sidecar = segments.first() == SIDECAR_DIR
+    if (!sidecar && segments.size > 1 && segments.first() in SKIPPED_ROOT_DIRS) return false
     val hidden = segments.drop(if (sidecar) 1 else 0).any { it.startsWith(".") }
     return !hidden && (sidecar || isPdf(segments.last()))
 }
