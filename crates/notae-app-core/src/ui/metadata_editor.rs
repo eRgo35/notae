@@ -58,11 +58,23 @@ impl<'a> MetadataEditor<'a> {
         };
         let composer_or_artist = normalized_optional(input.composer_or_artist);
 
+        // Only a field the user changed becomes theirs; the others keep their
+        // origin, so a later PC import can still update them (ADR 0004).
         let mut metadata: NoteMetadata = original.metadata().clone();
-        metadata.set_id(id);
-        metadata.set_title(&input.title)?;
-        metadata.set_composer_or_artist(composer_or_artist);
-        metadata.set_tags(input.tags);
+        if id != metadata.id() {
+            metadata.set_id(id);
+        }
+        if input.title.trim() != metadata.title() {
+            metadata.set_title(&input.title)?;
+        }
+        if composer_or_artist.as_deref() != metadata.composer_or_artist() {
+            metadata.set_composer_or_artist(composer_or_artist);
+        }
+        let mut tags = metadata.clone();
+        tags.set_tags(input.tags);
+        if tags.tags() != metadata.tags() {
+            metadata = tags;
+        }
         let edited = IndexedNote::new(
             original.path().clone(),
             original.fingerprint().clone(),

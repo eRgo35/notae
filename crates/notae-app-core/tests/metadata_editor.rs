@@ -228,3 +228,34 @@ fn duplicate_id_save_gives_a_typed_metadata_failure() {
         })
     );
 }
+
+#[test]
+fn save_marks_only_the_changed_fields_as_manual() {
+    let store = IndexStore::open(":memory:").expect("open test index");
+    let original = note("12 - Autumn Leaves.pdf", b"pdf bytes", 12, "Autumn Leaves");
+    store
+        .reindex_note(&original)
+        .expect("insert original record");
+
+    MetadataEditor::new(&store)
+        .save(editable(
+            original.fingerprint().sha256().to_string(),
+            Some(12),
+            "Autumn Leaves (live)",
+            Some("Composer"),
+            &["original"],
+        ))
+        .expect("save the new title");
+
+    let edited = store.list_all().expect("read edited record").remove(0);
+    assert_eq!(edited.title(), "Autumn Leaves (live)");
+    let provenance = edited.metadata().provenance();
+    assert!(provenance.is_manual(MetadataField::Title));
+    for field in [
+        MetadataField::Id,
+        MetadataField::ComposerOrArtist,
+        MetadataField::Tags,
+    ] {
+        assert!(!provenance.is_manual(field), "{field:?} stays as it was");
+    }
+}
