@@ -9,11 +9,39 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-27
+
+Notae 0.9.2 follows the schola's new folder layout and fixes bugs found in a
+review. See [`docs/release-notes/v0.9.2.md`](docs/release-notes/v0.9.2.md).
+
 ### Changed
 
 - The app and the sidecar tool skip `sources/`, `skany/` and `inne/` in the
   library root, so transcription sources, original scans and other material
-  are not listed as scores.
+  are not listed as scores. A ZIP import does not unpack them either.
+
+### Fixed
+
+- A ZIP made on Polish Windows keeps its Polish file names on a device, and a
+  ZIP with `\` between folders no longer stops the library from opening.
+- A ZIP shared while another one is unpacking is ignored instead of starting
+  a second import into the same folder.
+- Saving a score's details marks only the fields you changed as yours, so the
+  PC sidecar can still update the others.
+- Favorites, sets, notes and preferences reach the disk before they replace
+  the old file, so a power cut cannot leave an empty file.
+- The viewer closes a score that was still opening when you moved on, and
+  keeps its page when the app is recreated (for example when dark mode turns
+  on).
+- A scale outside 25–400 % is kept within that range, so it survives a
+  restart.
+- The sidecar tool reports a catalogue number used twice, and removes old
+  thumbnails only after `library.json` is written.
+
+### Dependencies
+
+- Rust dependencies, Android Gradle Plugin 9.5.3, Navigation 3 1.2.2,
+  Robolectric 4.18.1, Roborazzi 1.79.0 and Gradle 9.9.3.
 
 ## [0.9.1] - 2026-11-23
 
@@ -592,7 +620,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/eRgo35/notae/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/eRgo35/notae/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/eRgo35/notae/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/eRgo35/notae/compare/v0.7.1...v0.8.0
