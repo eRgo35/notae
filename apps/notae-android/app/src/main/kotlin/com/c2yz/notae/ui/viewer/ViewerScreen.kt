@@ -23,6 +23,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -80,6 +81,9 @@ import com.c2yz.notae.ui.components.WidthClass
 import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.theme.NotaeTheme
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 
 /**
  * Notae's viewer: a bar with Back, the score's title and the page over its pages ([PageArea]). It is drawn over the
@@ -98,7 +102,9 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     var error by remember(viewer.row.noteKey) { mutableStateOf<String?>(null) }
     LaunchedEffect(viewer.row.noteKey) {
         try {
-            source = open(viewer.uri, viewer.row.relativePath)
+            // Not cancellable, so a score opened just as the viewer moves on is closed rather than left open.
+            val opened = withContext(NonCancellable) { open(viewer.uri, viewer.row.relativePath) }
+            if (isActive) source = opened else opened.close()
         } catch (failure: CancellationException) {
             throw failure
         } catch (failure: Exception) {
@@ -126,7 +132,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
         windowHeightClass(),
     )
     // The first page on screen, kept across a rotation that changes how pages pair.
-    var page by remember(piece) { mutableIntStateOf(0) }
+    var page by rememberSaveable(piece) { mutableIntStateOf(0) }
     var bars by remember { mutableStateOf(true) }
     val zoom = remember(piece) { PageZoom() }
     var viewMenu by remember { mutableStateOf(false) }
