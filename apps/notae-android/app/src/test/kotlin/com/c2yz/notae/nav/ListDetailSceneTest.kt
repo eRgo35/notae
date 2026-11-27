@@ -26,6 +26,7 @@ import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.test.withKeyDown
 import androidx.core.graphics.Insets
@@ -318,10 +319,11 @@ class ListDetailSceneTest {
 
     @Test
     fun a_keyboard_opened_sheet_beside_the_details_focuses_its_first_action() {
-        // Robolectric is not in touch mode, as with a keyboard: the library takes focus when the sheet opens (for Escape
-        // in touch mode), and the sheet's first action must still win it.
+        // Opened with Enter, as with a keyboard, so the window is not in touch mode: the library takes focus when the
+        // sheet opens (for Escape in touch mode), and the sheet's first action must still win it.
         show(selecting(ave))
-        compose.onNodeWithContentDescription("More actions for Ave Maria").performClick()
+        setTouchMode(false)
+        compose.onNodeWithContentDescription("More actions for Ave Maria").requestFocus().performKeyInput { pressKey(Key.Enter) }
         compose.waitForIdle()
         assertFalse(compose.activity.window.decorView.isInTouchMode)
         // The details have an Open score button too, in the right pane; the sheet sits over the library on the left.
@@ -330,17 +332,20 @@ class ListDetailSceneTest {
         sheetAction.assertIsFocused()
     }
 
+    /** A tablet is in touch mode, where the sheet's actions cannot take the focus. */
+    private fun enterTouchMode() = setTouchMode(true)
+
     /**
-     * A tablet is in touch mode, where the sheet's actions cannot take the focus. Robolectric never enters it from a
-     * click, so this sets it on the window's ViewRootImpl as a touch on a device does.
+     * Sets touch mode on the window's ViewRootImpl, as a touch ([on]) or a key press does on a device: Robolectric does
+     * not follow the input Compose's test rule injects.
      */
-    private fun enterTouchMode() {
+    private fun setTouchMode(on: Boolean) {
         compose.runOnIdle {
             val root = View::class.java.getMethod("getViewRootImpl").invoke(compose.activity.window.decorView)
             val ensure = root.javaClass.getDeclaredMethod("ensureTouchModeLocally", Boolean::class.javaPrimitiveType)
             ensure.isAccessible = true
-            ensure.invoke(root, true)
-            assertTrue(compose.activity.window.decorView.isInTouchMode)
+            ensure.invoke(root, on)
+            assertEquals(on, compose.activity.window.decorView.isInTouchMode)
         }
     }
 

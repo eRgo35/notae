@@ -63,7 +63,7 @@ class LicensesScreenTest {
         compose.onNodeWithText("Open-source licenses").assertIsDisplayed()
         compose.onNodeWithText("Copyright (c) 2026 Notae contributors", substring = true).assertIsDisplayed()
         // The MPL-2.0 crates name where their source is.
-        val uniffi = hasText("- uniffi 0.32.2: https://github.com/mozilla/uniffi-rs", substring = true)
+        val uniffi = hasText("- uniffi 0.33.0: https://github.com/mozilla/uniffi-rs", substring = true)
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(uniffi)
         compose.onNode(uniffi).assertIsDisplayed()
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Apache License 2.0", substring = true))

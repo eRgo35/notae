@@ -1,3 +1,5 @@
 # UniFFI binding settings for the Kotlin app.
 [bindings.kotlin]
 package_name = "com.c2yz.notae.core"
+# minSdk 26: no Java 9 APIs (java.lang.ref.Cleaner, Reference.reachabilityFence) before API 28.
+java_8_compatible = true

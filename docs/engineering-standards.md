@@ -44,7 +44,7 @@ The `licenses` gate of `scripts/check.sh full` and CI's Rust job run the same co
 
 ## Android gates
 
-The Android app in `apps/notae-android` is a Gradle build (Kotlin, Jetpack Compose). Install a JDK (21 or newer; CI uses Temurin 25), the Android SDK (`platforms;android-36`, `build-tools;36.0.0`, `ndk;28.2.13676358`), the `aarch64-linux-android` and `x86_64-linux-android` Rust targets and `cargo-ndk`. `ANDROID_HOME` defaults to `~/Android/Sdk` in `scripts/check.sh`. The Gradle build compiles the Rust core with cargo-ndk (16 KB pages) and generates its Kotlin bindings with UniFFI.
+The Android app in `apps/notae-android` is a Gradle build (Kotlin, Jetpack Compose). Install a JDK (21 or newer; CI uses Temurin 25), the Android SDK (`platforms;android-37.2`, `build-tools;36.0.0`, `ndk;28.2.13676358`), the `aarch64-linux-android` and `x86_64-linux-android` Rust targets and `cargo-ndk`. `ANDROID_HOME` defaults to `~/Android/Sdk` in `scripts/check.sh`. The Gradle build compiles the Rust core with cargo-ndk (16 KB pages) and generates its Kotlin bindings with UniFFI.
 
 - `lint`: Android lint of the app.
 - `testDebugUnitTest`: the JVM unit tests, Robolectric UI tests and accessibility checks. They load a host build of the Rust core through JNA.

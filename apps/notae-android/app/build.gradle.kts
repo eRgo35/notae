@@ -24,7 +24,12 @@ val buildIdentity: String = runCatching {
 
 android {
     namespace = "com.c2yz.notae"
-    compileSdk = 36
+    // Compose 1.13 needs the 37.1 or later API surface; the target SDK stays 36.
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 2
+        }
+    }
     ndkVersion = "28.2.13676358"
 
     defaultConfig {

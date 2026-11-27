@@ -780,6 +780,7 @@ MIT License
 
 Used by:
 - anyhow 1.0.105: https://github.com/dtolnay/anyhow
+- async-trait 0.1.92: https://github.com/dtolnay/async-trait
 - camino 1.2.6: https://github.com/camino-rs/camino
 - cargo-platform 0.3.3: https://github.com/rust-lang/cargo
 - cargo_metadata 0.23.1: https://github.com/oli-obk/cargo_metadata
@@ -1004,12 +1005,12 @@ DEALINGS IN THE SOFTWARE.
 Mozilla Public License 2.0
 
 Used by:
-- uniffi 0.32.2: https://github.com/mozilla/uniffi-rs
-- uniffi_core 0.32.2: https://github.com/mozilla/uniffi-rs
-- uniffi_internal_macros 0.32.2: https://github.com/mozilla/uniffi-rs
-- uniffi_macros 0.32.2: https://github.com/mozilla/uniffi-rs
-- uniffi_meta 0.32.2: https://github.com/mozilla/uniffi-rs
-- uniffi_pipeline 0.32.2: https://github.com/mozilla/uniffi-rs
+- uniffi 0.33.0: https://github.com/mozilla/uniffi-rs
+- uniffi_core 0.33.0: https://github.com/mozilla/uniffi-rs
+- uniffi_internal_macros 0.33.0: https://github.com/mozilla/uniffi-rs
+- uniffi_macros 0.33.0: https://github.com/mozilla/uniffi-rs
+- uniffi_meta 0.33.0: https://github.com/mozilla/uniffi-rs
+- uniffi_pipeline 0.33.0: https://github.com/mozilla/uniffi-rs
 
 Mozilla Public License Version 2.0
 ==================================

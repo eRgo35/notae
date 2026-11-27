@@ -95,7 +95,7 @@ jobs:
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-            "platforms;android-36" "build-tools;36.0.0" "ndk;$NDK_VERSION"
+            "platforms;android-37.2" "build-tools;36.0.0" "ndk;$NDK_VERSION"
       - name: Write the release keystore
         env:
           NOTAE_KEYSTORE_BASE64: ${{ secrets.NOTAE_KEYSTORE_BASE64 }}
