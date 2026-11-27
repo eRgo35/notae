@@ -118,16 +118,10 @@ const SNIPPET_ELLIPSIS: &str = "…";
 /// text so a record titled with the search term beats one that merely prints it.
 const SEARCH_SQL: &str = "\
 SELECT bm25(notes_fts, 8.0, 10.0, 6.0, 5.0, 4.0, 1.0) AS relevance, notes.*,
-       snippet(notes_fts, 5, char(2), char(3), ?5, 12) AS text_snippet
+       snippet(notes_fts, 5, char(2), char(3), ?2, 12) AS text_snippet
 FROM notes_fts
 JOIN notes ON notes.row_id = notes_fts.rowid
-WHERE notes_fts MATCH ?1
-ORDER BY
-    (CASE WHEN ?2 IS NULL THEN 0 WHEN notes.note_id = ?2 THEN 1 ELSE 0 END) DESC,
-    (CASE WHEN lower(notes_fts.title) = ?3 THEN 1 ELSE 0 END) DESC,
-    relevance ASC,
-    notes.path ASC
-LIMIT ?4";
+WHERE notes_fts MATCH ?1";
 
 /// Runs `query` against the FTS5 index and returns at most `limit` hits.
 ///
@@ -159,13 +153,7 @@ pub(crate) fn search(
     let exact_title = fold_l_stroke(&query.trim().to_lowercase()).into_owned();
     let mut statement = conn.prepare(SEARCH_SQL)?;
     let rows = statement.query_map(
-        rusqlite::params![
-            match_expression,
-            exact_id,
-            exact_title,
-            i64::try_from(limit).unwrap_or(i64::MAX),
-            SNIPPET_ELLIPSIS,
-        ],
+        rusqlite::params![match_expression, SNIPPET_ELLIPSIS],
         |row| {
             let relevance: f64 = row.get(0)?;
             let snippet = match row.get::<_, Option<String>>("text_snippet")? {
@@ -200,14 +188,16 @@ pub(crate) fn search(
             note,
         });
     }
-    // The SQL ordering already separates the exact-match bonuses; sorting here
-    // gives equal ranks the browsing order rather than the database's row order.
+    // Ranked and cut here rather than in SQL: SQLite's `lower()` folds ASCII
+    // only, so it would miss an exact title such as "Święty Boże". Equal ranks
+    // keep the browsing order rather than the database's row order.
     hits.sort_by(|left, right| {
         right
             .rank
             .total_cmp(&left.rank)
             .then_with(|| notae_domain::compare_library_order(&left.note, &right.note))
     });
+    hits.truncate(limit);
     Ok(hits)
 }
 

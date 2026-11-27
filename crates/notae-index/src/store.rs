@@ -6,7 +6,6 @@
 //! that row's entry in the derived FTS5 index in the same transaction.
 
 use std::collections::HashSet;
-use std::fmt::Write as _;
 use std::path::Path;
 
 use notae_domain::{
@@ -473,38 +472,31 @@ impl IndexStore {
     ///
     /// Fails when the database cannot be read.
     pub fn delete_missing(&self, paths: &HashSet<RelativePdfPath>) -> Result<(), IndexError> {
-        let known: Vec<Box<dyn ToSql>> = paths
-            .iter()
-            .map(|path| Box::new(path.to_string()) as Box<dyn ToSql>)
-            .collect();
-        // An empty library has no paths to keep, and `NOT IN ()` is not valid
-        // SQL, so the criterion degrades to "delete everything".
-        let mut placeholders = String::new();
-        for index in 1..=known.len() {
-            let _ = write!(placeholders, ", ?{index}");
-        }
-        let kept = if placeholders.is_empty() {
-            "TRUE".to_owned()
-        } else {
-            format!("path NOT IN ({})", placeholders.trim_start_matches(", "))
-        };
-
+        // The kept paths go through a temporary table: one bound parameter per
+        // path would stop at SQLite's limit of 32766 variables.
+        const KEPT: &str = "path NOT IN (SELECT path FROM temp.kept_paths)";
         let transaction = self.conn.unchecked_transaction()?;
+        transaction.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS kept_paths (path TEXT PRIMARY KEY);
+             DELETE FROM temp.kept_paths;",
+        )?;
+        {
+            let mut insert =
+                transaction.prepare("INSERT OR IGNORE INTO temp.kept_paths (path) VALUES (?1)")?;
+            for path in paths {
+                insert.execute([path.to_string()])?;
+            }
+        }
         transaction.execute(
             &format!(
                 "DELETE FROM notes_fts WHERE rowid IN
-                     (SELECT row_id FROM notes WHERE {kept})"
+                     (SELECT row_id FROM notes WHERE {KEPT})"
             ),
-            params_from_iter(known.iter().map(|path| path.as_ref())),
+            [],
         )?;
-        transaction.execute(
-            &format!("DELETE FROM notes WHERE {kept}"),
-            params_from_iter(known.iter().map(|path| path.as_ref())),
-        )?;
-        transaction.execute(
-            &format!("DELETE FROM sidecar_applied WHERE {kept}"),
-            params_from_iter(known.iter().map(|path| path.as_ref())),
-        )?;
+        transaction.execute(&format!("DELETE FROM notes WHERE {KEPT}"), [])?;
+        transaction.execute(&format!("DELETE FROM sidecar_applied WHERE {KEPT}"), [])?;
+        transaction.execute("DELETE FROM temp.kept_paths", [])?;
         transaction.commit()?;
         Ok(())
     }

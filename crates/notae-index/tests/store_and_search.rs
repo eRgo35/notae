@@ -1454,3 +1454,54 @@ fn sidecar_digest_is_stored_per_path_and_pruned_with_the_file() {
     drop(store);
     let _ = std::fs::remove_file(&file);
 }
+
+#[test]
+fn an_exact_title_with_polish_capitals_survives_a_small_limit() {
+    let store = IndexStore::open(":memory:").expect("open in memory");
+    store
+        .upsert_note(&note(
+            "411 - Święty Boże.pdf",
+            1,
+            Some(NoteId::new(411)),
+            "Święty Boże",
+            None,
+            &[],
+        ))
+        .expect("insert");
+    // More relevant to bm25 (the terms twice, in a shorter field elsewhere), not exact.
+    store
+        .upsert_note(&note(
+            "500 - Święty Boże, Święty Boże.pdf",
+            2,
+            Some(NoteId::new(500)),
+            "Święty Boże Święty Boże",
+            None,
+            &["święty", "boże"],
+        ))
+        .expect("insert");
+
+    let hits = store.search("Święty Boże", 1).expect("search");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].note.title(), "Święty Boże");
+}
+
+#[test]
+fn delete_missing_handles_more_paths_than_sqlite_binds() {
+    let store = IndexStore::open(":memory:").expect("open in memory");
+    store
+        .upsert_note(&note("gone.pdf", 1, None, "Gone", None, &[]))
+        .expect("insert");
+    store
+        .upsert_note(&note("kept.pdf", 2, None, "Kept", None, &[]))
+        .expect("insert");
+    let mut present: HashSet<RelativePdfPath> = (0..40_000)
+        .map(|n| path(&format!("other/{n}.pdf")))
+        .collect();
+    present.insert(path("kept.pdf"));
+
+    store.delete_missing(&present).expect("prune");
+
+    let remaining = store.list_all().expect("list");
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].path(), &path("kept.pdf"));
+}
