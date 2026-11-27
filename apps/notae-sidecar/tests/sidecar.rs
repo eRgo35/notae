@@ -233,6 +233,22 @@ fn duplicate_file_name_rows_are_an_error() {
 }
 
 #[test]
+fn a_catalogue_number_used_twice_is_an_error() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fixture(dir.path());
+    // No row, so its number comes from the file name: 1, as Adeste Fideles' row.
+    fs::copy(
+        dir.path().join("001 - Adeste Fideles.pdf"),
+        dir.path().join("001 - Another.pdf"),
+    )
+    .expect("copy");
+    let report = run(dir.path(), &FakeRenderer::new()).expect("run");
+    assert_eq!(report.errors.len(), 1, "{:?}", report.errors);
+    assert!(report.errors[0].contains("number 1"));
+    assert!(!dir.path().join(".notae").exists());
+}
+
+#[test]
 fn foreign_files_in_thumbnails_survive() {
     let dir = tempfile::tempdir().expect("tmp");
     fixture(dir.path());

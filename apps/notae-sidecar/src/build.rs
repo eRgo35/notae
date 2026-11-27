@@ -1,6 +1,6 @@
 //! Building `.notae/` for a library folder.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -66,6 +66,16 @@ pub fn run(library: &Path, renderer: &dyn Renderer) -> Result<Report, ToolError>
             .errors
             .push(format!("{CSV_NAME} row without a PDF: {name}"));
     }
+    let mut numbers: BTreeMap<u32, &str> = BTreeMap::new();
+    for e in &entries {
+        if let Some(n) = e.number
+            && let Some(first) = numbers.insert(n, &e.path)
+        {
+            report
+                .errors
+                .push(format!("number {n} used by {first} and {}", e.path));
+        }
+    }
     if !report.errors.is_empty() {
         return Ok(report);
     }
@@ -125,9 +135,6 @@ fn write_sidecar(
     for (temp, target) in &staged {
         fs::rename(temp, target).map_err(|e| ToolError::new("moving a thumbnail", e))?;
     }
-    let wanted: BTreeSet<&str> = entries.iter().map(|e| e.sha256.as_str()).collect();
-    remove_stale_thumbnails(thumbs_dir, &wanted)?;
-
     let file = SidecarFile {
         version: SIDECAR_VERSION,
         generator: format!("notae-sidecar {}", env!("CARGO_PKG_VERSION")),
@@ -139,7 +146,10 @@ fn write_sidecar(
     let target = library.join(SIDECAR_FILE);
     let tmp = library.join(SIDECAR_DIR).join("library.json.tmp");
     fs::write(&tmp, json).map_err(|e| ToolError::new("writing library.json", e))?;
-    fs::rename(&tmp, &target).map_err(|e| ToolError::new("replacing library.json", e))
+    fs::rename(&tmp, &target).map_err(|e| ToolError::new("replacing library.json", e))?;
+    // Only once library.json no longer refers to them.
+    let wanted: BTreeSet<&str> = file.scores.iter().map(|e| e.sha256.as_str()).collect();
+    remove_stale_thumbnails(thumbs_dir, &wanted)
 }
 
 /// Folders at the library root that hold no library scores: transcription

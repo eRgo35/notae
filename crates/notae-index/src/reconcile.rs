@@ -839,11 +839,12 @@ impl Reconciler {
 
     /// Performs a plan against the store.
     ///
-    /// Writes happen in one order — additions, then updates, then moves — and a
+    /// Deletions come first, so a new file may take the note ID of a record
+    /// whose file is gone; they keep every path still on disk. Writes then
+    /// happen in one order — additions, then updates, then moves — and a
     /// write the store refuses becomes a [`FileFailure`] in the report rather
     /// than aborting the rest, so one record the database rejects cannot
-    /// strand the remainder of the rescan. Deletions come last, against the
-    /// set of paths that survived, so nothing still on disk is removed.
+    /// strand the remainder of the rescan.
     ///
     /// # Errors
     /// Returns [`ReconcileError`] when the index cannot be read for the
