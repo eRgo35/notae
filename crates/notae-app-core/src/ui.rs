@@ -1326,6 +1326,16 @@ impl UiModel {
         pages: ViewerPages,
         scale: ViewerScale,
     ) -> std::io::Result<()> {
+        // The range the saved preferences accept, so a choice survives a restart.
+        let scale = match scale {
+            ViewerScale::Percent { value } => ViewerScale::Percent {
+                value: value.clamp(
+                    *crate::ui_prefs::VIEWER_PERCENT.start(),
+                    *crate::ui_prefs::VIEWER_PERCENT.end(),
+                ),
+            },
+            other => other,
+        };
         let prefs = &mut self.ui_prefs;
         if (prefs.viewer_layout, prefs.viewer_pages, prefs.viewer_scale) == (layout, pages, scale) {
             return Ok(());
