@@ -100,7 +100,7 @@ Since 0.7.1 Notae is also on Google Play, with [Play App Signing](https://suppor
 
 So the GitHub APK and the Play app do not update each other; switching between them needs **Export sets**, uninstall, install, **Import from a previous Notae**. GitHub installs keep updating in place from GitHub releases.
 
-With the `PLAY_SERVICE_ACCOUNT_JSON` secret set, the `play` job of `release.yml` uploads the AAB to the **internal testing** track and rolls it out, named `X.Y.Z`, without release notes. It calls the Play Developer API with `curl`, authenticated by a service account. The track and status are `PLAY_TRACK` and `PLAY_RELEASE_STATUS` at the top of the job. Promoting a release to production stays a manual step in Play Console. If the upload fails, fix the cause and re-run only the failed `play` job.
+With the `PLAY_SERVICE_ACCOUNT_JSON` secret set, the `play` job of `release.yml` uploads the AAB to the **internal testing** track and rolls it out, named `X.Y.Z`, without release notes. It calls the Play Developer API with `curl`, authenticated by a service account. The track and status are `PLAY_TRACK` and `PLAY_RELEASE_STATUS` at the top of the job. Promoting a release to production stays a manual step in Play Console. If the upload fails, fix the cause and re-run only the failed `play` job. To upload a tag released earlier, for example one cut before the secret was set, run the workflow by hand: `gh workflow run release.yml -f tag=vX.Y.Z`. It only runs the `play` job, with the AAB from that tag's successful release run.
 
 One-time setup of the service account:
 

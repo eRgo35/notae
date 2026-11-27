@@ -7,20 +7,27 @@ name: Release
 # docs/release-notes/vX.Y.Z.md. The AAB is kept as the workflow artifact `notae-vX.Y.Z` and, when
 # the PLAY_SERVICE_ACCOUNT_JSON secret is set, uploaded to Google Play's internal testing track,
 # where the same key is the upload key and Play re-signs installs with its own app signing key.
-# Without the signing secrets it fails; it never falls back to the debug key.
+# Without the signing secrets it fails; it never falls back to the debug key. Run by hand with a
+# tag, it only uploads that tag's AAB to Google Play, taken from the tag's successful release run.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Released tag (vX.Y.Z) whose AAB to upload to Google Play
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref_name }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
-  TAG: ${{ github.ref_name }}
+  TAG: ${{ inputs.tag || github.ref_name }}
   # Public SHA-256 fingerprint of the release signing certificate (not a secret): it signs the
   # GitHub APK and is Google Play's upload key. Changing the release key means changing this value
   # in a reviewed commit.
@@ -30,6 +37,7 @@ env:
 jobs:
   preflight:
     name: Check the tag, version, notes, secrets and CI
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -150,9 +158,11 @@ jobs:
   play:
     name: Upload the AAB to Google Play
     needs: release
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.release.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions: {}
+    permissions:
+      actions: read
     env:
       PLAY_PACKAGE: com.c2yz.notae
       PLAY_TRACK: internal
@@ -170,11 +180,25 @@ jobs:
           else
             echo "::notice::PLAY_SERVICE_ACCOUNT_JSON is not set, so the AAB was not uploaded to Google Play; upload it by hand (docs/android-release.md)."
           fi
+      # Run by hand, the AAB comes from the tag's own release run, which passed every check.
+      - name: Find the tag's release run
+        id: run
+        if: steps.secret.outputs.configured == 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag $TAG is not vMAJOR.MINOR.PATCH"; exit 1; }
+          id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release.yml --branch "$TAG" --event push \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          [ -n "$id" ] || { echo "::error::no successful release run for $TAG"; exit 1; }
+          echo "id=$id" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v8
         if: steps.secret.outputs.configured == 'true'
         with:
           name: notae-${{ env.TAG }}
           path: dist
+          run-id: ${{ steps.run.outputs.id || github.run_id }}
+          github-token: ${{ github.token }}
       - name: Upload the AAB and roll it out on the track
         if: steps.secret.outputs.configured == 'true'
         env:
