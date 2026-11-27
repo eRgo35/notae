@@ -9,6 +9,32 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-27
+
+Notae 0.10.0 fixes the rest of the bugs found in the 0.9.2 review and moves
+to the newer Android and UniFFI toolchain. See
+[`docs/release-notes/v0.10.0.md`](docs/release-notes/v0.10.0.md).
+
+### Fixed
+
+- Choosing another library folder during a scan no longer lets two workers
+  write the index at once: the new one waits for the old one to stop
+  ([#61](https://github.com/eRgo35/notae/issues/61)).
+- A sets, favorites or notes file that could not be read is kept as
+  `<name>.corrupt` before the next change replaces it
+  ([#62](https://github.com/eRgo35/notae/issues/62)).
+- An exact title with Polish capitals, such as „Święty Boże”, ranks first
+  also in a search with a limit
+  ([#63](https://github.com/eRgo35/notae/issues/63)).
+- A rescan of a library with more than 32,766 PDFs removes deleted files
+  instead of failing ([#64](https://github.com/eRgo35/notae/issues/64)).
+
+### Dependencies
+
+- Compose BOM 2026.11.01, which builds against Android 17 (compileSdk 37;
+  the target SDK stays 36).
+- UniFFI 0.33.0, with Java 8 compatible Kotlin bindings for Android 8 to 8.1.
+
 ## [0.9.2] - 2026-11-27
 
 Notae 0.9.2 follows the schola's new folder layout and fixes bugs found in a
@@ -620,7 +646,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/eRgo35/notae/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/eRgo35/notae/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/eRgo35/notae/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/eRgo35/notae/compare/v0.8.0...v0.9.0
