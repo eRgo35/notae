@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::favorites::{PieceRef, write_atomically};
+use crate::favorites::{PieceRef, replace_store_file};
 use crate::recent::is_content_key;
 
 const SCHEMA_VERSION: u32 = 2;
@@ -235,11 +235,14 @@ impl SetStore {
     /// Piece items with invalid keys, and later sets or items repeating an id, are dropped.
     #[must_use]
     pub fn from_json(text: &str) -> Self {
-        let Ok(file) = serde_json::from_str::<SetsFile>(text) else {
-            return Self::default();
-        };
+        Self::parse(text).unwrap_or_default()
+    }
+
+    /// The store in `text`, or `None` when it is corrupt or of an unknown schema version.
+    fn parse(text: &str) -> Option<Self> {
+        let file = serde_json::from_str::<SetsFile>(text).ok()?;
         if !(OLDEST_SCHEMA_VERSION..=SCHEMA_VERSION).contains(&file.schema_version) {
-            return Self::default();
+            return None;
         }
         let mut ids = HashSet::new();
         let mut sets = file.sets;
@@ -247,7 +250,7 @@ impl SetStore {
         for set in &mut sets {
             set.drop_invalid_items();
         }
-        Self { sets }
+        Some(Self { sets })
     }
 
     /// The JSON file text.
@@ -272,7 +275,7 @@ impl SetStore {
     ///
     /// Returns the I/O error from writing or renaming the file.
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        write_atomically(path, &self.to_json())
+        replace_store_file(path, &self.to_json(), |text| Self::parse(text).is_some())
     }
 
     /// Sets, most recently modified first; ties by name.

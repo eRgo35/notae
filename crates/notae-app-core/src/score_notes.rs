@@ -9,7 +9,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::favorites::{PieceRef, write_atomically};
+use crate::favorites::{PieceRef, replace_store_file};
 use crate::recent::is_content_key;
 
 const SCHEMA_VERSION: u32 = 1;
@@ -42,11 +42,14 @@ impl ScoreNotes {
     /// Invalid keys, blank texts and repeated keys are dropped.
     #[must_use]
     pub fn from_json(text: &str) -> Self {
-        let Ok(file) = serde_json::from_str::<ScoreNotesFile>(text) else {
-            return Self::default();
-        };
+        Self::parse(text).unwrap_or_default()
+    }
+
+    /// The store in `text`, or `None` when it is corrupt or of an unknown schema version.
+    fn parse(text: &str) -> Option<Self> {
+        let file = serde_json::from_str::<ScoreNotesFile>(text).ok()?;
         if file.schema_version != SCHEMA_VERSION {
-            return Self::default();
+            return None;
         }
         let mut notes = Self::default();
         for mut note in file.notes {
@@ -56,7 +59,7 @@ impl ScoreNotes {
                 notes.notes.push(note);
             }
         }
-        notes
+        Some(notes)
     }
 
     /// The JSON file text.
@@ -81,7 +84,7 @@ impl ScoreNotes {
     ///
     /// Returns the I/O error from writing or renaming the file.
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        write_atomically(path, &self.to_json())
+        replace_store_file(path, &self.to_json(), |text| Self::parse(text).is_some())
     }
 
     /// The note text of the score with this content key.

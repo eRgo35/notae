@@ -517,7 +517,8 @@ fn future_version_sets_survive_favorite_changes_and_relink() {
         })
         .unwrap();
 
-    // Starring is a change to favorites, so the corrupt favorites file may be replaced.
+    // Starring is a change to favorites, so the corrupt favorites file is replaced (and kept
+    // as favorites.json.corrupt).
     model.toggle_favorite(&"a".repeat(64)).unwrap();
     // A rescan that replaces the PDF re-links favorites only.
     model
@@ -659,4 +660,23 @@ fn save_set_note_edits_the_open_set() {
         set_note(&SetStore::load(&path), &set, &item).as_deref(),
         Some("Slower")
     );
+}
+
+#[test]
+fn a_save_keeps_a_file_that_did_not_load_beside_the_new_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sets.json");
+    let aside = dir.path().join("sets.json.corrupt");
+    std::fs::write(&path, "not json {").unwrap();
+    let mut store = SetStore::load(&path);
+    assert_eq!(store, SetStore::default());
+    store.create(fields("Mass"), 1);
+    store.save(&path).unwrap();
+    assert_eq!(std::fs::read_to_string(&aside).unwrap(), "not json {");
+    assert_eq!(SetStore::load(&path), store);
+    // A good file is replaced as before, and the kept one stays.
+    store.create(fields("Vespers"), 2);
+    store.save(&path).unwrap();
+    assert_eq!(std::fs::read_to_string(&aside).unwrap(), "not json {");
+    assert_eq!(SetStore::load(&path), store);
 }

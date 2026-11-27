@@ -39,13 +39,16 @@ impl Favorites {
     /// Invalid keys and repeats are dropped.
     #[must_use]
     pub fn from_json(text: &str) -> Self {
-        let Ok(file) = serde_json::from_str::<FavoritesFile>(text) else {
-            return Self::default();
-        };
+        Self::parse(text).unwrap_or_default()
+    }
+
+    /// The store in `text`, or `None` when it is corrupt or of an unknown schema version.
+    fn parse(text: &str) -> Option<Self> {
+        let file = serde_json::from_str::<FavoritesFile>(text).ok()?;
         if file.schema_version != SCHEMA_VERSION {
-            return Self::default();
+            return None;
         }
-        Self::from_items(file.items)
+        Some(Self::from_items(file.items))
     }
 
     /// Favorites in the given order; invalid keys and repeats are dropped.
@@ -82,7 +85,7 @@ impl Favorites {
     ///
     /// Returns the I/O error from writing or renaming the file.
     pub fn save(&self, path: &Path) -> io::Result<()> {
-        write_atomically(path, &self.to_json())
+        replace_store_file(path, &self.to_json(), |text| Self::parse(text).is_some())
     }
 
     /// Adds `piece` at the front, or removes it if already present. Returns the new state.
@@ -146,6 +149,27 @@ impl PieceRef {
             None => false,
         }
     }
+}
+
+/// Writes a store file as [`write_atomically`] does. A file already there that
+/// `parses` rejects (damaged, or from a newer Notae) is first kept as
+/// `<name>.corrupt`, unless one is kept already, so a change never destroys
+/// what may still be recovered.
+pub(crate) fn replace_store_file(
+    path: &Path,
+    text: &str,
+    parses: impl FnOnce(&str) -> bool,
+) -> io::Result<()> {
+    if let Ok(old) = fs::read(path)
+        && !String::from_utf8(old).is_ok_and(|old| parses(&old))
+    {
+        let mut aside = path.as_os_str().to_owned();
+        aside.push(".corrupt");
+        if !Path::new(&aside).exists() {
+            fs::rename(path, aside)?;
+        }
+    }
+    write_atomically(path, text)
 }
 
 /// Writes `text` to `path` through a sibling `.tmp` file and a rename. The
