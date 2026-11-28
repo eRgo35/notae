@@ -135,7 +135,7 @@ const SOURCES: [&str; 5] = ["z", "za", "na", "wg", "według"];
 
 /// The people a composer field names: the parts between `;`, each without the words naming its
 /// part ("opr.", "sł. i muz.", …). A part that names a source rather than a person (see
-/// [`SOURCES`]) is left out.
+/// `SOURCES`) is left out.
 pub fn people(field: &str) -> impl Iterator<Item = &str> {
     field.split(';').filter_map(|part| {
         let mut person = part.trim();
