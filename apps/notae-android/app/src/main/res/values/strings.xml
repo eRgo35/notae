@@ -68,6 +68,8 @@
     <string name="choose_composer">Choose composer, %1$s</string>
     <string name="library_empty_all">A little space for your scores</string>
     <string name="library_empty_all_detail">Scan your library folder to add the PDFs it contains.</string>
+    <string name="library_scanning">Looking for your scores</string>
+    <string name="library_scanning_detail">Notae is reading your library folder. Scores appear here as they are found.</string>
     <string name="library_empty_recent">No recent scores</string>
     <string name="library_empty_recent_detail">Scores you open appear here.</string>
     <string name="library_empty_favorites">No favorites yet</string>
@@ -253,6 +255,7 @@
     <string name="set_drag">Drag to reorder %1$s</string>
     <string name="set_empty">This set is empty</string>
     <string name="set_empty_detail">Pieces you add to this set appear here.</string>
+    <string name="set_add_pieces">Add pieces</string>
     <string name="set_dialog">Set details dialog</string>
     <string name="set_dialog_intro">Only the name is required. You add pieces after saving.</string>
     <string name="set_name">Name</string>

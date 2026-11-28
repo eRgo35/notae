@@ -587,12 +587,17 @@ private fun ColumnScope.Content(
 
 private enum class ContentMode { EMPTY, SETS, REORDER, LIST, GRID }
 
-/** The section's empty card: folder glyph, title and detail; All scores also offers Scan library. */
+/**
+ * The section's empty card: glyph, title and detail, and the one action that fills the section: Scan library on All
+ * scores, New set on Sets, Add pieces in a set. While a scan runs, All scores says so instead of asking for one.
+ */
 @Composable
 private fun EmptyState(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier) {
     val c = NotaeTheme.colors
     val key = snapshot.sectionKey
+    val scanning = key == "all" && snapshot.banner.busy
     val (title, detail) = when {
+        scanning -> R.string.library_scanning to R.string.library_scanning_detail
         key == "all" -> R.string.library_empty_all to R.string.library_empty_all_detail
         key == "recent" -> R.string.library_empty_recent to R.string.library_empty_recent_detail
         key == "favorites" -> R.string.library_empty_favorites to R.string.library_empty_favorites_detail
@@ -600,23 +605,30 @@ private fun EmptyState(snapshot: Snapshot, onAction: (Action) -> Unit, modifier:
         key.startsWith(SET_PREFIX) -> R.string.set_empty to R.string.set_empty_detail
         else -> R.string.library_empty_composer to R.string.library_empty_composer_detail
     }
+    val button: Triple<Int, Int, Action>? = when {
+        scanning -> null
+        key == "all" -> Triple(R.string.library_scan, R.drawable.ic_scan, Action.Rescan)
+        key == "sets" -> Triple(R.string.library_new_set, R.drawable.ic_add, Action.NewSet)
+        key.startsWith(SET_PREFIX) -> Triple(R.string.set_add_pieces, R.drawable.ic_add, Action.OpenAddPicker)
+        else -> null
+    }
     NotaeCard(modifier) {
         Column(
             Modifier.fillMaxSize().padding(32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(painterResource(R.drawable.ic_folder), null, Modifier.size(56.dp), tint = c.muted)
+            Icon(painterResource(if (scanning) R.drawable.ic_scan else R.drawable.ic_folder), null, Modifier.size(56.dp), tint = c.muted)
             Text(stringResource(title), color = c.foreground, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
             Text(stringResource(detail), color = c.muted, fontSize = 15.sp, textAlign = TextAlign.Center)
-            if (snapshot.sectionKey == "all") {
+            button?.let { (label, icon, action) ->
                 PillButton(
-                    stringResource(R.string.library_scan),
-                    { onAction(Action.Rescan) },
+                    stringResource(label),
+                    { onAction(action) },
                     Modifier.padding(top = 8.dp),
-                    icon = painterResource(R.drawable.ic_scan),
+                    icon = painterResource(icon),
                     primary = true,
-                    enabled = snapshot.rescanEnabled,
+                    enabled = action != Action.Rescan || snapshot.rescanEnabled,
                 )
             }
         }

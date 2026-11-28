@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onRoot
@@ -316,6 +318,37 @@ class LibraryScreenTest {
         compose.onNodeWithText("Scan library").performClick()
 
         assertEquals(listOf<Action>(Action.Rescan), actions)
+    }
+
+    @Test
+    fun empty_all_says_a_running_scan_is_looking_instead_of_asking_for_one() {
+        val library = Fixture.library()
+        show(library.copy(rows = emptyList(), banner = library.banner.copy(busy = true)))
+
+        compose.onNodeWithText("Looking for your scores").assertIsDisplayed()
+        compose.onNodeWithText("A little space for your scores").assertDoesNotExist()
+        compose.onAllNodesWithText("Scan library").assertCountEquals(0)
+    }
+
+    @Test
+    fun empty_sets_offer_a_new_set() {
+        show(Fixture.sets().copy(setCards = emptyList()))
+
+        compose.onNodeWithText("No sets yet").assertIsDisplayed()
+        // The header's New set and the empty card's: the card's is the last.
+        compose.onAllNodesWithText("New set").onLast().performClick()
+
+        assertEquals(listOf<Action>(Action.NewSet), actions)
+    }
+
+    @Test
+    fun an_empty_set_offers_to_add_pieces() {
+        show(Fixture.library().copy(sectionKey = "set:0123", rows = emptyList(), setEntries = emptyList()))
+
+        compose.onNodeWithText("This set is empty").assertIsDisplayed()
+        compose.onNodeWithText("Add pieces").performClick()
+
+        assertEquals(listOf<Action>(Action.OpenAddPicker), actions)
     }
 
     @Test
