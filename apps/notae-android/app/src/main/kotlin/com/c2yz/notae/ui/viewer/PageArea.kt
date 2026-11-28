@@ -61,7 +61,7 @@ private val PAGE_GAP = 8.dp
  * on screen holding [page] keeps it. A tap on the outer fifth of either side, an arrow key or Page Up/Down turns,
  * animated; a tap in the middle third calls [onToggleBars]. Two fingers zoom anywhere ([pinchZoom]) on top of the
  * chosen scale, from half the fit to four times the printed size, and a double tap returns to it. [overlay] draws over
- * each page, sized to it.
+ * each page, sized to it. A turn past the last page, or before the first, calls [onBeyond] with 1 or -1 instead.
  */
 @Composable
 fun PageArea(
@@ -72,6 +72,7 @@ fun PageArea(
     onToggleBars: () -> Unit,
     modifier: Modifier = Modifier,
     zoom: PageZoom = remember { PageZoom() },
+    onBeyond: (Int) -> Unit = {},
     overlay: @Composable (pageIndex: Int) -> Unit = {},
 ) {
     val rows = remember(source, look.twoPages) { rowsFor(source.pageCount, look.twoPages) }
@@ -81,6 +82,7 @@ fun PageArea(
     val reading by rememberUpdatedState(page)
     val report by rememberUpdatedState(onPage)
     val shown = remember(rows) { { first: Int -> if (reading !in rows[rowOf(first, rows)]) report(first) } }
+    val beyond by rememberUpdatedState(onBeyond)
     // A new layout starts at the chosen scale from its first frame, on the row holding the page.
     val fresh = remember(look) {
         zoom.reset()
@@ -88,9 +90,9 @@ fun PageArea(
     }
     key(fresh) {
         if (look.scroll) {
-            ScrolledRows(source, rows, look, rowOf(page, rows), shown, onToggleBars, focused, zoom, overlay)
+            ScrolledRows(source, rows, look, rowOf(page, rows), shown, onToggleBars, { beyond(it) }, focused, zoom, overlay)
         } else {
-            PagedRows(source, rows, look, rowOf(page, rows), shown, onToggleBars, focused, zoom, overlay)
+            PagedRows(source, rows, look, rowOf(page, rows), shown, onToggleBars, { beyond(it) }, focused, zoom, overlay)
         }
     }
 }
@@ -155,6 +157,7 @@ private fun PagedRows(
     initialRow: Int,
     onPage: (Int) -> Unit,
     onToggleBars: () -> Unit,
+    onBeyond: (Int) -> Unit,
     modifier: Modifier,
     zoom: PageZoom,
     overlay: @Composable (pageIndex: Int) -> Unit,
@@ -170,9 +173,11 @@ private fun PagedRows(
             rows.getOrNull(row)?.let { report(it.first) }
         }
     }
-    val turn = { by: Int ->
+    val turn: (Int) -> Unit = { by ->
         val next = (pager.targetPage + by).coerceIn(0, (rows.size - 1).coerceAtLeast(0))
-        if (next != pager.targetPage) {
+        if (next == pager.targetPage) {
+            onBeyond(by)
+        } else {
             zoom.reset()
             scope.launch { pager.animateScrollToPage(next) }
         }
@@ -274,6 +279,7 @@ private fun ScrolledRows(
     initialRow: Int,
     onPage: (Int) -> Unit,
     onToggleBars: () -> Unit,
+    onBeyond: (Int) -> Unit,
     modifier: Modifier,
     zoom: PageZoom,
     overlay: @Composable (pageIndex: Int) -> Unit,
@@ -284,13 +290,13 @@ private fun ScrolledRows(
     // At the end of the score the last row may be too short to reach the top: then it is the row being read.
     val shownRow = { if (!list.canScrollForward && list.canScrollBackward) rows.lastIndex else list.firstVisibleItemIndex }
     LaunchedEffect(list) { snapshotFlow { shownRow() }.collect { row -> rows.getOrNull(row)?.let { report(it.first) } } }
-    val turn = { by: Int ->
+    val turn: (Int) -> Unit = { by ->
+        if (if (by > 0) !list.canScrollForward else !list.canScrollBackward) onBeyond(by)
         val first = shownRow()
         // Back from part way down a row goes to that row's top first.
         val from = if (by < 0 && first == list.firstVisibleItemIndex && list.firstVisibleItemScrollOffset > 0) first + 1 else first
         val next = (from + by).coerceIn(0, (rows.size - 1).coerceAtLeast(0))
         scope.launch { list.animateScrollToItem(next) }
-        Unit
     }
     val dpi = screenDpi()
     val gap = with(LocalDensity.current) { PAGE_GAP.toPx() }

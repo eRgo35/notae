@@ -99,12 +99,12 @@ class SettingsScreenTest {
     fun about_buttons_keep_one_line_labels() {
         show(settings())
 
-        val licenses = compose.onNodeWithText("Licencje open source").performScrollTo()
+        val licenses = compose.scrollListTo("Licencje open source")
         val height = licenses.fetchSemanticsNode().size.height
         // The label merges into its pill, which stays at its 52 dp minimum while the label is one line.
         assertTrue("one line, not wrapped: $height px", height <= 53 * compose.density.density)
         licenses.assertInsideWindow(compose)
-        val privacy = compose.onNodeWithText("Polityka prywatności").performScrollTo()
+        val privacy = compose.scrollListTo("Polityka prywatności")
         assertTrue(privacy.fetchSemanticsNode().size.height <= 53 * compose.density.density)
         privacy.assertInsideWindow(compose)
     }
@@ -189,21 +189,21 @@ class SettingsScreenTest {
     @Test
     fun maintenance_shows_counts_and_the_last_scan() {
         show(settings())
-        compose.onNodeWithText("No scan this session").assertIsDisplayed()
-        compose.onNodeWithText("ID conflicts").assertDoesNotExist()
+        compose.scrollListTo("No scan this session").assertIsDisplayed()
+        compose.onNodeWithText("Number conflicts").assertDoesNotExist()
 
         shown = settings(scan = ScanSummary(added = 3u, updated = 1u, moved = 0u, deleted = 2u, conflicts = 1u, failures = 0u, sidecarIgnored = false))
         compose.waitForIdle()
-        compose.onNodeWithText("3 added, 1 updated, 0 moved, 2 deleted").assertIsDisplayed()
-        compose.onNodeWithText("ID conflicts").assertIsDisplayed()
-        compose.onNodeWithText("Failures").assertIsDisplayed()
+        compose.scrollListTo("3 added, 1 updated, 0 moved, 2 deleted").assertIsDisplayed()
+        compose.scrollListTo("Number conflicts").assertIsDisplayed()
+        compose.scrollListTo("Files that could not be read").assertIsDisplayed()
     }
 
     @Test
     fun about_shows_the_build() {
         show(settings())
 
-        compose.onNodeWithText("0.5.0").performScrollTo().assertIsDisplayed()
+        compose.scrollListTo("0.5.0").assertIsDisplayed()
         compose.onNodeWithText("abc1234").assertIsDisplayed()
         compose.onNodeWithText("MIT License").assertIsDisplayed()
         compose.onNodeWithText("https://github.com/eRgo35/notae").assertIsDisplayed()
@@ -213,7 +213,7 @@ class SettingsScreenTest {
     fun privacy_policy_dispatches_its_action() {
         show(settings())
 
-        compose.onNodeWithText("Privacy policy").performScrollTo().performClick()
+        compose.scrollListTo("Privacy policy").performClick()
 
         assertEquals(listOf<Action>(Action.OpenPrivacyPolicy), actions)
     }
@@ -222,7 +222,7 @@ class SettingsScreenTest {
     fun open_source_licenses_dispatches_its_action() {
         show(settings())
 
-        compose.onNodeWithText("Open-source licenses").performScrollTo().performClick()
+        compose.scrollListTo("Open-source licenses").performClick()
 
         assertEquals(listOf<Action>(Action.OpenLicenses), actions)
     }

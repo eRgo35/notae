@@ -22,8 +22,8 @@ import com.c2yz.notae.core.SectionTitle
 import com.c2yz.notae.core.Selection
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.ui.details.DETAILS_BODY_TAG
-import com.c2yz.notae.ui.library.CHIPS_TAG
-import com.c2yz.notae.ui.library.CHIPS_FADE_MILLIS
+import com.c2yz.notae.ui.library.RAIL_FADE_MILLIS
+import com.c2yz.notae.ui.library.RAIL_TAG
 import com.c2yz.notae.ui.library.Fixture
 import com.c2yz.notae.ui.library.GRID_TAG
 import com.c2yz.notae.ui.library.SIDE_PANEL_TAG
@@ -150,7 +150,7 @@ class ScreenMotionTest {
     private val search = hasContentDescription("Search")
     private val favorites = hasText("Favorites")
     private val sidePanel = hasTestTag(SIDE_PANEL_TAG)
-    private val chips = hasTestTag(CHIPS_TAG)
+    private val rail = hasTestTag(RAIL_TAG)
     private val sets = hasText("Sets")
     private val grid = hasTestTag(GRID_TAG)
     private val palmCard = hasContentDescription("More actions for Niedziela Palmowa")
@@ -376,54 +376,46 @@ class ScreenMotionTest {
 
     @Test
     @Config(qualifiers = "w1280dp-h800dp-xhdpi")
-    fun the_chips_fade_through_as_the_side_panel_hides_and_shows() {
+    fun the_rail_fades_through_as_the_side_panel_hides_and_shows() {
         val shown = Fixture.library()
         val hidden = shown.copy(layout = shown.layout.copy(sidebarCollapsedLandscape = true))
         show(hidden)
-        val area = bounds(chips).single()
-        // The start of the row as drawn, wherever it is (it moves with the panel, and narrows): see-through while it fades.
-        fun row(): android.graphics.Bitmap {
-            val at = bounds(chips).single()
+        val area = bounds(rail).single()
+        // The rail as drawn: see-through while it fades, and under the panel while the panel slides over it.
+        fun drawnRail(): android.graphics.Bitmap {
             val window = compose.activity.window.decorView.drawToBitmap()
-            return android.graphics.Bitmap.createBitmap(window, at.left.toInt(), at.top.toInt(), ROW_START_PIXELS, area.height.toInt())
+            return android.graphics.Bitmap.createBitmap(window, area.left.toInt(), area.top.toInt(), area.width.toInt(), area.height.toInt())
         }
-        val atRest = row()
+        val atRest = drawnRail()
         // A frame at a time, each composing and drawing.
         fun frameAt(millis: Long) = repeat((millis / FRAME_MILLIS).toInt()) {
             compose.mainClock.advanceTimeByFrame()
             compose.waitForIdle()
         }
-        fun drawn() = differing(row(), atRest, Rect(0f, 0f, atRest.width.toFloat(), atRest.height.toFloat()))
+        fun drawn() = differing(drawnRail(), atRest, Rect(0f, 0f, atRest.width.toFloat(), atRest.height.toFloat()))
 
-        // Showing the panel: the chips fade out over the first half, then their row goes.
+        // Showing the panel: the rail fades out over the first half, then it goes.
         compose.mainClock.autoAdvance = false
         snapshot = shown
         frameAt(FADE_QUARTER_MILLIS)
-        val fading = bounds(chips)
+        val fading = bounds(rail)
         val fadingDiffers = drawn()
         frameAt(2 * FADE_QUARTER_MILLIS)
-        val gone = bounds(chips)
+        val gone = bounds(rail)
         finish()
-        assertTrue("the chips are still there early on: $fading", fading.size == 1)
-        assertTrue("the chips are fading out: $fadingDiffers", fadingDiffers > 20)
-        assertTrue("the chips are gone in the second half: $gone", gone.isEmpty())
+        assertTrue("the rail is still there early on: $fading", fading.size == 1)
+        assertTrue("the rail is fading out: $fadingDiffers", fadingDiffers > 20)
+        assertTrue("the rail is gone in the second half: $gone", gone.isEmpty())
 
-        // Hiding it: the chips' room comes at once, empty over the first half, then the chips fade in.
+        // Hiding it: the rail fades in over the second half, where it was.
         compose.mainClock.autoAdvance = false
         snapshot = hidden
-        frameAt(FADE_QUARTER_MILLIS)
-        val early = row().let { image ->
-            val blank = android.graphics.Bitmap.createBitmap(image.width, image.height, image.config!!).apply { eraseColor(image.getPixel(0, 0)) }
-            differing(image, blank, Rect(0f, 0f, image.width.toFloat(), image.height.toFloat()))
-        }
-        frameAt(2 * FADE_QUARTER_MILLIS)
+        frameAt(3 * FADE_QUARTER_MILLIS)
         val coming = drawn()
         finish()
-        val shownAgain = drawn()
-        assertEquals("the room is empty over the first half", 0, early)
-        assertTrue("the chips are fading in: $coming", coming > 20)
-        assertEquals("the chips end as they were", 0, shownAgain)
-        assertEquals("the chips end where they were", area, bounds(chips).single())
+        assertTrue("the rail is fading in: $coming", coming > 20)
+        assertEquals("the rail ends as it was", 0, drawn())
+        assertEquals("the rail ends where it was", area, bounds(rail).single())
     }
 
     @Test
@@ -595,11 +587,8 @@ class ScreenMotionTest {
         const val HALFWAY_STEPS = 3
         const val FRAME_MILLIS = 16L
 
-        /** How much of the chips' row the fade test compares: the chips themselves, short of where a narrower row ends. */
-        const val ROW_START_PIXELS = 1200
-
-        /** A quarter of the chips' fade through: halfway into its first half. */
-        const val FADE_QUARTER_MILLIS = CHIPS_FADE_MILLIS / 2L
+        /** A quarter of the rail's fade through: halfway into its first half. */
+        const val FADE_QUARTER_MILLIS = RAIL_FADE_MILLIS / 2L
 
         const val STEP_MILLIS = 40L
     }

@@ -104,7 +104,7 @@ class SetsScreenshotTest {
         ),
     )
     private val inPalm = Fixture.palmRows.mapNotNull { row -> row.takeUnless { it.missing }?.title }.toSet()
-    private fun pickerRow(row: com.c2yz.notae.core.Row) = PickerRow(row.noteKey, row.title, row.number, row.composer, row.title in inPalm, false)
+    private fun pickerRow(row: com.c2yz.notae.core.Row) = PickerRow(row.noteKey, row.title, row.number, row.composer, row.title in inPalm, false, row.thumbnail)
     private val pickerEmpty = palm.copy(addPicker = AddPicker("", Fixture.rows.map(::pickerRow), 0u))
     private val pickerResults = palm.copy(
         addPicker = AddPicker("ave", Fixture.rows.filter { it.title.startsWith("Ave") }.map(::pickerRow), 0u),

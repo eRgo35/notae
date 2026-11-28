@@ -173,7 +173,7 @@ private fun Field(label: String, content: @Composable () -> Unit) {
     }
 }
 
-/** The date in the locale's format, or the muted "YYYY-MM-DD" hint, styled as a text field; a tap opens the picker. */
+/** The date in the locale's format, or the muted "Choose a date" hint, styled as a text field; a tap opens the picker. */
 @Composable
 private fun DateField(iso: String?, onPick: () -> Unit, modifier: Modifier = Modifier) {
     val c = NotaeTheme.colors

@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
+import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.semantics.toggleableState
@@ -254,13 +255,19 @@ internal fun SetActionsSheet(card: SetCard, onDismiss: () -> Unit, onAction: (Ac
 
 /** The open set's Share icon, with its [ShareSetMenu] under it. */
 @Composable
-internal fun ShareSetButton(setId: String, hasDrawings: Boolean, onAction: (Action) -> Unit) {
+internal fun ShareSetButton(setId: String, hasDrawings: Boolean, onAction: (Action) -> Unit, enabled: Boolean = true) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(stringResource(R.string.share_set), painterResource(R.drawable.ic_share), { open = true })
+        IconButton(stringResource(R.string.share_set), painterResource(R.drawable.ic_share), { open = true }, enabled = enabled)
         ShareSetMenu(setId, hasDrawings, open, { open = false }, onAction)
     }
 }
+
+/** Whether the open set has two items to put in order. */
+internal fun setCanReorder(snapshot: Snapshot): Boolean = snapshot.setEntries.size >= 2
+
+/** Whether the open set has a score to share. */
+internal fun setCanShare(snapshot: Snapshot): Boolean = snapshot.setEntries.any { it is SetEntry.Piece }
 
 /** Whether set `setId` has drawings, so Share offers [IncludeDrawingsItem]. */
 internal fun setHasDrawings(snapshot: Snapshot, setId: String): Boolean = snapshot.setCards.any { it.id == setId && it.hasDrawings }

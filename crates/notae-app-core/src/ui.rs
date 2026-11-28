@@ -104,6 +104,8 @@ pub struct PickerRow {
     pub in_set: bool,
     /// Added during this picker session.
     pub added: bool,
+    /// The first-page PNG, once a scan has rendered it; filled in by the snapshot.
+    pub thumbnail: Option<String>,
 }
 
 /// Bridge between the UI and the [`AppState`].
@@ -732,25 +734,19 @@ impl UiModel {
         self.viewer.as_ref()?.set_id.as_deref()
     }
 
-    /// The pieces before and after the viewer's set item.
+    /// Where the viewer's set item stands among its set's pieces; `None` outside a set.
     #[must_use]
-    pub fn viewer_neighbours(&self) -> (Option<SearchRow>, Option<SearchRow>) {
-        let Some(item_id) = self
-            .viewer
-            .as_ref()
-            .and_then(|state| state.row.item_id.clone())
-        else {
-            return (None, None);
-        };
-        let entries = self.open_set_entries();
-        let (before, after) = viewer::neighbours(&entries, &item_id);
-        (before.cloned(), after.cloned())
+    pub fn viewer_place(&self) -> Option<viewer::SetPlace> {
+        let item_id = self.viewer.as_ref()?.row.item_id.clone()?;
+        viewer::place(&self.open_set_entries(), &item_id)
     }
 
     /// Previous or Next piece: replaces the viewer's score, so Back still closes the viewer.
     pub fn viewer_step(&mut self, forward: bool) {
-        let (before, after) = self.viewer_neighbours();
-        let Some(row) = (if forward { after } else { before }) else {
+        let Some(place) = self.viewer_place() else {
+            return;
+        };
+        let Some(row) = (if forward { place.next } else { place.previous }) else {
             return;
         };
         let set_id = self.viewer_set_id().map(str::to_owned);
@@ -1147,17 +1143,30 @@ impl UiModel {
             .map_or("", |picker| picker.query.as_str())
     }
 
-    /// The picker's rows: the search hits, or the whole library for a blank query.
+    /// The picker's rows: the search hits, or for a blank query the whole library with the
+    /// recently opened scores first, newest first.
     #[must_use]
     pub fn add_picker_rows(&self) -> Vec<PickerRow> {
         let Some(picker) = &self.add_picker else {
             return Vec::new();
         };
-        picker
-            .rows
-            .as_deref()
-            .unwrap_or(&self.search_rows)
-            .iter()
+        let rows: Vec<&SearchRow> = match picker.rows.as_deref() {
+            Some(hits) => hits.iter().collect(),
+            None => {
+                let recent = self.recent.keys();
+                let mut rows: Vec<&SearchRow> = recent
+                    .iter()
+                    .filter_map(|key| self.search_rows.iter().find(|row| &row.note_key == key))
+                    .collect();
+                rows.extend(
+                    self.search_rows
+                        .iter()
+                        .filter(|row| !recent.contains(&row.note_key)),
+                );
+                rows
+            }
+        };
+        rows.into_iter()
             .map(|row| PickerRow {
                 note_key: row.note_key.clone(),
                 title: row.title.clone(),
@@ -1165,6 +1174,7 @@ impl UiModel {
                 composer: row.composer_or_artist.clone(),
                 in_set: picker.before.contains(&row.note_key),
                 added: picker.added.iter().any(|(key, _)| *key == row.note_key),
+                thumbnail: None,
             })
             .collect()
     }

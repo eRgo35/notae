@@ -14,8 +14,8 @@ use fake_platform::{FakePlatform, entry, readable};
 use notae_app_core::SetStore;
 use notae_app_core::api::{
     Action, CoreListener, Effect, ExportStatus, ImportConfirmation, ImportError, ImportStatus,
-    NotaeCore, Screen, SetEntry, SetupError, SetupScreen, SharedSetReview, Snapshot, StatusMessage,
-    Subtitle, UnmatchedPiece,
+    NotaeCore, PositionOf, Screen, SetEntry, SetupError, SetupScreen, SharedSetReview, Snapshot,
+    StatusMessage, Subtitle, UnmatchedPiece,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
 use notae_app_core::score_notes::ScoreNotes;
@@ -2148,6 +2148,10 @@ fn open_pdf_opens_the_viewer_and_counts_as_opened() {
     assert_eq!(viewer.row.title, "Barka");
     assert_eq!(viewer.set_id, None);
     assert!(!viewer.has_previous && !viewer.has_next);
+    assert_eq!(
+        viewer.set_position, None,
+        "a score outside a set has no place in one"
+    );
     assert_eq!(snapshot.sections[1].count, 1, "Recent holds the score");
     assert_eq!(snapshot.screen, Screen::Library, "the screen below stays");
 }
@@ -2196,17 +2200,25 @@ fn next_skips_notes_and_missing_pieces() {
     let first = harness.core.snapshot().viewer.expect("viewer");
     assert!(first.set_id.is_some());
     assert!(!first.has_previous && first.has_next);
+    let place = |position, total| Some(PositionOf { position, total });
+    assert_eq!(
+        first.set_position,
+        place(1, 3),
+        "counted among the pieces it can show"
+    );
 
     harness.core.dispatch(Action::ViewerNext);
     let second = harness.core.snapshot().viewer.expect("viewer");
     assert_eq!(second.row.title, "Barka", "the note is skipped");
     assert_eq!(second.row.item_id, rows[1].item_id);
     assert!(second.has_previous && second.has_next);
+    assert_eq!(second.set_position, place(2, 3));
 
     harness.core.dispatch(Action::ViewerNext);
     let last = harness.core.snapshot().viewer.expect("viewer");
     assert_eq!(last.row.title, "Dona", "the missing piece is skipped");
     assert!(last.has_previous && !last.has_next);
+    assert_eq!(last.set_position, place(3, 3));
     harness.core.dispatch(Action::ViewerNext);
     assert_eq!(
         harness
@@ -2606,4 +2618,40 @@ fn close_viewer_closes_only_the_viewer() {
     let after = harness.core.snapshot();
     assert_eq!(after.viewer, None);
     assert!(after.selection.is_some(), "the details stay");
+}
+
+#[test]
+fn a_blank_add_picker_lists_the_recently_opened_scores_first() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(
+        dir.path(),
+        library_platform(&["Ave Maria", "Barka", "Gloria"]),
+    );
+    let library = open_and_scan(&harness);
+    harness.core.dispatch(Action::SetOpenScoresIn {
+        choice: OpenScoresIn::SystemApp,
+    });
+    let gloria = library.rows[2].clone();
+    harness.core.dispatch(Action::OpenPdf {
+        relative_path: gloria.relative_path.clone(),
+        note_key: gloria.note_key.clone(),
+        item_id: None,
+    });
+    harness.core.pdf_opened(None);
+
+    harness.core.dispatch(Action::NewSet);
+    harness.core.dispatch(Action::SaveSetDialog {
+        name: "Mass".to_owned(),
+        date: None,
+        notes: None,
+    });
+    harness.core.dispatch(Action::OpenAddPicker);
+
+    let picker = harness
+        .core
+        .snapshot()
+        .add_picker
+        .expect("the picker is open");
+    let titles: Vec<&str> = picker.rows.iter().map(|row| row.title.as_str()).collect();
+    assert_eq!(titles, ["Gloria", "Ave Maria", "Barka"]);
 }

@@ -72,6 +72,8 @@
     <string name="choose_composer">Wybierz kompozytora, %1$s</string>
     <string name="library_empty_all">Miejsce na Twoje nuty</string>
     <string name="library_empty_all_detail">Zeskanuj folder biblioteki, aby dodać znajdujące się w nim pliki PDF.</string>
+    <string name="library_scanning">Szukam Twoich nut</string>
+    <string name="library_scanning_detail">Notae przegląda folder biblioteki. Nuty pojawią się tu, gdy zostaną znalezione.</string>
     <string name="library_empty_recent">Brak ostatnich utworów</string>
     <string name="library_empty_recent_detail">Tu pojawią się otwierane utwory.</string>
     <string name="library_empty_favorites">Brak ulubionych</string>
@@ -110,7 +112,7 @@
     <string name="summary_moved">przeniesiono: %d</string>
     <string name="summary_deleted">usunięto: %d</string>
     <string name="summary_conflicts">konflikty numerów: %d</string>
-    <string name="summary_failures">błędy: %d</string>
+    <string name="summary_failures">nieczytelne pliki: %d</string>
     <!-- Never translated in 0.3.x (texts.rs): the English the errors have always carried. -->
     <string name="failure_index_query">library search failed: %1$s</string>
     <string name="failure_invalid_note_id">invalid note id: %1$s</string>
@@ -147,7 +149,7 @@
     <string name="details_tags">Tagi</string>
     <string name="details_file">Plik</string>
     <string name="origin_filename">Z nazwy pliku</string>
-    <string name="origin_desktop">Z komputera</string>
+    <string name="origin_desktop">Z katalogu</string>
     <string name="origin_manual">Edytowano</string>
     <string name="status_ready">Gotowe</string>
     <string name="status_missing">Brak w bibliotece</string>
@@ -187,12 +189,15 @@
     <string name="settings_change">Zmień</string>
     <string name="settings_maintenance">Stan biblioteki</string>
     <string name="settings_indexed">Zindeksowane utwory</string>
-    <string name="settings_no_text">Pliki PDF bez tekstu do odczytania</string>
+    <string name="settings_no_text">Pliki PDF bez tekstu do wyszukiwania</string>
+    <string name="settings_no_text_hint">Ich tekstu piosenek nie da się przeszukać; tytuły, kompozytorów i tagi tak.</string>
     <string name="settings_last_scan">Ostatnie skanowanie</string>
     <string name="settings_no_scan">Brak skanowania w tej sesji</string>
     <string name="settings_scan_summary">dodano: %1$d, zaktualizowano: %2$d, przeniesiono: %3$d, usunięto: %4$d</string>
     <string name="settings_conflicts">Konflikty numerów</string>
-    <string name="settings_failures">Błędy</string>
+    <string name="settings_conflicts_hint">Nuty, które mają ten sam numer co inne. Nadaj jednym z nich nowy numer w szczegółach.</string>
+    <string name="settings_failures">Pliki, których nie udało się odczytać</string>
+    <string name="settings_failures_hint">Pliki PDF, których Notae nie mogła otworzyć. Sprawdź, czy otwierają się na komputerze, i zeskanuj ponownie.</string>
     <string name="settings_about">O aplikacji Notae</string>
     <string name="settings_version">Wersja</string>
     <string name="settings_build">Kompilacja</string>
@@ -252,12 +257,13 @@
     <string name="set_drag">Przeciągnij, aby zmienić kolejność: %1$s</string>
     <string name="set_empty">Ten zestaw jest pusty</string>
     <string name="set_empty_detail">Tu pojawią się utwory dodane do tego zestawu.</string>
+    <string name="set_add_pieces">Dodaj utwory</string>
     <string name="set_dialog">Okno danych zestawu</string>
     <string name="set_dialog_intro">Wymagana jest tylko nazwa. Utwory dodasz po zapisaniu.</string>
     <string name="set_name">Nazwa</string>
     <string name="set_name_hint">Nazwa zestawu</string>
     <string name="set_date">Data (opcjonalnie)</string>
-    <string name="set_date_hint">RRRR-MM-DD</string>
+    <string name="set_date_hint">Wybierz datę</string>
     <string name="set_clear_date">Wyczyść datę</string>
     <string name="set_notes_label">Opis (opcjonalnie)</string>
     <string name="set_notes_hint">Uroczystość, godzina, kantor…</string>
@@ -334,11 +340,15 @@
     <string name="viewer_cannot_open">Nie można otworzyć tych nut: %1$s</string>
     <string name="viewer_previous_piece">Poprzedni utwór</string>
     <string name="viewer_next_piece">Następny utwór</string>
+    <string name="viewer_set_place">%1$s · %2$d z %3$d</string>
+    <string name="viewer_piece_cue">%1$d z %2$d · %3$s</string>
+    <string name="viewer_set_start">Początek zestawu</string>
+    <string name="viewer_set_end">Koniec zestawu</string>
     <string name="viewer_notes">Notatki</string>
     <string name="viewer_hint">Nuty otwierają się teraz w Notae. Możesz to zmienić w Ustawieniach.</string>
     <string name="viewer_hint_ok">OK</string>
     <string name="viewer_content_changed">PDF tego utworu się zmienił; rysunki mogą nie pasować.</string>
-    <string name="viewer_view">Widok</string>
+    <string name="viewer_view">Układ i rozmiar stron</string>
     <string name="viewer_view_layout">Układ</string>
     <string name="viewer_view_pages">Strony</string>
     <string name="viewer_view_scroll">Przewijanie</string>

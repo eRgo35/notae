@@ -658,6 +658,8 @@ pub struct Viewer {
     pub has_previous: bool,
     /// A piece after it in the set.
     pub has_next: bool,
+    /// Its place among the set's pieces, skipping text notes and pieces not in the library.
+    pub set_position: Option<PositionOf>,
     /// Show "Scores now open in Notae. Change it in Settings."
     pub show_hint: bool,
     /// The drawings on this set item.
@@ -913,7 +915,7 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
             .viewer_row()
             .zip(model.library_root_handle())
             .map(|(row, uri)| {
-                let (before, after) = model.viewer_neighbours();
+                let place = model.viewer_place();
                 let overlay = model.viewer_overlay();
                 let row = lookup.row(row);
                 Viewer {
@@ -923,8 +925,12 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
                         .viewer_set_id()
                         .and_then(|id| model.sets().get(id))
                         .map(|set| set.name.clone()),
-                    has_previous: before.is_some(),
-                    has_next: after.is_some(),
+                    has_previous: place.as_ref().is_some_and(|place| place.previous.is_some()),
+                    has_next: place.as_ref().is_some_and(|place| place.next.is_some()),
+                    set_position: place.map(|place| PositionOf {
+                        position: count(place.position),
+                        total: count(place.total),
+                    }),
                     show_hint: model.viewer_hint_due(),
                     content_changed: overlay
                         .as_ref()
@@ -1017,7 +1023,14 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         }),
         add_picker: model.add_picker_open().then(|| AddPicker {
             query: model.add_picker_query().to_owned(),
-            rows: model.add_picker_rows(),
+            rows: model
+                .add_picker_rows()
+                .into_iter()
+                .map(|row| PickerRow {
+                    thumbnail: lookup.thumbnail_for(&row.note_key, false),
+                    ..row
+                })
+                .collect(),
             added: count(model.add_picker_added_count()),
         }),
         pdf_open_error: model.pdf_launch_error().map(Into::into),

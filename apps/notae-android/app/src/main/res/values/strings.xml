@@ -68,6 +68,8 @@
     <string name="choose_composer">Choose composer, %1$s</string>
     <string name="library_empty_all">A little space for your scores</string>
     <string name="library_empty_all_detail">Scan your library folder to add the PDFs it contains.</string>
+    <string name="library_scanning">Looking for your scores</string>
+    <string name="library_scanning_detail">Notae is reading your library folder. Scores appear here as they are found.</string>
     <string name="library_empty_recent">No recent scores</string>
     <string name="library_empty_recent_detail">Scores you open appear here.</string>
     <string name="library_empty_favorites">No favorites yet</string>
@@ -104,8 +106,8 @@
     <string name="summary_updated" tools:ignore="PluralsCandidate">%d updated</string>
     <string name="summary_moved" tools:ignore="PluralsCandidate">%d moved</string>
     <string name="summary_deleted" tools:ignore="PluralsCandidate">%d deleted</string>
-    <string name="summary_conflicts" tools:ignore="PluralsCandidate">%d ID conflicts</string>
-    <string name="summary_failures" tools:ignore="PluralsCandidate">%d failures</string>
+    <string name="summary_conflicts" tools:ignore="PluralsCandidate">%d number conflicts</string>
+    <string name="summary_failures" tools:ignore="PluralsCandidate">%d unreadable files</string>
     <!-- Failure and viewer messages were never translated (texts.rs): both languages show this English. -->
     <string name="failure_index_query">library search failed: %1$s</string>
     <string name="failure_invalid_note_id">invalid note id: %1$s</string>
@@ -143,7 +145,7 @@
     <string name="details_tags">Tags</string>
     <string name="details_file">File</string>
     <string name="origin_filename">From filename</string>
-    <string name="origin_desktop">From desktop</string>
+    <string name="origin_desktop">From the catalogue</string>
     <string name="origin_manual">Edited</string>
     <string name="status_ready">Ready</string>
     <string name="status_missing">Missing from library</string>
@@ -152,7 +154,7 @@
     <string name="status_discovered">Discovered</string>
     <string name="status_indexing">Indexing</string>
     <string name="status_stale">Stale</string>
-    <string name="status_id_conflict">ID conflict</string>
+    <string name="status_id_conflict">Number conflict</string>
     <string name="status_import_mismatch">Import mismatch</string>
     <string name="metadata_dialog">Score details dialog</string>
     <string name="metadata_intro">Update the details without renaming your PDF.</string>
@@ -183,13 +185,16 @@
     <string name="settings_change">Change</string>
     <string name="settings_maintenance">Library maintenance</string>
     <string name="settings_indexed">Indexed scores</string>
-    <string name="settings_no_text">PDFs without extractable text</string>
+    <string name="settings_no_text">PDFs without searchable text</string>
+    <string name="settings_no_text_hint">Their lyrics cannot be searched; titles, composers and tags still can.</string>
     <string name="settings_last_scan">Last scan</string>
     <string name="settings_no_scan">No scan this session</string>
     <!-- Unpluralised on purpose, as 0.3.0's text. -->
     <string name="settings_scan_summary" tools:ignore="PluralsCandidate">%1$d added, %2$d updated, %3$d moved, %4$d deleted</string>
-    <string name="settings_conflicts">ID conflicts</string>
-    <string name="settings_failures">Failures</string>
+    <string name="settings_conflicts">Number conflicts</string>
+    <string name="settings_conflicts_hint">Scores that share a number with another. Give one of them a new number in its details.</string>
+    <string name="settings_failures">Files that could not be read</string>
+    <string name="settings_failures_hint">PDFs Notae could not open. Check that they open on a computer, then scan again.</string>
     <string name="settings_about">About Notae</string>
     <string name="settings_version">Version</string>
     <string name="settings_build">Build</string>
@@ -250,12 +255,13 @@
     <string name="set_drag">Drag to reorder %1$s</string>
     <string name="set_empty">This set is empty</string>
     <string name="set_empty_detail">Pieces you add to this set appear here.</string>
+    <string name="set_add_pieces">Add pieces</string>
     <string name="set_dialog">Set details dialog</string>
     <string name="set_dialog_intro">Only the name is required. You add pieces after saving.</string>
     <string name="set_name">Name</string>
     <string name="set_name_hint">Set name</string>
     <string name="set_date">Date (optional)</string>
-    <string name="set_date_hint">YYYY-MM-DD</string>
+    <string name="set_date_hint">Choose a date</string>
     <string name="set_clear_date">Clear date</string>
     <string name="set_notes_label">Description (optional)</string>
     <string name="set_notes_hint">Occasion, time, cantor…</string>
@@ -329,11 +335,15 @@
     <string name="viewer_cannot_open">Could not open this score: %1$s</string>
     <string name="viewer_previous_piece">Previous piece</string>
     <string name="viewer_next_piece">Next piece</string>
+    <string name="viewer_set_place">%1$s · %2$d of %3$d</string>
+    <string name="viewer_piece_cue">%1$d of %2$d · %3$s</string>
+    <string name="viewer_set_start">Start of the set</string>
+    <string name="viewer_set_end">End of the set</string>
     <string name="viewer_notes">Notes</string>
     <string name="viewer_hint">Scores now open in Notae. Change it in Settings.</string>
     <string name="viewer_hint_ok">OK</string>
     <string name="viewer_content_changed">This score\'s PDF changed; drawings may not line up.</string>
-    <string name="viewer_view">View</string>
+    <string name="viewer_view">Page layout and size</string>
     <string name="viewer_view_layout">Layout</string>
     <string name="viewer_view_pages">Pages</string>
     <string name="viewer_view_scroll">Scroll</string>

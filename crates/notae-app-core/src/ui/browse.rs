@@ -24,7 +24,7 @@ pub enum LibrarySection {
     Sets,
     /// One singing set's items, by set id.
     Set(String),
-    /// Scores by one composer, matched case-insensitively.
+    /// Scores by one composer, matched case-insensitively against each person a score names.
     Composer(String),
 }
 
@@ -105,21 +105,80 @@ pub struct SectionView {
     pub kind: &'static str,
 }
 
-/// Composers sorted case-insensitively; case variants of one name are merged.
+/// Words that name a person's part rather than the person, as the catalogue writes them before a
+/// name ("opr. Marcin Pospieszalski", "sł. i muz. Paweł Bębenek", "polskie tłumaczenie: …");
+/// compared ignoring case.
+const ROLES: [&str; 19] = [
+    "adapt.",
+    "harm.",
+    "mel.",
+    "muz.",
+    "muzyka:",
+    "opr.",
+    "oprac.",
+    "aranż.",
+    "arr.",
+    "sł.",
+    "słowa:",
+    "tekst:",
+    "tekstu",
+    "tł.",
+    "tłum.",
+    "tłumaczenie:",
+    "polskie",
+    "pol.",
+    "i",
+];
+
+/// Words that begin a source rather than a person ("z Liturgii godzin", "na podst. 1 Kor 13").
+const SOURCES: [&str; 5] = ["z", "za", "na", "wg", "według"];
+
+/// The people a composer field names: the parts between `;`, each without the words naming its
+/// part ("opr.", "sł. i muz.", …). A part that names a source rather than a person (see
+/// `SOURCES`) is left out.
+pub fn people(field: &str) -> impl Iterator<Item = &str> {
+    field.split(';').filter_map(|part| {
+        let mut person = part.trim();
+        while let Some((first, rest)) = person.split_once(char::is_whitespace) {
+            if !ROLES.contains(&first.to_lowercase().as_str()) {
+                break;
+            }
+            person = rest.trim_start();
+        }
+        let first = person.split_whitespace().next()?.to_lowercase();
+        (!SOURCES.contains(&first.as_str())).then_some(person)
+    })
+}
+
+/// Whether `field` names `person`, ignoring case.
+fn names(field: &str, person: &str) -> bool {
+    people(field).any(|name| name.to_lowercase() == person)
+}
+
+/// Composers sorted case-insensitively; case variants of one name are merged, and a field that
+/// names several people (see [`people`]) counts for each.
 #[must_use]
 pub fn composers(rows: &[SearchRow]) -> Vec<ComposerCount> {
     let mut by_name: BTreeMap<String, ComposerCount> = BTreeMap::new();
-    for name in rows
+    for field in rows
         .iter()
         .filter_map(|row| row.composer_or_artist.as_deref())
     {
-        by_name
-            .entry(name.to_lowercase())
-            .or_insert_with(|| ComposerCount {
-                name: name.to_owned(),
-                count: 0,
-            })
-            .count += 1;
+        let mut seen = Vec::new();
+        for name in people(field) {
+            let key = name.to_lowercase();
+            if seen.contains(&key) {
+                continue;
+            }
+            by_name
+                .entry(key.clone())
+                .or_insert_with(|| ComposerCount {
+                    name: name.to_owned(),
+                    count: 0,
+                })
+                .count += 1;
+            seen.push(key);
+        }
     }
     by_name.into_values().collect()
 }
@@ -184,7 +243,7 @@ pub fn section_rows(
                 .filter(|row| {
                     row.composer_or_artist
                         .as_deref()
-                        .is_some_and(|composer| composer.to_lowercase() == name)
+                        .is_some_and(|composer| names(composer, &name))
                 })
                 .cloned()
                 .collect()

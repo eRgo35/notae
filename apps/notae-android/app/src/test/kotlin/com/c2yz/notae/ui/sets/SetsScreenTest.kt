@@ -250,7 +250,7 @@ class SetsScreenTest {
 
     @Test
     fun picker_search_and_done_dispatch() {
-        val picker = AddPicker("", listOf(PickerRow("key-1", "Alleluja", null, null, false, false)), 0u)
+        val picker = AddPicker("", listOf(PickerRow("key-1", "Alleluja", null, null, false, false, null)), 0u)
         show(Fixture.palmSunday().copy(addPicker = picker))
 
         compose.onNodeWithText("Pieces").assertIsDisplayed()

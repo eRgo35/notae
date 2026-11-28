@@ -361,7 +361,9 @@ private fun Modifier.scoreClick(row: ScoreRowData, source: MutableInteractionSou
 @Composable
 internal fun ScoreSubtitle(row: ScoreRowData, size: Int, missingInError: Boolean = true, selected: Boolean = false) {
     val c = NotaeTheme.colors
-    val text = listOfNotNull(row.number, if (row.missing) stringResource(R.string.score_missing) else row.composer).joinToString(" · ")
+    // In a set the badge carries the place in the set, so the catalogue number says what it is.
+    val number = row.number?.let { if (row.position != null) stringResource(R.string.details_number, it) else it }
+    val text = listOfNotNull(number, if (row.missing) stringResource(R.string.score_missing) else row.composer).joinToString(" · ")
     Text(
         text,
         color = when {

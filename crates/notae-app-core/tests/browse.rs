@@ -658,3 +658,72 @@ fn set_card_previews_skip_notes_and_stop_at_three() {
     assert_eq!(preview_keys(&[None, None]), Vec::<String>::new());
     assert_eq!(preview_keys(&[Some('a'), Some('a')]), [key('a'), key('a')]);
 }
+
+#[test]
+fn a_composer_field_naming_several_people_lists_each_without_their_part() {
+    let rows = vec![
+        row(
+            'a',
+            Some("1"),
+            "Będę chwalił",
+            Some("Daniel Gardner; opr. Marcin Pospieszalski"),
+            false,
+        ),
+        row(
+            'b',
+            Some("2"),
+            "Anima Christi",
+            Some("Marco Frisina; tekst: św. Tomasz z Akwinu"),
+            false,
+        ),
+        row(
+            'c',
+            Some("3"),
+            "Panis angelicus",
+            Some("Marco Frisina"),
+            false,
+        ),
+        row(
+            'd',
+            Some("4"),
+            "Chwała i cześć",
+            Some("sł. Mszał Rzymski; muz. Paweł Płoskoń"),
+            false,
+        ),
+        row(
+            'e',
+            Some("5"),
+            "Abba Ojcze",
+            Some("sł. i muz. s. Emmanuela Gemza; sł. z Liturgii godzin"),
+            false,
+        ),
+    ];
+    let names: Vec<(String, usize)> = composers(&rows)
+        .into_iter()
+        .map(|c| (c.name, c.count))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("Daniel Gardner".to_owned(), 1),
+            ("Marcin Pospieszalski".to_owned(), 1),
+            ("Marco Frisina".to_owned(), 2),
+            ("Mszał Rzymski".to_owned(), 1),
+            ("Paweł Płoskoń".to_owned(), 1),
+            ("s. Emmanuela Gemza".to_owned(), 1),
+            ("św. Tomasz z Akwinu".to_owned(), 1),
+        ]
+    );
+    let frisina = section_rows(
+        &rows,
+        &LibrarySection::Composer("marco frisina".to_owned()),
+        &SectionContext::default(),
+    );
+    assert_eq!(
+        frisina
+            .iter()
+            .map(|row| row.title.as_str())
+            .collect::<Vec<_>>(),
+        ["Anima Christi", "Panis angelicus"]
+    );
+}

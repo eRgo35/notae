@@ -6,6 +6,7 @@ import com.c2yz.notae.core.Edited
 import com.c2yz.notae.core.LayoutPrefs
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.OpenScoresIn
+import com.c2yz.notae.core.PositionOf
 import com.c2yz.notae.core.ViewerLayout
 import com.c2yz.notae.core.ViewerPages
 import com.c2yz.notae.core.ViewerScale
@@ -96,6 +97,7 @@ object Fixture {
         setName = setId?.let { "Niedziela Palmowa" },
         hasPrevious = false,
         hasNext = false,
+        setPosition = setId?.let { PositionOf(1u, 2u) },
         showHint = false,
         overlay = null,
         contentChanged = false,

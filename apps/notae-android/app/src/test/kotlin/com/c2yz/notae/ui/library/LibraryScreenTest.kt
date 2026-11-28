@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.onRoot
@@ -260,17 +262,16 @@ class LibraryScreenTest {
         show(Fixture.library())
 
         compose.onNodeWithContentDescription("Search").performClick()
-        compose.onNodeWithContentDescription("Scan library").performClick()
         compose.onNodeWithContentDescription("Hide sidebar").performClick()
         compose.onNodeWithText("Favorites").performClick()
-        // The side-panel row, not Ave Maria's card, which reads "Schubert" too.
+        // The composer filter over the scores opens the composers; the sheet's row, not Ave Maria's card.
+        compose.onNodeWithContentDescription("Choose composer, All composers").performClick()
         compose.onNode(hasText("Schubert") and hasText("1")).performClick()
         compose.onNodeWithText("Settings").performClick()
 
         assertEquals(
             listOf(
                 Action.OpenSearch,
-                Action.Rescan,
                 Action.SetSidebarCollapsed(portrait = false, collapsed = true),
                 Action.SelectSection("favorites"),
                 Action.SelectSection("composer:schubert"),
@@ -278,6 +279,21 @@ class LibraryScreenTest {
             ),
             actions,
         )
+    }
+
+    @Test
+    fun with_the_side_panel_hidden_the_rail_keeps_the_sections_and_settings() {
+        val library = Fixture.library()
+        show(library.copy(layout = library.layout.copy(sidebarCollapsedLandscape = true)))
+
+        compose.onNodeWithTag(RAIL_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(SIDE_PANEL_TAG).assertDoesNotExist()
+        // The composers stay behind the filter, not beside the sections.
+        compose.onNodeWithText("Bach").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Choose composer, All composers").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Settings").performClick()
+
+        assertEquals(listOf<Action>(Action.OpenSettings), actions)
     }
 
     @Test
@@ -303,13 +319,44 @@ class LibraryScreenTest {
     }
 
     @Test
+    fun empty_all_says_a_running_scan_is_looking_instead_of_asking_for_one() {
+        val library = Fixture.library()
+        show(library.copy(rows = emptyList(), banner = library.banner.copy(busy = true)))
+
+        compose.onNodeWithText("Looking for your scores").assertIsDisplayed()
+        compose.onNodeWithText("A little space for your scores").assertDoesNotExist()
+        compose.onAllNodesWithText("Scan library").assertCountEquals(0)
+    }
+
+    @Test
+    fun empty_sets_offer_a_new_set() {
+        show(Fixture.sets().copy(setCards = emptyList()))
+
+        compose.onNodeWithText("No sets yet").assertIsDisplayed()
+        // The header's New set and the empty card's: the card's is the last.
+        compose.onAllNodesWithText("New set").onLast().performClick()
+
+        assertEquals(listOf<Action>(Action.NewSet), actions)
+    }
+
+    @Test
+    fun an_empty_set_offers_to_add_pieces() {
+        show(Fixture.library().copy(sectionKey = "set:0123", rows = emptyList(), setEntries = emptyList()))
+
+        compose.onNodeWithText("This set is empty").assertIsDisplayed()
+        compose.onNodeWithText("Add pieces").performClick()
+
+        assertEquals(listOf<Action>(Action.OpenAddPicker), actions)
+    }
+
+    @Test
     fun a_missing_piece_offers_its_set_note_and_removal() {
         val piece = Fixture.library().rows.first()
             .copy(number = "999", itemId = "item-8", position = 8u, missing = true, selectionId = "item-8", setNote = "Bring the copy")
         show(Fixture.library().copy(sectionKey = "set:0123", rows = listOf(piece), setEntries = listOf(SetEntry.Piece(piece))))
 
         // The sender's number stays on a placeholder.
-        compose.onNodeWithText("999 · Missing from library").assertIsDisplayed()
+        compose.onNodeWithText("No. 999 · Missing from library").assertIsDisplayed()
         compose.onNodeWithContentDescription("More actions for Agnus Dei").performClick()
         compose.onNodeWithText("Open score").assertDoesNotExist()
         compose.onNodeWithText("Set note").performClick()

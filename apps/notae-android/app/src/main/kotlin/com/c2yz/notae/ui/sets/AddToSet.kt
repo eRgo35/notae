@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
+import com.c2yz.notae.ui.library.PagePreview
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.AddPicker
 import com.c2yz.notae.core.AddToSetSheet
@@ -168,10 +169,11 @@ private fun NewSetRow(onClick: () -> Unit) {
 }
 
 /**
- * 0.3.0's `AddPiecesDialog` with its two tabs. **Pieces**: its own search field (focused), the library's rows or the hits
+ * 0.3.0's `AddPiecesDialog` with its two tabs. **Pieces**: its own search field, the library's rows or the hits
  * with an add/added button each, or "No scores here", then "N added at the end of the set" and Done. A tap outside
  * closes it, as Done. The field is the picker's, not a second app search: it filters what this dialog adds and never
- * leaves it. **Text note**: a multi-line field (focused), "Added at the end of the set.", Cancel and Add note, which
+ * leaves it. The dialog, not the field, takes the focus, so the keyboard does not cover the list before the user asks
+ * for it; Escape still closes it. **Text note**: a multi-line field (focused), "Added at the end of the set.", Cancel and Add note, which
  * stays disabled while the text is blank and closes the picker (the core does both). The tab and the note's text are
  * this dialog's own state.
  */
@@ -183,7 +185,8 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
     var note by remember { mutableStateOf("") }
     val field = remember { FocusRequester() }
     val noteField = remember { FocusRequester() }
-    LaunchedEffect(noteTab) { if (noteTab) noteField.requestFocus() else field.requestFocus() }
+    val dialog = remember { FocusRequester() }
+    LaunchedEffect(noteTab) { if (noteTab) noteField.requestFocus() else dialog.requestFocus() }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // A phone gives the picker the whole screen, its list taking what the tabs, field and footer leave.
         val compact = maxWidth < COMPACT_WIDTH
@@ -193,7 +196,7 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
             onDismiss = close,
             bottomSheet = false,
             cardWidth = 720.dp,
-            modifier = Modifier.closeOnEscape(close),
+            modifier = Modifier.closeOnEscape(close).focusRequester(dialog).focusable(),
             padding = if (noteTab) DIALOG_PADDING else PaddingValues(if (compact) 20.dp else 24.dp),
             spacing = if (compact) 16.dp else 20.dp,
             fullScreen = compact,
@@ -243,7 +246,7 @@ internal fun AddPickerDialog(picker: AddPicker, onAction: (Action) -> Unit) {
     }
 }
 
-/** 0.3.0's `PickerEntry`: a 72 dp row with the document tile, title, "number · composer · already in this set" and add/added. */
+/** 0.3.0's `PickerEntry`: a 72 dp row with the first page, title, "number · composer · already in this set" and add/added. */
 @Composable
 private fun PickerEntry(row: PickerRow, onToggle: () -> Unit) {
     val c = NotaeTheme.colors
@@ -253,9 +256,7 @@ private fun PickerEntry(row: PickerRow, onToggle: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(c.field), Alignment.Center) {
-            Icon(painterResource(R.drawable.ic_document), null, Modifier.size(24.dp), tint = c.foreground)
-        }
+        PagePreview(row.thumbnail, Modifier.size(40.dp, 52.dp), radius = 6.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(row.title, color = c.foreground, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (detail.isNotEmpty()) Text(detail, color = c.muted, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
