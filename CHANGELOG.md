@@ -9,9 +9,45 @@ The hand-written release notes for each version live in
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-28
+
+Notae 0.11.0 plays a set from start to end, keeps the tablet's navigation in
+one place, and fixes the search order and small things found in a review of
+the whole app. See
+[`docs/release-notes/v0.11.0.md`](docs/release-notes/v0.11.0.md).
+
 ### Added
+
+- Turning past the last page of a piece in a set opens the next piece, and
+  back from the first page the previous one at its last page; the viewer
+  shows the set and the place in it, and says when the set starts or ends.
+- The add picker shows each score's first page, lists recently opened scores
+  first with no search, and no longer opens the keyboard over its list.
+- Empty states offer the next step: New set, Add pieces, and a scanning state
+  on All scores.
 - The release workflow uploads the AAB to Google Play's internal testing
   track when the `PLAY_SERVICE_ACCOUNT_JSON` secret is set.
+
+### Changed
+
+- On a tablet a navigation rail replaces the side panel when it is hidden or
+  the details are open, instead of a row of chips; composers moved from the
+  panel to a composer filter above the scores.
+- The composer filter lists each person a composer field names, without
+  their part („opr.”, „sł.”, „muz.”).
+- Settings puts the choices first and About last; the maintenance counts have
+  plainer names and an explanation, and Scan library moved there from the
+  tablet's header.
+- „From desktop” reads „From the catalogue”; a score's number in a set reads
+  „No. 16”; Open score shows a page unless scores open in another app.
+- Reorder and Share are off on an empty set.
+
+### Fixed
+
+- Search in All ranks title matches above composer, tag and lyric matches,
+  and equally good title matches keep the number order.
+- A longer query no longer leaves its best matches scrolled off above the
+  search results.
 
 ## [0.10.0] - 2026-11-27
 
@@ -650,7 +686,8 @@ text, including known limitations.
   deletes the app's private data; see
   [`docs/android-release.md`](docs/android-release.md).
 
-[Unreleased]: https://github.com/eRgo35/notae/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/eRgo35/notae/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/eRgo35/notae/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/eRgo35/notae/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/eRgo35/notae/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/eRgo35/notae/compare/v0.9.0...v0.9.1
