@@ -262,7 +262,6 @@ class LibraryScreenTest {
         show(Fixture.library())
 
         compose.onNodeWithContentDescription("Search").performClick()
-        compose.onNodeWithContentDescription("Scan library").performClick()
         compose.onNodeWithContentDescription("Hide sidebar").performClick()
         compose.onNodeWithText("Favorites").performClick()
         // The composer filter over the scores opens the composers; the sheet's row, not Ave Maria's card.
@@ -273,7 +272,6 @@ class LibraryScreenTest {
         assertEquals(
             listOf(
                 Action.OpenSearch,
-                Action.Rescan,
                 Action.SetSidebarCollapsed(portrait = false, collapsed = true),
                 Action.SelectSection("favorites"),
                 Action.SelectSection("composer:schubert"),
@@ -358,7 +356,7 @@ class LibraryScreenTest {
         show(Fixture.library().copy(sectionKey = "set:0123", rows = listOf(piece), setEntries = listOf(SetEntry.Piece(piece))))
 
         // The sender's number stays on a placeholder.
-        compose.onNodeWithText("999 · Missing from library").assertIsDisplayed()
+        compose.onNodeWithText("No. 999 · Missing from library").assertIsDisplayed()
         compose.onNodeWithContentDescription("More actions for Agnus Dei").performClick()
         compose.onNodeWithText("Open score").assertDoesNotExist()
         compose.onNodeWithText("Set note").performClick()

@@ -348,7 +348,7 @@
     <string name="viewer_hint">Nuty otwierają się teraz w Notae. Możesz to zmienić w Ustawieniach.</string>
     <string name="viewer_hint_ok">OK</string>
     <string name="viewer_content_changed">PDF tego utworu się zmienił; rysunki mogą nie pasować.</string>
-    <string name="viewer_view">Widok</string>
+    <string name="viewer_view">Układ i rozmiar stron</string>
     <string name="viewer_view_layout">Układ</string>
     <string name="viewer_view_pages">Strony</string>
     <string name="viewer_view_scroll">Przewijanie</string>

@@ -108,6 +108,7 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import com.c2yz.notae.ui.library.isCtrlK
+import com.c2yz.notae.ui.library.openScoreIcon
 import com.c2yz.notae.ui.library.PdfError
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.theme.NotaeTheme
@@ -241,7 +242,7 @@ private fun CompactDetails(snapshot: Snapshot, selection: Selection, onAction: (
                 stringResource(R.string.score_open),
                 { onAction(Action.OpenPdf(row.relativePath, row.noteKey, row.itemId)) },
                 Modifier.weight(1f),
-                icon = painterResource(R.drawable.ic_external_link),
+                icon = painterResource(openScoreIcon(snapshot.layout.openScoresIn)),
                 primary = true,
             )
             StepButton(selection, previous = false, onAction)

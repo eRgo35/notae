@@ -314,6 +314,7 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             AnimatedOverlay(menuRow) { row ->
                 ScoreActionsSheet(
                     row,
+                    openScoreIcon(snapshot.layout.openScoresIn),
                     onDismiss = { menuFor = null },
                     onAction = {
                         menuFor = null
@@ -392,7 +393,6 @@ private fun Header(
     val setId = snapshot.sectionKey.removePrefix(SET_PREFIX)
     val hasDrawings = setHasDrawings(snapshot, setId)
     var includeDrawings by remember(setId) { mutableStateOf(false) }
-    val scanLabel = stringResource(R.string.library_scan)
     val viewLabel = stringResource(if (list) R.string.library_grid_view else R.string.library_list_view)
     val viewIcon = if (list) R.drawable.ic_layout_grid else R.drawable.ic_layout_list
     val viewAction = Action.SetLibraryView(if (list) LibraryView.GRID else LibraryView.LIST)
@@ -400,7 +400,7 @@ private fun Header(
     // An empty set has nothing to order or share; one item has no order to change.
     val canReorder = setCanReorder(snapshot)
     val canShare = setCanShare(snapshot)
-    // R2: the actions that do not fit beside the title move into ⋮, Scan first, then Share, the view choice and Reorder;
+    // R2: the actions that do not fit beside the title move into ⋮: Share first, then the view choice and Reorder;
     // Back, Search and the side-panel toggle stay, and so do New set, Add and Done unless nothing else fits.
     val leading = buildList {
         if (expanded) {
@@ -479,12 +479,6 @@ private fun Header(
                 }) { choose -> MenuItem(label, painterResource(R.drawable.ic_add), { choose(Action.OpenAddPicker) }) },
             )
         }
-        // Scan is always right-most, so it never moves between screens.
-        add(
-            HeaderItem("scan", priority = 0, pinned = false, {
-                IconButton(scanLabel, painterResource(R.drawable.ic_scan), { onAction(Action.Rescan) }, Modifier.screenBar("scan"), enabled = snapshot.rescanEnabled)
-            }) { choose -> MenuItem(scanLabel, painterResource(R.drawable.ic_scan), { choose(Action.Rescan) }, enabled = snapshot.rescanEnabled) },
-        )
     }
     HeaderRow(leading, trailing, onAction, Modifier.fillMaxWidth().padding(top = 8.dp, start = 8.dp)) {
         // The title changes with the section, so it fades through; the controls that stay put do not move.

@@ -343,7 +343,7 @@
     <string name="viewer_hint">Scores now open in Notae. Change it in Settings.</string>
     <string name="viewer_hint_ok">OK</string>
     <string name="viewer_content_changed">This score\'s PDF changed; drawings may not line up.</string>
-    <string name="viewer_view">View</string>
+    <string name="viewer_view">Page layout and size</string>
     <string name="viewer_view_layout">Layout</string>
     <string name="viewer_view_pages">Pages</string>
     <string name="viewer_view_scroll">Scroll</string>

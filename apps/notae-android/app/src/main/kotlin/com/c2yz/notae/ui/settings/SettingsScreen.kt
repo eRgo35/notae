@@ -151,7 +151,7 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
                     item { OpenScoresInCard(snapshot.layout.openScoresIn, onAction, card) }
                     item { LanguageCard(card) }
                     item { SetsCard(snapshot.settings, onAction, card) }
-                    item { MaintenanceCard(snapshot.settings, card) }
+                    item { MaintenanceCard(snapshot.settings, snapshot.rescanEnabled, onAction, card) }
                     item { AboutCard(about, onAction, card) }
                 }
                 ListScrollbar(state, Modifier.align(Alignment.TopEnd))
@@ -188,7 +188,7 @@ private fun LibraryFolderCard(name: String, onAction: (Action) -> Unit, onZip: (
 }
 
 @Composable
-private fun MaintenanceCard(settings: SettingsInfo, modifier: Modifier) {
+private fun MaintenanceCard(settings: SettingsInfo, rescanEnabled: Boolean, onAction: (Action) -> Unit, modifier: Modifier) {
     SettingsCard(modifier) {
         CardTitle(stringResource(R.string.settings_maintenance))
         FactRow(stringResource(R.string.settings_indexed), settings.indexedCount.toString())
@@ -214,6 +214,14 @@ private fun MaintenanceCard(settings: SettingsInfo, modifier: Modifier) {
                 hint = stringResource(R.string.settings_failures_hint),
             )
         }
+        // Notae scans on its own when the library opens; this is for a change made since.
+        PillButton(
+            stringResource(R.string.library_scan),
+            { onAction(Action.Rescan) },
+            icon = painterResource(R.drawable.ic_scan),
+            tonal = true,
+            enabled = rescanEnabled,
+        )
     }
 }
 

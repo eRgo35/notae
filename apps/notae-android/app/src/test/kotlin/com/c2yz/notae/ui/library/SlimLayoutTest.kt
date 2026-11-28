@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -153,10 +154,15 @@ class SlimLayoutTest {
     fun overflowed_actions_stay_reachable() {
         show(Fixture.palmSunday())
 
-        compose.onNodeWithTag(HEADER_OVERFLOW_TAG).performClick()
-        compose.onNodeWithText("Scan library").performClick()
+        // Every action is on the bar or in ⋮: Reorder, the first to go into ⋮ after Share and the view choice.
+        if (compose.onAllNodesWithTag(HEADER_OVERFLOW_TAG).fetchSemanticsNodes().isNotEmpty()) {
+            compose.onNodeWithTag(HEADER_OVERFLOW_TAG).performClick()
+            compose.onNodeWithText("Reorder").performClick()
+        } else {
+            compose.onNodeWithContentDescription("Reorder").performClick()
+        }
 
-        assertEquals(Action.Rescan, actions.last())
+        assertEquals(Action.ReorderStarted, actions.last())
     }
 
     @Test

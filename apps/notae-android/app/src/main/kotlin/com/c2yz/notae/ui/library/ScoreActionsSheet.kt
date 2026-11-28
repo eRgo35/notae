@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.c2yz.notae.R
+import com.c2yz.notae.core.OpenScoresIn
 import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.Row as ScoreRowData
 import com.c2yz.notae.ui.components.ActionSheet
@@ -40,7 +41,7 @@ import com.c2yz.notae.ui.theme.NotaeTheme
  * first. Set note opens the set note's editor, which the caller owns ([onEditSetNote]).
  */
 @Composable
-internal fun ScoreActionsSheet(row: ScoreRowData, onDismiss: () -> Unit, onAction: (Action) -> Unit, onEditSetNote: () -> Unit) {
+internal fun ScoreActionsSheet(row: ScoreRowData, openIcon: Int, onDismiss: () -> Unit, onAction: (Action) -> Unit, onEditSetNote: () -> Unit) {
     val c = NotaeTheme.colors
     val first = remember { FocusRequester() }
     ActionSheet(
@@ -73,7 +74,7 @@ internal fun ScoreActionsSheet(row: ScoreRowData, onDismiss: () -> Unit, onActio
         } else {
             SheetAction(
                 stringResource(R.string.score_open),
-                painterResource(R.drawable.ic_external_link),
+                painterResource(openIcon),
                 { onAction(Action.OpenPdf(row.relativePath, row.noteKey, row.itemId)) },
                 Modifier.focusRequester(first),
             )
@@ -98,3 +99,7 @@ internal fun ScoreActionsSheet(row: ScoreRowData, onDismiss: () -> Unit, onActio
         if (hasAction) first.requestFocus()
     }
 }
+
+/** Open score's icon: a page when Notae shows the score, the external-link arrow only when another app does. */
+internal fun openScoreIcon(openScoresIn: OpenScoresIn): Int =
+    if (openScoresIn == OpenScoresIn.SYSTEM_APP) R.drawable.ic_external_link else R.drawable.ic_document

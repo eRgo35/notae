@@ -216,7 +216,7 @@ class ViewerScreenTest {
     @Test
     fun view_menu_marks_the_current_look() {
         show(Fixture.viewer())
-        compose.onNodeWithContentDescription("View").performClick()
+        compose.onNodeWithContentDescription("Page layout and size").performClick()
         compose.onNodeWithText("Pages").assertIsSelected()
         compose.onNodeWithText("Scroll").assertIsNotSelected()
         compose.onNodeWithText("2 pages").assertIsSelected()
@@ -229,7 +229,7 @@ class ViewerScreenTest {
     fun picking_scroll_dispatches_the_look() {
         layout = Fixture.layout.copy(viewerScale = ViewerScale.Percent(150u))
         show(Fixture.viewer())
-        compose.onNodeWithContentDescription("View").performClick()
+        compose.onNodeWithContentDescription("Page layout and size").performClick()
         compose.onNodeWithText("150 %").assertIsSelected()
         compose.onNodeWithText("Scroll").performClick()
         assertEquals(
@@ -263,14 +263,14 @@ class ViewerScreenTest {
     @Test
     fun pinched_view_shows_live_percent() {
         show(Fixture.viewer())
-        compose.onNodeWithContentDescription("View").performClick()
+        compose.onNodeWithContentDescription("Page layout and size").performClick()
         compose.onNodeWithText("Scale", substring = true).assertTextEquals("Scale")
         compose.onNodeWithText("Pages").performClick()
         compose.onRoot().performTouchInput {
             pinch(center - Offset(10f, 0f), center - Offset(80f, 0f), center + Offset(10f, 0f), center + Offset(80f, 0f))
         }
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("View").performClick()
+        compose.onNodeWithContentDescription("Page layout and size").performClick()
         compose.onNodeWithText("Scale (", substring = true).assertExists()
         compose.onNodeWithText("Fit pages").assertIsNotSelected()
     }
