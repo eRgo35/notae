@@ -4,7 +4,6 @@ import com.c2yz.notae.ui.components.ClaimBack
 import androidx.compose.animation.Crossfade
 import com.c2yz.notae.ui.components.collapsingGaps
 import com.c2yz.notae.ui.components.AnimatedPresence
-import com.c2yz.notae.ui.components.scrollWithEndFade
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeOut
@@ -31,8 +30,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -90,7 +87,6 @@ import com.c2yz.notae.core.SetCard
 import com.c2yz.notae.core.SetEntry
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.core.Subtitle
-import com.c2yz.notae.ui.components.Chip
 import com.c2yz.notae.ui.components.EXPANDED_WIDTH
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.NotaeCard
@@ -117,19 +113,22 @@ internal const val SIDE_PANEL_TAG = "side-panel"
 /** The side panel's slide in or out: a little under a screen's, as the panel crosses less of the window. */
 internal const val PANEL_MILLIS = 250
 
-/** Each half of the chips' fade through as the side panel hides or shows: the old row out, then the new one in. */
-internal const val CHIPS_FADE_MILLIS = 150
+/** Each half of the rail's fade through as the side panel hides or shows: the rail out, then the panel in, or back. */
+internal const val RAIL_FADE_MILLIS = 150
 
-internal const val CHIPS_TAG = "chips"
+internal const val RAIL_TAG = "rail"
 
 private val SIDE_PANEL_WIDTH = 288.dp
 
-/** The side panel and the gap after it: how far the rest moves when the panel shows or hides. */
+/** The side panel and the gap after it. */
 private val PANEL_SPAN = SIDE_PANEL_WIDTH + 16.dp
 
+/** The rail that stands in for the side panel, and the gap after it. */
+private val RAIL_SPAN = RAIL_WIDTH + 8.dp
+
 /**
- * 0.3.0's `LibraryScreen` on a tablet: the side panel (or the chips when it is hidden or the pane is under 840 dp), the large
- * title with its header actions, the operation banner, the PDF launch error, and the scores as a grid or a list, the
+ * 0.3.0's `LibraryScreen` on a tablet: the side panel (or the rail when it is hidden or the pane is under 840 dp), the large
+ * title with its header actions, the composer filter on All scores and a composer's scores, the operation banner, the PDF launch error, and the scores as a grid or a list, the
  * sets as folder cards or rows, or the section's empty state. Inside a set the header gains Back to sets, the set's
  * subtitle and notes, and Add. The ⋮ sheets are the screen's own state, as in 0.3.0; Back and Escape close them first.
  * A phone's window gets [CompactLibrary] and one between a phone's and a tablet's [MediumLibrary] around the same content.
@@ -229,8 +228,8 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
             )
         }
         // The window decides the chrome: a phone gets the bottom bar, a short window (a phone on its side) the slim
-        // rail, a window between a phone and a tablet the rail, and a tablet the side panel (or chips when it is hidden
-        // or the library shares the window with the details).
+        // rail, a window between a phone and a tablet the rail, and a tablet the side panel (or the rail when it is
+        // hidden or the library shares the window with the details).
         when (windowChrome()) {
             Chrome.BOTTOM_BAR -> CompactLibrary(snapshot, onAction, inSet, reordering, composerSheet, { composerSheet = it }, content)
             Chrome.SLIM_RAIL -> SlimLibrary(
@@ -247,23 +246,36 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 onAction,
                 { Header(snapshot, onAction, expanded = false, sidebar = true, portrait, inSet, reordering) },
                 inSet,
+                composerSheet,
+                { composerSheet = it },
                 content,
             )
             Chrome.SIDE_PANEL -> Box(Modifier.fillMaxSize().clipToBounds().padding(16.dp)) {
-                // The side panel slides in from the start, or out to it, and the rest moves with it. The rest takes its
-                // new width at once and is only moved, so its grid changes its columns once, not at every step.
+                // The side panel slides in from the start over the rail, or out to it, and the rest moves with it. The rest
+                // takes its new width at once and is only moved, so its grid changes its columns once, not at every step.
                 val panel = updateTransition(sidebar, label = "side panel")
                 val shown by panel.animateFloat({ tween(PANEL_MILLIS, easing = NotaeMotion.emphasized) }, label = "side panel shown") {
                     if (it) 1f else 0f
                 }
-                // The chips fade through, linear in time like a screen's bars: going, they fade out over the first half
-                // and their room goes after; coming, their room is taken at once, as the rest takes its new place, and
-                // they fade in over the second half.
-                val chipsTime = panel.animateFloat({ tween(2 * CHIPS_FADE_MILLIS, easing = LinearEasing) }, label = "chips") {
+                // The rail fades through, linear in time like a screen's bars: going, it fades out over the first half;
+                // coming, it fades in over the second half, as the panel has gone.
+                val railTime = panel.animateFloat({ tween(2 * RAIL_FADE_MILLIS, easing = LinearEasing) }, label = "rail") {
                     if (it) 0f else 1f
                 }
-                val chipsGoing by remember { derivedStateOf { chipsTime.value > 0.5f } }
+                val railGoing by remember { derivedStateOf { railTime.value > 0.5f } }
                 val toEnd = if (LocalLayoutDirection.current == LayoutDirection.Rtl) -1f else 1f
+                if (!sidebar || railGoing) {
+                    NavRail(
+                        snapshot,
+                        onAction,
+                        Modifier
+                            .width(RAIL_WIDTH)
+                            .fillMaxHeight()
+                            .graphicsLayer { alpha = ((railTime.value - 0.5f) * 2f).coerceIn(0f, 1f) }
+                            .testTag(RAIL_TAG)
+                            .screenBar("rail"),
+                    )
+                }
                 if (panel.currentState || panel.targetState) {
                     SidePanel(
                         snapshot,
@@ -279,19 +291,14 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 Column(
                     Modifier
                         .fillMaxSize()
-                        .padding(start = if (sidebar) PANEL_SPAN else 0.dp)
-                        .graphicsLayer { translationX = (shown - if (sidebar) 1f else 0f) * PANEL_SPAN.toPx() * toEnd },
+                        .padding(start = if (sidebar) PANEL_SPAN else RAIL_SPAN)
+                        .graphicsLayer { translationX = (shown - if (sidebar) 1f else 0f) * (PANEL_SPAN - RAIL_SPAN).toPx() * toEnd },
                     verticalArrangement = collapsingGaps(12.dp),
                 ) {
                     // Each bar on its own, so the column keeps its children (its gaps count them).
                     Header(snapshot, onAction, expanded, sidebar, portrait, inSet, reordering)
-                    // Only while there are chips: the column's gaps take room for each of its children.
-                    if (!sidebar || chipsGoing) {
-                        Box(Modifier.screenBar("chips")) {
-                            Box(Modifier.testTag(CHIPS_TAG).graphicsLayer { alpha = ((chipsTime.value - 0.5f) * 2f).coerceIn(0f, 1f) }) {
-                                Chips(snapshot, onAction)
-                            }
-                        }
+                    if (showsComposers(snapshot, inSet)) {
+                        Box(Modifier.screenBar("composers")) { ComposerChip(composerName(snapshot), { composerSheet = true }) }
                     }
                     OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
                     PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
@@ -299,6 +306,8 @@ fun LibraryScreen(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modi
                 }
             }
         }
+        // Over the whole window, not inside the side panel's margin.
+        if (windowChrome() == Chrome.SIDE_PANEL) ComposerSheetOverlay(composerSheet, snapshot, onAction) { composerSheet = it }
         CompositionLocalProvider(LocalBackProgress provides remember(backState) { backProgress(backState) }) {
             AnimatedOverlay(menuRow) { row ->
                 ScoreActionsSheet(
@@ -382,13 +391,12 @@ private fun Header(
     val hasDrawings = setHasDrawings(snapshot, setId)
     var includeDrawings by remember(setId) { mutableStateOf(false) }
     val scanLabel = stringResource(R.string.library_scan)
-    val settingsLabel = stringResource(R.string.screen_settings)
     val viewLabel = stringResource(if (list) R.string.library_grid_view else R.string.library_list_view)
     val viewIcon = if (list) R.drawable.ic_layout_grid else R.drawable.ic_layout_list
     val viewAction = Action.SetLibraryView(if (list) LibraryView.GRID else LibraryView.LIST)
     val reorderLabel = stringResource(R.string.set_reorder)
-    // R2: the actions that do not fit beside the title move into ⋮, Scan first, then Share, the view choice, Reorder and
-    // Settings; Back, Search and the side-panel toggle stay, and so do New set, Add and Done unless nothing else fits.
+    // R2: the actions that do not fit beside the title move into ⋮, Scan first, then Share, the view choice and Reorder;
+    // Back, Search and the side-panel toggle stay, and so do New set, Add and Done unless nothing else fits.
     val leading = buildList {
         if (expanded) {
             add(
@@ -466,13 +474,6 @@ private fun Header(
                 }) { choose -> MenuItem(label, painterResource(R.drawable.ic_add), { choose(Action.OpenAddPicker) }) },
             )
         }
-        if (!sidebar) {
-            add(
-                HeaderItem("settings", priority = 4, pinned = false, {
-                    IconButton(settingsLabel, painterResource(R.drawable.ic_settings), { onAction(Action.OpenSettings) }, Modifier.screenBar("settings"))
-                }) { choose -> MenuItem(settingsLabel, painterResource(R.drawable.ic_settings), { choose(Action.OpenSettings) }) },
-            )
-        }
         // Scan is always right-most, so it never moves between screens.
         add(
             HeaderItem("scan", priority = 0, pinned = false, {
@@ -515,7 +516,7 @@ private fun Header(
     }
 }
 
-/** 0.3.0's `SidePanel`: the logo, the sections with counts, the composers when there are any, and Settings. */
+/** 0.3.0's `SidePanel`: the logo, the sections with counts, and Settings. */
 @Composable
 private fun SidePanel(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier) {
     val c = NotaeTheme.colors
@@ -532,46 +533,13 @@ private fun SidePanel(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: 
                         { onAction(Action.SelectSection(section.key)) },
                         icon = painterResource(sectionIcon(section.key)),
                         count = section.count.toCount(),
-                        selected = isSelected(section.key, snapshot.sectionKey),
+                        selected = navSelected(section.key, snapshot.sectionKey),
                     )
                 }
             }
         }
-        if (snapshot.composers.isNotEmpty()) {
-            NotaeCard(Modifier.fillMaxWidth().weight(1f)) {
-                Column(Modifier.padding(8.dp)) {
-                    Box(Modifier.height(36.dp).padding(start = 14.dp), contentAlignment = Alignment.CenterStart) {
-                        Text(stringResource(R.string.library_composers), color = c.muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    LazyColumn {
-                        items(snapshot.composers, key = { it.key }) { composer ->
-                            SidebarItem(
-                                composer.name,
-                                { onAction(Action.SelectSection(composer.key)) },
-                                count = composer.count.toCount(),
-                                selected = composer.key == snapshot.sectionKey,
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            Spacer(Modifier.weight(1f))
-        }
+        Spacer(Modifier.weight(1f))
         SidebarItem(stringResource(R.string.screen_settings), { onAction(Action.OpenSettings) }, icon = painterResource(R.drawable.ic_settings))
-    }
-}
-
-/** The side panel's rows as chips, for when the panel is not shown; they scroll sideways when they do not fit. */
-@Composable
-private fun Chips(snapshot: Snapshot, onAction: (Action) -> Unit) {
-    Row(Modifier.fillMaxWidth().scrollWithEndFade(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        snapshot.sections.forEach { section ->
-            Chip(sectionTitle(section.title), isSelected(section.key, snapshot.sectionKey), { onAction(Action.SelectSection(section.key)) })
-        }
-        snapshot.composers.forEach { composer ->
-            Chip(composer.name, composer.key == snapshot.sectionKey, { onAction(Action.SelectSection(composer.key)) })
-        }
     }
 }
 
@@ -654,8 +622,6 @@ private fun EmptyState(snapshot: Snapshot, onAction: (Action) -> Unit, modifier:
 internal fun KeyEvent.isCtrlK(): Boolean = type == KeyEventType.KeyDown && isCtrlPressed && key == Key.K
 
 /** A side-panel row is selected for its own section; the Sets row also inside a set. */
-private fun isSelected(key: String, current: String): Boolean = key == current || (key == "sets" && current.startsWith(SET_PREFIX))
-
 internal fun sectionIcon(key: String): Int = when (key) {
     "all" -> R.drawable.ic_library
     "recent" -> R.drawable.ic_schedule

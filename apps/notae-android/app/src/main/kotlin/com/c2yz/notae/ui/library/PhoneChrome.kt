@@ -10,7 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
-import com.c2yz.notae.ui.components.scrollWithEndFade
 import com.c2yz.notae.ui.theme.NotaeMotion
 import androidx.compose.animation.animateColorAsState
 import com.c2yz.notae.ui.components.backProgress
@@ -90,7 +89,6 @@ import com.c2yz.notae.core.Action
 import com.c2yz.notae.core.LibraryView
 import com.c2yz.notae.core.Snapshot
 import com.c2yz.notae.ui.components.ActionSheet
-import com.c2yz.notae.ui.components.Chip
 import com.c2yz.notae.ui.components.IconButton
 import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
@@ -196,7 +194,7 @@ internal fun CompactLibrary(
  * otherwise leave the app under it.
  */
 @Composable
-private fun ComposerSheetOverlay(open: Boolean, snapshot: Snapshot, onAction: (Action) -> Unit, onOpen: (Boolean) -> Unit) {
+internal fun ComposerSheetOverlay(open: Boolean, snapshot: Snapshot, onAction: (Action) -> Unit, onOpen: (Boolean) -> Unit) {
     val backState = rememberNavigationEventState(NavigationEventInfo.None)
     NavigationBackHandler(state = backState, isBackEnabled = open, onBackCompleted = { onOpen(false) })
     ClaimBack(open)
@@ -254,7 +252,7 @@ internal fun SlimLibrary(
 
 /**
  * The library on a small tablet or a phone on its side: a navigation rail with the sections and Settings, then the
- * tablet's header (without the side-panel toggle) and the composers as chips.
+ * tablet's header (without the side-panel toggle) and the composer filter, which opens the composer sheet.
  */
 @Composable
 internal fun MediumLibrary(
@@ -262,41 +260,43 @@ internal fun MediumLibrary(
     onAction: (Action) -> Unit,
     header: @Composable () -> Unit,
     inSet: Boolean,
+    composerSheet: Boolean,
+    onComposerSheet: (Boolean) -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val c = NotaeTheme.colors
+    Box(Modifier.fillMaxSize()) {
     Row(Modifier.fillMaxSize()) {
-        NavRail(snapshot, onAction, Modifier.width(88.dp).fillMaxHeight().screenBar("rail"))
+        NavRail(snapshot, onAction, Modifier.width(RAIL_WIDTH).fillMaxHeight().screenBar("rail"))
         Column(
             Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = collapsingGaps(12.dp),
         ) {
             header()
             if (showsComposers(snapshot, inSet)) {
-                Row(Modifier.fillMaxWidth().scrollWithEndFade().screenBar("composers"), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Chip(stringResource(R.string.all_composers), snapshot.sectionKey == "all", { onAction(Action.SelectSection("all")) })
-                    snapshot.composers.forEach { composer ->
-                        Chip(composer.name, composer.key == snapshot.sectionKey, { onAction(Action.SelectSection(composer.key)) })
-                    }
-                }
+                Box(Modifier.screenBar("composers")) { ComposerChip(composerName(snapshot), { onComposerSheet(true) }) }
             }
             OperationBanner(snapshot.banner, onAction, Modifier.screenBar("banner"))
             PdfError(snapshot.pdfOpenError, Modifier.screenBar("pdfError"))
             content()
         }
     }
+    ComposerSheetOverlay(composerSheet, snapshot, onAction, onComposerSheet)
+    }
 }
 
+/** The navigation rail's width, on a small tablet and beside the details on a tablet. */
+internal val RAIL_WIDTH = 88.dp
+
 /** The composer filter shows on All scores and on a composer's scores, when the library has composers. */
-private fun showsComposers(snapshot: Snapshot, inSet: Boolean): Boolean =
+internal fun showsComposers(snapshot: Snapshot, inSet: Boolean): Boolean =
     !inSet && snapshot.composers.isNotEmpty() && (snapshot.sectionKey == "all" || snapshot.sectionKey.startsWith(COMPOSER_PREFIX))
 
 @Composable
-private fun composerName(snapshot: Snapshot): String =
+internal fun composerName(snapshot: Snapshot): String =
     snapshot.composers.firstOrNull { it.key == snapshot.sectionKey }?.name ?: stringResource(R.string.all_composers)
 
 /** A bottom bar or rail section is selected for its own section; All scores also for a composer's, Sets inside a set. */
-private fun navSelected(key: String, current: String): Boolean =
+internal fun navSelected(key: String, current: String): Boolean =
     key == current || (key == "sets" && current.startsWith("set:")) || (key == "all" && current.startsWith(COMPOSER_PREFIX))
 
 /**
@@ -444,7 +444,7 @@ internal fun MenuItem(label: String, icon: Painter, onClick: () -> Unit, enabled
 
 /** The composer filter: a pill with the composer shown (or All composers) and a chevron, opening [ComposerSheet]. */
 @Composable
-private fun ComposerChip(name: String, onClick: () -> Unit) {
+internal fun ComposerChip(name: String, onClick: () -> Unit) {
     val c = NotaeTheme.colors
     val label = stringResource(R.string.choose_composer, name)
     val shape = RoundedCornerShape(20.dp)
@@ -565,7 +565,7 @@ private fun DoneBar(onAction: (Action) -> Unit) {
  * (a short window) shows icons only, each read as its label, in 56 dp rows: 4 × 56 + 3 × 4 + 16 + 48 = 300 dp of 360.
  */
 @Composable
-private fun NavRail(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier, slim: Boolean = false) {
+internal fun NavRail(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier, slim: Boolean = false) {
     Column(modifier.padding(vertical = if (slim) 8.dp else 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             snapshot.sections.forEach { section ->

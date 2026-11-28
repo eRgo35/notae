@@ -263,7 +263,8 @@ class LibraryScreenTest {
         compose.onNodeWithContentDescription("Scan library").performClick()
         compose.onNodeWithContentDescription("Hide sidebar").performClick()
         compose.onNodeWithText("Favorites").performClick()
-        // The side-panel row, not Ave Maria's card, which reads "Schubert" too.
+        // The composer filter over the scores opens the composers; the sheet's row, not Ave Maria's card.
+        compose.onNodeWithContentDescription("Choose composer, All composers").performClick()
         compose.onNode(hasText("Schubert") and hasText("1")).performClick()
         compose.onNodeWithText("Settings").performClick()
 
@@ -278,6 +279,21 @@ class LibraryScreenTest {
             ),
             actions,
         )
+    }
+
+    @Test
+    fun with_the_side_panel_hidden_the_rail_keeps_the_sections_and_settings() {
+        val library = Fixture.library()
+        show(library.copy(layout = library.layout.copy(sidebarCollapsedLandscape = true)))
+
+        compose.onNodeWithTag(RAIL_TAG).assertIsDisplayed()
+        compose.onNodeWithTag(SIDE_PANEL_TAG).assertDoesNotExist()
+        // The composers stay behind the filter, not beside the sections.
+        compose.onNodeWithText("Bach").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Choose composer, All composers").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Settings").performClick()
+
+        assertEquals(listOf<Action>(Action.OpenSettings), actions)
     }
 
     @Test

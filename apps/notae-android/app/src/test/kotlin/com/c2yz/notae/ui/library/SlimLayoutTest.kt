@@ -55,7 +55,7 @@ class SlimLayoutTest {
 
         compose.onNodeWithTag(SLIM_RAIL_TAG).assertIsDisplayed()
         compose.onNodeWithTag(SIDE_PANEL_TAG).assertDoesNotExist()
-        compose.onNodeWithTag(CHIPS_TAG).assertDoesNotExist()
+        compose.onNodeWithTag(RAIL_TAG).assertDoesNotExist()
         compose.onNodeWithText("All composers").assertDoesNotExist()
     }
 
