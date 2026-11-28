@@ -583,7 +583,8 @@ private enum class ContentMode { EMPTY, SETS, REORDER, LIST, GRID }
 
 /**
  * The section's empty card: glyph, title and detail, and the one action that fills the section: Scan library on All
- * scores, New set on Sets, Add pieces in a set. While a scan runs, All scores says so instead of asking for one.
+ * scores, New set on Sets, Add pieces in a set. While a scan runs, All scores says so instead of asking for one. A phone
+ * already offers New set and Add as its floating button, so its card does not repeat them.
  */
 @Composable
 private fun EmptyState(snapshot: Snapshot, onAction: (Action) -> Unit, modifier: Modifier) {
@@ -599,8 +600,10 @@ private fun EmptyState(snapshot: Snapshot, onAction: (Action) -> Unit, modifier:
         key.startsWith(SET_PREFIX) -> R.string.set_empty to R.string.set_empty_detail
         else -> R.string.library_empty_composer to R.string.library_empty_composer_detail
     }
+    val fab = windowChrome() == Chrome.BOTTOM_BAR
     val button: Triple<Int, Int, Action>? = when {
         scanning -> null
+        fab && (key == "sets" || key.startsWith(SET_PREFIX)) -> null
         key == "all" -> Triple(R.string.library_scan, R.drawable.ic_scan, Action.Rescan)
         key == "sets" -> Triple(R.string.library_new_set, R.drawable.ic_add, Action.NewSet)
         key.startsWith(SET_PREFIX) -> Triple(R.string.set_add_pieces, R.drawable.ic_add, Action.OpenAddPicker)

@@ -16,6 +16,8 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -151,6 +153,19 @@ class PhoneLayoutTest {
             listOf(Action.NewSet, Action.OpenAddPicker, Action.ReorderStarted, Action.ShareSet("palm", true, false), Action.SelectSection("sets")),
             actions,
         )
+    }
+
+    @Test
+    fun empty_sets_and_an_empty_set_leave_the_action_to_the_floating_button() {
+        show(Fixture.sets().copy(setCards = emptyList()))
+        compose.onNodeWithText("No sets yet").assertIsDisplayed()
+        compose.onAllNodesWithText("New set").assertCountEquals(1)
+
+        shown = Fixture.library().copy(sectionKey = "set:0123", rows = emptyList(), setEntries = emptyList())
+        compose.waitForIdle()
+        compose.onNodeWithText("This set is empty").assertIsDisplayed()
+        compose.onNodeWithText("Add pieces").assertDoesNotExist()
+        compose.onNodeWithText("Add").assertIsDisplayed()
     }
 
     @Test
