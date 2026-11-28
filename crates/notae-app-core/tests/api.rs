@@ -14,8 +14,8 @@ use fake_platform::{FakePlatform, entry, readable};
 use notae_app_core::SetStore;
 use notae_app_core::api::{
     Action, CoreListener, Effect, ExportStatus, ImportConfirmation, ImportError, ImportStatus,
-    NotaeCore, Screen, SetEntry, SetupError, SetupScreen, SharedSetReview, Snapshot, StatusMessage,
-    Subtitle, UnmatchedPiece,
+    NotaeCore, PositionOf, Screen, SetEntry, SetupError, SetupScreen, SharedSetReview, Snapshot,
+    StatusMessage, Subtitle, UnmatchedPiece,
 };
 use notae_app_core::platform::{DocumentContent, PlatformError};
 use notae_app_core::score_notes::ScoreNotes;
@@ -2148,6 +2148,10 @@ fn open_pdf_opens_the_viewer_and_counts_as_opened() {
     assert_eq!(viewer.row.title, "Barka");
     assert_eq!(viewer.set_id, None);
     assert!(!viewer.has_previous && !viewer.has_next);
+    assert_eq!(
+        viewer.set_position, None,
+        "a score outside a set has no place in one"
+    );
     assert_eq!(snapshot.sections[1].count, 1, "Recent holds the score");
     assert_eq!(snapshot.screen, Screen::Library, "the screen below stays");
 }
@@ -2196,17 +2200,25 @@ fn next_skips_notes_and_missing_pieces() {
     let first = harness.core.snapshot().viewer.expect("viewer");
     assert!(first.set_id.is_some());
     assert!(!first.has_previous && first.has_next);
+    let place = |position, total| Some(PositionOf { position, total });
+    assert_eq!(
+        first.set_position,
+        place(1, 3),
+        "counted among the pieces it can show"
+    );
 
     harness.core.dispatch(Action::ViewerNext);
     let second = harness.core.snapshot().viewer.expect("viewer");
     assert_eq!(second.row.title, "Barka", "the note is skipped");
     assert_eq!(second.row.item_id, rows[1].item_id);
     assert!(second.has_previous && second.has_next);
+    assert_eq!(second.set_position, place(2, 3));
 
     harness.core.dispatch(Action::ViewerNext);
     let last = harness.core.snapshot().viewer.expect("viewer");
     assert_eq!(last.row.title, "Dona", "the missing piece is skipped");
     assert!(last.has_previous && !last.has_next);
+    assert_eq!(last.set_position, place(3, 3));
     harness.core.dispatch(Action::ViewerNext);
     assert_eq!(
         harness

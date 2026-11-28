@@ -43,6 +43,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,14 +85,17 @@ import com.c2yz.notae.ui.components.windowWidthClass
 import com.c2yz.notae.ui.theme.NotaeTheme
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 
 /**
  * Notae's viewer: a bar with Back, the score's title and the page over its pages ([PageArea]). It is drawn over the
  * screen that opened it; Back (the button, the gesture or Escape) closes it through the core. A tap in the middle of
- * the page hides or shows the bar, and the screen stays on while the viewer shows. [openPages] opens the score's
- * pages; by default with [PdfPageSource].
+ * the page hides or shows the bar, and the screen stays on while the viewer shows. In a set, turning past the last
+ * page opens the next piece and turning before the first opens the previous one at its last page; a short cue names
+ * the piece and its place, or says the set ends there. [openPages] opens the score's pages; by default with
+ * [PdfPageSource].
  */
 @Composable
 fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSourceFactory? = null, layout: LayoutPrefs? = null) {
@@ -143,6 +149,34 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     var clearing by remember(piece) { mutableStateOf(false) }
     var textRequest by remember(piece) { mutableStateOf<TextRequest?>(null) }
     var stylusReported by remember { mutableStateOf(stylusSeen) }
+    // Turning back from a piece's first page opens the previous piece at its last page.
+    var openAtEnd by remember { mutableStateOf(false) }
+    LaunchedEffect(source, piece) {
+        val pages = source ?: return@LaunchedEffect
+        if (openAtEnd) {
+            page = rowsFor(pages.pageCount, look.twoPages).lastOrNull()?.first ?: 0
+            openAtEnd = false
+        }
+    }
+    // The piece and its place in the set as each piece opens, or where the set ends; gone after a moment.
+    val place = viewer.setPosition
+    val arrival = place?.let { stringResource(R.string.viewer_piece_cue, it.position.toInt(), it.total.toInt(), viewer.row.title) }
+    val setStart = stringResource(R.string.viewer_set_start)
+    val setEnd = stringResource(R.string.viewer_set_end)
+    // The text stays while the cue fades out; each new cue restarts the wait.
+    var cue by remember { mutableStateOf("") }
+    var cueShown by remember { mutableStateOf(false) }
+    var cues by remember { mutableIntStateOf(0) }
+    val showCue = { text: String ->
+        cue = text
+        cueShown = true
+        cues++
+    }
+    LaunchedEffect(piece) { arrival?.let(showCue) }
+    LaunchedEffect(cues) {
+        delay(CUE_MILLIS)
+        cueShown = false
+    }
     val setId = viewer.setId
     val itemId = viewer.row.itemId
     val save = { drawn: DrawSession? ->
@@ -154,6 +188,21 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
     }
     DisposableEffect(piece) {
         onDispose { save(session) }
+    }
+    val turnBeyond: (Int) -> Unit = { by ->
+        when {
+            setId == null -> Unit
+            by > 0 && viewer.hasNext -> {
+                finishDrawing()
+                onAction(Action.ViewerNext)
+            }
+            by < 0 && viewer.hasPrevious -> {
+                finishDrawing()
+                openAtEnd = true
+                onAction(Action.ViewerPrevious)
+            }
+            else -> showCue(if (by > 0) setEnd else setStart)
+        }
     }
     // Android may end the app once it is in the background: save what is drawn when it stops.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -206,15 +255,26 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(stringResource(R.string.viewer_back), painterResource(R.drawable.ic_arrow_back), { onAction(Action.CloseViewer) })
-                Text(
-                    viewer.row.title,
-                    Modifier.weight(1f),
-                    color = c.foreground,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        viewer.row.title,
+                        color = c.foreground,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val setName = viewer.setName
+                    if (place != null && setName != null) {
+                        Text(
+                            stringResource(R.string.viewer_set_place, setName, place.position.toInt(), place.total.toInt()),
+                            color = c.muted,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
                 source?.let { Text(stringResource(R.string.viewer_page_of, page + 1, it.pageCount), color = c.muted, fontSize = 15.sp) }
                 Box {
                     IconButton(stringResource(R.string.viewer_view), painterResource(R.drawable.ic_book_open), { viewMenu = true }, selected = viewMenu)
@@ -263,7 +323,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
         Row(Modifier.weight(1f).fillMaxWidth()) {
         Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
             error?.let { Text(stringResource(R.string.viewer_cannot_open, it), Modifier.padding(24.dp), color = c.error, fontSize = 15.sp) }
-            source?.let { pages ->
+            source?.takeUnless { openAtEnd }?.let { pages ->
                 PageArea(
                     pages,
                     look,
@@ -272,6 +332,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                     { bars = !bars },
                     Modifier.fillMaxSize(),
                     zoom,
+                    turnBeyond,
                 ) { index ->
                     PageDrawings(
                         index,
@@ -290,6 +351,7 @@ fun ViewerScreen(viewer: Viewer, onAction: (Action) -> Unit, openPages: PageSour
                 }
             }
             if (viewer.showHint) ViewerHint({ onAction(Action.ViewerHintSeen) }, Modifier.align(Alignment.BottomCenter))
+            androidx.compose.animation.AnimatedVisibility(cueShown, Modifier.align(Alignment.BottomCenter), enter = fadeIn(), exit = fadeOut()) { SetCue(cue) }
         }
         // On a wide window the notes sit beside the score instead of over it.
         AnimatedVisibility(
@@ -414,4 +476,27 @@ private fun ViewerHint(onDismiss: () -> Unit, modifier: Modifier) {
         Text(stringResource(R.string.viewer_hint), Modifier.weight(1f, fill = false), color = c.foreground, fontSize = 15.sp)
         PillButton(stringResource(R.string.viewer_hint_ok), onDismiss, tonal = true)
     }
+}
+
+/** How long a set cue stays. */
+private const val CUE_MILLIS = 1800L
+
+/** A set cue: the piece and its place, or where the set ends, in a pill over the bottom of the pages. */
+@Composable
+private fun SetCue(text: String) {
+    val c = NotaeTheme.colors
+    Text(
+        text,
+        Modifier
+            .padding(24.dp)
+            .widthIn(max = 560.dp)
+            .clip(RoundedCornerShape(20.dp))
+            .background(c.foreground.copy(alpha = 0.88f))
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        color = c.background,
+        fontSize = 15.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }

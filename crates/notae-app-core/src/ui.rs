@@ -732,25 +732,19 @@ impl UiModel {
         self.viewer.as_ref()?.set_id.as_deref()
     }
 
-    /// The pieces before and after the viewer's set item.
+    /// Where the viewer's set item stands among its set's pieces; `None` outside a set.
     #[must_use]
-    pub fn viewer_neighbours(&self) -> (Option<SearchRow>, Option<SearchRow>) {
-        let Some(item_id) = self
-            .viewer
-            .as_ref()
-            .and_then(|state| state.row.item_id.clone())
-        else {
-            return (None, None);
-        };
-        let entries = self.open_set_entries();
-        let (before, after) = viewer::neighbours(&entries, &item_id);
-        (before.cloned(), after.cloned())
+    pub fn viewer_place(&self) -> Option<viewer::SetPlace> {
+        let item_id = self.viewer.as_ref()?.row.item_id.clone()?;
+        viewer::place(&self.open_set_entries(), &item_id)
     }
 
     /// Previous or Next piece: replaces the viewer's score, so Back still closes the viewer.
     pub fn viewer_step(&mut self, forward: bool) {
-        let (before, after) = self.viewer_neighbours();
-        let Some(row) = (if forward { after } else { before }) else {
+        let Some(place) = self.viewer_place() else {
+            return;
+        };
+        let Some(row) = (if forward { place.next } else { place.previous }) else {
             return;
         };
         let set_id = self.viewer_set_id().map(str::to_owned);

@@ -1,4 +1,4 @@
-//! Notae's own viewer: which score it shows and, inside a set, the pieces before and after it.
+//! Notae's own viewer: which score it shows and, inside a set, where it stands among the pieces.
 
 use crate::ui::browse::SetEntry;
 use crate::ui::search::SearchRow;
@@ -12,13 +12,24 @@ pub struct ViewerState {
     pub set_id: Option<String>,
 }
 
-/// The pieces before and after set item `item_id`, skipping text notes and pieces whose PDF is
-/// not in the library.
+/// Where a set item stands among the set's pieces: the pieces before and after it and its
+/// one-based position.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SetPlace {
+    /// The piece before it.
+    pub previous: Option<SearchRow>,
+    /// The piece after it.
+    pub next: Option<SearchRow>,
+    /// Its one-based position.
+    pub position: usize,
+    /// The pieces counted.
+    pub total: usize,
+}
+
+/// Where set item `item_id` stands among the set's pieces, skipping text notes and pieces whose
+/// PDF is not in the library; `None` when the set does not hold it.
 #[must_use]
-pub fn neighbours<'a>(
-    entries: &'a [SetEntry],
-    item_id: &str,
-) -> (Option<&'a SearchRow>, Option<&'a SearchRow>) {
+pub fn place(entries: &[SetEntry], item_id: &str) -> Option<SetPlace> {
     let pieces: Vec<&SearchRow> = entries
         .iter()
         .filter_map(|entry| match entry {
@@ -28,16 +39,15 @@ pub fn neighbours<'a>(
             _ => None,
         })
         .collect();
-    let Some(index) = pieces
+    let index = pieces
         .iter()
-        .position(|row| row.item_id.as_deref() == Some(item_id))
-    else {
-        return (None, None);
-    };
-    (
-        index
+        .position(|row| row.item_id.as_deref() == Some(item_id))?;
+    Some(SetPlace {
+        previous: index
             .checked_sub(1)
-            .and_then(|before| pieces.get(before).copied()),
-        pieces.get(index + 1).copied(),
-    )
+            .and_then(|before| pieces.get(before).map(|row| (*row).clone())),
+        next: pieces.get(index + 1).map(|row| (*row).clone()),
+        position: index + 1,
+        total: pieces.len(),
+    })
 }

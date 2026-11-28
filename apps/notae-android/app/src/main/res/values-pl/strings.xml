@@ -334,6 +334,10 @@
     <string name="viewer_cannot_open">Nie można otworzyć tych nut: %1$s</string>
     <string name="viewer_previous_piece">Poprzedni utwór</string>
     <string name="viewer_next_piece">Następny utwór</string>
+    <string name="viewer_set_place">%1$s · %2$d z %3$d</string>
+    <string name="viewer_piece_cue">%1$d z %2$d · %3$s</string>
+    <string name="viewer_set_start">Początek zestawu</string>
+    <string name="viewer_set_end">Koniec zestawu</string>
     <string name="viewer_notes">Notatki</string>
     <string name="viewer_hint">Nuty otwierają się teraz w Notae. Możesz to zmienić w Ustawieniach.</string>
     <string name="viewer_hint_ok">OK</string>

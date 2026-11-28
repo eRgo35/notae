@@ -112,6 +112,57 @@ class ViewerScreenTest {
     }
 
     @Test
+    fun the_set_and_the_place_in_it_show_under_the_title() {
+        show(inSet())
+
+        compose.onNodeWithText("Niedziela Palmowa · 1 of 2").assertIsDisplayed()
+    }
+
+    @Test
+    fun turning_past_the_last_page_opens_the_next_piece() {
+        layout = Fixture.layout.copy(viewerPages = ViewerPages.ONE)
+        show(inSet().copy(hasNext = true)) { _, _ -> FakePages(2) }
+        repeat(2) {
+            compose.onRoot().performKeyInput { pressKey(Key.PageDown) }
+            compose.waitForIdle()
+        }
+
+        assertEquals(listOf<Action>(Action.ViewerNext), actions)
+    }
+
+    @Test
+    fun turning_back_from_the_first_page_opens_the_previous_piece_at_its_last_page() {
+        layout = Fixture.layout.copy(viewerPages = ViewerPages.ONE)
+        show(inSet().copy(hasPrevious = true))
+        compose.onRoot().performKeyInput { pressKey(Key.PageUp) }
+        compose.waitForIdle()
+        assertEquals(listOf<Action>(Action.ViewerPrevious), actions)
+
+        shown = inSet().copy(row = Fixture.rows[1].copy(itemId = "item-0"), hasNext = true)
+        compose.waitForIdle()
+        compose.onNodeWithText("3 / 3").assertIsDisplayed()
+    }
+
+    @Test
+    fun turning_past_the_end_of_the_set_says_so() {
+        layout = Fixture.layout.copy(viewerPages = ViewerPages.ONE)
+        show(inSet()) { _, _ -> FakePages(1) }
+        compose.onRoot().performKeyInput { pressKey(Key.PageDown) }
+
+        compose.onNodeWithText("End of the set").assertIsDisplayed()
+        assertEquals(emptyList<Action>(), actions)
+    }
+
+    @Test
+    fun opening_a_piece_names_it_and_its_place() {
+        compose.mainClock.autoAdvance = false
+        show(inSet())
+        compose.mainClock.advanceTimeBy(500)
+
+        compose.onNodeWithText("1 of 2 · ${Fixture.rows[0].title}").assertIsDisplayed()
+    }
+
+    @Test
     fun no_set_bar_outside_a_set() {
         show(Fixture.viewer())
 
