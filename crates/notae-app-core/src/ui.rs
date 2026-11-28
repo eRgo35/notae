@@ -104,6 +104,8 @@ pub struct PickerRow {
     pub in_set: bool,
     /// Added during this picker session.
     pub added: bool,
+    /// The first-page PNG, once a scan has rendered it; filled in by the snapshot.
+    pub thumbnail: Option<String>,
 }
 
 /// Bridge between the UI and the [`AppState`].
@@ -1141,17 +1143,30 @@ impl UiModel {
             .map_or("", |picker| picker.query.as_str())
     }
 
-    /// The picker's rows: the search hits, or the whole library for a blank query.
+    /// The picker's rows: the search hits, or for a blank query the whole library with the
+    /// recently opened scores first, newest first.
     #[must_use]
     pub fn add_picker_rows(&self) -> Vec<PickerRow> {
         let Some(picker) = &self.add_picker else {
             return Vec::new();
         };
-        picker
-            .rows
-            .as_deref()
-            .unwrap_or(&self.search_rows)
-            .iter()
+        let rows: Vec<&SearchRow> = match picker.rows.as_deref() {
+            Some(hits) => hits.iter().collect(),
+            None => {
+                let recent = self.recent.keys();
+                let mut rows: Vec<&SearchRow> = recent
+                    .iter()
+                    .filter_map(|key| self.search_rows.iter().find(|row| &row.note_key == key))
+                    .collect();
+                rows.extend(
+                    self.search_rows
+                        .iter()
+                        .filter(|row| !recent.contains(&row.note_key)),
+                );
+                rows
+            }
+        };
+        rows.into_iter()
             .map(|row| PickerRow {
                 note_key: row.note_key.clone(),
                 title: row.title.clone(),
@@ -1159,6 +1174,7 @@ impl UiModel {
                 composer: row.composer_or_artist.clone(),
                 in_set: picker.before.contains(&row.note_key),
                 added: picker.added.iter().any(|(key, _)| *key == row.note_key),
+                thumbnail: None,
             })
             .collect()
     }

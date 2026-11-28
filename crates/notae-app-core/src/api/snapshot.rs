@@ -1023,7 +1023,14 @@ pub(super) fn build(model: &UiModel, extras: &Extras<'_>) -> Snapshot {
         }),
         add_picker: model.add_picker_open().then(|| AddPicker {
             query: model.add_picker_query().to_owned(),
-            rows: model.add_picker_rows(),
+            rows: model
+                .add_picker_rows()
+                .into_iter()
+                .map(|row| PickerRow {
+                    thumbnail: lookup.thumbnail_for(&row.note_key, false),
+                    ..row
+                })
+                .collect(),
             added: count(model.add_picker_added_count()),
         }),
         pdf_open_error: model.pdf_launch_error().map(Into::into),

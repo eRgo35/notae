@@ -100,6 +100,8 @@ import com.c2yz.notae.ui.details.detailsKeyAction
 import com.c2yz.notae.ui.sets.SetActionsSheet
 import com.c2yz.notae.ui.sets.ShareSetButton
 import com.c2yz.notae.ui.sets.IncludeDrawingsItem
+import com.c2yz.notae.ui.sets.setCanReorder
+import com.c2yz.notae.ui.sets.setCanShare
 import com.c2yz.notae.ui.sets.setHasDrawings
 import com.c2yz.notae.ui.sets.overlayOpen
 import com.c2yz.notae.ui.sets.SetsPane
@@ -395,6 +397,9 @@ private fun Header(
     val viewIcon = if (list) R.drawable.ic_layout_grid else R.drawable.ic_layout_list
     val viewAction = Action.SetLibraryView(if (list) LibraryView.GRID else LibraryView.LIST)
     val reorderLabel = stringResource(R.string.set_reorder)
+    // An empty set has nothing to order or share; one item has no order to change.
+    val canReorder = setCanReorder(snapshot)
+    val canShare = setCanShare(snapshot)
     // R2: the actions that do not fit beside the title move into ⋮, Scan first, then Share, the view choice and Reorder;
     // Back, Search and the side-panel toggle stay, and so do New set, Add and Done unless nothing else fits.
     val leading = buildList {
@@ -452,19 +457,19 @@ private fun Header(
                 HeaderItem("reorder", priority = 3, pinned = false, {
                     // Under 840 dp (portrait, or the pane beside the details) the labelled icon leaves room for the set's name.
                     if (expanded) {
-                        PillButton(reorderLabel, { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"), icon = painterResource(R.drawable.ic_reorder))
+                        PillButton(reorderLabel, { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"), icon = painterResource(R.drawable.ic_reorder), enabled = canReorder)
                     } else {
-                        IconButton(reorderLabel, painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"))
+                        IconButton(reorderLabel, painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"), enabled = canReorder)
                     }
-                }) { choose -> MenuItem(reorderLabel, painterResource(R.drawable.ic_reorder), { choose(Action.ReorderStarted) }) },
+                }) { choose -> MenuItem(reorderLabel, painterResource(R.drawable.ic_reorder), { choose(Action.ReorderStarted) }, enabled = canReorder) },
             )
             add(
                 HeaderItem("share", priority = 1, pinned = false, {
-                    Box(Modifier.screenBar("share")) { ShareSetButton(setId, hasDrawings, onAction) }
+                    Box(Modifier.screenBar("share")) { ShareSetButton(setId, hasDrawings, onAction, enabled = canShare) }
                 }) { choose ->
                     if (hasDrawings) IncludeDrawingsItem(includeDrawings) { includeDrawings = !includeDrawings }
-                    MenuItem(stringResource(R.string.share_set_plain), painterResource(R.drawable.ic_share), { choose(Action.ShareSet(setId, false, hasDrawings && includeDrawings)) })
-                    MenuItem(stringResource(R.string.share_set_with_notes), painterResource(R.drawable.ic_note), { choose(Action.ShareSet(setId, true, hasDrawings && includeDrawings)) })
+                    MenuItem(stringResource(R.string.share_set_plain), painterResource(R.drawable.ic_share), { choose(Action.ShareSet(setId, false, hasDrawings && includeDrawings)) }, enabled = canShare)
+                    MenuItem(stringResource(R.string.share_set_with_notes), painterResource(R.drawable.ic_note), { choose(Action.ShareSet(setId, true, hasDrawings && includeDrawings)) }, enabled = canShare)
                 },
             )
             val label = stringResource(R.string.set_add)

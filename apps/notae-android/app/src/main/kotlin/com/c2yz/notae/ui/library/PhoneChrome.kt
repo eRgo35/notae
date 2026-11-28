@@ -94,6 +94,8 @@ import com.c2yz.notae.ui.components.OperationBanner
 import com.c2yz.notae.ui.components.PillButton
 import com.c2yz.notae.ui.components.toCount
 import com.c2yz.notae.ui.sets.ShareSetButton
+import com.c2yz.notae.ui.sets.setCanReorder
+import com.c2yz.notae.ui.sets.setCanShare
 import com.c2yz.notae.ui.sets.setHasDrawings
 import com.c2yz.notae.ui.theme.NotaeTheme
 
@@ -385,8 +387,11 @@ private fun Toolbar(snapshot: Snapshot, onAction: (Action) -> Unit, inSet: Boole
         }
         IconButton(stringResource(R.string.screen_search), painterResource(R.drawable.ic_search), { onAction(Action.OpenSearch) }, Modifier.screenBar("search"))
         if (inSet && !reordering) {
-            IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"))
-            Box(Modifier.screenBar("share")) { ShareSetButton(snapshot.sectionKey.removePrefix(SET_PREFIX), setHasDrawings(snapshot, snapshot.sectionKey.removePrefix(SET_PREFIX)), onAction) }
+            IconButton(stringResource(R.string.set_reorder), painterResource(R.drawable.ic_reorder), { onAction(Action.ReorderStarted) }, Modifier.screenBar("reorder"), enabled = setCanReorder(snapshot))
+            Box(Modifier.screenBar("share")) {
+                val setId = snapshot.sectionKey.removePrefix(SET_PREFIX)
+                ShareSetButton(setId, setHasDrawings(snapshot, setId), onAction, enabled = setCanShare(snapshot))
+            }
         }
         Box(Modifier.screenBar("more")) { OverflowMenu(snapshot, onAction, reordering) }
     }

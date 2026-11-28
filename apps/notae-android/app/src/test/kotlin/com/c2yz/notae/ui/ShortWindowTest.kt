@@ -151,7 +151,7 @@ class ShortWindowTest {
 
     private fun pickerDoneVisible() {
         val inPalm = Fixture.palmRows.map { it.title }.toSet()
-        val rows = Fixture.rows.map { PickerRow(it.noteKey, it.title, it.number, it.composer, it.title in inPalm, false) }
+        val rows = Fixture.rows.map { PickerRow(it.noteKey, it.title, it.number, it.composer, it.title in inPalm, false, it.thumbnail) }
         withOverlays(Fixture.palmSunday().copy(addPicker = AddPicker("", rows, 0u)))
 
         compose.onNodeWithText("Done").assertIsDisplayed().assertInsideWindow(compose)

@@ -2619,3 +2619,39 @@ fn close_viewer_closes_only_the_viewer() {
     assert_eq!(after.viewer, None);
     assert!(after.selection.is_some(), "the details stay");
 }
+
+#[test]
+fn a_blank_add_picker_lists_the_recently_opened_scores_first() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let harness = start(
+        dir.path(),
+        library_platform(&["Ave Maria", "Barka", "Gloria"]),
+    );
+    let library = open_and_scan(&harness);
+    harness.core.dispatch(Action::SetOpenScoresIn {
+        choice: OpenScoresIn::SystemApp,
+    });
+    let gloria = library.rows[2].clone();
+    harness.core.dispatch(Action::OpenPdf {
+        relative_path: gloria.relative_path.clone(),
+        note_key: gloria.note_key.clone(),
+        item_id: None,
+    });
+    harness.core.pdf_opened(None);
+
+    harness.core.dispatch(Action::NewSet);
+    harness.core.dispatch(Action::SaveSetDialog {
+        name: "Mass".to_owned(),
+        date: None,
+        notes: None,
+    });
+    harness.core.dispatch(Action::OpenAddPicker);
+
+    let picker = harness
+        .core
+        .snapshot()
+        .add_picker
+        .expect("the picker is open");
+    let titles: Vec<&str> = picker.rows.iter().map(|row| row.title.as_str()).collect();
+    assert_eq!(titles, ["Gloria", "Ave Maria", "Barka"]);
+}

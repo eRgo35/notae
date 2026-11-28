@@ -260,7 +260,7 @@
     <string name="set_name">Nazwa</string>
     <string name="set_name_hint">Nazwa zestawu</string>
     <string name="set_date">Data (opcjonalnie)</string>
-    <string name="set_date_hint">RRRR-MM-DD</string>
+    <string name="set_date_hint">Wybierz datę</string>
     <string name="set_clear_date">Wyczyść datę</string>
     <string name="set_notes_label">Opis (opcjonalnie)</string>
     <string name="set_notes_hint">Uroczystość, godzina, kantor…</string>
