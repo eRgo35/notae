@@ -146,12 +146,13 @@ fun SettingsScreen(snapshot: Snapshot, onAction: (Action) -> Unit, about: AboutI
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     val card = Modifier.widthIn(max = 720.dp).fillMaxWidth()
+                    // The choices first, then the library's state, and About last.
                     item { LibraryFolderCard(snapshot.settings.libraryName.orEmpty(), onAction, { zipDialog = true }, card) }
-                    item { MaintenanceCard(snapshot.settings, card) }
-                    item { AboutCard(about, onAction, card) }
+                    item { OpenScoresInCard(snapshot.layout.openScoresIn, onAction, card) }
                     item { LanguageCard(card) }
                     item { SetsCard(snapshot.settings, onAction, card) }
-                    item { OpenScoresInCard(snapshot.layout.openScoresIn, onAction, card) }
+                    item { MaintenanceCard(snapshot.settings, card) }
+                    item { AboutCard(about, onAction, card) }
                 }
                 ListScrollbar(state, Modifier.align(Alignment.TopEnd))
             }
@@ -176,13 +177,13 @@ private fun CardTitle(text: String) {
 @Composable
 private fun LibraryFolderCard(name: String, onAction: (Action) -> Unit, onZip: () -> Unit, modifier: Modifier) {
     val c = NotaeTheme.colors
-    SettingsCard(modifier, spacing = 4) {
-        Text(stringResource(R.string.settings_library_folder), color = c.muted, fontSize = 13.sp)
+    SettingsCard(modifier) {
+        CardTitle(stringResource(R.string.settings_library_folder))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(name, Modifier.weight(1f), color = c.foreground, fontSize = 15.sp)
             PillButton(stringResource(R.string.settings_change), { onAction(Action.PickLibraryRoot) }, tonal = true)
         }
-        PillButton(stringResource(R.string.zip_import), onZip, Modifier.padding(top = 4.dp), tonal = true)
+        PillButton(stringResource(R.string.zip_import), onZip, tonal = true)
     }
 }
 
@@ -191,7 +192,7 @@ private fun MaintenanceCard(settings: SettingsInfo, modifier: Modifier) {
     SettingsCard(modifier) {
         CardTitle(stringResource(R.string.settings_maintenance))
         FactRow(stringResource(R.string.settings_indexed), settings.indexedCount.toString())
-        FactRow(stringResource(R.string.settings_no_text), settings.noTextCount.toString())
+        FactRow(stringResource(R.string.settings_no_text), settings.noTextCount.toString(), hint = stringResource(R.string.settings_no_text_hint))
         val scan = settings.latestScan
         val summary = if (scan == null) {
             stringResource(R.string.settings_no_scan)
@@ -200,8 +201,18 @@ private fun MaintenanceCard(settings: SettingsInfo, modifier: Modifier) {
         }
         FactRow(stringResource(R.string.settings_last_scan), summary)
         if (scan != null) {
-            FactRow(stringResource(R.string.settings_conflicts), scan.conflicts.toString(), alarm = scan.conflicts != 0u)
-            FactRow(stringResource(R.string.settings_failures), scan.failures.toString(), alarm = scan.failures != 0u)
+            FactRow(
+                stringResource(R.string.settings_conflicts),
+                scan.conflicts.toString(),
+                alarm = scan.conflicts != 0u,
+                hint = stringResource(R.string.settings_conflicts_hint),
+            )
+            FactRow(
+                stringResource(R.string.settings_failures),
+                scan.failures.toString(),
+                alarm = scan.failures != 0u,
+                hint = stringResource(R.string.settings_failures_hint),
+            )
         }
     }
 }
@@ -386,7 +397,7 @@ private fun SharedSetSummary(shared: SharedSetReview, replaced: String?) {
  * long value (the last scan's summary) goes below its label instead of squeezing beside it.
  */
 @Composable
-private fun FactRow(label: String, value: String, alarm: Boolean = false) {
+private fun FactRow(label: String, value: String, alarm: Boolean = false, hint: String? = null) {
     val c = NotaeTheme.colors
     if (LocalConfiguration.current.screenWidthDp < COMPACT_WIDTH.value && value.length > 24) {
         Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -395,9 +406,13 @@ private fun FactRow(label: String, value: String, alarm: Boolean = false) {
         }
         return
     }
-    Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(label, color = c.muted, fontSize = 15.sp)
-        Text(value, Modifier.weight(1f), color = if (alarm) c.error else c.foreground, fontSize = 15.sp, textAlign = TextAlign.End)
+    Column(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(label, color = c.muted, fontSize = 15.sp)
+            Text(value, Modifier.weight(1f), color = if (alarm) c.error else c.foreground, fontSize = 15.sp, textAlign = TextAlign.End)
+        }
+        // What the count means and what to do about it, under the label.
+        if (hint != null) Text(hint, color = c.muted, fontSize = 13.sp)
     }
 }
 
