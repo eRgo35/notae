@@ -154,6 +154,9 @@ private fun ColumnScope.Results(snapshot: Snapshot, onAction: (Action) -> Unit) 
         snapshot.rows.isEmpty() -> Message(R.string.search_no_results_title, R.string.search_no_results_detail, area, glyph = false)
         else -> NotaeCard(area) {
             val state = rememberLazyListState()
+            // A new best match goes to the top: the list would otherwise keep the old first row in view, so a
+            // longer query that ranks titles above it would leave them scrolled off.
+            LaunchedEffect(snapshot.rows.first().selectionId) { state.scrollToItem(0) }
             LazyColumn(Modifier.fillMaxSize().padding(8.dp), state = state) {
                 items(snapshot.rows, key = { it.selectionId }) { row ->
                     Box(Modifier.animateItem()) { ResultRow(row) { onAction(Action.SearchResultChosen(row.noteKey)) } }
