@@ -2,17 +2,20 @@
 //!
 //! The query runs against the derived `notes_fts` index, which holds the note
 //! ID, title, composer/artist, tags, filename, and normalized OCR text of every
-//! record. Ranking combines three signals:
+//! record. Ranking combines four signals, each outweighing all the ones after:
 //!
 //! 1. an exact numeric ID match, which the spec requires to rank highest;
 //! 2. an exact title match, which ranks next;
-//! 3. the FTS5 `bm25` relevance score for everything else, including broad
-//!    OCR-only matches.
+//! 3. the field the query matches ([`Tier`]): the start of the title, words
+//!    of the title, the composer, the tags, number or filename, and last the
+//!    page text alone;
+//! 4. among page-text-only matches, the FTS5 `bm25` relevance score.
 //!
+//! Matches in the same structured field are equally good: they keep the
+//! browsing order (by number), since `bm25` would rank them by title length.
 //! `bm25` returns negative values where a smaller number is a better match, so
-//! the reported [`SearchHit::rank`] negates it and adds the two exact-match
-//! bonuses, which are far larger than any relevance score SQLite produces. A
-//! higher rank is always a better result.
+//! the reported [`SearchHit::rank`] squashes its negation into `[0, 1)` under
+//! the tier and exact-match bonuses. A higher rank is always a better result.
 //!
 //! The index holds text with `ł`/`Ł` folded to `l`/`L` (see `crate::fold`), so
 //! the query is folded the same way before it is split into terms, the
@@ -36,6 +39,19 @@ const EXACT_ID_BONUS: f64 = 1_000.0;
 /// Sized so that an exact title match outranks every relevance score but never
 /// an exact ID match.
 const EXACT_TITLE_BONUS: f64 = 100.0;
+
+/// Rank bonus for each step of [`Tier`]; the four steps stay under
+/// [`EXACT_TITLE_BONUS`].
+const TIER_BONUS: f64 = 10.0;
+
+/// The best field a query matches, as the column filters of its FTS5 test.
+/// The first that matches gives the tier; none gives the page-text tier, 0.
+const TIERS: [(f64, &str); 4] = [
+    (4.0, "{title} : ^"),
+    (3.0, "{title} : "),
+    (2.0, "{composer} : "),
+    (1.0, "{tags note_id filename} : "),
+];
 
 /// Which `notes_fts` columns a search looks at.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -116,9 +132,17 @@ const SNIPPET_ELLIPSIS: &str = "…";
 /// `bm25` weights follow the column order of `notes_fts`: note ID, title,
 /// composer/artist, tags, filename, OCR text. Structured fields outweigh OCR
 /// text so a record titled with the search term beats one that merely prints it.
+/// The tier tests ?3–?6 follow [`TIERS`].
 const SEARCH_SQL: &str = "\
 SELECT bm25(notes_fts, 8.0, 10.0, 6.0, 5.0, 4.0, 1.0) AS relevance, notes.*,
-       snippet(notes_fts, 5, char(2), char(3), ?2, 12) AS text_snippet
+       snippet(notes_fts, 5, char(2), char(3), ?2, 12) AS text_snippet,
+       CASE
+           WHEN notes_fts.rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?3) THEN 4.0
+           WHEN notes_fts.rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?4) THEN 3.0
+           WHEN notes_fts.rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?5) THEN 2.0
+           WHEN notes_fts.rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH ?6) THEN 1.0
+           ELSE 0.0
+       END AS tier
 FROM notes_fts
 JOIN notes ON notes.row_id = notes_fts.rowid
 WHERE notes_fts MATCH ?1";
@@ -138,10 +162,26 @@ pub(crate) fn search(
     scope: SearchScope,
     limit: usize,
 ) -> Result<Vec<SearchHit>, IndexError> {
-    let match_expression = match_expression(query, scope);
-    if match_expression.is_empty() || limit == 0 {
+    let terms = terms(query);
+    if terms.is_empty() || limit == 0 {
         return Ok(Vec::new());
     }
+    let match_expression = match_expression(&terms, scope);
+    // The start of the title as one phrase, its last word a prefix; every other
+    // tier as the terms in any order, like the search itself.
+    let phrase = format!("\"{}\"*", terms.join(" "));
+    let words = terms
+        .iter()
+        .map(|term| format!("\"{term}\"*"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let [start, title, composer, other] = TIERS.map(|(_, columns)| {
+        if columns.ends_with('^') {
+            format!("{columns}{phrase}")
+        } else {
+            format!("{columns}({words})")
+        }
+    });
 
     let exact_id = query
         .trim()
@@ -153,21 +193,29 @@ pub(crate) fn search(
     let exact_title = fold_l_stroke(&query.trim().to_lowercase()).into_owned();
     let mut statement = conn.prepare(SEARCH_SQL)?;
     let rows = statement.query_map(
-        rusqlite::params![match_expression, SNIPPET_ELLIPSIS],
+        rusqlite::params![
+            match_expression,
+            SNIPPET_ELLIPSIS,
+            start,
+            title,
+            composer,
+            other
+        ],
         |row| {
             let relevance: f64 = row.get(0)?;
+            let tier: f64 = row.get("tier")?;
             let snippet = match row.get::<_, Option<String>>("text_snippet")? {
                 Some(text) if text.contains('\u{2}') => Some(with_original_spelling(row, text)?),
                 _ => None,
             };
             let note = crate::store::note_from_row(row)?;
-            Ok((relevance, snippet, note))
+            Ok((relevance, tier, snippet, note))
         },
     )?;
 
     let mut hits = Vec::new();
     for row in rows {
-        let (relevance, snippet, note) = row?;
+        let (relevance, tier, snippet, note) = row?;
         // `exact_id` is `None` for any query that is not a number; comparing
         // options directly would score every unnumbered record as an exact hit.
         let exact_id_match =
@@ -182,8 +230,16 @@ pub(crate) fn search(
             } else {
                 0.0
             };
+        // Page text alone is ordered by relevance, squashed under one tier step;
+        // structured fields are not (see the module docs).
+        let text_relevance = if tier == 0.0 {
+            let score = (-relevance).max(0.0);
+            score / (1.0 + score)
+        } else {
+            0.0
+        };
         hits.push(SearchHit {
-            rank: exact_id_match + exact_title_match - relevance,
+            rank: exact_id_match + exact_title_match + tier * TIER_BONUS + text_relevance,
             text_snippet: snippet,
             note,
         });
@@ -201,13 +257,9 @@ pub(crate) fn search(
     Ok(hits)
 }
 
-/// Turns free-form user input into an FTS5 match expression.
-///
-/// Only runs of alphanumeric characters become terms, and each term is quoted
-/// before adding FTS5's prefix operator. This keeps user input literal while
-/// matching incomplete words as they are typed. Terms are combined with the
-/// implicit `AND`, so a hit matches every query term.
-fn match_expression(query: &str, scope: SearchScope) -> String {
+/// Splits free-form user input into search terms: its runs of alphanumeric
+/// characters, which keeps user input literal.
+fn terms(query: &str) -> Vec<String> {
     // Indexed text is folded as it is written (`write_fts_row`), so the query
     // must be folded the same way before it is split into terms.
     let query = fold_l_stroke(query);
@@ -223,8 +275,17 @@ fn match_expression(query: &str, scope: SearchScope) -> String {
     if !current.is_empty() {
         terms.push(current);
     }
+    terms
+}
+
+/// Turns search terms into an FTS5 match expression.
+///
+/// Each term is quoted before adding FTS5's prefix operator, matching
+/// incomplete words as they are typed. Terms are combined with the implicit
+/// `AND`, so a hit matches every query term.
+fn match_expression(terms: &[String], scope: SearchScope) -> String {
     let body = terms
-        .into_iter()
+        .iter()
         .map(|term| format!("\"{term}\"*"))
         .collect::<Vec<_>>()
         .join(" ");

@@ -1505,3 +1505,100 @@ fn delete_missing_handles_more_paths_than_sqlite_binds() {
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].path(), &path("kept.pdf"));
 }
+
+#[test]
+fn everything_ranks_by_field_title_start_title_word_composer_tag_then_lyrics() {
+    let store = IndexStore::open(":memory:").expect("open");
+    store
+        .upsert_note_with_ocr(
+            &note("a.pdf", 1, Some(NoteId::new(1)), "Psalm", None, &[]),
+            Some(&OcrText::new("chwała chwała chwała Panu")),
+        )
+        .expect("insert");
+    store
+        .upsert_note(&note(
+            "b.pdf",
+            2,
+            Some(NoteId::new(2)),
+            "Hymn",
+            None,
+            &["chwała"],
+        ))
+        .expect("insert");
+    store
+        .upsert_note(&note(
+            "c.pdf",
+            3,
+            Some(NoteId::new(3)),
+            "Kantyk",
+            Some("Chwalański"),
+            &[],
+        ))
+        .expect("insert");
+    store
+        .upsert_note(&note(
+            "d.pdf",
+            4,
+            Some(NoteId::new(4)),
+            "Niech będzie chwała",
+            None,
+            &[],
+        ))
+        .expect("insert");
+    store
+        .upsert_note(&note(
+            "e.pdf",
+            5,
+            Some(NoteId::new(5)),
+            "Chwała na wysokości",
+            None,
+            &[],
+        ))
+        .expect("insert");
+
+    assert_eq!(
+        titles(&store, "chwala", SearchScope::Everything),
+        [
+            "Chwała na wysokości",
+            "Niech będzie chwała",
+            "Kantyk",
+            "Hymn",
+            "Psalm"
+        ]
+    );
+}
+
+#[test]
+fn equally_good_title_matches_keep_the_number_order() {
+    let store = IndexStore::open(":memory:").expect("open");
+    for (seed, id, title) in [
+        (1, 207, "Chwała Ojcu"),
+        (2, 24, "Chwała Bogu na wysokościach i pokój ludziom"),
+        (3, 208, "Chwała Tobie, Słowo Boże"),
+        (4, 23, "Chwała"),
+        (5, 215, "Chwała i cześć"),
+    ] {
+        store
+            .upsert_note(&note(
+                &format!("{id}.pdf"),
+                seed,
+                Some(NoteId::new(id)),
+                title,
+                None,
+                &[],
+            ))
+            .expect("insert");
+    }
+
+    // The exact title first, then the rest by number, not by title length.
+    assert_eq!(
+        titles(&store, "chwała", SearchScope::Titles),
+        [
+            "Chwała",
+            "Chwała Bogu na wysokościach i pokój ludziom",
+            "Chwała Ojcu",
+            "Chwała Tobie, Słowo Boże",
+            "Chwała i cześć",
+        ]
+    );
+}
